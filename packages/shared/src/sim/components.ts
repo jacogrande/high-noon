@@ -108,8 +108,12 @@ export const Bullet = {
   ownerId: new Uint16Array(MAX_ENTITIES),
   /** Damage dealt on hit */
   damage: new Uint8Array(MAX_ENTITIES),
-  /** Remaining lifetime in seconds */
+  /** Remaining lifetime in seconds (failsafe despawn) */
   lifetime: new Float32Array(MAX_ENTITIES),
+  /** Maximum travel distance in pixels */
+  range: new Float32Array(MAX_ENTITIES),
+  /** Distance traveled so far in pixels */
+  distanceTraveled: new Float32Array(MAX_ENTITIES),
 }
 
 /** Weapon data */
@@ -122,6 +126,8 @@ export const Weapon = {
   bulletDamage: new Uint8Array(MAX_ENTITIES),
   /** Time until can fire again (seconds) */
   cooldown: new Float32Array(MAX_ENTITIES),
+  /** Bullet range in pixels */
+  range: new Float32Array(MAX_ENTITIES),
 }
 
 /**
