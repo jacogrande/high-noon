@@ -382,9 +382,9 @@ Create a playable singleplayer demo where a player can:
 
 #### 6.1 Bullet Components
 ```typescript
-// Already defined in Phase 2, ensure:
-- Bullet { ownerId, damage, lifetime }
-- Position, Velocity, CircleCollider
+// Extended from Phase 2:
+- Bullet { ownerId, damage, lifetime, range, distanceTraveled }
+- Position, Velocity, Collider
 ```
 
 #### 6.2 Weapon Components
@@ -394,7 +394,8 @@ Create a playable singleplayer demo where a player can:
     fireRate: Float32Array,      // shots per second
     bulletSpeed: Float32Array,
     bulletDamage: Uint8Array,
-    cooldown: Float32Array       // time until can fire again
+    cooldown: Float32Array,      // time until can fire again
+    range: Float32Array          // bullet range in pixels
   }
 ```
 
@@ -415,15 +416,16 @@ Create a playable singleplayer demo where a player can:
 // bullet.ts
 - bulletSystem(world, dt)
 - Query bullets
+- Track distance traveled each tick
 - Decrement lifetime
-- Remove bullets with lifetime <= 0
+- Remove bullets when: distanceTraveled >= range OR lifetime <= 0
 - (Collision damage handled later with enemies)
 ```
 
 #### 6.5 Bullet Prefab
 ```typescript
 // prefabs.ts
-- spawnBullet(world, x, y, vx, vy, damage, ownerId) -> entityId
+- spawnBullet(world, { x, y, vx, vy, damage, range, ownerId }) -> entityId
 ```
 
 #### 6.6 Bullet Renderer
@@ -624,13 +626,13 @@ Create a playable singleplayer demo where a player can:
 - [x] 5.5 Roll Visual Feedback
 
 ### Phase 6: Shooting
-- [ ] 6.1 Bullet Components
-- [ ] 6.2 Weapon Components
-- [ ] 6.3 Weapon System
-- [ ] 6.4 Bullet System
-- [ ] 6.5 Bullet Prefab
-- [ ] 6.6 Bullet Renderer
-- [ ] 6.7 Aim Indicator
+- [x] 6.1 Bullet Components
+- [x] 6.2 Weapon Components
+- [x] 6.3 Weapon System
+- [x] 6.4 Bullet System
+- [x] 6.5 Bullet Prefab
+- [x] 6.6 Bullet Renderer
+- [ ] 6.7 Aim Indicator (optional)
 
 ### Phase 7: Visual Polish
 - [ ] 7.1 Asset Loading

@@ -80,8 +80,8 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `Speed` - Movement speed values
 - `Roll` - Roll state (duration, elapsed, direction, i-frame ratio)
 - `Collider` - Collision radius and layer
-- `Bullet` - Projectile data (owner, damage, lifetime)
-- `Weapon` - Weapon stats (fire rate, bullet speed)
+- `Bullet` - Projectile data (owner, damage, lifetime, range, distanceTraveled)
+- `Weapon` - Weapon stats (fire rate, bullet speed, damage, range)
 - `Invincible` - Tag for i-frame entities
 
 **Constants:**
@@ -92,6 +92,8 @@ stepWorld(world, systems, input)  // Advance by one tick
 **Systems:**
 - `playerInputSystem` - Converts input to velocity, initiates rolls
 - `rollSystem` - Manages roll velocity, i-frames, and recovery
+- `weaponSystem` - Handles firing, cooldown, and bullet spawning
+- `bulletSystem` - Tracks bullet distance traveled, handles despawning
 - `movementSystem` - Applies velocity to position, stores previous for interpolation
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
 
@@ -114,9 +116,17 @@ if (isSolidAt(tilemap, worldX, worldY)) {
 
 **Prefabs:**
 ```typescript
-import { spawnPlayer } from '@high-noon/shared'
+import { spawnPlayer, spawnBullet } from '@high-noon/shared'
 
-const playerId = spawnPlayer(world, x, y)  // Creates player entity with all components
+const playerId = spawnPlayer(world, x, y)  // Creates player with weapon
+
+const bulletId = spawnBullet(world, {
+  x, y,           // Position
+  vx, vy,         // Velocity
+  damage: 10,
+  range: 400,     // Max travel distance in pixels
+  ownerId: playerId,
+})
 ```
 
 **Content:**
@@ -125,6 +135,12 @@ const playerId = spawnPlayer(world, x, y)  // Creates player entity with all com
 - `ROLL_DURATION` = 0.3 seconds
 - `ROLL_IFRAME_RATIO` = 0.5 (first 50% invincible)
 - `ROLL_SPEED_MULTIPLIER` = 2.0
+- `PISTOL_FIRE_RATE` = 5 shots/second
+- `PISTOL_BULLET_SPEED` = 600 pixels/second
+- `PISTOL_BULLET_DAMAGE` = 10
+- `PISTOL_RANGE` = 400 pixels
+- `BULLET_RADIUS` = 4 pixels
+- `BULLET_LIFETIME` = 5.0 seconds (failsafe)
 - `TILE_SIZE` = 32 pixels
 - `ARENA_WIDTH` = 25 tiles (800px)
 - `ARENA_HEIGHT` = 19 tiles (608px)
@@ -164,9 +180,12 @@ src/
       playerInput.ts # Convert input to velocity, initiate rolls
       roll.ts        # Roll velocity, i-frames, recovery
       collision.ts   # Circle vs tilemap/circle collision
+      weapon.ts      # Firing, cooldown, bullet spawning
+      bullet.ts      # Bullet distance tracking, despawning
       index.ts
     content/
       player.ts      # Player constants
+      weapons.ts     # Weapon and bullet constants
       maps/
         testArena.ts # Test arena map
       index.ts

@@ -13,12 +13,12 @@ Sprite management and visual effects.
 
 - `SpriteRegistry.ts` - Entity ID → DisplayObject mapping with shape metadata
 - `PlayerRenderer.ts` - Player entity rendering with interpolation and roll visual feedback
+- `BulletRenderer.ts` - Bullet rendering with interpolation (yellow circles)
 - `TilemapRenderer.ts` - Tilemap rendering (walls as colored rectangles)
 - `DebugRenderer.ts` - Debug shapes and stats overlay
 
 ## Planned Files
 
-- `BulletRenderer.ts` - Bullet rendering with pooling
 - `EnemyRenderer.ts` - Enemy entity rendering
 - `FxSystem.ts` - Particles, screenshake, hit effects
 

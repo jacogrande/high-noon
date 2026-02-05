@@ -5,14 +5,14 @@ Individual ECS systems that operate on the game world.
 ## Current Systems
 
 - `playerInput.ts` - Convert input to player velocity, initiate rolls
-- `rollSystem.ts` - Manage roll state, i-frames, and locked velocity
+- `roll.ts` - Manage roll state, i-frames, and locked velocity
+- `weapon.ts` - Handle firing, cooldowns, spawn bullets
+- `bullet.ts` - Track bullet distance traveled, despawn at range/lifetime
 - `movement.ts` - Apply velocity to position, store previous for interpolation
 - `collision.ts` - Circle vs tilemap and circle vs circle collision detection/resolution
 
 ## Planned Systems
-- `bullet.ts` - Bullet lifetime, spawning, despawning
 - `damage.ts` - Apply damage, check death conditions
-- `weapon.ts` - Weapon cooldowns, firing logic
 - `ai.ts` - Enemy behavior and decision-making
 - `pickup.ts` - Item collection and effects
 
@@ -22,12 +22,13 @@ Systems run in a specific order each tick:
 
 1. Player input processing (converts input to velocity, initiates rolls)
 2. Roll system (applies roll velocity, manages i-frames)
-3. AI decisions (future)
-4. Weapon/ability activation (future)
-5. Movement (applies velocity, stores prev position)
-6. Collision resolution (pushes entities out of walls/each other)
-7. Damage application (future)
-8. Cleanup (future)
+3. Weapon system (spawns bullets at current position before movement)
+4. Bullet system (tracks distance traveled, despawns at range/lifetime)
+5. AI decisions (future)
+6. Movement (applies velocity, stores prev position)
+7. Collision resolution (pushes entities out of walls/each other)
+8. Damage application (future)
+9. Cleanup (future)
 
 ## Design Pattern
 
