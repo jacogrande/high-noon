@@ -8,6 +8,7 @@ import {
   setWorldTilemap,
   createTestArena,
   getArenaCenter,
+  getPlayableBounds,
   movementSystem,
   playerInputSystem,
   rollSystem,
@@ -15,6 +16,8 @@ import {
   weaponSystem,
   bulletSystem,
   bulletCollisionSystem,
+  Player,
+  Position,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -22,12 +25,16 @@ import {
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { Input } from '../engine/Input'
+import { Camera } from '../engine/Camera'
+import { HitStop } from '../engine/HitStop'
 import { DebugRenderer } from '../render/DebugRenderer'
 import { SpriteRegistry } from '../render/SpriteRegistry'
 import { PlayerRenderer } from '../render/PlayerRenderer'
 import { BulletRenderer } from '../render/BulletRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 import { AssetLoader } from '../assets'
+
+const GAME_ZOOM = 2
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -91,6 +98,9 @@ export function Game() {
     let world: GameWorld | null = null
     let systems: SystemRegistry | null = null
     let tilemap: Tilemap | null = null
+    let camera: Camera | null = null
+    let hitStop: HitStop | null = null
+    let lastRenderTime = 0
     let mounted = true
 
     async function init(gameContainer: HTMLDivElement) {
@@ -150,19 +160,42 @@ export function Game() {
       // Sync player renderer to create initial sprite
       playerRenderer.sync(world)
 
+      // Apply zoom to world container
+      gameApp.world.scale.set(GAME_ZOOM)
+
+      // Create camera and snap to arena center (viewport in world coords)
+      camera = new Camera()
+      camera.setViewport(gameApp.width / GAME_ZOOM, gameApp.height / GAME_ZOOM)
+      const bounds = getPlayableBounds()
+      camera.setBounds(bounds)
+      camera.snapTo(centerX, centerY)
+
+      // Create hit stop
+      hitStop = new HitStop()
+      lastRenderTime = performance.now()
+
       // Create game loop
       gameLoop = new GameLoop(
         // Update callback - runs at fixed 60Hz
-        (_dt) => {
-          if (!world || !input || !systems || !playerRenderer || !bulletRenderer) return
+        (dt) => {
+          if (!world || !input || !systems || !playerRenderer || !bulletRenderer || !camera) return
 
-          // Update input reference position for aim calculation
-          const playerPos = playerRenderer.getPlayerScreenPosition(world, 1)
-          if (playerPos) {
-            input.setReferencePosition(playerPos.x, playerPos.y)
+          // Skip sim tick if hit-stopped (intentionally also freezes aim)
+          if (hitStop?.isFrozen) return
+
+          // Get player entity for position lookups
+          const playerEid = playerRenderer.getPlayerEntity()
+
+          // Set player world position as aim reference
+          if (playerEid !== null) {
+            input.setReferencePosition(Position.x[playerEid]!, Position.y[playerEid]!)
           }
 
-          // Get input state
+          // Set camera state for screen→world conversion
+          const camPos = camera.getPosition()
+          input.setCamera(camPos.x, camPos.y, gameApp!.width, gameApp!.height, GAME_ZOOM)
+
+          // Get input state (now with correct world-space aim)
           const inputState = input.getInputState()
 
           // Step the simulation
@@ -170,11 +203,52 @@ export function Game() {
 
           // Sync renderers (create/remove sprites)
           playerRenderer.sync(world)
+
+          // Detect new bullets for camera effects
+          const prevBulletCount = bulletRenderer.count
           bulletRenderer.sync(world)
+          if (bulletRenderer.count > prevBulletCount && playerEid !== null) {
+            const angle = Player.aimAngle[playerEid]!
+            camera.addTrauma(0.08)
+            camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
+          }
+
+          // Update camera target
+          if (playerEid !== null) {
+            const worldMouse = input.getWorldMousePosition()
+            camera.update(
+              Position.x[playerEid]!,
+              Position.y[playerEid]!,
+              worldMouse.x,
+              worldMouse.y,
+              dt
+            )
+          }
         },
         // Render callback - runs at display refresh rate
         (alpha) => {
-          if (!debugRenderer || !gameLoop || !world || !playerRenderer || !bulletRenderer) return
+          if (!debugRenderer || !gameLoop || !world || !playerRenderer || !bulletRenderer || !camera || !gameApp) return
+
+          // Compute real delta time for effects
+          const now = performance.now()
+          const realDt = Math.min((now - lastRenderTime) / 1000, 0.25) // cap at 250ms
+          lastRenderTime = now
+
+          // Update hit stop
+          hitStop?.update(realDt)
+
+          // Update camera viewport in world coords (handles resize)
+          camera.setViewport(gameApp.width / GAME_ZOOM, gameApp.height / GAME_ZOOM)
+
+          // Get interpolated camera state with shake + kick
+          const camState = camera.getRenderState(alpha, realDt)
+
+          // Apply camera transform to world container
+          const halfW = gameApp.width / 2
+          const halfH = gameApp.height / 2
+          gameApp.world.pivot.set(camState.x, camState.y)
+          gameApp.world.position.set(halfW, halfH)
+          gameApp.world.rotation = camState.angle
 
           // Clear debug graphics
           debugRenderer.clear()

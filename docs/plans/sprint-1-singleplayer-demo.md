@@ -523,13 +523,118 @@ Create a playable singleplayer demo where a player can:
 
 ---
 
-## Phase 8: Integration & Polish
+## Phase 8: Camera System
+
+**Goal:** Implement a full camera system with aim-offset follow, screen shake, camera kick, and hit stop. See `docs/mechanics/camera-design.md` for design rationale and references.
+
+### Tasks
+
+#### 8.1 Camera Core (`client/src/engine/Camera.ts`)
+```typescript
+// Camera.ts
+- CameraState type { x, y, prevX, prevY }
+- Camera class with update(playerPos, aimAngle, dt) and getRenderPosition(alpha)
+- Store previous/current state for interpolation
+- Frame-rate independent exponential decay smoothing (lambda ~12)
+```
+
+#### 8.2 Aim-Offset Follow
+```typescript
+// Camera.ts (extend)
+- Compute target as weighted point between player and cursor
+- aimWeight parameter (default 0.20, range 0.10-0.35)
+- maxAimOffset clamp (default 120px) to prevent player leaving screen
+- Smooth toward target using damp(current, target, lambda, dt)
+```
+
+#### 8.3 Room Boundary Clamping
+```typescript
+// Camera.ts (extend)
+- Clamp camera so viewport never shows outside tilemap bounds
+- Handle rooms smaller than viewport (center on that axis)
+- Apply clamping after aim-offset, before storing state
+```
+
+#### 8.4 Screen Shake (`client/src/engine/ScreenShake.ts`)
+```typescript
+// ScreenShake.ts
+- Trauma-based system: trauma float (0-1), squared for intensity
+- Perlin noise offset (translation + rotation)
+- addTrauma(amount) method
+- update(dt) with configurable recoveryRate (~1.5/s)
+- getOffset(): { x, y, angle }
+- Parameters: maxTranslation (8px), maxRotation (3°), frequency (25)
+```
+
+#### 8.5 Camera Kick (`client/src/engine/CameraKick.ts`)
+```typescript
+// CameraKick.ts
+- Directional recoil offset opposite to fire direction
+- kick(directionX, directionY, magnitude) method
+- Exponential decay per frame (decay ~0.85)
+- Clamp max accumulated kick
+- getOffset(): { x, y }
+```
+
+#### 8.6 Hit Stop (`client/src/engine/HitStop.ts`)
+```typescript
+// HitStop.ts
+- freeze(durationFrames) method
+- update(dt): returns timeScale (0 during freeze, 1 otherwise)
+- Game loop multiplies simulation dt by timeScale
+- Input still collected during freeze
+- Camera shake/kick continue during freeze (use real dt)
+```
+
+#### 8.7 Camera Integration in Game Loop
+```typescript
+// Update Game.tsx
+- Create Camera, ScreenShake, CameraKick, HitStop instances
+- Simulation tick: update camera target, apply smoothing, clamp bounds
+- Render frame: interpolate camera, add shake + kick offsets, round to pixels
+- Apply final position to PixiJS world container transform
+- Wire shake triggers: weapon fire, bullet-wall hit
+- Wire kick triggers: weapon fire direction
+```
+
+#### 8.8 Accessibility Options
+```typescript
+// Expose tuning parameters
+- Screen shake intensity multiplier (0-100%)
+- Camera kick toggle
+- Hit stop toggle
+- Aim offset intensity (0-100%)
+- Consider a "reduced motion" master toggle
+```
+
+### Deliverables
+- Camera follows player with aim-offset toward cursor
+- Camera smoothly tracks without jitter or lag
+- Screen shakes on weapon fire and impacts
+- Camera kicks back on shots
+- Brief freeze frames on kills (when enemies exist)
+- Camera never shows outside tilemap bounds
+- Pixel-perfect final positioning (no sprite shimmer)
+- Accessibility toggles for motion-sensitive players
+
+### How to Test
+- Run `bun run dev`
+- Move mouse - camera shifts subtly toward cursor
+- Walk to arena edges - camera stops at tilemap boundary
+- Fire weapon - camera shakes and kicks away from shot direction
+- Shake and kick feel proportional (pistol light, shotgun heavy)
+- Movement remains smooth at 30fps, 60fps, 144fps
+- Verify no sub-pixel jitter on tilemap sprites
+
+---
+
+## Phase 9: Integration & Polish
 
 **Goal:** Wire everything together into playable demo.
 
 ### Tasks
 
-#### 8.1 Scene Structure
+#### 9.1 Scene Structure
 ```typescript
 // scenes/GameScene.ts
 - Initialize world, tilemap, player
@@ -538,24 +643,17 @@ Create a playable singleplayer demo where a player can:
 - Clean separation of concerns
 ```
 
-#### 8.2 Camera
-```typescript
-// Camera.ts
-- Follow player with slight offset toward cursor
-- Clamp to tilemap bounds
-- Smooth follow (lerp)
-```
-
-#### 8.3 Debug Overlay Formalization
+#### 9.2 Debug Overlay Formalization
 ```typescript
 // ui/DebugOverlay.ts
 - Toggle with backtick key
 - Show FPS, tick rate, entity count
 - Toggle collision visualization
 - Show player state, position, velocity
+- Show camera state (target, offset, trauma)
 ```
 
-#### 8.4 Basic Audio (Optional)
+#### 9.3 Basic Audio (Optional)
 ```typescript
 // Audio.ts
 - Shoot sound effect
@@ -563,24 +661,25 @@ Create a playable singleplayer demo where a player can:
 - Movement footsteps (optional)
 ```
 
-#### 8.5 Final Polish
+#### 9.4 Final Polish
 - Verify all success criteria met
 - Test edge cases (rapid input, window resize, alt-tab)
 - Performance check (steady 60fps)
+- Verify camera + sprites + interpolation work together
 
 ### Deliverables
 - Complete playable demo
 - No major bugs
 - Smooth 60fps gameplay
 - Debug tools for development
-- Camera follows player
+- Camera follows player with full juice
 
 ### How to Test
 - Play the game for several minutes
 - Try to break it with rapid inputs
 - Resize window - game adapts
 - Toggle debug overlay with backtick
-- All movement, collision, roll, shooting works together
+- All movement, collision, roll, shooting, camera works together
 
 ---
 
@@ -635,18 +734,27 @@ Create a playable singleplayer demo where a player can:
 - [ ] 6.7 Aim Indicator (optional)
 
 ### Phase 7: Visual Polish
-- [ ] 7.1 Asset Loading
-- [ ] 7.2 Tilemap Sprite Renderer
-- [ ] 7.3 Player Sprite & Animation
-- [ ] 7.4 Bullet Sprites
+- [x] 7.1 Asset Loading
+- [x] 7.2 Tilemap Sprite Renderer
+- [x] 7.3 Player Sprite & Animation
+- [x] 7.4 Bullet Sprites
 - [ ] 7.5 Interpolation Polish
 
-### Phase 8: Integration & Polish
-- [ ] 8.1 Scene Structure
-- [ ] 8.2 Camera
-- [ ] 8.3 Debug Overlay Formalization
-- [ ] 8.4 Basic Audio (Optional)
-- [ ] 8.5 Final Polish
+### Phase 8: Camera System
+- [x] 8.1 Camera Core
+- [x] 8.2 Aim-Offset Follow
+- [x] 8.3 Room Boundary Clamping
+- [x] 8.4 Screen Shake
+- [x] 8.5 Camera Kick
+- [x] 8.6 Hit Stop
+- [x] 8.7 Camera Integration in Game Loop
+- [ ] 8.8 Accessibility Options (fields exist but no settings UI yet)
+
+### Phase 9: Integration & Polish
+- [ ] 9.1 Scene Structure
+- [ ] 9.2 Debug Overlay Formalization
+- [ ] 9.3 Basic Audio (Optional)
+- [ ] 9.4 Final Polish
 
 ---
 
@@ -694,6 +802,9 @@ packages/
         GameLoop.ts
         Input.ts
         Camera.ts
+        ScreenShake.ts
+        CameraKick.ts
+        HitStop.ts
       render/
         SpriteRegistry.ts
         DebugRenderer.ts
@@ -735,7 +846,10 @@ Phase 6 (Shooting + Bullet Circles)
 Phase 7 (Visual Polish - Sprites)
     │
     ▼
-Phase 8 (Integration & Polish)
+Phase 8 (Camera System)
+    │
+    ▼
+Phase 9 (Integration & Polish)
 ```
 
 Each phase builds on the previous and is independently testable. No phase requires "faith" - you can always see what's happening.
@@ -750,6 +864,9 @@ Each phase builds on the previous and is independently testable. No phase requir
 | Spritesheet animation complexity | Low | Debug shapes work first, sprites are polish |
 | Fixed timestep jitter | High | Follow Gaffer on Games pattern exactly |
 | bitECS learning curve | Medium | Refer to docs/guides/bitecs.md |
+| Camera smoothing frame-rate dependence | High | Use exponential decay with dt, not per-frame lerp |
+| Screen shake feels nauseating | Medium | Perlin noise (not random), accessibility toggles |
+| Camera + interpolation interaction | Medium | Update camera in sim tick, interpolate at render |
 
 ---
 

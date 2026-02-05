@@ -8,8 +8,8 @@
 import { createTilemap, addLayer, setTile, TileType, type Tilemap } from '../../tilemap'
 
 /** Arena dimensions */
-export const ARENA_WIDTH = 25
-export const ARENA_HEIGHT = 19
+export const ARENA_WIDTH = 50
+export const ARENA_HEIGHT = 38
 export const TILE_SIZE = 32
 
 /**
@@ -51,38 +51,50 @@ export function createTestArena(): Tilemap {
     setTile(map, 0, ARENA_WIDTH - 1, y, TileType.WALL)
   }
 
-  // Add some obstacles in the middle
+  // Add some obstacles spread across the arena
   // Top-left obstacle (2x2)
-  setTile(map, 0, 5, 4, TileType.WALL)
-  setTile(map, 0, 6, 4, TileType.WALL)
-  setTile(map, 0, 5, 5, TileType.WALL)
-  setTile(map, 0, 6, 5, TileType.WALL)
+  setTile(map, 0, 10, 8, TileType.WALL)
+  setTile(map, 0, 11, 8, TileType.WALL)
+  setTile(map, 0, 10, 9, TileType.WALL)
+  setTile(map, 0, 11, 9, TileType.WALL)
 
   // Top-right obstacle (2x2)
-  setTile(map, 0, 18, 4, TileType.WALL)
-  setTile(map, 0, 19, 4, TileType.WALL)
-  setTile(map, 0, 18, 5, TileType.WALL)
-  setTile(map, 0, 19, 5, TileType.WALL)
+  setTile(map, 0, 38, 8, TileType.WALL)
+  setTile(map, 0, 39, 8, TileType.WALL)
+  setTile(map, 0, 38, 9, TileType.WALL)
+  setTile(map, 0, 39, 9, TileType.WALL)
 
   // Bottom-left obstacle (2x2)
-  setTile(map, 0, 5, 13, TileType.WALL)
-  setTile(map, 0, 6, 13, TileType.WALL)
-  setTile(map, 0, 5, 14, TileType.WALL)
-  setTile(map, 0, 6, 14, TileType.WALL)
+  setTile(map, 0, 10, 28, TileType.WALL)
+  setTile(map, 0, 11, 28, TileType.WALL)
+  setTile(map, 0, 10, 29, TileType.WALL)
+  setTile(map, 0, 11, 29, TileType.WALL)
 
   // Bottom-right obstacle (2x2)
-  setTile(map, 0, 18, 13, TileType.WALL)
-  setTile(map, 0, 19, 13, TileType.WALL)
-  setTile(map, 0, 18, 14, TileType.WALL)
-  setTile(map, 0, 19, 14, TileType.WALL)
+  setTile(map, 0, 38, 28, TileType.WALL)
+  setTile(map, 0, 39, 28, TileType.WALL)
+  setTile(map, 0, 38, 29, TileType.WALL)
+  setTile(map, 0, 39, 29, TileType.WALL)
 
   // Center obstacle (3x2)
-  setTile(map, 0, 11, 8, TileType.WALL)
-  setTile(map, 0, 12, 8, TileType.WALL)
-  setTile(map, 0, 13, 8, TileType.WALL)
-  setTile(map, 0, 11, 9, TileType.WALL)
-  setTile(map, 0, 12, 9, TileType.WALL)
-  setTile(map, 0, 13, 9, TileType.WALL)
+  setTile(map, 0, 23, 17, TileType.WALL)
+  setTile(map, 0, 24, 17, TileType.WALL)
+  setTile(map, 0, 25, 17, TileType.WALL)
+  setTile(map, 0, 23, 18, TileType.WALL)
+  setTile(map, 0, 24, 18, TileType.WALL)
+  setTile(map, 0, 25, 18, TileType.WALL)
+
+  // Extra cover: L-shape upper-mid
+  setTile(map, 0, 18, 13, TileType.WALL)
+  setTile(map, 0, 18, 14, TileType.WALL)
+  setTile(map, 0, 18, 15, TileType.WALL)
+  setTile(map, 0, 19, 15, TileType.WALL)
+
+  // Extra cover: L-shape lower-mid
+  setTile(map, 0, 31, 22, TileType.WALL)
+  setTile(map, 0, 31, 23, TileType.WALL)
+  setTile(map, 0, 31, 24, TileType.WALL)
+  setTile(map, 0, 30, 22, TileType.WALL)
 
   return map
 }

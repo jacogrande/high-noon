@@ -15,6 +15,7 @@ export type LayerName = 'background' | 'tiles' | 'entities' | 'fx' | 'ui'
 export class GameApp {
   readonly app: Application
   readonly layers: Record<LayerName, Container>
+  private readonly worldContainer: Container
 
   private constructor(app: Application) {
     this.app = app
@@ -28,11 +29,15 @@ export class GameApp {
       ui: new Container(),
     }
 
-    // Add layers to stage in order
-    app.stage.addChild(this.layers.background)
-    app.stage.addChild(this.layers.tiles)
-    app.stage.addChild(this.layers.entities)
-    app.stage.addChild(this.layers.fx)
+    // World container holds all world-space layers (camera transforms this)
+    this.worldContainer = new Container()
+    this.worldContainer.addChild(this.layers.background)
+    this.worldContainer.addChild(this.layers.tiles)
+    this.worldContainer.addChild(this.layers.entities)
+    this.worldContainer.addChild(this.layers.fx)
+
+    // Stage: worldContainer (camera-affected) + ui (screen-space)
+    app.stage.addChild(this.worldContainer)
     app.stage.addChild(this.layers.ui)
   }
 
@@ -68,6 +73,11 @@ export class GameApp {
   /** Get the stage */
   get stage(): Container {
     return this.app.stage
+  }
+
+  /** Get the world container (camera transforms this) */
+  get world(): Container {
+    return this.worldContainer
   }
 
   /** Destroy the application */

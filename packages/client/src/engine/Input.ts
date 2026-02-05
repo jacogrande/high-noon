@@ -20,6 +20,13 @@ export class Input {
   private refX = 0
   private refY = 0
 
+  /** Camera state for screen→world conversion */
+  private cameraX = 0
+  private cameraY = 0
+  private halfScreenW = 0
+  private halfScreenH = 0
+  private invZoom = 1
+
   constructor() {
     this.setupListeners()
   }
@@ -65,12 +72,41 @@ export class Input {
   }
 
   /**
-   * Set reference position for aim angle calculation
-   * Call this with player's screen position each frame
+   * Set reference position for aim angle calculation (player world position)
    */
   setReferencePosition(x: number, y: number): void {
     this.refX = x
     this.refY = y
+  }
+
+  /**
+   * Set camera state for screen→world coordinate conversion.
+   * When camera is at (0,0) and zoom is 1, behavior is identical to pre-camera code.
+   */
+  setCamera(cameraX: number, cameraY: number, screenW: number, screenH: number, zoom = 1): void {
+    this.cameraX = cameraX
+    this.cameraY = cameraY
+    this.halfScreenW = screenW / 2
+    this.halfScreenH = screenH / 2
+    this.invZoom = 1 / zoom
+  }
+
+  private screenToWorldX(screenX: number): number {
+    return (screenX - this.halfScreenW) * this.invZoom + this.cameraX
+  }
+
+  private screenToWorldY(screenY: number): number {
+    return (screenY - this.halfScreenH) * this.invZoom + this.cameraY
+  }
+
+  /**
+   * Get mouse position in world coordinates
+   */
+  getWorldMousePosition(): { x: number; y: number } {
+    return {
+      x: this.screenToWorldX(this.mouseX),
+      y: this.screenToWorldY(this.mouseY),
+    }
   }
 
   /**
@@ -122,9 +158,9 @@ export class Input {
       input.buttons |= Button.SHOOT
     }
 
-    // Calculate aim angle from reference position to mouse
-    const dx = this.mouseX - this.refX
-    const dy = this.mouseY - this.refY
+    // Convert mouse screen position to world space, then calculate aim angle
+    const dx = this.screenToWorldX(this.mouseX) - this.refX
+    const dy = this.screenToWorldY(this.mouseY) - this.refY
     input.aimAngle = Math.atan2(dy, dx)
 
     // Calculate normalized movement vector
