@@ -4,57 +4,56 @@ Sprite management and visual effects.
 
 ## Responsibilities
 
-- Map ECS entities to PixiJS sprites
-- Sync sprite positions/rotations with simulation state
-- Visual effects (particles, screenshake, trails)
-- Z-ordering and render layers
+- Map ECS entities to PixiJS display objects
+- Sync sprite positions with simulation state
+- Interpolate between ticks for smooth rendering
+- Debug visualization overlay
 
-## Key Files
+## Current Files
 
-- `SpriteRegistry.ts` - Entity ID → Sprite mapping, lifecycle
-- `RenderSystem.ts` - Read sim state, update sprite transforms
+- `SpriteRegistry.ts` - Entity ID → DisplayObject mapping with shape metadata
+- `PlayerRenderer.ts` - Player entity rendering with interpolation and roll visual feedback
+- `TilemapRenderer.ts` - Tilemap rendering (walls as colored rectangles)
+- `DebugRenderer.ts` - Debug shapes and stats overlay
+
+## Planned Files
+
+- `BulletRenderer.ts` - Bullet rendering with pooling
+- `EnemyRenderer.ts` - Enemy entity rendering
 - `FxSystem.ts` - Particles, screenshake, hit effects
 
 ## Entity-Sprite Lifecycle
 
 ```
-Entity created → Create sprite, add to registry
-Entity updated → Update sprite transform
-Entity removed → Remove sprite, return to pool
+Entity created → sync() creates sprite, adds to registry
+Entity updated → render() updates sprite transform with interpolation
+Entity removed → sync() removes sprite from registry
 ```
-
-## Render Layers
-
-From back to front:
-1. Background/floor
-2. Shadows
-3. Ground effects (blood, scorch marks)
-4. Entities (sorted by Y for depth)
-5. Projectiles
-6. Particles/effects
-7. UI overlay
 
 ## Interpolation
 
-Sprites render at interpolated positions:
+Sprites render at interpolated positions for smooth movement:
 
 ```typescript
-sprite.x = lerp(prevPos.x, currPos.x, alpha)
-sprite.y = lerp(prevPos.y, currPos.y, alpha)
+render(world: GameWorld, alpha: number): void {
+  const prevX = Position.prevX[eid]!
+  const currX = Position.x[eid]!
+  const renderX = prevX + (currX - prevX) * alpha
+  this.registry.setPosition(eid, renderX, renderY)
+}
 ```
 
-## Object Pooling
+## Render Layers (via GameApp)
 
-Sprites for frequent entities (bullets, particles) use pools to avoid GC:
-
-```typescript
-const sprite = bulletPool.acquire()
-// ... use sprite ...
-bulletPool.release(sprite)
-```
+From back to front:
+1. `background` - Floor tiles, static scenery
+2. `tiles` - Tile-based level geometry
+3. `entities` - Players, enemies, items
+4. `fx` - Particles, effects
+5. `ui` - Debug overlay, HUD
 
 ## Dependencies
 
-- `pixi.js` - Sprite, Container, ParticleContainer
+- `pixi.js` - Graphics, Container
 - `@high-noon/shared` - Component definitions for reading state
-- `../assets` - Texture loading
+- `bitecs` - defineQuery for entity queries

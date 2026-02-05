@@ -2,13 +2,17 @@
 
 Data-driven game content definitions.
 
-## Responsibilities
+## Current Content
 
-- Weapon stats and behaviors
-- Enemy archetypes and patterns
-- Item/upgrade definitions
-- Character base stats
-- Level/room templates
+- `player.ts` - Player constants (speed, radius, start position)
+- `maps/testArena.ts` - Test arena map with walls and obstacles
+
+## Planned Content
+
+- `weapons.ts` - Weapon stats and behaviors
+- `enemies.ts` - Enemy archetypes and patterns
+- `items.ts` - Item/upgrade definitions
+- `maps/*.ts` - Additional level/room templates
 
 ## Design Philosophy
 
@@ -17,7 +21,23 @@ Content is defined as plain data objects, not code. This enables:
 - Potential runtime loading from external sources
 - Clear separation between "what" and "how"
 
-## Example Structure
+## Current Structure
+
+```typescript
+// player.ts - Movement
+export const PLAYER_SPEED = 250      // pixels/second (recommended: 200-300)
+export const PLAYER_RADIUS = 16      // collision radius in pixels
+export const PLAYER_START_X = 400    // default spawn position
+export const PLAYER_START_Y = 300
+
+// player.ts - Roll parameters (snappy bullet-hell style)
+export const ROLL_DURATION = 0.3           // seconds
+export const ROLL_IFRAME_RATIO = 0.5       // first 50% is invincible
+export const ROLL_SPEED_MULTIPLIER = 2.0   // double speed during roll
+export const ROLL_COOLDOWN = 0             // recovery-based, no cooldown
+```
+
+## Future Structure
 
 ```typescript
 // weapons.ts
@@ -28,13 +48,6 @@ export const WEAPONS = {
     bulletSpeed: 800,
     spread: 0.05,
     bulletCount: 1,
-  },
-  shotgun: {
-    damage: 5,
-    fireRate: 0.8,
-    bulletSpeed: 600,
-    spread: 0.3,
-    bulletCount: 6,
   },
 } as const
 

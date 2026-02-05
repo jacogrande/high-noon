@@ -99,6 +99,38 @@ registry.setPosition(entityId, x, y)
 registry.remove(entityId)
 ```
 
+**PlayerRenderer** - Player entity rendering with interpolation and state feedback:
+```typescript
+import { PlayerRenderer } from './render'
+
+const playerRenderer = new PlayerRenderer(spriteRegistry)
+playerRenderer.sync(world)        // Create/remove sprites
+playerRenderer.render(world, alpha) // Update positions, colors, alpha
+```
+
+Visual feedback:
+- Normal: Cyan, opaque
+- Rolling (i-frames): White, semi-transparent (50%)
+- Rolling (recovery): White, opaque
+
+**TilemapRenderer** - Tilemap rendering (debug rectangles):
+```typescript
+import { TilemapRenderer } from './render'
+
+const tilemapRenderer = new TilemapRenderer(backgroundLayer)
+tilemapRenderer.render(tilemap)  // Render once (cached)
+```
+
+**CollisionDebugRenderer** - Collision visualization:
+```typescript
+import { CollisionDebugRenderer } from './render'
+
+const collisionDebug = new CollisionDebugRenderer(uiLayer)
+collisionDebug.toggle()  // Toggle visibility
+collisionDebug.drawCollider(x, y, radius, color)
+collisionDebug.drawTileHighlight(tileX, tileY, tileSize, color)
+```
+
 ## Directory Structure
 
 ```
@@ -115,8 +147,10 @@ src/
     Input.ts         # Keyboard/mouse input
     index.ts
   render/
-    DebugRenderer.ts # Debug shapes and overlay
-    SpriteRegistry.ts# Entity sprite management
+    DebugRenderer.ts    # Debug shapes and overlay
+    SpriteRegistry.ts   # Entity sprite management
+    PlayerRenderer.ts   # Player entity rendering
+    TilemapRenderer.ts  # Tilemap and collision debug rendering
     index.ts
   net/               # (future) Networking, prediction
   ui/                # (future) In-game HUD components
