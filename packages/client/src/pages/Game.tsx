@@ -12,6 +12,8 @@ import {
   playerInputSystem,
   rollSystem,
   collisionSystem,
+  weaponSystem,
+  bulletSystem,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -22,6 +24,7 @@ import { Input } from '../engine/Input'
 import { DebugRenderer } from '../render/DebugRenderer'
 import { SpriteRegistry } from '../render/SpriteRegistry'
 import { PlayerRenderer } from '../render/PlayerRenderer'
+import { BulletRenderer } from '../render/BulletRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 
 export function Game() {
@@ -37,6 +40,7 @@ export function Game() {
     let debugRenderer: DebugRenderer | null = null
     let spriteRegistry: SpriteRegistry | null = null
     let playerRenderer: PlayerRenderer | null = null
+    let bulletRenderer: BulletRenderer | null = null
     let tilemapRenderer: TilemapRenderer | null = null
     let collisionDebugRenderer: CollisionDebugRenderer | null = null
     let world: GameWorld | null = null
@@ -66,10 +70,14 @@ export function Game() {
       // Register systems in execution order
       // 1. Player input - converts input to velocity, initiates rolls
       // 2. Roll - applies roll velocity, manages i-frames
-      // 3. Movement - applies velocity to position
-      // 4. Collision - resolves collisions after movement
+      // 3. Weapon - spawns bullets at current position before movement
+      // 4. Bullet - tracks distance traveled, handles despawning
+      // 5. Movement - applies velocity to position
+      // 6. Collision - resolves collisions after movement
       systems.register(playerInputSystem)
       systems.register(rollSystem)
+      systems.register(weaponSystem)
+      systems.register(bulletSystem)
       systems.register(movementSystem)
       systems.register(collisionSystem)
 
@@ -82,6 +90,7 @@ export function Game() {
       debugRenderer = new DebugRenderer(gameApp.layers.ui)
       spriteRegistry = new SpriteRegistry(gameApp.layers.entities)
       playerRenderer = new PlayerRenderer(spriteRegistry)
+      bulletRenderer = new BulletRenderer(spriteRegistry)
       collisionDebugRenderer = new CollisionDebugRenderer(gameApp.layers.ui)
 
       // Add debug graphics container to entity layer
@@ -98,7 +107,7 @@ export function Game() {
       gameLoop = new GameLoop(
         // Update callback - runs at fixed 60Hz
         (_dt) => {
-          if (!world || !input || !systems || !playerRenderer) return
+          if (!world || !input || !systems || !playerRenderer || !bulletRenderer) return
 
           // Update input reference position for aim calculation
           const playerPos = playerRenderer.getPlayerScreenPosition(world, 1)
@@ -114,10 +123,11 @@ export function Game() {
 
           // Sync renderers (create/remove sprites)
           playerRenderer.sync(world)
+          bulletRenderer.sync(world)
         },
         // Render callback - runs at display refresh rate
         (alpha) => {
-          if (!debugRenderer || !gameLoop || !world || !playerRenderer) return
+          if (!debugRenderer || !gameLoop || !world || !playerRenderer || !bulletRenderer) return
 
           // Clear debug graphics
           debugRenderer.clear()
@@ -125,6 +135,9 @@ export function Game() {
 
           // Render player with interpolation
           playerRenderer.render(world, alpha)
+
+          // Render bullets with interpolation
+          bulletRenderer.render(world, alpha)
 
           // Update debug overlay
           debugRenderer.updateStats({
@@ -165,6 +178,7 @@ export function Game() {
       debugRenderer?.destroy()
       collisionDebugRenderer?.destroy()
       tilemapRenderer?.destroy()
+      bulletRenderer?.destroy()
       spriteRegistry?.destroy()
       gameApp?.destroy()
     }
