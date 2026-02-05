@@ -8,3 +8,7 @@
 export * from './components'
 export * from './world'
 export * from './step'
+export * from './prefabs'
+export * from './tilemap'
+export * from './systems'
+export * from './content'
