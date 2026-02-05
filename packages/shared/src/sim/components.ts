@@ -38,6 +38,8 @@ export const Player = {
   id: new Uint8Array(MAX_ENTITIES),
   /** Current aim angle in radians */
   aimAngle: new Float32Array(MAX_ENTITIES),
+  /** Whether roll button was held last tick (for re-press detection) */
+  rollButtonWasDown: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Player state enum values */
@@ -58,6 +60,22 @@ export const Speed = {
   current: new Float32Array(MAX_ENTITIES),
   /** Base maximum speed */
   max: new Float32Array(MAX_ENTITIES),
+}
+
+/** Roll/dodge state */
+export const Roll = {
+  /** Total roll duration in seconds */
+  duration: new Float32Array(MAX_ENTITIES),
+  /** Time elapsed in current roll */
+  elapsed: new Float32Array(MAX_ENTITIES),
+  /** Portion of roll with i-frames (0.5 = first 50%) */
+  iframeRatio: new Float32Array(MAX_ENTITIES),
+  /** Speed multiplier during roll */
+  speedMultiplier: new Float32Array(MAX_ENTITIES),
+  /** Locked roll direction X (normalized) */
+  directionX: new Float32Array(MAX_ENTITIES),
+  /** Locked roll direction Y (normalized) */
+  directionY: new Float32Array(MAX_ENTITIES),
 }
 
 // ============================================================================
@@ -128,6 +146,7 @@ export const AllComponents = [
   Player,
   PlayerState,
   Speed,
+  Roll,
   Collider,
   StaticBody,
   Bullet,
