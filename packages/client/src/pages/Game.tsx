@@ -14,6 +14,7 @@ import {
   collisionSystem,
   weaponSystem,
   bulletSystem,
+  bulletCollisionSystem,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -71,14 +72,16 @@ export function Game() {
       // 1. Player input - converts input to velocity, initiates rolls
       // 2. Roll - applies roll velocity, manages i-frames
       // 3. Weapon - spawns bullets at current position before movement
-      // 4. Bullet - tracks distance traveled, handles despawning
+      // 4. Bullet - tracks distance traveled, handles range/lifetime despawning
       // 5. Movement - applies velocity to position
-      // 6. Collision - resolves collisions after movement
+      // 6. Bullet collision - despawns bullets that hit walls
+      // 7. Collision - resolves entity collisions (pushout)
       systems.register(playerInputSystem)
       systems.register(rollSystem)
       systems.register(weaponSystem)
       systems.register(bulletSystem)
       systems.register(movementSystem)
+      systems.register(bulletCollisionSystem)
       systems.register(collisionSystem)
 
       // Create renderers
