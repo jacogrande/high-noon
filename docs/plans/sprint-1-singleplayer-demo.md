@@ -601,27 +601,27 @@ Create a playable singleplayer demo where a player can:
 - [x] 2.8 Entity Sprite Registry
 
 ### Phase 3: Player Movement
-- [ ] 3.1 Player Components
-- [ ] 3.2 Movement System
-- [ ] 3.3 Player Input System
-- [ ] 3.4 Player Prefab
-- [ ] 3.5 Client Input Collection
-- [ ] 3.6 Player Renderer
+- [x] 3.1 Player Components
+- [x] 3.2 Movement System
+- [x] 3.3 Player Input System
+- [x] 3.4 Player Prefab
+- [x] 3.5 Client Input Collection
+- [x] 3.6 Player Renderer
 
 ### Phase 4: Collision System
-- [ ] 4.1 Tilemap Data Structure
-- [ ] 4.2 Collision Components
-- [ ] 4.3 Collision Detection
-- [ ] 4.4 Test Tilemap
-- [ ] 4.5 Tilemap Debug Renderer
-- [ ] 4.6 Collision Debug Visualization
+- [x] 4.1 Tilemap Data Structure
+- [x] 4.2 Collision Components
+- [x] 4.3 Collision Detection
+- [x] 4.4 Test Tilemap
+- [x] 4.5 Tilemap Debug Renderer
+- [x] 4.6 Collision Debug Visualization
 
 ### Phase 5: Roll Mechanic
-- [ ] 5.1 Roll Components
-- [ ] 5.2 Roll System
-- [ ] 5.3 Roll Initiation
-- [ ] 5.4 Roll Parameters
-- [ ] 5.5 Roll Visual Feedback
+- [x] 5.1 Roll Components
+- [x] 5.2 Roll System
+- [x] 5.3 Roll Initiation
+- [x] 5.4 Roll Parameters
+- [x] 5.5 Roll Visual Feedback
 
 ### Phase 6: Shooting
 - [ ] 6.1 Bullet Components
