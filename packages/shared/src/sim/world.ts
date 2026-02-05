@@ -5,6 +5,7 @@
  */
 
 import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
+import type { Tilemap } from './tilemap'
 
 /**
  * Game world containing all ECS state
@@ -14,6 +15,8 @@ export interface GameWorld extends IWorld {
   tick: number
   /** Accumulated time for this tick (for debugging) */
   time: number
+  /** Current tilemap for collision detection (optional) */
+  tilemap: Tilemap | null
 }
 
 /**
@@ -26,7 +29,15 @@ export function createGameWorld(): GameWorld {
     ...baseWorld,
     tick: 0,
     time: 0,
+    tilemap: null,
   }
+}
+
+/**
+ * Set the tilemap for this world
+ */
+export function setWorldTilemap(world: GameWorld, tilemap: Tilemap): void {
+  world.tilemap = tilemap
 }
 
 /**
@@ -35,5 +46,6 @@ export function createGameWorld(): GameWorld {
 export function resetWorld(world: GameWorld): void {
   world.tick = 0
   world.time = 0
+  world.tilemap = null
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
