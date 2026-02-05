@@ -41,6 +41,8 @@ export function bulletSystem(world: GameWorld, dt: number): void {
     const lifetime = Bullet.lifetime[eid]!
 
     if (distanceTraveled >= range || lifetime <= 0) {
+      // Clean up collision callback if registered
+      world.bulletCollisionCallbacks.delete(eid)
       removeEntity(world, eid)
     }
   }
