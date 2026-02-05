@@ -15,6 +15,8 @@ import {
   PlayerStateType,
   Speed,
   Collider,
+  Weapon,
+  Bullet,
 } from './components'
 import {
   PLAYER_SPEED,
@@ -22,6 +24,14 @@ import {
   PLAYER_START_X,
   PLAYER_START_Y,
 } from './content/player'
+import {
+  PISTOL_FIRE_RATE,
+  PISTOL_BULLET_SPEED,
+  PISTOL_BULLET_DAMAGE,
+  PISTOL_RANGE,
+  BULLET_RADIUS,
+  BULLET_LIFETIME,
+} from './content/weapons'
 
 /** Collision layers */
 export const CollisionLayer = {
@@ -56,6 +66,7 @@ export function spawnPlayer(
   addComponent(world, PlayerState, eid)
   addComponent(world, Speed, eid)
   addComponent(world, Collider, eid)
+  addComponent(world, Weapon, eid)
 
   // Set initial position
   Position.x[eid] = x
@@ -81,6 +92,72 @@ export function spawnPlayer(
   // Set collider
   Collider.radius[eid] = PLAYER_RADIUS
   Collider.layer[eid] = CollisionLayer.PLAYER
+
+  // Set weapon (default pistol)
+  Weapon.fireRate[eid] = PISTOL_FIRE_RATE
+  Weapon.bulletSpeed[eid] = PISTOL_BULLET_SPEED
+  Weapon.bulletDamage[eid] = PISTOL_BULLET_DAMAGE
+  Weapon.cooldown[eid] = 0
+  Weapon.range[eid] = PISTOL_RANGE
+
+  return eid
+}
+
+/** Options for spawning a bullet */
+export interface SpawnBulletOptions {
+  /** Starting X position */
+  x: number
+  /** Starting Y position */
+  y: number
+  /** Velocity X component */
+  vx: number
+  /** Velocity Y component */
+  vy: number
+  /** Damage dealt on hit */
+  damage: number
+  /** Maximum travel distance in pixels */
+  range: number
+  /** Entity ID of the owner (for friendly fire prevention) */
+  ownerId: number
+}
+
+/**
+ * Spawn a bullet entity
+ *
+ * @param world - The game world
+ * @param options - Bullet spawn configuration
+ * @returns The entity ID
+ */
+export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): number {
+  const { x, y, vx, vy, damage, range, ownerId } = options
+  const eid = addEntity(world)
+
+  // Add bullet components
+  addComponent(world, Position, eid)
+  addComponent(world, Velocity, eid)
+  addComponent(world, Bullet, eid)
+  addComponent(world, Collider, eid)
+
+  // Set position
+  Position.x[eid] = x
+  Position.y[eid] = y
+  Position.prevX[eid] = x
+  Position.prevY[eid] = y
+
+  // Set velocity
+  Velocity.x[eid] = vx
+  Velocity.y[eid] = vy
+
+  // Set bullet data
+  Bullet.ownerId[eid] = ownerId
+  Bullet.damage[eid] = damage
+  Bullet.lifetime[eid] = BULLET_LIFETIME
+  Bullet.range[eid] = range
+  Bullet.distanceTraveled[eid] = 0
+
+  // Set collider
+  Collider.radius[eid] = BULLET_RADIUS
+  Collider.layer[eid] = CollisionLayer.PLAYER_BULLET
 
   return eid
 }
