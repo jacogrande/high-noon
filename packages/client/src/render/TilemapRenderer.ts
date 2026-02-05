@@ -1,33 +1,24 @@
 /**
  * Tilemap Renderer
  *
- * Renders the tilemap as colored rectangles for debugging.
- * Will be upgraded to sprite-based rendering in Phase 7.
+ * Renders the tilemap using sprites from the loaded tileset.
  */
 
-import { Graphics, Container } from 'pixi.js'
+import { Container, Sprite, Graphics } from 'pixi.js'
 import type { Tilemap } from '@high-noon/shared'
 import { TileType } from '@high-noon/shared'
-
-/** Colors for different tile types */
-const TILE_COLORS = {
-  [TileType.EMPTY]: 0x000000, // Not rendered
-  [TileType.WALL]: 0x444444, // Dark gray
-  [TileType.FLOOR]: 0x222222, // Darker gray
-} as const
+import { AssetLoader } from '../assets'
 
 /**
- * Tilemap renderer - draws tiles as colored rectangles
+ * Tilemap renderer - draws tiles as sprites
  */
 export class TilemapRenderer {
   private readonly container: Container
-  private readonly graphics: Graphics
+  private readonly sprites: Sprite[] = []
   private currentMap: Tilemap | null = null
 
   constructor(parentContainer: Container) {
     this.container = new Container()
-    this.graphics = new Graphics()
-    this.container.addChild(this.graphics)
     parentContainer.addChild(this.container)
   }
 
@@ -43,7 +34,12 @@ export class TilemapRenderer {
     }
 
     this.currentMap = map
-    this.graphics.clear()
+
+    // Clear existing sprites
+    for (const sprite of this.sprites) {
+      sprite.destroy()
+    }
+    this.sprites.length = 0
 
     const { width, height, tileSize, layers } = map
 
@@ -53,9 +49,10 @@ export class TilemapRenderer {
         for (let x = 0; x < width; x++) {
           const tile = layers[1].data[y * width + x]
           if (tile === TileType.FLOOR) {
-            this.graphics
-              .rect(x * tileSize, y * tileSize, tileSize, tileSize)
-              .fill({ color: TILE_COLORS[TileType.FLOOR] })
+            const sprite = new Sprite(AssetLoader.getTileTexture(TileType.FLOOR))
+            sprite.position.set(x * tileSize, y * tileSize)
+            this.container.addChild(sprite)
+            this.sprites.push(sprite)
           }
         }
       }
@@ -67,9 +64,10 @@ export class TilemapRenderer {
         for (let x = 0; x < width; x++) {
           const tile = layers[0].data[y * width + x]
           if (tile === TileType.WALL) {
-            this.graphics
-              .rect(x * tileSize, y * tileSize, tileSize, tileSize)
-              .fill({ color: TILE_COLORS[TileType.WALL] })
+            const sprite = new Sprite(AssetLoader.getTileTexture(TileType.WALL))
+            sprite.position.set(x * tileSize, y * tileSize)
+            this.container.addChild(sprite)
+            this.sprites.push(sprite)
           }
         }
       }
@@ -94,7 +92,10 @@ export class TilemapRenderer {
    * Clean up resources
    */
   destroy(): void {
-    this.graphics.destroy()
+    for (const sprite of this.sprites) {
+      sprite.destroy()
+    }
+    this.sprites.length = 0
     this.container.destroy()
   }
 }

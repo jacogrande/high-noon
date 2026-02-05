@@ -1,13 +1,11 @@
 /**
  * Player Renderer
  *
- * Renders player entities as colored circles with interpolation.
+ * Renders player entities as directional sprites with interpolation.
  * Visual feedback for different states:
- * - Normal: Cyan
- * - Rolling (i-frames): White, semi-transparent
- * - Rolling (recovery): White, opaque
- *
- * Will be upgraded to sprite-based rendering in Phase 7.
+ * - Normal: Full opacity
+ * - Rolling (i-frames): Semi-transparent
+ * - Rolling (recovery): Full opacity
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
@@ -21,10 +19,12 @@ import {
   Invincible,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
-
-/** Player colors for different states */
-const PLAYER_COLOR_NORMAL = 0x00ffff // Cyan
-const PLAYER_COLOR_ROLLING = 0xffffff // White during roll
+import {
+  AssetLoader,
+  angleToDirection8,
+  getAnimationFrame,
+  type AnimationState,
+} from '../assets'
 
 /** Alpha values */
 const ALPHA_NORMAL = 1.0
@@ -60,8 +60,9 @@ export class PlayerRenderer {
 
       // Create sprite if doesn't exist
       if (!this.registry.has(eid)) {
-        const radius = Collider.radius[eid]!
-        this.registry.createCircle(eid, radius, PLAYER_COLOR_NORMAL)
+        // Get initial texture (idle, facing east)
+        const texture = AssetLoader.getPlayerTexture('idle', 'E', 0)
+        this.registry.createSprite(eid, texture)
         this.playerEntity = eid
       }
     }
@@ -99,17 +100,30 @@ export class PlayerRenderer {
 
       this.registry.setPosition(eid, renderX, renderY)
 
-      // Update visual based on player state
-      const state = PlayerState.state[eid]!
-      const isRolling = state === PlayerStateType.ROLLING
+      // Determine animation state and direction
+      const playerState = PlayerState.state[eid]!
+      const aimAngle = Player.aimAngle[eid]!
       const isInvincible = hasComponent(world, Invincible, eid)
 
-      // Set color based on state
-      if (isRolling) {
-        this.registry.setColor(eid, PLAYER_COLOR_ROLLING)
+      // Map PlayerStateType to animation state
+      let animState: AnimationState
+      if (playerState === PlayerStateType.ROLLING) {
+        animState = 'roll'
+      } else if (playerState === PlayerStateType.MOVING) {
+        animState = 'walk'
       } else {
-        this.registry.setColor(eid, PLAYER_COLOR_NORMAL)
+        animState = 'idle'
       }
+
+      // Get 8-way direction from aim angle
+      const direction = angleToDirection8(aimAngle)
+
+      // Get animation frame based on world tick
+      const frame = getAnimationFrame(animState, world.tick)
+
+      // Update sprite texture
+      const texture = AssetLoader.getPlayerTexture(animState, direction, frame)
+      this.registry.setTexture(eid, texture)
 
       // Set alpha based on invincibility
       if (isInvincible) {

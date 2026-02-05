@@ -1,17 +1,15 @@
 /**
  * Bullet Renderer
  *
- * Renders bullet entities as small yellow circles with interpolation.
+ * Renders bullet entities as sprites with rotation based on velocity.
  * Tracks bullet creation and removal to sync sprites with the ECS world.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
-import { Bullet, Position, Collider } from '@high-noon/shared'
+import { Bullet, Position, Collider, Velocity } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
-
-/** Bullet visual color (yellow for visibility) */
-const BULLET_COLOR = 0xffff00
+import { AssetLoader } from '../assets'
 
 // Define query for bullet entities with rendering components
 const bulletRenderQuery = defineQuery([Bullet, Position, Collider])
@@ -42,9 +40,15 @@ export class BulletRenderer {
 
       // Create sprite if doesn't exist
       if (!this.bulletEntities.has(eid)) {
-        const radius = Collider.radius[eid]!
-        this.registry.createCircle(eid, radius, BULLET_COLOR)
+        const texture = AssetLoader.getBulletTexture()
+        this.registry.createSprite(eid, texture)
         this.bulletEntities.add(eid)
+
+        // Set initial rotation based on velocity
+        const vx = Velocity.x[eid]!
+        const vy = Velocity.y[eid]!
+        const rotation = Math.atan2(vy, vx)
+        this.registry.setRotation(eid, rotation)
       }
     }
 

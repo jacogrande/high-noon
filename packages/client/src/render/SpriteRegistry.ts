@@ -5,14 +5,14 @@
  * Handles creation, updates, and cleanup of visual representations.
  */
 
-import { Container, Graphics } from 'pixi.js'
+import { Container, Graphics, Sprite, Texture } from 'pixi.js'
 
 /** Shape types for proper redrawing */
-type ShapeType = 'circle' | 'rect'
+type ShapeType = 'circle' | 'rect' | 'sprite'
 
 /** Metadata stored with each sprite */
 interface SpriteData {
-  displayObject: Graphics | Container
+  displayObject: Graphics | Container | Sprite
   shapeType?: ShapeType
   radius?: number
   width?: number
@@ -20,7 +20,7 @@ interface SpriteData {
 }
 
 /** Display object types we support */
-export type DisplayObject = Graphics | Container
+export type DisplayObject = Graphics | Container | Sprite
 
 /**
  * Registry for entity display objects
@@ -94,6 +94,57 @@ export class SpriteRegistry {
     this.container.addChild(graphics)
 
     return graphics
+  }
+
+  /**
+   * Create a sprite for an entity from a texture
+   */
+  createSprite(eid: number, texture: Texture): Sprite {
+    // Remove existing if present
+    this.remove(eid)
+
+    const sprite = new Sprite(texture)
+    // Center the anchor
+    sprite.anchor.set(0.5, 0.5)
+
+    this.sprites.set(eid, {
+      displayObject: sprite,
+      shapeType: 'sprite',
+    })
+    this.container.addChild(sprite)
+
+    return sprite
+  }
+
+  /**
+   * Get the underlying Sprite for an entity (if it is a sprite)
+   */
+  getSprite(eid: number): Sprite | undefined {
+    const data = this.sprites.get(eid)
+    if (data?.displayObject instanceof Sprite) {
+      return data.displayObject
+    }
+    return undefined
+  }
+
+  /**
+   * Update sprite texture
+   */
+  setTexture(eid: number, texture: Texture): void {
+    const sprite = this.getSprite(eid)
+    if (sprite) {
+      sprite.texture = texture
+    }
+  }
+
+  /**
+   * Set sprite rotation
+   */
+  setRotation(eid: number, rotation: number): void {
+    const data = this.sprites.get(eid)
+    if (data) {
+      data.displayObject.rotation = rotation
+    }
   }
 
   /**
