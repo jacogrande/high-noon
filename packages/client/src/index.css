@@ -1,0 +1,34 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #1a1a2e;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Prevent text selection during gameplay */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Hide cursor during gameplay */
+.hide-cursor {
+  cursor: none;
+}
+
+/* Button hover effects */
+a:hover {
+  opacity: 0.9;
+}

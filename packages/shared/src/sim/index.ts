@@ -1,0 +1,10 @@
+/**
+ * Game simulation module
+ *
+ * Contains ECS components, systems, and world management.
+ * This runs identically on client and server.
+ */
+
+export * from './components'
+export * from './world'
+export * from './step'

@@ -1,0 +1,24 @@
+{
+  "name": "high-noon",
+  "private": true,
+  "version": "0.0.1",
+  "description": "A twitchy top-down roguelite multiplayer game",
+  "workspaces": [
+    "packages/shared",
+    "packages/client",
+    "packages/server",
+    "packages/tools"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd packages/client dev",
+    "build": "bun run build:shared && bun run build:client",
+    "build:shared": "bun run --cwd packages/shared build",
+    "build:client": "bun run --cwd packages/client build",
+    "test": "bun test",
+    "lint": "eslint packages/*/src/**/*.ts",
+    "typecheck": "tsc --build --force"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,163 @@
+/**
+ * Input - Keyboard and mouse input handling
+ *
+ * Collects input state each frame and converts to InputState
+ * for the simulation.
+ */
+
+import { Button, createInputState, type InputState } from '@high-noon/shared'
+
+/**
+ * Input manager for keyboard and mouse
+ */
+export class Input {
+  private keys = new Set<string>()
+  private mouseX = 0
+  private mouseY = 0
+  private mouseDown = false
+
+  /** Reference position for aim calculation (usually player position) */
+  private refX = 0
+  private refY = 0
+
+  constructor() {
+    this.setupListeners()
+  }
+
+  private setupListeners(): void {
+    window.addEventListener('keydown', this.onKeyDown)
+    window.addEventListener('keyup', this.onKeyUp)
+    window.addEventListener('mousemove', this.onMouseMove)
+    window.addEventListener('mousedown', this.onMouseDown)
+    window.addEventListener('mouseup', this.onMouseUp)
+    window.addEventListener('contextmenu', this.onContextMenu)
+  }
+
+  private onContextMenu = (e: Event): void => {
+    e.preventDefault()
+  }
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    // Ignore repeat events
+    if (e.repeat) return
+    this.keys.add(e.code)
+  }
+
+  private onKeyUp = (e: KeyboardEvent): void => {
+    this.keys.delete(e.code)
+  }
+
+  private onMouseMove = (e: MouseEvent): void => {
+    this.mouseX = e.clientX
+    this.mouseY = e.clientY
+  }
+
+  private onMouseDown = (e: MouseEvent): void => {
+    if (e.button === 0) {
+      this.mouseDown = true
+    }
+  }
+
+  private onMouseUp = (e: MouseEvent): void => {
+    if (e.button === 0) {
+      this.mouseDown = false
+    }
+  }
+
+  /**
+   * Set reference position for aim angle calculation
+   * Call this with player's screen position each frame
+   */
+  setReferencePosition(x: number, y: number): void {
+    this.refX = x
+    this.refY = y
+  }
+
+  /**
+   * Check if a key is currently pressed
+   */
+  isKeyDown(code: string): boolean {
+    return this.keys.has(code)
+  }
+
+  /**
+   * Check if mouse button is pressed
+   */
+  isMouseDown(): boolean {
+    return this.mouseDown
+  }
+
+  /**
+   * Get current mouse position
+   */
+  getMousePosition(): { x: number; y: number } {
+    return { x: this.mouseX, y: this.mouseY }
+  }
+
+  /**
+   * Build InputState from current input
+   */
+  getInputState(): InputState {
+    const input = createInputState()
+
+    // Movement buttons
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) {
+      input.buttons |= Button.MOVE_UP
+    }
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) {
+      input.buttons |= Button.MOVE_DOWN
+    }
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) {
+      input.buttons |= Button.MOVE_LEFT
+    }
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) {
+      input.buttons |= Button.MOVE_RIGHT
+    }
+
+    // Action buttons
+    if (this.keys.has('Space') || this.keys.has('ShiftLeft')) {
+      input.buttons |= Button.ROLL
+    }
+    if (this.mouseDown) {
+      input.buttons |= Button.SHOOT
+    }
+
+    // Calculate aim angle from reference position to mouse
+    const dx = this.mouseX - this.refX
+    const dy = this.mouseY - this.refY
+    input.aimAngle = Math.atan2(dy, dx)
+
+    // Calculate normalized movement vector
+    let moveX = 0
+    let moveY = 0
+
+    if (input.buttons & Button.MOVE_LEFT) moveX -= 1
+    if (input.buttons & Button.MOVE_RIGHT) moveX += 1
+    if (input.buttons & Button.MOVE_UP) moveY -= 1
+    if (input.buttons & Button.MOVE_DOWN) moveY += 1
+
+    // Normalize diagonal movement
+    if (moveX !== 0 && moveY !== 0) {
+      const len = Math.sqrt(moveX * moveX + moveY * moveY)
+      moveX /= len
+      moveY /= len
+    }
+
+    input.moveX = moveX
+    input.moveY = moveY
+
+    return input
+  }
+
+  /**
+   * Clean up event listeners
+   */
+  destroy(): void {
+    window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('keyup', this.onKeyUp)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mouseup', this.onMouseUp)
+    window.removeEventListener('contextmenu', this.onContextMenu)
+  }
+}
