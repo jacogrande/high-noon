@@ -6,7 +6,7 @@
  */
 
 import { addEntity, addComponent } from 'bitecs'
-import type { GameWorld } from './world'
+import type { GameWorld, BulletCollisionCallback } from './world'
 import {
   Position,
   Velocity,
@@ -119,6 +119,8 @@ export interface SpawnBulletOptions {
   range: number
   /** Entity ID of the owner (for friendly fire prevention) */
   ownerId: number
+  /** Optional callback when bullet collides with something */
+  onCollide?: BulletCollisionCallback
 }
 
 /**
@@ -129,7 +131,7 @@ export interface SpawnBulletOptions {
  * @returns The entity ID
  */
 export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): number {
-  const { x, y, vx, vy, damage, range, ownerId } = options
+  const { x, y, vx, vy, damage, range, ownerId, onCollide } = options
   const eid = addEntity(world)
 
   // Add bullet components
@@ -158,6 +160,11 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
   // Set collider
   Collider.radius[eid] = BULLET_RADIUS
   Collider.layer[eid] = CollisionLayer.PLAYER_BULLET
+
+  // Register collision callback if provided
+  if (onCollide) {
+    world.bulletCollisionCallbacks.set(eid, onCollide)
+  }
 
   return eid
 }

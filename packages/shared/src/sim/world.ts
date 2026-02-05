@@ -8,6 +8,33 @@ import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
 
 /**
+ * Collision types for callback
+ */
+export type CollisionType = 'wall' | 'entity'
+
+/**
+ * Collision callback info
+ */
+export interface CollisionInfo {
+  /** Type of collision */
+  type: CollisionType
+  /** Entity that was hit (for entity collisions) */
+  hitEntity?: number
+  /** World position of collision */
+  x: number
+  y: number
+}
+
+/**
+ * Callback function for bullet collision
+ */
+export type BulletCollisionCallback = (
+  world: GameWorld,
+  bulletEid: number,
+  info: CollisionInfo
+) => void
+
+/**
  * Game world containing all ECS state
  */
 export interface GameWorld extends IWorld {
@@ -17,6 +44,8 @@ export interface GameWorld extends IWorld {
   time: number
   /** Current tilemap for collision detection (optional) */
   tilemap: Tilemap | null
+  /** Collision callbacks for bullets (entity ID -> callback) */
+  bulletCollisionCallbacks: Map<number, BulletCollisionCallback>
 }
 
 /**
@@ -30,6 +59,7 @@ export function createGameWorld(): GameWorld {
     tick: 0,
     time: 0,
     tilemap: null,
+    bulletCollisionCallbacks: new Map(),
   }
 }
 
@@ -47,5 +77,6 @@ export function resetWorld(world: GameWorld): void {
   world.tick = 0
   world.time = 0
   world.tilemap = null
+  world.bulletCollisionCallbacks.clear()
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
