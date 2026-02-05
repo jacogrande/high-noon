@@ -5,4 +5,5 @@
  */
 
 export * from './player'
+export * from './weapons'
 export * from './maps/testArena'
