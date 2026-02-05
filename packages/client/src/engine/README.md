@@ -14,10 +14,11 @@ Core client engine: PixiJS setup, game loop, and input handling.
 - `GameApp.ts` - PixiJS Application wrapper with layer management
 - `GameLoop.ts` - Fixed timestep game loop with interpolation
 - `Input.ts` - Keyboard and mouse input collection
-
-## Planned Files
-
-- `SceneManager.ts` - Scene lifecycle (menu, lobby, gameplay)
+- `Camera.ts` - Aim-offset follow camera with smoothing, bounds clamping, shake, and kick
+- `ScreenShake.ts` - Trauma-based screen shake using Perlin noise
+- `CameraKick.ts` - Directional recoil offset (opposite fire direction)
+- `HitStop.ts` - Frame freeze effect for impact feel
+- `noise.ts` - 1D Perlin noise function for shake
 
 ## Game Loop
 

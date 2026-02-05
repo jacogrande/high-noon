@@ -751,10 +751,10 @@ Create a playable singleplayer demo where a player can:
 - [ ] 8.8 Accessibility Options (fields exist but no settings UI yet)
 
 ### Phase 9: Integration & Polish
-- [ ] 9.1 Scene Structure
-- [ ] 9.2 Debug Overlay Formalization
-- [ ] 9.3 Basic Audio (Optional)
-- [ ] 9.4 Final Polish
+- [x] 9.1 Scene Structure
+- [x] 9.2 Debug Overlay Formalization
+- [ ] 9.3 Basic Audio (skipped — optional)
+- [x] 9.4 Final Polish
 
 ---
 

@@ -1,40 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  createGameWorld,
-  createSystemRegistry,
-  stepWorld,
-  spawnPlayer,
-  setWorldTilemap,
-  createTestArena,
-  getArenaCenter,
-  getPlayableBounds,
-  movementSystem,
-  playerInputSystem,
-  rollSystem,
-  collisionSystem,
-  weaponSystem,
-  bulletSystem,
-  bulletCollisionSystem,
-  Player,
-  Position,
-  type GameWorld,
-  type SystemRegistry,
-  type Tilemap,
-} from '@high-noon/shared'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
-import { Input } from '../engine/Input'
-import { Camera } from '../engine/Camera'
-import { HitStop } from '../engine/HitStop'
-import { DebugRenderer } from '../render/DebugRenderer'
-import { SpriteRegistry } from '../render/SpriteRegistry'
-import { PlayerRenderer } from '../render/PlayerRenderer'
-import { BulletRenderer } from '../render/BulletRenderer'
-import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
+import { GameScene } from '../scenes/GameScene'
 import { AssetLoader } from '../assets'
-
-const GAME_ZOOM = 2
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -88,219 +57,36 @@ export function Game() {
 
     let gameApp: GameApp | null = null
     let gameLoop: GameLoop | null = null
-    let input: Input | null = null
-    let debugRenderer: DebugRenderer | null = null
-    let spriteRegistry: SpriteRegistry | null = null
-    let playerRenderer: PlayerRenderer | null = null
-    let bulletRenderer: BulletRenderer | null = null
-    let tilemapRenderer: TilemapRenderer | null = null
-    let collisionDebugRenderer: CollisionDebugRenderer | null = null
-    let world: GameWorld | null = null
-    let systems: SystemRegistry | null = null
-    let tilemap: Tilemap | null = null
-    let camera: Camera | null = null
-    let hitStop: HitStop | null = null
-    let lastRenderTime = 0
+    let scene: GameScene | null = null
     let mounted = true
 
     async function init(gameContainer: HTMLDivElement) {
-      // Create PixiJS application
       gameApp = await GameApp.create(gameContainer)
       if (!mounted) {
         gameApp.destroy()
         return
       }
 
-      // Create input handler
-      input = new Input()
+      scene = await GameScene.create({ gameApp })
+      if (!mounted) {
+        scene.destroy()
+        gameApp.destroy()
+        return
+      }
 
-      // Create tilemap
-      tilemap = createTestArena()
-
-      // Create ECS world and system registry
-      world = createGameWorld()
-      setWorldTilemap(world, tilemap)
-      systems = createSystemRegistry()
-
-      // Register systems in execution order
-      // 1. Player input - converts input to velocity, initiates rolls
-      // 2. Roll - applies roll velocity, manages i-frames
-      // 3. Weapon - spawns bullets at current position before movement
-      // 4. Bullet - tracks distance traveled, handles range/lifetime despawning
-      // 5. Movement - applies velocity to position
-      // 6. Bullet collision - despawns bullets that hit walls
-      // 7. Collision - resolves entity collisions (pushout)
-      systems.register(playerInputSystem)
-      systems.register(rollSystem)
-      systems.register(weaponSystem)
-      systems.register(bulletSystem)
-      systems.register(movementSystem)
-      systems.register(bulletCollisionSystem)
-      systems.register(collisionSystem)
-
-      // Create renderers
-      // Tilemap renders on background layer
-      tilemapRenderer = new TilemapRenderer(gameApp.layers.background)
-      tilemapRenderer.render(tilemap)
-
-      // Debug and entity renderers
-      debugRenderer = new DebugRenderer(gameApp.layers.ui)
-      spriteRegistry = new SpriteRegistry(gameApp.layers.entities)
-      playerRenderer = new PlayerRenderer(spriteRegistry)
-      bulletRenderer = new BulletRenderer(spriteRegistry)
-      collisionDebugRenderer = new CollisionDebugRenderer(gameApp.layers.ui)
-
-      // Add debug graphics container to entity layer
-      gameApp.layers.entities.addChild(debugRenderer.getContainer())
-
-      // Spawn the player at arena center
-      const { x: centerX, y: centerY } = getArenaCenter()
-      spawnPlayer(world, centerX, centerY)
-
-      // Sync player renderer to create initial sprite
-      playerRenderer.sync(world)
-
-      // Apply zoom to world container
-      gameApp.world.scale.set(GAME_ZOOM)
-
-      // Create camera and snap to arena center (viewport in world coords)
-      camera = new Camera()
-      camera.setViewport(gameApp.width / GAME_ZOOM, gameApp.height / GAME_ZOOM)
-      const bounds = getPlayableBounds()
-      camera.setBounds(bounds)
-      camera.snapTo(centerX, centerY)
-
-      // Create hit stop
-      hitStop = new HitStop()
-      lastRenderTime = performance.now()
-
-      // Create game loop
       gameLoop = new GameLoop(
-        // Update callback - runs at fixed 60Hz
-        (dt) => {
-          if (!world || !input || !systems || !playerRenderer || !bulletRenderer || !camera) return
-
-          // Skip sim tick if hit-stopped (intentionally also freezes aim)
-          if (hitStop?.isFrozen) return
-
-          // Get player entity for position lookups
-          const playerEid = playerRenderer.getPlayerEntity()
-
-          // Set player world position as aim reference
-          if (playerEid !== null) {
-            input.setReferencePosition(Position.x[playerEid]!, Position.y[playerEid]!)
-          }
-
-          // Set camera state for screen→world conversion
-          const camPos = camera.getPosition()
-          input.setCamera(camPos.x, camPos.y, gameApp!.width, gameApp!.height, GAME_ZOOM)
-
-          // Get input state (now with correct world-space aim)
-          const inputState = input.getInputState()
-
-          // Step the simulation
-          stepWorld(world, systems, inputState)
-
-          // Sync renderers (create/remove sprites)
-          playerRenderer.sync(world)
-
-          // Detect new bullets for camera effects
-          const prevBulletCount = bulletRenderer.count
-          bulletRenderer.sync(world)
-          if (bulletRenderer.count > prevBulletCount && playerEid !== null) {
-            const angle = Player.aimAngle[playerEid]!
-            camera.addTrauma(0.08)
-            camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
-          }
-
-          // Update camera target
-          if (playerEid !== null) {
-            const worldMouse = input.getWorldMousePosition()
-            camera.update(
-              Position.x[playerEid]!,
-              Position.y[playerEid]!,
-              worldMouse.x,
-              worldMouse.y,
-              dt
-            )
-          }
-        },
-        // Render callback - runs at display refresh rate
-        (alpha) => {
-          if (!debugRenderer || !gameLoop || !world || !playerRenderer || !bulletRenderer || !camera || !gameApp) return
-
-          // Compute real delta time for effects
-          const now = performance.now()
-          const realDt = Math.min((now - lastRenderTime) / 1000, 0.25) // cap at 250ms
-          lastRenderTime = now
-
-          // Update hit stop
-          hitStop?.update(realDt)
-
-          // Update camera viewport in world coords (handles resize)
-          camera.setViewport(gameApp.width / GAME_ZOOM, gameApp.height / GAME_ZOOM)
-
-          // Get interpolated camera state with shake + kick
-          const camState = camera.getRenderState(alpha, realDt)
-
-          // Apply camera transform to world container
-          const halfW = gameApp.width / 2
-          const halfH = gameApp.height / 2
-          gameApp.world.pivot.set(camState.x, camState.y)
-          gameApp.world.position.set(halfW, halfH)
-          gameApp.world.rotation = camState.angle
-
-          // Clear debug graphics
-          debugRenderer.clear()
-          collisionDebugRenderer?.clear()
-
-          // Render player with interpolation
-          playerRenderer.render(world, alpha)
-
-          // Render bullets with interpolation
-          bulletRenderer.render(world, alpha)
-
-          // Update debug overlay
-          debugRenderer.updateStats({
-            fps: gameLoop.fps,
-            tick: world.tick,
-            entityCount: spriteRegistry?.count ?? 0,
-          })
-        }
+        (dt) => scene!.update(dt),
+        (alpha) => scene!.render(alpha, gameLoop!.fps)
       )
-
-      // Start the game loop
       gameLoop.start()
-
-      // Toggle debug overlay with backtick
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.code === 'Backquote') {
-          debugRenderer?.toggle()
-          collisionDebugRenderer?.toggle()
-        }
-      }
-      window.addEventListener('keydown', handleKeyDown)
-
-      // Return cleanup for key listener
-      return () => {
-        window.removeEventListener('keydown', handleKeyDown)
-      }
     }
 
-    const cleanupPromise = init(container)
+    init(container)
 
     return () => {
       mounted = false
-
-      cleanupPromise.then((cleanup) => cleanup?.())
-
       gameLoop?.stop()
-      input?.destroy()
-      debugRenderer?.destroy()
-      collisionDebugRenderer?.destroy()
-      tilemapRenderer?.destroy()
-      bulletRenderer?.destroy()
-      spriteRegistry?.destroy()
+      scene?.destroy()
       gameApp?.destroy()
     }
   }, [loading, error])

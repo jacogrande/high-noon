@@ -12,6 +12,16 @@ export interface DebugStats {
   fps: number
   tick: number
   entityCount: number
+  // Player
+  playerState: string
+  playerX: number
+  playerY: number
+  playerVx: number
+  playerVy: number
+  // Camera
+  cameraX: number
+  cameraY: number
+  cameraTrauma: number
 }
 
 /**
@@ -155,9 +165,12 @@ export class DebugRenderer {
    */
   updateStats(stats: DebugStats): void {
     this.statsText.text = [
-      `FPS: ${stats.fps}`,
-      `Tick: ${stats.tick}`,
-      `Entities: ${stats.entityCount}`,
+      `FPS: ${stats.fps}        Tick: ${stats.tick}      Entities: ${stats.entityCount}`,
+      '',
+      `Player: ${stats.playerState}`,
+      `Pos: ${stats.playerX.toFixed(1)}, ${stats.playerY.toFixed(1)}    Vel: ${stats.playerVx.toFixed(1)}, ${stats.playerVy.toFixed(1)}`,
+      '',
+      `Cam: ${stats.cameraX.toFixed(1)}, ${stats.cameraY.toFixed(1)}    Trauma: ${stats.cameraTrauma.toFixed(3)}`,
     ].join('\n')
   }
 

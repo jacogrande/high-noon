@@ -5,7 +5,7 @@ React page components for the client application.
 ## Current Pages
 
 - `Home.tsx` - Landing page with main menu
-- `Game.tsx` - Game page that hosts the PixiJS canvas
+- `Game.tsx` - Game page — asset loading, creates GameApp/GameLoop, delegates to GameScene
 
 ## Future Pages
 

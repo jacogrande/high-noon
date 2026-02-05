@@ -79,14 +79,18 @@ const state = input.getInputState()  // Returns InputState for simulation
 
 ### `render/` - Rendering Systems
 
-**DebugRenderer** - Debug shapes and overlay:
+**DebugRenderer** - Debug shapes and overlay with player/camera telemetry:
 ```typescript
 import { DebugRenderer } from './render'
 
 const debug = new DebugRenderer(uiLayer)
 debug.circle(x, y, radius, 0x00ffff)
 debug.rect(x, y, w, h, 0xff0000)
-debug.updateStats({ fps: 60, tick: 100, entityCount: 5 })
+debug.updateStats({
+  fps: 60, tick: 100, entityCount: 5,
+  playerState: 'moving', playerX: 400, playerY: 300, playerVx: 200, playerVy: 0,
+  cameraX: 412, cameraY: 310, cameraTrauma: 0,
+})
 ```
 
 **SpriteRegistry** - Entity to display object mapping:
@@ -131,6 +135,23 @@ collisionDebug.drawCollider(x, y, radius, color)
 collisionDebug.drawTileHighlight(tileX, tileY, tileSize, color)
 ```
 
+### `scenes/` - Game Scenes
+
+**GameScene** - Owns all game state, systems, and renderers:
+```typescript
+import { GameScene } from './scenes'
+
+const scene = await GameScene.create({ gameApp })
+// In game loop:
+scene.update(dt)              // Fixed 60Hz sim tick
+scene.render(alpha, fps)      // Variable-rate rendering
+// On cleanup:
+scene.destroy()
+```
+
+GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all renderers.
+`Game.tsx` creates GameApp and GameLoop, then delegates all game logic to GameScene.
+
 ## Directory Structure
 
 ```
@@ -140,21 +161,30 @@ src/
   index.css          # Global styles
   pages/
     Home.tsx         # Landing page
-    Game.tsx         # Game page with PixiJS canvas
+    Game.tsx         # Game page — creates GameApp, GameScene, GameLoop
   engine/
     GameApp.ts       # PixiJS application wrapper
     GameLoop.ts      # Fixed timestep game loop
     Input.ts         # Keyboard/mouse input
+    Camera.ts        # Aim-offset follow camera with smoothing and bounds
+    ScreenShake.ts   # Trauma-based screen shake with Perlin noise
+    CameraKick.ts    # Directional recoil offset
+    HitStop.ts       # Frame freeze effect
+    noise.ts         # 1D Perlin noise for shake
     index.ts
   render/
-    DebugRenderer.ts    # Debug shapes and overlay
+    DebugRenderer.ts    # Debug shapes and stats overlay (player/camera telemetry)
     SpriteRegistry.ts   # Entity sprite management
     PlayerRenderer.ts   # Player entity rendering
+    BulletRenderer.ts   # Bullet entity rendering
     TilemapRenderer.ts  # Tilemap and collision debug rendering
     index.ts
+  scenes/
+    GameScene.ts     # Game scene — owns all game state, systems, renderers
+    index.ts
+  assets/            # Asset loading and spritesheets
   net/               # (future) Networking, prediction
   ui/                # (future) In-game HUD components
-  assets/            # (future) Asset loading
 ```
 
 ## Controls
@@ -167,4 +197,4 @@ src/
 
 ## Entry Point
 
-`src/main.tsx` renders the React app. The `App.tsx` component sets up routing between pages. The `Game.tsx` page hosts the PixiJS canvas with the full game loop.
+`src/main.tsx` renders the React app. The `App.tsx` component sets up routing between pages. The `Game.tsx` page handles asset loading, creates `GameApp` and `GameLoop`, and delegates all game logic to `GameScene`.
