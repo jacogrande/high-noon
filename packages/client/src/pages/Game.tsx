@@ -4,14 +4,25 @@ import {
   createGameWorld,
   createSystemRegistry,
   stepWorld,
+  spawnPlayer,
+  setWorldTilemap,
+  createTestArena,
+  getArenaCenter,
+  movementSystem,
+  playerInputSystem,
+  rollSystem,
+  collisionSystem,
   type GameWorld,
   type SystemRegistry,
+  type Tilemap,
 } from '@high-noon/shared'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { Input } from '../engine/Input'
 import { DebugRenderer } from '../render/DebugRenderer'
 import { SpriteRegistry } from '../render/SpriteRegistry'
+import { PlayerRenderer } from '../render/PlayerRenderer'
+import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -25,8 +36,12 @@ export function Game() {
     let input: Input | null = null
     let debugRenderer: DebugRenderer | null = null
     let spriteRegistry: SpriteRegistry | null = null
+    let playerRenderer: PlayerRenderer | null = null
+    let tilemapRenderer: TilemapRenderer | null = null
+    let collisionDebugRenderer: CollisionDebugRenderer | null = null
     let world: GameWorld | null = null
     let systems: SystemRegistry | null = null
+    let tilemap: Tilemap | null = null
     let mounted = true
 
     async function init(gameContainer: HTMLDivElement) {
@@ -40,48 +55,76 @@ export function Game() {
       // Create input handler
       input = new Input()
 
+      // Create tilemap
+      tilemap = createTestArena()
+
       // Create ECS world and system registry
       world = createGameWorld()
+      setWorldTilemap(world, tilemap)
       systems = createSystemRegistry()
 
+      // Register systems in execution order
+      // 1. Player input - converts input to velocity, initiates rolls
+      // 2. Roll - applies roll velocity, manages i-frames
+      // 3. Movement - applies velocity to position
+      // 4. Collision - resolves collisions after movement
+      systems.register(playerInputSystem)
+      systems.register(rollSystem)
+      systems.register(movementSystem)
+      systems.register(collisionSystem)
+
       // Create renderers
+      // Tilemap renders on background layer
+      tilemapRenderer = new TilemapRenderer(gameApp.layers.background)
+      tilemapRenderer.render(tilemap)
+
+      // Debug and entity renderers
       debugRenderer = new DebugRenderer(gameApp.layers.ui)
       spriteRegistry = new SpriteRegistry(gameApp.layers.entities)
+      playerRenderer = new PlayerRenderer(spriteRegistry)
+      collisionDebugRenderer = new CollisionDebugRenderer(gameApp.layers.ui)
 
-      // Add debug graphics container to entity layer for testing
+      // Add debug graphics container to entity layer
       gameApp.layers.entities.addChild(debugRenderer.getContainer())
 
-      // Draw a test circle in the center to verify rendering works
-      const centerX = gameApp.width / 2
-      const centerY = gameApp.height / 2
-      debugRenderer.circle(centerX, centerY, 20, 0x00ffff)
+      // Spawn the player at arena center
+      const { x: centerX, y: centerY } = getArenaCenter()
+      spawnPlayer(world, centerX, centerY)
 
-      // Capture gameApp reference for callbacks
-      const app = gameApp
+      // Sync player renderer to create initial sprite
+      playerRenderer.sync(world)
 
       // Create game loop
       gameLoop = new GameLoop(
         // Update callback - runs at fixed 60Hz
         (_dt) => {
-          if (!world || !input || !systems) return
+          if (!world || !input || !systems || !playerRenderer) return
+
+          // Update input reference position for aim calculation
+          const playerPos = playerRenderer.getPlayerScreenPosition(world, 1)
+          if (playerPos) {
+            input.setReferencePosition(playerPos.x, playerPos.y)
+          }
 
           // Get input state
           const inputState = input.getInputState()
 
           // Step the simulation
           stepWorld(world, systems, inputState)
+
+          // Sync renderers (create/remove sprites)
+          playerRenderer.sync(world)
         },
         // Render callback - runs at display refresh rate
-        (_alpha) => {
-          if (!debugRenderer || !gameLoop || !world) return
+        (alpha) => {
+          if (!debugRenderer || !gameLoop || !world || !playerRenderer) return
 
           // Clear debug graphics
           debugRenderer.clear()
+          collisionDebugRenderer?.clear()
 
-          // Draw test circle (will be replaced by entity rendering)
-          const cx = app.width / 2
-          const cy = app.height / 2
-          debugRenderer.circle(cx, cy, 20, 0x00ffff)
+          // Render player with interpolation
+          playerRenderer.render(world, alpha)
 
           // Update debug overlay
           debugRenderer.updateStats({
@@ -99,6 +142,7 @@ export function Game() {
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.code === 'Backquote') {
           debugRenderer?.toggle()
+          collisionDebugRenderer?.toggle()
         }
       }
       window.addEventListener('keydown', handleKeyDown)
@@ -119,6 +163,8 @@ export function Game() {
       gameLoop?.stop()
       input?.destroy()
       debugRenderer?.destroy()
+      collisionDebugRenderer?.destroy()
+      tilemapRenderer?.destroy()
       spriteRegistry?.destroy()
       gameApp?.destroy()
     }
