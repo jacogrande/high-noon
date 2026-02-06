@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { UpgradeDef, UpgradeId } from '@high-noon/shared'
+import type { HUDState } from '../scenes/GameScene'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { GameScene } from '../scenes/GameScene'
 import { AssetLoader } from '../assets'
 import { UpgradePanel } from '../ui/UpgradePanel'
+import { GameHUD } from '../ui/GameHUD'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -16,6 +18,8 @@ export function Game() {
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [pendingChoices, setPendingChoices] = useState<UpgradeDef[] | null>(null)
+  const [hudState, setHudState] = useState<HUDState | null>(null)
+  const lastHudUpdateRef = useRef(0)
 
   // First effect: Load assets (doesn't need container)
   useEffect(() => {
@@ -93,6 +97,12 @@ export function Game() {
           } else if (!hasChoices && showingChoicesRef.current) {
             showingChoicesRef.current = false
             setPendingChoices(null)
+          }
+          // Throttled HUD polling (~10 Hz)
+          const now = performance.now()
+          if (now - lastHudUpdateRef.current >= 100) {
+            lastHudUpdateRef.current = now
+            setHudState(scene!.getHUDState())
           }
         }
       )
@@ -175,6 +185,7 @@ export function Game() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
+      {hudState && !pendingChoices && <GameHUD state={hudState} />}
       {pendingChoices && (
         <UpgradePanel choices={pendingChoices} onSelect={handleUpgradeSelect} />
       )}

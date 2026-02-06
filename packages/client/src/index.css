@@ -32,3 +32,9 @@ body {
 a:hover {
   opacity: 0.9;
 }
+
+/* HUD low-HP pulse */
+@keyframes hud-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

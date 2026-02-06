@@ -43,7 +43,7 @@ interface DeathEffect {
 export interface EnemySyncResult {
   deathTrauma: number
   deaths: Array<{ x: number; y: number; color: number; isThreat: boolean }>
-  hits: Array<{ x: number; y: number; color: number }>
+  hits: Array<{ x: number; y: number; color: number; amount: number }>
 }
 
 // Define query for enemy entities with rendering components
@@ -110,7 +110,7 @@ export class EnemyRenderer {
           this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
           const cachedType = this.enemyTypes.get(eid)
           const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
-          result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color })
+          result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: prevHP - currentHP })
         }
         this.lastHP.set(eid, currentHP)
       }
@@ -129,6 +129,10 @@ export class EnemyRenderer {
         const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
         if (displayObj) {
           result.deaths.push({ x: displayObj.x, y: displayObj.y, color, isThreat })
+          const lastHP = this.lastHP.get(eid) ?? 0
+          if (lastHP > 0) {
+            result.hits.push({ x: displayObj.x, y: displayObj.y, color, amount: lastHP })
+          }
         }
 
         // Start death effect instead of immediate removal

@@ -50,6 +50,8 @@ import {
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
+  LEVEL_THRESHOLDS,
+  MAX_LEVEL,
   type UpgradeDef,
   type UpgradeId,
 } from '@high-noon/shared'
@@ -67,7 +69,7 @@ import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 import { SoundManager } from '../audio/SoundManager'
 import { SOUND_DEFS } from '../audio/sounds'
-import { ParticlePool, emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from '../fx'
+import { ParticlePool, FloatingTextPool, emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from '../fx'
 
 const GAME_ZOOM = 2
 
@@ -83,6 +85,18 @@ const PLAYER_STATE_NAMES: Record<number, string> = {
 
 export interface GameSceneConfig {
   gameApp: GameApp
+}
+
+export interface HUDState {
+  hp: number
+  maxHP: number
+  xp: number
+  xpForCurrentLevel: number
+  xpForNextLevel: number
+  level: number
+  waveNumber: number
+  totalWaves: number
+  waveStatus: 'active' | 'delay' | 'completed' | 'none'
 }
 
 export class GameScene {
@@ -102,6 +116,7 @@ export class GameScene {
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly sound: SoundManager
   private readonly particles: ParticlePool
+  private readonly floatingText: FloatingTextPool
   private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
@@ -182,6 +197,7 @@ export class GameScene {
 
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
+    this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
 
     this.lastRenderTime = performance.now()
 
@@ -221,6 +237,26 @@ export class GameScene {
   /** Returns pending upgrade choices, or empty array if none */
   getPendingChoices(): UpgradeDef[] {
     return this.world.upgradeState.pendingChoices
+  }
+
+  /** Returns current HUD display state */
+  getHUDState(): HUDState {
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    const enc = this.world.encounter
+    const { xp, level } = this.world.upgradeState
+    const xpForCurrentLevel = LEVEL_THRESHOLDS[level] ?? 0
+    const xpForNextLevel = level < MAX_LEVEL ? LEVEL_THRESHOLDS[level + 1]! : xpForCurrentLevel
+    return {
+      hp: playerEid !== null ? Health.current[playerEid]! : 0,
+      maxHP: playerEid !== null ? Health.max[playerEid]! : 0,
+      xp,
+      xpForCurrentLevel,
+      xpForNextLevel,
+      level,
+      waveNumber: enc ? enc.currentWave + 1 : 0,
+      totalWaves: enc ? enc.definition.waves.length : 0,
+      waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
+    }
   }
 
   /** Apply selected upgrade, write to ECS, and resume (or show next level-up) */
@@ -314,6 +350,7 @@ export class GameScene {
     }
     for (const hit of enemySync.hits) {
       emitEntityImpact(this.particles, hit.x, hit.y, hit.color)
+      this.floatingText.spawn(hit.x, hit.y, hit.amount, hit.color)
     }
 
     // Sync bullet sprites
@@ -397,6 +434,7 @@ export class GameScene {
 
     // Update particles (visual-only, uses real frame dt)
     this.particles.update(realDt)
+    this.floatingText.update(realDt)
 
     // Show Game Over text when local player is dead
     if (this.isPlayerDead()) {
@@ -456,6 +494,7 @@ export class GameScene {
 
   destroy(): void {
     this.particles.destroy()
+    this.floatingText.destroy()
     this.sound.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
