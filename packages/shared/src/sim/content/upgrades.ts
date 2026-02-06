@@ -9,8 +9,13 @@ export enum UpgradeId {
 export enum UpgradeRarity { COMMON, RARE }
 export enum UpgradeTag { OFFENSIVE, DEFENSIVE, MOBILITY, UTILITY }
 
+export type StatName =
+  | 'fireRate' | 'bulletDamage' | 'bulletSpeed' | 'range'
+  | 'speed' | 'maxHP' | 'iframeDuration'
+  | 'rollDuration' | 'rollIframeRatio' | 'rollSpeedMultiplier'
+
 export interface StatMod {
-  stat: string
+  stat: StatName
   op: 'add' | 'mul'
   value: number
 }
@@ -99,7 +104,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
       { stat: 'speed', op: 'mul', value: 1.1 },
       { stat: 'rollSpeedMultiplier', op: 'mul', value: 1.15 },
     ],
-    maxStacks: 3,
+    maxStacks: 2,
   },
   [UpgradeId.IRON_WILL]: {
     id: UpgradeId.IRON_WILL,
@@ -108,7 +113,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     rarity: UpgradeRarity.COMMON,
     tags: [UpgradeTag.DEFENSIVE],
     mods: [{ stat: 'iframeDuration', op: 'add', value: 0.2 }],
-    maxStacks: 3,
+    maxStacks: 2,
   },
   [UpgradeId.STEADY_AIM]: {
     id: UpgradeId.STEADY_AIM,
@@ -153,7 +158,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
       { stat: 'fireRate', op: 'mul', value: 1.25 },
       { stat: 'bulletSpeed', op: 'mul', value: 1.25 },
     ],
-    maxStacks: 2,
+    maxStacks: 1,
   },
   [UpgradeId.GHOST_ROLL]: {
     id: UpgradeId.GHOST_ROLL,
@@ -165,7 +170,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
       { stat: 'rollSpeedMultiplier', op: 'mul', value: 1.5 },
       { stat: 'rollIframeRatio', op: 'mul', value: 1.3 },
     ],
-    maxStacks: 2,
+    maxStacks: 1,
   },
   [UpgradeId.VAMPIRIC_ROUNDS]: {
     id: UpgradeId.VAMPIRIC_ROUNDS,

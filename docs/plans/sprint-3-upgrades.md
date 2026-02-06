@@ -549,19 +549,19 @@ bun run dev           # Manual testing below
 
 ### Phase 4: Choice Generation & Selection Flow
 
-- [ ] 4.1 generateUpgradeChoices() — weighted random, no dupes, exclude maxed
-- [ ] 4.2 GameScene pause/resume on level-up
-- [ ] 4.3 Multiple level-up handling (sequential choice screens)
+- [x] 4.1 generateUpgradeChoices() — weighted random, no dupes, exclude maxed
+- [x] 4.2 GameScene pause/resume on level-up
+- [x] 4.3 Multiple level-up handling (sequential choice screens)
 
 ### Phase 5: Upgrade Selection UI
 
-- [ ] 5.1 UpgradePanel.tsx — React card overlay
-- [ ] 5.2 Game.tsx integration — poll choices, render overlay, handle selection
+- [x] 5.1 UpgradePanel.tsx — React card overlay
+- [x] 5.2 Game.tsx integration — poll choices, render overlay, handle selection
 
 ### Phase 6: Tests & Verification
 
-- [ ] 6.1 Unit tests (14+ tests in upgrade.test.ts)
-- [ ] 6.2 Typecheck & build verification
+- [x] 6.1 Unit tests (37 tests in upgrade.test.ts)
+- [x] 6.2 Typecheck & build verification
 
 ---
 

@@ -32,6 +32,9 @@ import {
   enemyAttackSystem,
   spatialHashSystem,
   waveSpawnerSystem,
+  generateUpgradeChoices,
+  applyUpgrade,
+  writeStatsToECS,
   Player,
   Position,
   Velocity,
@@ -46,6 +49,8 @@ import {
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
+  type UpgradeDef,
+  type UpgradeId,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import { Text, TextStyle } from 'pixi.js'
@@ -94,6 +99,8 @@ export class GameScene {
   private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
+  private paused = false
+  private lastProcessedLevel = 0
 
   private constructor(config: GameSceneConfig) {
     this.gameApp = config.gameApp
@@ -197,12 +204,48 @@ export class GameScene {
     return eid !== null && hasComponent(this.world, Dead, eid)
   }
 
+  /** Returns pending upgrade choices, or empty array if none */
+  getPendingChoices(): UpgradeDef[] {
+    return this.world.upgradeState.pendingChoices
+  }
+
+  /** Apply selected upgrade, write to ECS, and resume (or show next level-up) */
+  selectUpgrade(id: UpgradeId): void {
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    if (playerEid === null) return
+
+    applyUpgrade(this.world.upgradeState, id)
+    writeStatsToECS(this.world, playerEid)
+    this.world.upgradeState.pendingChoices = []
+
+    // Check for additional pending level-ups (multi-level jump)
+    if (this.world.upgradeState.level > this.lastProcessedLevel) {
+      this.lastProcessedLevel++
+      this.world.upgradeState.pendingChoices = generateUpgradeChoices(
+        this.world.upgradeState,
+        this.world.rng,
+      )
+      // Stay paused — next choice screen will show
+    } else {
+      this.paused = false
+    }
+  }
+
   update(dt: number): void {
     // Stop simulation when local player is dead
-    if (this.isPlayerDead()) return
+    if (this.isPlayerDead()) {
+      if (this.paused) {
+        this.paused = false
+        this.world.upgradeState.pendingChoices = []
+      }
+      return
+    }
 
     // Skip sim tick if hit-stopped
     if (this.hitStop.isFrozen) return
+
+    // Skip sim tick while upgrade choice is pending
+    if (this.paused) return
 
     // Get player entity for position lookups
     const playerEid = this.playerRenderer.getPlayerEntity()
@@ -256,6 +299,16 @@ export class GameScene {
       const angle = Player.aimAngle[playerEid]!
       this.camera.addTrauma(0.08)
       this.camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
+    }
+
+    // Level-up detection: check if upgradeState.level surpassed lastProcessedLevel
+    if (this.world.upgradeState.level > this.lastProcessedLevel) {
+      this.lastProcessedLevel++
+      this.world.upgradeState.pendingChoices = generateUpgradeChoices(
+        this.world.upgradeState,
+        this.world.rng,
+      )
+      this.paused = true
     }
 
     // Update camera target
@@ -355,6 +408,8 @@ export class GameScene {
       fodderAlive: enc ? enc.fodderAliveCount : 0,
       threatAlive: enc ? enc.threatAliveCount : 0,
       fodderBudgetLeft: enc ? enc.fodderBudgetRemaining : 0,
+      xp: this.world.upgradeState.xp,
+      level: this.world.upgradeState.level,
     }
 
     this.debugRenderer.updateStats(stats)

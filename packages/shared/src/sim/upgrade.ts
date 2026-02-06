@@ -1,4 +1,8 @@
-import { UPGRADES, type UpgradeDef, type UpgradeId } from './content/upgrades'
+import {
+  UPGRADES, CHOICES_PER_LEVEL, RARITY_WEIGHTS, UpgradeRarity,
+  type UpgradeDef, type UpgradeId,
+} from './content/upgrades'
+import type { SeededRng } from '../math/rng'
 import {
   PLAYER_SPEED, PLAYER_HP, PLAYER_IFRAME_DURATION,
   ROLL_DURATION, ROLL_IFRAME_RATIO, ROLL_SPEED_MULTIPLIER,
@@ -119,7 +123,7 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
 
   // Weapon stats
   Weapon.fireRate[playerEid] = state.fireRate
-  Weapon.bulletDamage[playerEid] = Math.round(state.bulletDamage) // Uint8Array
+  Weapon.bulletDamage[playerEid] = Math.min(255, Math.round(state.bulletDamage))
   Weapon.bulletSpeed[playerEid] = state.bulletSpeed
   Weapon.range[playerEid] = state.range
 
@@ -139,4 +143,56 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
 
   // I-frame duration
   Health.iframeDuration[playerEid] = state.iframeDuration
+}
+
+/**
+ * Generate weighted random upgrade choices for a level-up.
+ * Uses seeded RNG for determinism. No duplicates in a single choice set.
+ * Excludes upgrades that are already at maxStacks.
+ */
+export function generateUpgradeChoices(
+  state: UpgradeState,
+  rng: SeededRng,
+  count: number = CHOICES_PER_LEVEL,
+): UpgradeDef[] {
+  // Collect all non-maxed upgrades, split by rarity
+  const common: UpgradeDef[] = []
+  const rare: UpgradeDef[] = []
+
+  for (const def of Object.values(UPGRADES) as UpgradeDef[]) {
+    const stacks = state.acquired.get(def.id) ?? 0
+    if (stacks >= def.maxStacks) continue
+    // Skip upgrades with no stat mods (e.g. Vampiric Rounds — mechanic not yet implemented)
+    if (def.mods.length === 0) continue
+    if (def.rarity === UpgradeRarity.COMMON) common.push(def)
+    else rare.push(def)
+  }
+
+  const available = common.length + rare.length
+  if (available === 0) return []
+
+  const choices: UpgradeDef[] = []
+  const chosenIds = new Set<UpgradeId>()
+  const actualCount = Math.min(count, available)
+
+  for (let i = 0; i < actualCount; i++) {
+    // Roll rarity: 25% Rare, 75% Common
+    const wantRare = rng.next() < RARITY_WEIGHTS[UpgradeRarity.RARE]
+
+    // Get pool for rolled rarity, excluding already-chosen
+    let pool = (wantRare ? rare : common).filter(d => !chosenIds.has(d.id))
+
+    // Fallback to other rarity if pool exhausted
+    if (pool.length === 0) {
+      pool = (wantRare ? common : rare).filter(d => !chosenIds.has(d.id))
+    }
+
+    if (pool.length === 0) break
+
+    const pick = pool[rng.nextInt(pool.length)]!
+    choices.push(pick)
+    chosenIds.add(pick.id)
+  }
+
+  return choices
 }

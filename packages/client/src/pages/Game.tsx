@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import type { UpgradeDef, UpgradeId } from '@high-noon/shared'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { GameScene } from '../scenes/GameScene'
 import { AssetLoader } from '../assets'
+import { UpgradePanel } from '../ui/UpgradePanel'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const sceneRef = useRef<GameScene | null>(null)
+  const showingChoicesRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [pendingChoices, setPendingChoices] = useState<UpgradeDef[] | null>(null)
 
   // First effect: Load assets (doesn't need container)
   useEffect(() => {
@@ -68,6 +73,7 @@ export function Game() {
       }
 
       scene = await GameScene.create({ gameApp })
+      sceneRef.current = scene
       if (!mounted) {
         scene.destroy()
         gameApp.destroy()
@@ -76,7 +82,19 @@ export function Game() {
 
       gameLoop = new GameLoop(
         (dt) => scene!.update(dt),
-        (alpha) => scene!.render(alpha, gameLoop!.fps)
+        (alpha) => {
+          scene!.render(alpha, gameLoop!.fps)
+          // Poll for pending upgrade choices
+          const choices = scene!.getPendingChoices()
+          const hasChoices = choices.length > 0
+          if (hasChoices && !showingChoicesRef.current) {
+            showingChoicesRef.current = true
+            setPendingChoices(choices)
+          } else if (!hasChoices && showingChoicesRef.current) {
+            showingChoicesRef.current = false
+            setPendingChoices(null)
+          }
+        }
       )
       gameLoop.start()
     }
@@ -87,9 +105,24 @@ export function Game() {
       mounted = false
       gameLoop?.stop()
       scene?.destroy()
+      sceneRef.current = null
       gameApp?.destroy()
     }
   }, [loading, error])
+
+  const handleUpgradeSelect = useCallback((id: UpgradeId) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.selectUpgrade(id)
+    // Immediately check for next level-up (multi-level jump)
+    const nextChoices = scene.getPendingChoices()
+    if (nextChoices.length > 0) {
+      setPendingChoices(nextChoices)
+    } else {
+      showingChoicesRef.current = false
+      setPendingChoices(null)
+    }
+  }, [])
 
   const handleRetry = () => {
     setLoading(true)
@@ -142,6 +175,9 @@ export function Game() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
+      {pendingChoices && (
+        <UpgradePanel choices={pendingChoices} onSelect={handleUpgradeSelect} />
+      )}
     </div>
   )
 }
