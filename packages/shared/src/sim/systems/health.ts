@@ -8,7 +8,9 @@
 
 import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Health, Player, Dead } from '../components'
+import { Health, Player, Dead, Enemy } from '../components'
+import { XP_VALUES } from '../content/xp'
+import { awardXP } from '../upgrade'
 
 const healthQuery = defineQuery([Health])
 
@@ -27,6 +29,11 @@ export function healthSystem(world: GameWorld, dt: number): void {
         // Player death — tag as dead, keep entity for rendering
         addComponent(world, Dead, eid)
       } else {
+        // Award XP for enemy kills
+        const xp = XP_VALUES[Enemy.type[eid]!]
+        if (xp !== undefined) {
+          awardXP(world.upgradeState, xp)
+        }
         // Non-player death — clean up (also cleaned in bulletCollisionSystem on hit)
         world.bulletCollisionCallbacks.delete(eid)
         removeEntity(world, eid)

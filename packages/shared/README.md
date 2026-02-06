@@ -100,6 +100,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `Enemy` - Enemy marker with type and tier
 
 **GameWorld fields:**
+- `upgradeState` - Player upgrade/progression state (`UpgradeState` — XP, level, acquired upgrades, computed stats)
 - `lastPlayerHitDirX/Y` - Direction of last hit on player (unit vector, for directional camera kick)
 - `EnemyAI` - AI state machine (state, stateTimer, targetEid, initialDelay)
 - `Detection` - Aggro/attack ranges and LOS config
@@ -116,6 +117,9 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `AIState` - IDLE, CHASE, TELEGRAPH, ATTACK, RECOVERY, STUNNED, FLEE
 - `EnemyType` - SWARMER, GRUNT, SHOOTER, CHARGER
 - `EnemyTier` - FODDER, THREAT
+- `UpgradeId` - 15 upgrades (10 common, 5 rare)
+- `UpgradeRarity` - COMMON, RARE
+- `UpgradeTag` - OFFENSIVE, DEFENSIVE, MOBILITY, UTILITY
 
 **Systems:**
 - `playerInputSystem` - Converts input to velocity, initiates rolls
@@ -129,7 +133,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `enemySteeringSystem` - Flow field seek, separation, shooter preferred-range orbiting
 - `movementSystem` - Applies velocity to position, stores previous for interpolation
 - `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering; stores hit direction on player hit for camera kick
-- `healthSystem` - Damage processing, i-frame countdown, death handling
+- `healthSystem` - Damage processing, i-frame countdown, death handling, XP award on enemy death
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
 - `waveSpawnerSystem` - Director-Wave hybrid: spawns enemies in escalating blended waves with fodder reinforcement, threat-kill-threshold progression, and survivor carryover
 - `debugSpawnSystem` - Debug bullet spawning (K key)
@@ -193,6 +197,19 @@ world.encounter?.threatKilledThisWave  // Threat kills this wave
 world.encounter?.threatSpawnedThisWave // Threats spawned this wave
 ```
 
+**Upgrade State:**
+```typescript
+import { initUpgradeState, awardXP } from '@high-noon/shared'
+
+// UpgradeState is initialized on GameWorld automatically
+const state = world.upgradeState
+state.xp      // Current XP total
+state.level   // Current level (0-10)
+
+// Award XP (called automatically by healthSystem on enemy death)
+const leveledUp = awardXP(state, 5) // Returns true if level increased
+```
+
 Wave advancement is **threat-kill-threshold** based: each wave defines a `threatClearRatio` (0-1). The wave advances when `ceil(spawned * ratio)` threats have been killed. Fodder is irrelevant to progression. Surviving enemies carry over into the next wave.
 
 **Content:**
@@ -212,6 +229,8 @@ Wave advancement is **threat-kill-threshold** based: each wave defines a `threat
 - `PLAYER_IFRAME_DURATION` = 0.5 seconds
 - Enemy content (per type): `*_SPEED`, `*_RADIUS`, `*_HP`, `*_AGGRO_RANGE`, `*_ATTACK_RANGE`, `*_TELEGRAPH`, `*_RECOVERY`, `*_COOLDOWN`, `*_DAMAGE`, `*_SEPARATION_RADIUS`, `*_BUDGET_COST`, `*_TIER`
 - `STAGE_1_ENCOUNTER` - 4-wave encounter definition (escalating fodder + threat budgets)
+- XP content: `XP_VALUES` (per enemy type), `LEVEL_THRESHOLDS` (11 levels), `MAX_LEVEL`, `getLevelForXP()`
+- Upgrade content: `UPGRADES` (15 definitions), `RARITY_WEIGHTS`, `CHOICES_PER_LEVEL`, `VAMPIRIC_ROUNDS_KILL_THRESHOLD`
 - `CHARGER_CHARGE_SPEED` = 300 pixels/second
 - `CHARGER_CHARGE_DURATION` = 0.4 seconds
 - `TILE_SIZE` = 32 pixels
@@ -246,7 +265,8 @@ src/
     index.ts
   sim/
     components.ts    # ECS component definitions
-    world.ts         # World creation
+    world.ts         # World creation (includes upgradeState)
+    upgrade.ts       # UpgradeState, awardXP, initUpgradeState
     step.ts          # Fixed timestep logic
     prefabs.ts       # Entity factory functions
     tilemap.ts       # Tilemap data structure and helpers
@@ -276,6 +296,8 @@ src/
       weapons.ts     # Weapon and bullet constants
       enemies.ts     # Enemy type definitions (4 archetypes, 2 tiers)
       waves.ts       # Wave/encounter definitions (STAGE_1_ENCOUNTER)
+      xp.ts          # XP values, level thresholds, getLevelForXP()
+      upgrades.ts    # 15 upgrade definitions, enums, rarity weights
       maps/
         testArena.ts # Test arena map
       index.ts

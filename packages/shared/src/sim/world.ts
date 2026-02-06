@@ -9,6 +9,7 @@ import type { Tilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
 import { SeededRng } from '../math/rng'
+import { type UpgradeState, initUpgradeState } from './upgrade'
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -100,6 +101,8 @@ export interface GameWorld extends IWorld {
   lastPlayerHitDirX: number
   /** Direction of last hit on player (unit vector Y, for camera kick) */
   lastPlayerHitDirY: number
+  /** Player upgrade/progression state */
+  upgradeState: UpgradeState
 }
 
 /**
@@ -122,6 +125,7 @@ export function createGameWorld(seed?: number): GameWorld {
     rng: new SeededRng(seed ?? Date.now()),
     lastPlayerHitDirX: 0,
     lastPlayerHitDirY: 0,
+    upgradeState: initUpgradeState(),
   }
 }
 
@@ -147,6 +151,7 @@ export function resetWorld(world: GameWorld): void {
   world.maxProjectiles = 80
   world.lastPlayerHitDirX = 0
   world.lastPlayerHitDirY = 0
+  world.upgradeState = initUpgradeState()
   // Note: rng is intentionally NOT reset — caller should create a new world
   // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed

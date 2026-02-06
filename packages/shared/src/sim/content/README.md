@@ -6,12 +6,14 @@ Data-driven game content definitions.
 
 - `player.ts` - Player constants (speed, radius, start position, roll params, HP, iframe duration)
 - `weapons.ts` - Weapon stats (pistol fire rate, bullet speed, damage, range)
+- `enemies.ts` - Enemy type definitions (4 archetypes, 2 tiers)
+- `waves.ts` - Wave/encounter definitions (STAGE_1_ENCOUNTER)
+- `xp.ts` - XP values per enemy type, level thresholds, `getLevelForXP()`
+- `upgrades.ts` - 15 upgrade definitions (enums, stat mods, rarity weights)
 - `maps/testArena.ts` - Test arena map with walls and obstacles
 
 ## Planned Content
 
-- `enemies.ts` - Enemy archetypes and patterns
-- `items.ts` - Item/upgrade definitions
 - `maps/*.ts` - Additional level/room templates
 
 ## Design Philosophy
@@ -49,20 +51,6 @@ export const PISTOL_RANGE = 400            // max travel distance in pixels
 // weapons.ts - Bullet parameters
 export const BULLET_RADIUS = 4             // collision radius
 export const BULLET_LIFETIME = 5.0         // failsafe despawn (seconds)
-```
-
-## Future Structure
-
-```typescript
-// enemies.ts
-export const ENEMIES = {
-  grunt: {
-    health: 30,
-    speed: 100,
-    damage: 10,
-    behavior: 'chase',
-  },
-} as const
 ```
 
 ## Dependencies
