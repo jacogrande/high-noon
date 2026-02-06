@@ -32,12 +32,13 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
 
-    // Non-CHASE states: stop movement
-    if (state !== AIState.CHASE) {
+    // Non-CHASE states: stop movement (except ATTACK, managed by enemyAttackSystem)
+    if (state !== AIState.CHASE && state !== AIState.ATTACK) {
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
       continue
     }
+    if (state === AIState.ATTACK) continue
 
     const ex = Position.x[eid]!
     const ey = Position.y[eid]!

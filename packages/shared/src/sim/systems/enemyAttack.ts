@@ -73,6 +73,12 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const playerX = Position.x[playerEid]!
     const playerY = Position.y[playerEid]!
 
+    // Zero velocity for non-charger attackers (steering delegates ATTACK to this system)
+    if (Enemy.type[eid] !== EnemyType.CHARGER) {
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+    }
+
     if (Enemy.type[eid] === EnemyType.CHARGER) {
       // Charger: set rush velocity once on ATTACK entry (aimX/aimY locked at TELEGRAPH)
       if (EnemyAI.stateTimer[eid]! === 0) {
