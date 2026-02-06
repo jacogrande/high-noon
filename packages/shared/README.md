@@ -122,7 +122,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `UpgradeTag` - OFFENSIVE, DEFENSIVE, MOBILITY, UTILITY
 
 **Systems:**
-- `playerInputSystem` - Converts input to velocity, initiates rolls
+- `playerInputSystem` - Converts input to velocity, initiates rolls (roll params from upgradeState)
 - `rollSystem` - Manages roll velocity, i-frames, and recovery
 - `weaponSystem` - Handles firing, cooldown, and bullet spawning
 - `bulletSystem` - Tracks bullet distance traveled, handles despawning
@@ -199,7 +199,10 @@ world.encounter?.threatSpawnedThisWave // Threats spawned this wave
 
 **Upgrade State:**
 ```typescript
-import { initUpgradeState, awardXP } from '@high-noon/shared'
+import {
+  initUpgradeState, awardXP,
+  applyUpgrade, recomputePlayerStats, writeStatsToECS,
+} from '@high-noon/shared'
 
 // UpgradeState is initialized on GameWorld automatically
 const state = world.upgradeState
@@ -208,7 +211,15 @@ state.level   // Current level (0-10)
 
 // Award XP (called automatically by healthSystem on enemy death)
 const leveledUp = awardXP(state, 5) // Returns true if level increased
+
+// Apply an upgrade (increments stack, recomputes all stats)
+applyUpgrade(state, UpgradeId.QUICK_DRAW)
+
+// Write computed stats to ECS components on the player entity
+writeStatsToECS(world, playerEid)
 ```
+
+Stat recomputation order: all additive mods first, then all multiplicative mods. Multiplicative stacking uses exponentiation (e.g. 3 stacks of 1.2x = 1.2^3 = 1.728).
 
 Wave advancement is **threat-kill-threshold** based: each wave defines a `threatClearRatio` (0-1). The wave advances when `ceil(spawned * ratio)` threats have been killed. Fodder is irrelevant to progression. Surviving enemies carry over into the next wave.
 
@@ -266,7 +277,7 @@ src/
   sim/
     components.ts    # ECS component definitions
     world.ts         # World creation (includes upgradeState)
-    upgrade.ts       # UpgradeState, awardXP, initUpgradeState
+    upgrade.ts       # UpgradeState, awardXP, applyUpgrade, recomputePlayerStats, writeStatsToECS
     step.ts          # Fixed timestep logic
     prefabs.ts       # Entity factory functions
     tilemap.ts       # Tilemap data structure and helpers

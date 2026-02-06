@@ -542,10 +542,10 @@ bun run dev           # Manual testing below
 
 ### Phase 3: Upgrade Application & Stat Recomputation
 
-- [ ] 3.1 recomputePlayerStats() — additive then multiplicative
-- [ ] 3.2 applyUpgrade() — stack management + recompute
-- [ ] 3.3 writeStatsToECS() — push stats to ECS components
-- [ ] 3.4 playerInput.ts — roll params from upgradeState
+- [x] 3.1 recomputePlayerStats() — additive then multiplicative
+- [x] 3.2 applyUpgrade() — stack management + recompute
+- [x] 3.3 writeStatsToECS() — push stats to ECS components
+- [x] 3.4 playerInput.ts — roll params from upgradeState
 
 ### Phase 4: Choice Generation & Selection Flow
 

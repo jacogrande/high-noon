@@ -17,11 +17,6 @@ import {
   Velocity,
   Roll,
 } from '../components'
-import {
-  ROLL_DURATION,
-  ROLL_IFRAME_RATIO,
-  ROLL_SPEED_MULTIPLIER,
-} from '../content/player'
 
 // Define query for player entities
 const playerQuery = defineQuery([Player, Velocity, Speed, PlayerState])
@@ -93,12 +88,13 @@ export function playerInputSystem(
         rollDirY = 0
       }
 
-      // Add Roll component
+      // Add Roll component (params from upgradeState)
+      const us = world.upgradeState
       addComponent(world, Roll, eid)
-      Roll.duration[eid] = ROLL_DURATION
+      Roll.duration[eid] = us.rollDuration
       Roll.elapsed[eid] = 0
-      Roll.iframeRatio[eid] = ROLL_IFRAME_RATIO
-      Roll.speedMultiplier[eid] = ROLL_SPEED_MULTIPLIER
+      Roll.iframeRatio[eid] = us.rollIframeRatio
+      Roll.speedMultiplier[eid] = us.rollSpeedMultiplier
       Roll.directionX[eid] = rollDirX
       Roll.directionY[eid] = rollDirY
 

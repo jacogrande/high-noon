@@ -1,4 +1,4 @@
-import type { UpgradeDef, UpgradeId } from './content/upgrades'
+import { UPGRADES, type UpgradeDef, type UpgradeId } from './content/upgrades'
 import {
   PLAYER_SPEED, PLAYER_HP, PLAYER_IFRAME_DURATION,
   ROLL_DURATION, ROLL_IFRAME_RATIO, ROLL_SPEED_MULTIPLIER,
@@ -8,6 +8,8 @@ import {
   PISTOL_BULLET_DAMAGE, PISTOL_RANGE,
 } from './content/weapons'
 import { getLevelForXP } from './content/xp'
+import { Weapon, Speed, Health } from './components'
+import type { GameWorld } from './world'
 
 export interface UpgradeState {
   xp: number
@@ -57,4 +59,84 @@ export function awardXP(state: UpgradeState, amount: number): boolean {
     return true
   }
   return false
+}
+
+/**
+ * Recompute all player stats from base constants + acquired upgrade mods.
+ * Order: all additive mods first, then all multiplicative mods.
+ * Multiplicative stacking uses exponentiation (e.g. 3 stacks of 1.2x = 1.2^3).
+ */
+export function recomputePlayerStats(state: UpgradeState): void {
+  // Accumulate add/mul totals per stat across all acquired upgrades
+  const addTotals: Record<string, number> = {}
+  const mulTotals: Record<string, number> = {}
+
+  for (const [id, stacks] of state.acquired) {
+    const def = UPGRADES[id]
+    for (const mod of def.mods) {
+      if (mod.op === 'add') {
+        addTotals[mod.stat] = (addTotals[mod.stat] ?? 0) + mod.value * stacks
+      } else {
+        mulTotals[mod.stat] = (mulTotals[mod.stat] ?? 1) * (mod.value ** stacks)
+      }
+    }
+  }
+
+  // (base + additive sum) * multiplicative product
+  const calc = (base: number, stat: string): number =>
+    (base + (addTotals[stat] ?? 0)) * (mulTotals[stat] ?? 1)
+
+  state.fireRate = calc(PISTOL_FIRE_RATE, 'fireRate')
+  state.bulletDamage = calc(PISTOL_BULLET_DAMAGE, 'bulletDamage')
+  state.bulletSpeed = calc(PISTOL_BULLET_SPEED, 'bulletSpeed')
+  state.range = calc(PISTOL_RANGE, 'range')
+  state.speed = calc(PLAYER_SPEED, 'speed')
+  state.maxHP = calc(PLAYER_HP, 'maxHP')
+  state.iframeDuration = calc(PLAYER_IFRAME_DURATION, 'iframeDuration')
+  state.rollDuration = calc(ROLL_DURATION, 'rollDuration')
+  state.rollIframeRatio = calc(ROLL_IFRAME_RATIO, 'rollIframeRatio')
+  state.rollSpeedMultiplier = calc(ROLL_SPEED_MULTIPLIER, 'rollSpeedMultiplier')
+}
+
+/**
+ * Apply an upgrade: increment stack count and recompute stats.
+ * No-op if the upgrade is already at maxStacks.
+ */
+export function applyUpgrade(state: UpgradeState, id: UpgradeId): void {
+  const def = UPGRADES[id]
+  const current = state.acquired.get(id) ?? 0
+  if (current >= def.maxStacks) return
+  state.acquired.set(id, current + 1)
+  recomputePlayerStats(state)
+}
+
+/**
+ * Write computed stats from UpgradeState into ECS components on the player entity.
+ * Call after applyUpgrade() to push changes into the simulation.
+ */
+export function writeStatsToECS(world: GameWorld, playerEid: number): void {
+  const state = world.upgradeState
+
+  // Weapon stats
+  Weapon.fireRate[playerEid] = state.fireRate
+  Weapon.bulletDamage[playerEid] = Math.round(state.bulletDamage) // Uint8Array
+  Weapon.bulletSpeed[playerEid] = state.bulletSpeed
+  Weapon.range[playerEid] = state.range
+
+  // Movement
+  Speed.max[playerEid] = state.speed
+  Speed.current[playerEid] = state.speed
+
+  // Health — heal the delta if max increased
+  const oldMax = Health.max[playerEid]!
+  Health.max[playerEid] = state.maxHP
+  if (state.maxHP > oldMax) {
+    Health.current[playerEid] = Math.min(
+      Health.current[playerEid]! + (state.maxHP - oldMax),
+      state.maxHP,
+    )
+  }
+
+  // I-frame duration
+  Health.iframeDuration[playerEid] = state.iframeDuration
 }
