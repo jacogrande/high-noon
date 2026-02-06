@@ -45,6 +45,7 @@ import {
   Enemy,
   EnemyAI,
   AIState,
+  Weapon,
   Bullet,
   type GameWorld,
   type SystemRegistry,
@@ -64,6 +65,8 @@ import { PlayerRenderer } from '../render/PlayerRenderer'
 import { BulletRenderer } from '../render/BulletRenderer'
 import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
+import { SoundManager } from '../audio/SoundManager'
+import { SOUND_DEFS } from '../audio/sounds'
 
 const GAME_ZOOM = 2
 
@@ -96,6 +99,7 @@ export class GameScene {
   private readonly enemyRenderer: EnemyRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
+  private readonly sound: SoundManager
   private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
@@ -169,6 +173,10 @@ export class GameScene {
 
     // Hit stop
     this.hitStop = new HitStop()
+
+    // Audio
+    this.sound = new SoundManager()
+    this.sound.loadAll(SOUND_DEFS)
     this.lastRenderTime = performance.now()
 
     // Game Over text (hidden by default)
@@ -213,6 +221,7 @@ export class GameScene {
   selectUpgrade(id: UpgradeId): void {
     const playerEid = this.playerRenderer.getPlayerEntity()
     if (playerEid === null) return
+    this.sound.play('upgrade_select')
 
     applyUpgrade(this.world.upgradeState, id)
     writeStatsToECS(this.world, playerEid)
@@ -262,8 +271,9 @@ export class GameScene {
     // Get input state (now with correct world-space aim)
     const inputState = this.input.getInputState()
 
-    // Snapshot i-frames before sim step for damage detection
+    // Snapshot i-frames and weapon cooldown before sim step for change detection
     const prevIframes = playerEid !== null ? Health.iframes[playerEid]! : 0
+    const prevCooldown = playerEid !== null ? Weapon.cooldown[playerEid]! : 1
 
     // Step the simulation
     stepWorld(this.world, this.systems, inputState)
@@ -274,6 +284,7 @@ export class GameScene {
       if (prevIframes === 0 && newIframes > 0) {
         this.camera.addTrauma(0.15)
         this.hitStop.freeze(0.05)
+        this.sound.play('player_hit')
         // Directional camera kick toward damage source
         const hdx = this.world.lastPlayerHitDirX
         const hdy = this.world.lastPlayerHitDirY
@@ -290,15 +301,18 @@ export class GameScene {
     const deathTrauma = this.enemyRenderer.sync(this.world)
     if (deathTrauma > 0) {
       this.camera.addTrauma(deathTrauma)
+      this.sound.play('enemy_die')
     }
 
-    // Detect new bullets for camera effects
-    const prevBulletCount = this.bulletRenderer.count
+    // Sync bullet sprites
     this.bulletRenderer.sync(this.world)
-    if (this.bulletRenderer.count > prevBulletCount && playerEid !== null) {
+
+    // Detect player fire (cooldown increased means weapon fired and reset this tick)
+    if (playerEid !== null && Weapon.cooldown[playerEid]! > prevCooldown) {
       const angle = Player.aimAngle[playerEid]!
       this.camera.addTrauma(0.08)
       this.camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
+      this.sound.play('fire')
     }
 
     // Level-up detection: check if upgradeState.level surpassed lastProcessedLevel
@@ -309,6 +323,7 @@ export class GameScene {
         this.world.rng,
       )
       this.paused = true
+      this.sound.play('level_up')
     }
 
     // Update camera target
@@ -416,6 +431,7 @@ export class GameScene {
   }
 
   destroy(): void {
+    this.sound.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
     this.gameOverText.destroy()

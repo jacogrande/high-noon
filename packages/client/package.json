@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@high-noon/shared": "workspace:*",
+    "howler": "^2.2.4",
     "pixi.js": "^8.6.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@types/howler": "^2.2.12",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
