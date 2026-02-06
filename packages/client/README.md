@@ -156,7 +156,7 @@ Enemy type colors:
 AI state visuals:
 - Telegraph: White flash (alternates every 3 ticks)
 - Recovery: Dimmed (60% alpha)
-- Spawn ghost: Fade-in during initialDelay (50% → 100% alpha, composes with state alpha)
+- Spawn ghost: Fade-in during initialDelay (50% → 100% alpha, composes with state alpha). Enemies stay idle at spawn position during this period before chasing.
 - Threat tier (Shooter, Charger): Yellow outline ring via DebugRenderer
 
 **TilemapRenderer** - Tilemap rendering (debug rectangles):

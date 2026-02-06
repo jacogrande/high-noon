@@ -3,8 +3,8 @@
  *
  * Director-Wave hybrid that spawns enemies in escalating blended waves.
  * Fodder reinforces continuously (up to maxFodderAlive) while threats
- * are finite and meaningful kills. Wave clears when all threats are dead,
- * fodder budget is spent, and no fodder remain alive.
+ * are finite and meaningful kills. Wave advances when enough threats
+ * have been killed (per threatClearRatio). Surviving enemies carry over.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
@@ -162,7 +162,13 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
   enc.fodderAliveCount = fodderAlive
   enc.threatAliveCount = threatAlive
 
-  // Track threats spawned this tick so we don't need a second query
+  // Detect threat deaths via tick-over-tick delta (before spawning new ones)
+  const threatDeaths = enc.prevThreatAlive - threatAlive
+  if (threatDeaths > 0) {
+    enc.threatKilledThisWave += threatDeaths
+  }
+
+  // Track threats spawned this tick so we can update prevThreatAlive correctly
   let threatsSpawnedThisTick = 0
 
   // Pre-wave delay
@@ -174,15 +180,19 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       enc.fodderBudgetRemaining = waveDef.fodderBudget
       enc.totalFodderSpawned = 0
       enc.fodderSpawnAccumulator = 0
+      enc.threatKilledThisWave = 0
 
       // Spawn all threats at once
+      let threatCount = 0
       for (const threat of waveDef.threats) {
         for (let i = 0; i < threat.count; i++) {
           const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap)
           spawnEnemy(world, threat.type, pos.x, pos.y)
           threatsSpawnedThisTick++
+          threatCount++
         }
       }
+      enc.threatSpawnedThisWave = threatCount
 
       // Spawn initial fodder burst: half of maxFodderAlive, capped by budget
       const burstCount = Math.floor(waveDef.maxFodderAlive / 2)
@@ -200,6 +210,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       enc.fodderAliveCount = fodderAlive
       enc.waveActive = true
     } else {
+      enc.prevThreatAlive = threatAlive
       return
     }
   }
@@ -243,16 +254,18 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
 
   enc.fodderAliveCount = fodderAlive
 
-  // Wave clear check: all threats dead, budget spent, no fodder alive
-  // Use threatAlive from initial count + threats spawned this tick
+  // Update threat alive for display (includes carryover + newly spawned)
   const totalThreatsAlive = threatAlive + threatsSpawnedThisTick
   enc.threatAliveCount = totalThreatsAlive
 
-  if (
-    totalThreatsAlive === 0 &&
-    enc.fodderBudgetRemaining === 0 &&
-    fodderAlive === 0
-  ) {
+  // Update prevThreatAlive for next tick's death detection
+  enc.prevThreatAlive = totalThreatsAlive
+
+  // Wave clear: enough of this wave's threats killed (fodder irrelevant)
+  // Survivors carry over into the next wave
+  const killsNeeded = Math.ceil(enc.threatSpawnedThisWave * waveDef.threatClearRatio)
+
+  if (enc.threatKilledThisWave >= killsNeeded) {
     enc.waveActive = false
     enc.currentWave++
     if (enc.currentWave >= enc.definition.waves.length) {

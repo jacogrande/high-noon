@@ -128,7 +128,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering
 - `healthSystem` - Damage processing, i-frame countdown, death handling
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
-- `waveSpawnerSystem` - Director-Wave hybrid: spawns enemies in escalating blended waves with fodder reinforcement and threat persistence
+- `waveSpawnerSystem` - Director-Wave hybrid: spawns enemies in escalating blended waves with fodder reinforcement, threat-kill-threshold progression, and survivor carryover
 - `debugSpawnSystem` - Debug bullet spawning (K key)
 
 **Tilemap:**
@@ -186,7 +186,11 @@ world.encounter?.completed        // All waves cleared?
 world.encounter?.fodderAliveCount // Alive fodder count
 world.encounter?.threatAliveCount // Alive threat count
 world.encounter?.fodderBudgetRemaining // Remaining fodder budget
+world.encounter?.threatKilledThisWave  // Threat kills this wave
+world.encounter?.threatSpawnedThisWave // Threats spawned this wave
 ```
+
+Wave advancement is **threat-kill-threshold** based: each wave defines a `threatClearRatio` (0-1). The wave advances when `ceil(spawned * ratio)` threats have been killed. Fodder is irrelevant to progression. Surviving enemies carry over into the next wave.
 
 **Content:**
 - `PLAYER_SPEED` = 250 pixels/second

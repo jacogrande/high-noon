@@ -2,8 +2,9 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, setEncounter, type GameWorld } from '../world'
 import { createTestArena } from '../content/maps/testArena'
-import { Enemy, EnemyType, EnemyTier, Position } from '../components'
+import { Enemy, EnemyType, EnemyTier, Position, Health } from '../components'
 import { waveSpawnerSystem, pickSpawnPosition } from './waveSpawner'
+import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import { SeededRng } from '../../math/rng'
 import type { StageEncounter, WaveDefinition } from '../content/waves'
@@ -21,6 +22,7 @@ function makeEncounter(wave: Partial<WaveDefinition>): StageEncounter {
       maxFodderAlive: wave.maxFodderAlive ?? 10,
       threats: wave.threats ?? [],
       spawnDelay: wave.spawnDelay ?? 0,
+      threatClearRatio: wave.threatClearRatio ?? 1.0,
     }],
   }
 }
@@ -38,6 +40,7 @@ function makeTwoWaveEncounter(
         maxFodderAlive: wave1.maxFodderAlive ?? 10,
         threats: wave1.threats ?? [],
         spawnDelay: wave1.spawnDelay ?? 0,
+        threatClearRatio: wave1.threatClearRatio ?? 1.0,
       },
       {
         fodderBudget: wave2.fodderBudget ?? 0,
@@ -45,6 +48,7 @@ function makeTwoWaveEncounter(
         maxFodderAlive: wave2.maxFodderAlive ?? 10,
         threats: wave2.threats ?? [],
         spawnDelay: wave2.spawnDelay ?? 3,
+        threatClearRatio: wave2.threatClearRatio ?? 1.0,
       },
     ],
   }
@@ -60,6 +64,22 @@ function countByTier(world: GameWorld) {
     else threat++
   }
   return { fodder, threat, total: enemies.length }
+}
+
+/** Get threat entity IDs */
+function getThreatEids(world: GameWorld): number[] {
+  const enemies = enemyQuery(world)
+  const threats: number[] = []
+  for (const eid of enemies) {
+    if (Enemy.tier[eid] === EnemyTier.THREAT) threats.push(eid)
+  }
+  return threats
+}
+
+/** Kill an enemy by zeroing its HP and running healthSystem */
+function killEnemy(world: GameWorld, eid: number): void {
+  Health.current[eid] = 0
+  healthSystem(world, 1 / 60)
 }
 
 /** Count enemies by type */
@@ -136,11 +156,12 @@ describe('waveSpawnerSystem', () => {
         fodderBudget: 20,
         maxFodderAlive: 8,
         fodderPool: [{ type: EnemyType.SWARMER, weight: 1 }],
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }], // keeps wave active
         spawnDelay: 0,
       })
       setEncounter(world, encounter)
 
-      // Activate wave (burst spawns floor(8/2) = 4 swarmers)
+      // Activate wave (burst spawns floor(8/2) = 4 swarmers + 1 threat)
       waveSpawnerSystem(world, 1 / 60)
       const afterActivation = countByTier(world).fodder
       expect(afterActivation).toBe(4)
@@ -158,6 +179,7 @@ describe('waveSpawnerSystem', () => {
         fodderBudget: 3, // Only 3 swarmers (cost 1 each)
         maxFodderAlive: 10,
         fodderPool: [{ type: EnemyType.SWARMER, weight: 1 }],
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }], // keeps wave active
         spawnDelay: 0,
       })
       setEncounter(world, encounter)
@@ -184,6 +206,7 @@ describe('waveSpawnerSystem', () => {
           { type: EnemyType.GRUNT, weight: 100 },
           { type: EnemyType.SWARMER, weight: 1 },
         ],
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }], // keeps wave active
         spawnDelay: 0,
       })
       setEncounter(world, encounter)
@@ -207,6 +230,7 @@ describe('waveSpawnerSystem', () => {
         fodderBudget: 1,
         maxFodderAlive: 10,
         fodderPool: [{ type: EnemyType.GRUNT, weight: 1 }],
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }], // keeps wave active
         spawnDelay: 0,
       })
       setEncounter(world, encounter)
@@ -222,8 +246,7 @@ describe('waveSpawnerSystem', () => {
   })
 
   describe('wave clear', () => {
-    test('clears wave when threats dead and fodder budget spent and no fodder alive', () => {
-      // Wave with no threats and no fodder budget = immediate clear
+    test('clears wave with 0 threats immediately', () => {
       const encounter = makeEncounter({
         fodderBudget: 0,
         threats: [],
@@ -233,8 +256,94 @@ describe('waveSpawnerSystem', () => {
 
       waveSpawnerSystem(world, 1 / 60)
 
-      // With 0 budget, 0 threats, wave activates and immediately clears
+      // 0 threats → killsNeeded = 0 → instantly clears
       expect(world.encounter!.completed).toBe(true)
+    })
+
+    test('advances wave when enough threats killed (threshold, not all)', () => {
+      // 4 threats, ratio 0.5 → need to kill ceil(4 * 0.5) = 2
+      const encounter = makeEncounter({
+        fodderBudget: 10,
+        threats: [{ type: EnemyType.SHOOTER, count: 4 }],
+        spawnDelay: 0,
+        threatClearRatio: 0.5,
+      })
+      setEncounter(world, encounter)
+
+      // Activate wave — 4 threats spawn
+      waveSpawnerSystem(world, 1 / 60)
+      const threats = getThreatEids(world)
+      expect(threats.length).toBe(4)
+      expect(world.encounter!.waveActive).toBe(true)
+
+      // Kill 1 threat — not enough
+      killEnemy(world, threats[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.waveActive).toBe(true)
+      expect(world.encounter!.threatKilledThisWave).toBe(1)
+
+      // Kill 2nd threat — now at threshold (2 kills >= ceil(4 * 0.5))
+      killEnemy(world, threats[1]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.completed).toBe(true)
+    })
+
+    test('surviving threats carry over into next wave', () => {
+      // Wave 1: 2 threats, ratio 0.5 → kill 1 to advance
+      // Wave 2: 1 new threat
+      const encounter = makeTwoWaveEncounter(
+        {
+          fodderBudget: 0,
+          threats: [{ type: EnemyType.SHOOTER, count: 2 }],
+          spawnDelay: 0,
+          threatClearRatio: 0.5,
+        },
+        {
+          fodderBudget: 0,
+          threats: [{ type: EnemyType.CHARGER, count: 1 }],
+          spawnDelay: 0,
+          threatClearRatio: 1.0,
+        },
+      )
+      setEncounter(world, encounter)
+
+      // Activate wave 1
+      waveSpawnerSystem(world, 1 / 60)
+      expect(countByTier(world).threat).toBe(2)
+
+      // Kill 1 threat → wave advances
+      const threats = getThreatEids(world)
+      killEnemy(world, threats[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.currentWave).toBe(1)
+
+      // Wave 2 activates (spawnDelay 0) — 1 new threat + 1 carryover = 2
+      waveSpawnerSystem(world, 1 / 60)
+      expect(countByTier(world).threat).toBe(2)
+    })
+
+    test('fodder does not block wave progression', () => {
+      // Wave with threats + lots of fodder alive, ratio 1.0
+      const encounter = makeEncounter({
+        fodderBudget: 20,
+        maxFodderAlive: 10,
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }],
+        spawnDelay: 0,
+        threatClearRatio: 1.0,
+      })
+      setEncounter(world, encounter)
+
+      // Activate — spawns 1 threat + fodder burst
+      waveSpawnerSystem(world, 1 / 60)
+      expect(countByTier(world).fodder).toBeGreaterThan(0)
+
+      // Kill the threat — wave should clear even with fodder still alive
+      const threats = getThreatEids(world)
+      killEnemy(world, threats[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+
+      expect(world.encounter!.completed).toBe(true)
+      expect(countByTier(world).fodder).toBeGreaterThan(0) // fodder still alive
     })
   })
 

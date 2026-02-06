@@ -64,6 +64,12 @@ export interface EncounterState {
   threatAliveCount: number
   totalFodderSpawned: number
   fodderSpawnAccumulator: number
+  /** Number of threats spawned at activation of current wave */
+  threatSpawnedThisWave: number
+  /** Threat kills accumulated during current wave */
+  threatKilledThisWave: number
+  /** Threat alive count from previous tick (for delta-based death detection) */
+  prevThreatAlive: number
 }
 
 /**
@@ -153,5 +159,8 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
     threatAliveCount: 0,
     totalFodderSpawned: 0,
     fodderSpawnAccumulator: 0,
+    threatSpawnedThisWave: 0,
+    threatKilledThisWave: 0,
+    prevThreatAlive: 0,
   }
 }

@@ -24,6 +24,7 @@ export interface WaveDefinition {
   maxFodderAlive: number
   threats: ThreatEntry[]
   spawnDelay: number       // seconds before wave starts after previous clears
+  threatClearRatio: number // fraction of threats to kill for wave advance (0-1)
 }
 
 export interface StageEncounter {
@@ -35,7 +36,7 @@ export interface StageEncounter {
  */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   waves: [
-    // Wave 1: Gentle intro — swarmers only, 1 shooter
+    // Wave 1: Gentle intro — swarmers only, 1 shooter (must kill it)
     {
       fodderBudget: 12,
       fodderPool: [
@@ -47,8 +48,9 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.SHOOTER, count: 1 },
       ],
       spawnDelay: 0,
+      threatClearRatio: 1.0,
     },
-    // Wave 2: Ramp up — more fodder, add a charger
+    // Wave 2: Ramp up — kill 1 of 2 threats to advance
     {
       fodderBudget: 20,
       fodderPool: [
@@ -61,8 +63,9 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.CHARGER, count: 1 },
       ],
       spawnDelay: 6,
+      threatClearRatio: 0.5,
     },
-    // Wave 3: Pressure — dense fodder, multiple threats
+    // Wave 3: Pressure — kill 2 of 3 threats to advance
     {
       fodderBudget: 30,
       fodderPool: [
@@ -75,8 +78,9 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.CHARGER, count: 1 },
       ],
       spawnDelay: 6,
+      threatClearRatio: 0.6,
     },
-    // Wave 4: Boss rush — heavy threats, relentless fodder
+    // Wave 4: Boss rush — kill 2 of 4 threats to complete
     {
       fodderBudget: 40,
       fodderPool: [
@@ -89,6 +93,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.CHARGER, count: 2 },
       ],
       spawnDelay: 8,
+      threatClearRatio: 0.5,
     },
   ],
 }

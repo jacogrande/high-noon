@@ -42,6 +42,8 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
 
     switch (state) {
       case AIState.IDLE: {
+        // Stay idle during spawn-in period so enemies visibly materialize in place
+        if (EnemyAI.initialDelay[eid]! > 0) break
         if (targetEid !== NO_TARGET) {
           transition(eid, AIState.CHASE)
         }
