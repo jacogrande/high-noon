@@ -138,6 +138,29 @@ export const Invincible = {
   _tag: new Uint8Array(MAX_ENTITIES),
 }
 
+/**
+ * Health for damageable entities.
+ * Damage i-frames (brief invulnerability after hit) are separate from
+ * the Invincible tag component (used for roll i-frames, full invulnerability).
+ */
+export const Health = {
+  current: new Float32Array(MAX_ENTITIES),
+  max: new Float32Array(MAX_ENTITIES),
+  /** Remaining i-frame time in seconds (0 = vulnerable) */
+  iframes: new Float32Array(MAX_ENTITIES),
+  /** How long i-frames last when triggered */
+  iframeDuration: new Float32Array(MAX_ENTITIES),
+}
+
+/**
+ * Tag component for dead entities.
+ * Players are tagged Dead instead of removed so rendering can continue.
+ * Non-player entities are removed outright in healthSystem.
+ */
+export const Dead = {
+  _tag: new Uint8Array(MAX_ENTITIES),
+}
+
 // ============================================================================
 // Component Registration
 // ============================================================================
@@ -158,4 +181,6 @@ export const AllComponents = [
   Bullet,
   Weapon,
   Invincible,
+  Health,
+  Dead,
 ] as const

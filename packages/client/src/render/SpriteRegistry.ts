@@ -184,6 +184,16 @@ export class SpriteRegistry {
   }
 
   /**
+   * Set sprite tint color
+   */
+  setTint(eid: number, tint: number): void {
+    const sprite = this.getSprite(eid)
+    if (sprite) {
+      sprite.tint = tint
+    }
+  }
+
+  /**
    * Set sprite alpha/opacity
    */
   setAlpha(eid: number, alpha: number): void {

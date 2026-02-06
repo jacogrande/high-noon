@@ -17,6 +17,7 @@ import {
   PlayerState,
   PlayerStateType,
   Invincible,
+  Health,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import {
@@ -130,6 +131,14 @@ export class PlayerRenderer {
         this.registry.setAlpha(eid, ALPHA_INVINCIBLE)
       } else {
         this.registry.setAlpha(eid, ALPHA_NORMAL)
+      }
+
+      // Damage flash: red flicker when damage i-frames active
+      if (hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
+        const flash = Math.floor(world.tick / 3) % 2 === 0
+        this.registry.setTint(eid, flash ? 0xFF4444 : 0xFFFFFF)
+      } else {
+        this.registry.setTint(eid, 0xFFFFFF)
       }
     }
   }

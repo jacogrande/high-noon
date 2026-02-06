@@ -11,6 +11,12 @@ export const PLAYER_SPEED = 250
 /** Player collision radius in pixels */
 export const PLAYER_RADIUS = 16
 
+/** Player health points */
+export const PLAYER_HP = 5
+
+/** Player invulnerability duration after taking damage (seconds) */
+export const PLAYER_IFRAME_DURATION = 0.5
+
 /** Player default starting position */
 export const PLAYER_START_X = 400
 export const PLAYER_START_Y = 300

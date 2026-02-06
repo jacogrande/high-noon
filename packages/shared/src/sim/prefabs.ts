@@ -17,12 +17,15 @@ import {
   Collider,
   Weapon,
   Bullet,
+  Health,
 } from './components'
 import {
   PLAYER_SPEED,
   PLAYER_RADIUS,
   PLAYER_START_X,
   PLAYER_START_Y,
+  PLAYER_HP,
+  PLAYER_IFRAME_DURATION,
 } from './content/player'
 import {
   PISTOL_FIRE_RATE,
@@ -41,6 +44,9 @@ export const CollisionLayer = {
   ENEMY_BULLET: 1 << 3,
   WALL: 1 << 4,
 } as const
+
+/** Sentinel value for bullets with no owner entity */
+export const NO_OWNER = -1
 
 /**
  * Spawn a player entity
@@ -67,6 +73,7 @@ export function spawnPlayer(
   addComponent(world, Speed, eid)
   addComponent(world, Collider, eid)
   addComponent(world, Weapon, eid)
+  addComponent(world, Health, eid)
 
   // Set initial position
   Position.x[eid] = x
@@ -92,6 +99,12 @@ export function spawnPlayer(
   // Set collider
   Collider.radius[eid] = PLAYER_RADIUS
   Collider.layer[eid] = CollisionLayer.PLAYER
+
+  // Set health
+  Health.current[eid] = PLAYER_HP
+  Health.max[eid] = PLAYER_HP
+  Health.iframes[eid] = 0
+  Health.iframeDuration[eid] = PLAYER_IFRAME_DURATION
 
   // Set weapon (default pistol)
   Weapon.fireRate[eid] = PISTOL_FIRE_RATE
@@ -121,6 +134,8 @@ export interface SpawnBulletOptions {
   ownerId: number
   /** Optional callback when bullet collides with something */
   onCollide?: BulletCollisionCallback
+  /** Collision layer (default: PLAYER_BULLET) */
+  layer?: number
 }
 
 /**
@@ -131,7 +146,7 @@ export interface SpawnBulletOptions {
  * @returns The entity ID
  */
 export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): number {
-  const { x, y, vx, vy, damage, range, ownerId, onCollide } = options
+  const { x, y, vx, vy, damage, range, ownerId, onCollide, layer } = options
   const eid = addEntity(world)
 
   // Add bullet components
@@ -159,7 +174,7 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
 
   // Set collider
   Collider.radius[eid] = BULLET_RADIUS
-  Collider.layer[eid] = CollisionLayer.PLAYER_BULLET
+  Collider.layer[eid] = layer ?? CollisionLayer.PLAYER_BULLET
 
   // Register collision callback if provided
   if (onCollide) {

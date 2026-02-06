@@ -158,6 +158,11 @@ export class Input {
       input.buttons |= Button.SHOOT
     }
 
+    // Debug buttons
+    if (this.keys.has('KeyK')) {
+      input.buttons |= Button.DEBUG_SPAWN
+    }
+
     // Convert mouse screen position to world space, then calculate aim angle
     const dx = this.screenToWorldX(this.mouseX) - this.refX
     const dy = this.screenToWorldY(this.mouseY) - this.refY

@@ -21,15 +21,21 @@ import {
   weaponSystem,
   bulletSystem,
   bulletCollisionSystem,
+  healthSystem,
+  debugSpawnSystem,
   Player,
   Position,
   Velocity,
   PlayerState,
   PlayerStateType,
+  Health,
+  Dead,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
 } from '@high-noon/shared'
+import { hasComponent } from 'bitecs'
+import { Text, TextStyle } from 'pixi.js'
 import type { GameApp } from '../engine/GameApp'
 import { Input } from '../engine/Input'
 import { Camera } from '../engine/Camera'
@@ -66,6 +72,7 @@ export class GameScene {
   private readonly bulletRenderer: BulletRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
+  private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
 
@@ -87,9 +94,11 @@ export class GameScene {
     this.systems.register(playerInputSystem)
     this.systems.register(rollSystem)
     this.systems.register(weaponSystem)
+    this.systems.register(debugSpawnSystem)
     this.systems.register(bulletSystem)
     this.systems.register(movementSystem)
     this.systems.register(bulletCollisionSystem)
+    this.systems.register(healthSystem)
     this.systems.register(collisionSystem)
 
     // Renderers
@@ -124,6 +133,20 @@ export class GameScene {
     this.hitStop = new HitStop()
     this.lastRenderTime = performance.now()
 
+    // Game Over text (hidden by default)
+    this.gameOverText = new Text({
+      text: 'GAME OVER',
+      style: new TextStyle({
+        fontFamily: 'monospace',
+        fontSize: 48,
+        fill: '#ff0000',
+        stroke: { color: '#000000', width: 4 },
+      }),
+    })
+    this.gameOverText.anchor.set(0.5)
+    this.gameOverText.visible = false
+    this.gameApp.layers.ui.addChild(this.gameOverText)
+
     // Debug toggle (backtick)
     this.handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Backquote') {
@@ -138,7 +161,15 @@ export class GameScene {
     return new GameScene(config)
   }
 
+  private isPlayerDead(): boolean {
+    const eid = this.playerRenderer.getPlayerEntity()
+    return eid !== null && hasComponent(this.world, Dead, eid)
+  }
+
   update(dt: number): void {
+    // Stop simulation when local player is dead
+    if (this.isPlayerDead()) return
+
     // Skip sim tick if hit-stopped
     if (this.hitStop.isFrozen) return
 
@@ -217,6 +248,13 @@ export class GameScene {
     // Render bullets with interpolation
     this.bulletRenderer.render(this.world, alpha)
 
+    // Show Game Over text when local player is dead
+    if (this.isPlayerDead()) {
+      this.gameOverText.x = this.gameApp.width / 2
+      this.gameOverText.y = this.gameApp.height / 2
+      this.gameOverText.visible = true
+    }
+
     // Build expanded debug stats
     const playerEid = this.playerRenderer.getPlayerEntity()
     const camPos = this.camera.getPosition()
@@ -228,6 +266,8 @@ export class GameScene {
       playerState: playerEid !== null
         ? (PLAYER_STATE_NAMES[PlayerState.state[playerEid]!] ?? 'unknown')
         : '(none)',
+      playerHP: playerEid !== null ? Health.current[playerEid]! : 0,
+      playerMaxHP: playerEid !== null ? Health.max[playerEid]! : 0,
       playerX: playerEid !== null ? Position.x[playerEid]! : 0,
       playerY: playerEid !== null ? Position.y[playerEid]! : 0,
       playerVx: playerEid !== null ? Velocity.x[playerEid]! : 0,
@@ -243,6 +283,7 @@ export class GameScene {
   destroy(): void {
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
+    this.gameOverText.destroy()
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()

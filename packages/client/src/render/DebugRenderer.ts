@@ -18,6 +18,9 @@ export interface DebugStats {
   playerY: number
   playerVx: number
   playerVy: number
+  // Health
+  playerHP: number
+  playerMaxHP: number
   // Camera
   cameraX: number
   cameraY: number
@@ -168,6 +171,7 @@ export class DebugRenderer {
       `FPS: ${stats.fps}        Tick: ${stats.tick}      Entities: ${stats.entityCount}`,
       '',
       `Player: ${stats.playerState}`,
+      `HP: ${stats.playerHP}/${stats.playerMaxHP}`,
       `Pos: ${stats.playerX.toFixed(1)}, ${stats.playerY.toFixed(1)}    Vel: ${stats.playerVx.toFixed(1)}, ${stats.playerVy.toFixed(1)}`,
       '',
       `Cam: ${stats.cameraX.toFixed(1)}, ${stats.cameraY.toFixed(1)}    Trauma: ${stats.cameraTrauma.toFixed(3)}`,

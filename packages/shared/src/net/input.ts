@@ -13,6 +13,8 @@ export const Button = {
   MOVE_RIGHT: 1 << 3,
   SHOOT: 1 << 4,
   ROLL: 1 << 5,
+  /** Debug: spawn a test enemy bullet aimed at the player */
+  DEBUG_SPAWN: 1 << 6,
 } as const
 
 export type ButtonFlag = (typeof Button)[keyof typeof Button]
