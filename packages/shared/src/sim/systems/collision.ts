@@ -248,9 +248,9 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
       // This can be customized with a collision matrix later
       if (layer1 === layer2) continue
 
-      // Skip bullet-owner collision (bullets don't collide with who fired them)
-      if (hasComponent(world, Bullet, eid1) && Bullet.ownerId[eid1] === eid2) continue
-      if (hasComponent(world, Bullet, eid2) && Bullet.ownerId[eid2] === eid1) continue
+      // Skip all bullet pairs — bullets are handled by bulletCollisionSystem.
+      // Push-out here would trap bullets near invincible entities.
+      if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) continue
 
       const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
       if (collision) {
