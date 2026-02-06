@@ -5,8 +5,8 @@ The core game simulation using bitECS.
 ## Responsibilities
 
 - ECS world creation and management
-- Component definitions (Position, Velocity, Player, etc.)
-- Game systems (movement, player input)
+- Component definitions (Position, Velocity, Player, Health, Dead, etc.)
+- Game systems (movement, player input, combat, health)
 - Fixed timestep stepping with system registry
 - Entity prefab factories
 

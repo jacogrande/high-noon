@@ -42,6 +42,7 @@ Input collects:
 - Mouse position for aim angle
 - Mouse button for shooting
 - Space/Shift for rolling
+- K for debug enemy bullet spawn
 
 Returns normalized `InputState` for the simulation:
 

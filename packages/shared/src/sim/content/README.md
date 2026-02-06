@@ -4,7 +4,7 @@ Data-driven game content definitions.
 
 ## Current Content
 
-- `player.ts` - Player constants (speed, radius, start position, roll params)
+- `player.ts` - Player constants (speed, radius, start position, roll params, HP, iframe duration)
 - `weapons.ts` - Weapon stats (pistol fire rate, bullet speed, damage, range)
 - `maps/testArena.ts` - Test arena map with walls and obstacles
 
@@ -29,6 +29,10 @@ export const PLAYER_SPEED = 250      // pixels/second (recommended: 200-300)
 export const PLAYER_RADIUS = 16      // collision radius in pixels
 export const PLAYER_START_X = 400    // default spawn position
 export const PLAYER_START_Y = 300
+
+// player.ts - Health
+export const PLAYER_HP = 5                 // health points
+export const PLAYER_IFRAME_DURATION = 0.5  // seconds of invulnerability after hit
 
 // player.ts - Roll parameters (snappy bullet-hell style)
 export const ROLL_DURATION = 0.3           // seconds

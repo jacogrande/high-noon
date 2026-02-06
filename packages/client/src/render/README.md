@@ -12,7 +12,7 @@ Sprite management and visual effects.
 ## Current Files
 
 - `SpriteRegistry.ts` - Entity ID → DisplayObject mapping with shape metadata
-- `PlayerRenderer.ts` - Player entity rendering with interpolation and roll visual feedback
+- `PlayerRenderer.ts` - Player entity rendering with interpolation, roll alpha, and damage flash (red tint)
 - `BulletRenderer.ts` - Bullet rendering with interpolation (yellow circles)
 - `TilemapRenderer.ts` - Tilemap rendering (walls as colored rectangles)
 - `DebugRenderer.ts` - Debug shapes and stats overlay

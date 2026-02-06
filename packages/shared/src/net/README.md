@@ -13,7 +13,7 @@ Network protocol definitions and serialization.
 
 ### Client → Server
 
-- `InputCmd` - Player input (buttons, aim angle, movement vector)
+- `InputCmd` - Player input (buttons, aim angle, movement vector, debug flags)
 - `AckSnapshot` - Acknowledge received server state
 
 ### Server → Client

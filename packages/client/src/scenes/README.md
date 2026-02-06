@@ -34,7 +34,14 @@ scene.destroy()
 - `GameApp` — created and destroyed by `Game.tsx` (React lifecycle)
 - `GameLoop` — created by `Game.tsx`, calls scene.update/render
 
-### Debug Toggle
+### Game Over
 
-Backtick key toggles the debug overlay and collision visualization.
-The overlay shows FPS, tick, entity count, player state/position/velocity, and camera position/trauma.
+When the local player's entity has the `Dead` component, `update()` stops the simulation
+and `render()` displays a "GAME OVER" text overlay.
+
+### Debug Keys
+
+- **Backtick** - Toggle debug overlay and collision visualization
+- **K** - Spawn a test enemy bullet aimed at the player (via shared `debugSpawnSystem`)
+
+The debug overlay shows FPS, tick, entity count, player state/HP/position/velocity, and camera position/trauma.

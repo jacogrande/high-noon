@@ -9,10 +9,12 @@ Individual ECS systems that operate on the game world.
 - `weapon.ts` - Handle firing, cooldowns, spawn bullets
 - `bullet.ts` - Track bullet distance traveled, despawn at range/lifetime
 - `movement.ts` - Apply velocity to position, store previous for interpolation
+- `bulletCollision.ts` - Bullet vs entity (circle-circle, layer filtering) and bullet vs tilemap
+- `health.ts` - Iframe countdown, death processing (Dead tag for players, removeEntity for others)
 - `collision.ts` - Circle vs tilemap and circle vs circle collision detection/resolution
+- `debugSpawn.ts` - Debug: spawn test enemy bullets on DEBUG_SPAWN button press
 
 ## Planned Systems
-- `damage.ts` - Apply damage, check death conditions
 - `ai.ts` - Enemy behavior and decision-making
 - `pickup.ts` - Item collection and effects
 
@@ -23,12 +25,13 @@ Systems run in a specific order each tick:
 1. Player input processing (converts input to velocity, initiates rolls)
 2. Roll system (applies roll velocity, manages i-frames)
 3. Weapon system (spawns bullets at current position before movement)
-4. Bullet system (tracks distance traveled, despawns at range/lifetime)
-5. AI decisions (future)
-6. Movement (applies velocity, stores prev position)
-7. Collision resolution (pushes entities out of walls/each other)
-8. Damage application (future)
-9. Cleanup (future)
+4. Debug spawn (test enemy bullets, edge-detected)
+5. Bullet system (tracks distance traveled, despawns at range/lifetime)
+6. AI decisions (future)
+7. Movement (applies velocity, stores prev position)
+8. Bullet collision (entity hits then wall hits, despawns bullets)
+9. Health system (iframe countdown, death processing)
+10. Collision resolution (pushes entities out of walls/each other)
 
 ## Design Pattern
 
