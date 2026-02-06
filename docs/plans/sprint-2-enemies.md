@@ -1039,11 +1039,11 @@ Manual testing checklist:
 
 ### Phase 6: Polish & Tuning
 
-- [ ] 6.1 Visual polish (charger stretch, aim indicators, damage flash, death effect)
-- [ ] 6.2 Camera kick on player hit
+- [x] 6.1 Visual polish (charger stretch/vibrate, shooter aim line, damage flash, death effect)
+- [x] 6.2 Camera kick on player hit (directional, from stored hit direction)
 - [ ] 6.3 Combat tuning pass (fodder rate, bullet speeds, budgets, caps)
 - [ ] 6.4 Edge case handling
-- [ ] 6.5 Test coverage
+- [x] 6.5 Test coverage (healthSystem, enemyAI, enemyAttack)
 
 ---
 

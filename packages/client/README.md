@@ -158,6 +158,11 @@ AI state visuals:
 - Recovery: Dimmed (60% alpha)
 - Spawn ghost: Fade-in during initialDelay (50% → 100% alpha, composes with state alpha). Enemies stay idle at spawn position during this period before chasing.
 - Threat tier (Shooter, Charger): Yellow outline ring via DebugRenderer
+- Damage flash: Brief red tint (0.1s) when enemy takes damage
+- Charger telegraph: Position vibration (jitter) during wind-up
+- Charger attack: Squash/stretch in charge direction (1.4x × 0.7x)
+- Shooter telegraph: Red aim line toward player target (via DebugRenderer)
+- Death effect: Ephemeral scale-down + fade over 0.15s on enemy death
 
 **TilemapRenderer** - Tilemap rendering (debug rectangles):
 ```typescript
@@ -196,10 +201,10 @@ GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all rende
 Starts a `STAGE_1_ENCOUNTER` on creation (4-wave escalating enemy encounter via Director-Wave spawner).
 
 Camera juice:
-- Player damage: 0.15 trauma + 0.05s hit stop
+- Player damage: 0.15 trauma + 0.05s hit stop + directional kick (magnitude 4, toward damage source)
 - Fodder death: 0.02 trauma
 - Threat death: 0.08 trauma
-- Player fire: 0.08 trauma + directional kick
+- Player fire: 0.08 trauma + directional kick (magnitude 3)
 
 ## Directory Structure
 

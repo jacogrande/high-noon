@@ -204,6 +204,16 @@ export class SpriteRegistry {
   }
 
   /**
+   * Set sprite scale
+   */
+  setScale(eid: number, scaleX: number, scaleY: number): void {
+    const data = this.sprites.get(eid)
+    if (data) {
+      data.displayObject.scale.set(scaleX, scaleY)
+    }
+  }
+
+  /**
    * Remove sprite for an entity
    */
   remove(eid: number): void {

@@ -231,6 +231,12 @@ export class GameScene {
       if (prevIframes === 0 && newIframes > 0) {
         this.camera.addTrauma(0.15)
         this.hitStop.freeze(0.05)
+        // Directional camera kick toward damage source
+        const hdx = this.world.lastPlayerHitDirX
+        const hdy = this.world.lastPlayerHitDirY
+        if (hdx !== 0 || hdy !== 0) {
+          this.camera.applyKick(hdx, hdy, 4)
+        }
       }
     }
 
@@ -298,7 +304,7 @@ export class GameScene {
     this.bulletRenderer.render(this.world, alpha)
 
     // Render enemies with interpolation
-    this.enemyRenderer.render(this.world, alpha)
+    this.enemyRenderer.render(this.world, alpha, realDt)
 
     // Show Game Over text when local player is dead
     if (this.isPlayerDead()) {

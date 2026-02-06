@@ -98,6 +98,9 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `Health` - Health with i-frames (current, max, iframes, iframeDuration)
 - `Dead` - Tag for dead entities (players stay in world; non-players are removed)
 - `Enemy` - Enemy marker with type and tier
+
+**GameWorld fields:**
+- `lastPlayerHitDirX/Y` - Direction of last hit on player (unit vector, for directional camera kick)
 - `EnemyAI` - AI state machine (state, stateTimer, targetEid, initialDelay)
 - `Detection` - Aggro/attack ranges and LOS config
 - `AttackConfig` - Attack timing, damage, projectile config, locked aim direction
@@ -122,10 +125,10 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `flowFieldSystem` - BFS pathfinding from player position (8-directional, recomputes on tile boundary change)
 - `enemyDetectionSystem` - Aggro acquisition/loss with hysteresis (2x range), staggered LOS checks
 - `enemyAISystem` - FSM state transitions (IDLE/CHASE/TELEGRAPH/ATTACK/RECOVERY/STUNNED), initial delay gating
-- `enemyAttackSystem` - Attack execution: projectile spawning (Swarmer/Grunt/Shooter), charger charge with locked aim + contact damage
+- `enemyAttackSystem` - Attack execution: projectile spawning (Swarmer/Grunt/Shooter), charger charge with locked aim + contact damage; stores hit direction on player hit for camera kick
 - `enemySteeringSystem` - Flow field seek, separation, shooter preferred-range orbiting
 - `movementSystem` - Applies velocity to position, stores previous for interpolation
-- `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering
+- `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering; stores hit direction on player hit for camera kick
 - `healthSystem` - Damage processing, i-frame countdown, death handling
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
 - `waveSpawnerSystem` - Director-Wave hybrid: spawns enemies in escalating blended waves with fodder reinforcement, threat-kill-threshold progression, and survivor carryover
@@ -256,6 +259,9 @@ src/
       bullet.ts      # Bullet distance tracking, despawning
       bulletCollision.ts # Bullet vs wall/entity collision
       health.ts      # Damage processing, i-frames, death
+      health.test.ts # Unit tests
+      enemyAI.test.ts    # Unit tests
+      enemyAttack.test.ts # Unit tests
       debugSpawn.ts  # Debug bullet spawning
       flowField.ts   # BFS pathfinding from player position
       enemyDetection.ts  # Aggro, LOS, target selection

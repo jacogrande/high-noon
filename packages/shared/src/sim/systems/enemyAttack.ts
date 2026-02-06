@@ -95,6 +95,10 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       ) {
         Health.current[playerEid] = Health.current[playerEid]! - AttackConfig.damage[eid]!
         Health.iframes[playerEid] = Health.iframeDuration[playerEid]!
+
+        // Store hit direction for camera kick (charger charge direction)
+        world.lastPlayerHitDirX = AttackConfig.aimX[eid]!
+        world.lastPlayerHitDirY = AttackConfig.aimY[eid]!
       }
 
       // Check charge duration

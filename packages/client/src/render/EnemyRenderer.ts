@@ -8,7 +8,10 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
-import { Enemy, EnemyType, EnemyTier, Position, Collider, EnemyAI, AIState } from '@high-noon/shared'
+import {
+  Enemy, EnemyType, EnemyTier, Position, Collider, EnemyAI, AIState,
+  AttackConfig, Health, NO_TARGET,
+} from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
 
@@ -16,6 +19,10 @@ import type { DebugRenderer } from './DebugRenderer'
 const TELEGRAPH_FLASH_TICKS = 3
 /** Alpha applied during recovery state */
 const RECOVERY_ALPHA = 0.6
+/** Duration of damage flash in seconds */
+const DAMAGE_FLASH_DURATION = 0.1
+/** Duration of death effect in seconds */
+const DEATH_EFFECT_DURATION = 0.15
 
 /** Colors per enemy type (rendering data, client-only) */
 const ENEMY_COLORS: Record<number, number> = {
@@ -23,6 +30,13 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.GRUNT]: 0xff6633,     // red-orange
   [EnemyType.SHOOTER]: 0xaa44dd,   // purple
   [EnemyType.CHARGER]: 0xaa1111,   // dark red
+}
+
+/** Death effect data for ephemeral scale-down + fade */
+interface DeathEffect {
+  eid: number
+  timer: number
+  duration: number
 }
 
 // Define query for enemy entities with rendering components
@@ -39,6 +53,9 @@ export class EnemyRenderer {
   private readonly lastColor = new Map<number, number>()
   private readonly lastAlpha = new Map<number, number>()
   private readonly currentEntities = new Set<number>()
+  private readonly lastHP = new Map<number, number>()
+  private readonly damageFlashTimer = new Map<number, number>()
+  private readonly deathEffects: DeathEffect[] = []
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -69,19 +86,25 @@ export class EnemyRenderer {
         this.registry.createCircle(eid, radius, color)
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
+        this.lastHP.set(eid, Health.current[eid]!)
       }
     }
 
-    // Remove sprites for dead/removed enemies
+    // Remove sprites for dead/removed enemies → start death effect
     for (const eid of this.enemyEntities) {
       if (!currentEntities.has(eid)) {
         const tier = this.enemyTiers.get(eid)
         deathTrauma += tier === EnemyTier.THREAT ? 0.08 : 0.02
-        this.registry.remove(eid)
+
+        // Start death effect instead of immediate removal
+        this.deathEffects.push({ eid, timer: 0, duration: DEATH_EFFECT_DURATION })
+
         this.enemyEntities.delete(eid)
         this.enemyTiers.delete(eid)
         this.lastColor.delete(eid)
         this.lastAlpha.delete(eid)
+        this.lastHP.delete(eid)
+        this.damageFlashTimer.delete(eid)
       }
     }
 
@@ -91,7 +114,7 @@ export class EnemyRenderer {
   /**
    * Update enemy sprite positions with interpolation and AI state visuals
    */
-  render(world: GameWorld, alpha: number): void {
+  render(world: GameWorld, alpha: number, realDt: number): void {
     for (const eid of this.enemyEntities) {
       if (!hasComponent(world, Enemy, eid)) continue
 
@@ -100,10 +123,8 @@ export class EnemyRenderer {
       const currX = Position.x[eid]!
       const currY = Position.y[eid]!
 
-      const renderX = prevX + (currX - prevX) * alpha
-      const renderY = prevY + (currY - prevY) * alpha
-
-      this.registry.setPosition(eid, renderX, renderY)
+      let renderX = prevX + (currX - prevX) * alpha
+      let renderY = prevY + (currY - prevY) * alpha
 
       // AI state visuals
       const state = EnemyAI.state[eid]!
@@ -114,12 +135,48 @@ export class EnemyRenderer {
       let color = normalColor
       let a = 1.0
 
-      // State-based visuals
+      // Damage flash: detect HP decrease
+      const currentHP = Health.current[eid]!
+      const prevHP = this.lastHP.get(eid) ?? currentHP
+      if (currentHP < prevHP) {
+        this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
+      }
+      this.lastHP.set(eid, currentHP)
+
+      // Damage flash timer
+      const flashTimer = this.damageFlashTimer.get(eid) ?? 0
+      if (flashTimer > 0) {
+        color = 0xff0000
+        this.damageFlashTimer.set(eid, flashTimer - realDt)
+      }
+
+      // State-based visuals (telegraph flash overrides damage flash)
       if (state === AIState.TELEGRAPH) {
         color = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0 ? 0xffffff : normalColor
       } else if (state === AIState.RECOVERY) {
         a = RECOVERY_ALPHA
       }
+
+      // Charger telegraph vibration
+      if (type === EnemyType.CHARGER && state === AIState.TELEGRAPH) {
+        const jitter = 2
+        renderX += Math.sin(world.tick * 1.5) * jitter
+        renderY += Math.cos(world.tick * 2.1) * jitter
+      }
+
+      // Charger attack stretch
+      if (type === EnemyType.CHARGER && state === AIState.ATTACK) {
+        const aimX = AttackConfig.aimX[eid]!
+        const aimY = AttackConfig.aimY[eid]!
+        const angle = Math.atan2(aimY, aimX)
+        this.registry.setRotation(eid, angle)
+        this.registry.setScale(eid, 1.4, 0.7)
+      } else {
+        this.registry.setRotation(eid, 0)
+        this.registry.setScale(eid, 1, 1)
+      }
+
+      this.registry.setPosition(eid, renderX, renderY)
 
       // Spawn ghost: multiply alpha during initialDelay (composes with state alpha)
       const delay = EnemyAI.initialDelay[eid]!
@@ -141,6 +198,34 @@ export class EnemyRenderer {
       if (tier === EnemyTier.THREAT && this.debug) {
         this.debug.circleOutline(renderX, renderY, Collider.radius[eid]! + 3, 0xffff00, 1.5)
       }
+
+      // Shooter telegraph aim indicator
+      if (type === EnemyType.SHOOTER && state === AIState.TELEGRAPH && this.debug) {
+        const targetEid = EnemyAI.targetEid[eid]!
+        if (targetEid !== NO_TARGET) {
+          const tx = Position.x[targetEid]!
+          const ty = Position.y[targetEid]!
+          this.debug.line(renderX, renderY, tx, ty, 0xff0000, 1)
+        }
+      }
+    }
+
+    // Animate death effects
+    for (let i = this.deathEffects.length - 1; i >= 0; i--) {
+      const effect = this.deathEffects[i]!
+      effect.timer += realDt
+      const t = Math.min(effect.timer / effect.duration, 1)
+
+      // Scale down and fade
+      const scale = 1 - t
+      const effectAlpha = 1 - t
+      this.registry.setScale(effect.eid, scale, scale)
+      this.registry.setAlpha(effect.eid, effectAlpha)
+
+      if (t >= 1) {
+        this.registry.remove(effect.eid)
+        this.deathEffects.splice(i, 1)
+      }
     }
   }
 
@@ -158,10 +243,16 @@ export class EnemyRenderer {
     for (const eid of this.enemyEntities) {
       this.registry.remove(eid)
     }
+    for (const effect of this.deathEffects) {
+      this.registry.remove(effect.eid)
+    }
+    this.deathEffects.length = 0
     this.enemyEntities.clear()
     this.enemyTiers.clear()
     this.lastColor.clear()
     this.lastAlpha.clear()
+    this.lastHP.clear()
+    this.damageFlashTimer.clear()
     this.currentEntities.clear()
   }
 }

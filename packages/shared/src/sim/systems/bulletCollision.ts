@@ -13,7 +13,7 @@
 
 import { defineQuery, removeEntity, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Collider, Health, Invincible } from '../components'
+import { Bullet, Position, Velocity, Collider, Health, Invincible } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -80,6 +80,17 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         // HIT — apply damage
         Health.current[targetEid] = Health.current[targetEid]! - Bullet.damage[eid]!
         Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+
+        // Store hit direction for camera kick (bullet travel direction = toward player)
+        if (Collider.layer[targetEid]! === CollisionLayer.PLAYER) {
+          const bvx = Velocity.x[eid]!
+          const bvy = Velocity.y[eid]!
+          const blen = Math.sqrt(bvx * bvx + bvy * bvy)
+          if (blen > 0) {
+            world.lastPlayerHitDirX = bvx / blen
+            world.lastPlayerHitDirY = bvy / blen
+          }
+        }
 
         // Call collision callback
         const callback = world.bulletCollisionCallbacks.get(eid)

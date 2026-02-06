@@ -96,6 +96,10 @@ export interface GameWorld extends IWorld {
   maxProjectiles: number
   /** Seeded PRNG for deterministic simulation randomness */
   rng: SeededRng
+  /** Direction of last hit on player (unit vector X, for camera kick) */
+  lastPlayerHitDirX: number
+  /** Direction of last hit on player (unit vector Y, for camera kick) */
+  lastPlayerHitDirY: number
 }
 
 /**
@@ -116,6 +120,8 @@ export function createGameWorld(seed?: number): GameWorld {
     encounter: null,
     maxProjectiles: 80,
     rng: new SeededRng(seed ?? Date.now()),
+    lastPlayerHitDirX: 0,
+    lastPlayerHitDirY: 0,
   }
 }
 
@@ -139,6 +145,8 @@ export function resetWorld(world: GameWorld): void {
   world.debugSpawnWasDown = false
   world.encounter = null
   world.maxProjectiles = 80
+  world.lastPlayerHitDirX = 0
+  world.lastPlayerHitDirY = 0
   // Note: rng is intentionally NOT reset — caller should create a new world
   // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed
