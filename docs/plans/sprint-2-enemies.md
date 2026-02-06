@@ -28,11 +28,13 @@ All enemy logic runs in `packages/shared` as deterministic ECS systems. This is 
 **Singleplayer (now):** The shared sim runs directly on the client. Input → stepWorld → render. Enemies are local entities updated each tick.
 
 **Multiplayer (future):** The same shared sim runs on the authoritative server. The server steps the world and emits events:
+
 - `SpawnEnemy { id, archetype, posQ, seed }` — client creates the entity locally
 - `Damage { targetId, amount, sourceId, serverTick }` — authoritative damage
 - Enemy positions sync via snapshots at 10-20Hz; clients interpolate between snapshots
 
 **What this means for Sprint 2:**
+
 - Enemy AI systems take no external input (they read world state, not player input) — this is already server-compatible
 - Enemy spawning is driven by world state (wave timer, enemy count, budgets), not client events
 - The `spawnEnemy` prefab is a pure function on `GameWorld` — the server calls it identically
@@ -41,6 +43,7 @@ All enemy logic runs in `packages/shared` as deterministic ECS systems. This is 
 - The Director-Wave system runs identically in shared — budgets, wave transitions, and spawn timing are pure world state
 
 **Multiplayer scaling (future, not implemented now):**
+
 - Fodder budget `× 1 + 0.3 × (playerCount - 1)`
 - Threat budget `× 1 + 0.5 × (playerCount - 1)` (more threats since multiple players split focus)
 - Attack tokens: `maxAttackTokens = 2 + playerCount`
@@ -121,21 +124,24 @@ Phase 6: Final polish — juice, tuning, edge cases, tests
 ### Tasks
 
 #### 1.1 Health Component (`shared/src/sim/components.ts`)
+
 ```typescript
 const Health = {
   current: Float32Array,
   max: Float32Array,
-  iframes: Float32Array,      // remaining invulnerability time (seconds)
+  iframes: Float32Array, // remaining invulnerability time (seconds)
   iframeDuration: Float32Array, // how long i-frames last when triggered
-}
+};
 ```
 
 Add to `AllComponents` array.
 
 #### 1.2 Health System (`shared/src/sim/systems/health.ts`)
+
 ```typescript
-healthSystem(world, dt)
+healthSystem(world, dt);
 ```
+
 - Query entities with `Health`
 - Decrement `iframes` timer by `dt`
 - If `Health.current <= 0`: remove entity (`removeEntity`)
@@ -144,7 +150,9 @@ healthSystem(world, dt)
 - Clean up bullet collision callbacks for removed entities
 
 #### 1.3 Bullet-Entity Collision (`shared/src/sim/systems/bulletCollision.ts`)
+
 Extend the existing `bulletCollisionSystem`:
+
 - Currently only checks bullet vs wall tiles
 - Add: bullet vs entities (circle-circle check using `Collider.radius`)
 - Check collision layers: `PLAYER_BULLET` only hits entities on `ENEMY` layer; `ENEMY_BULLET` only hits `PLAYER` layer
@@ -152,20 +160,24 @@ Extend the existing `bulletCollisionSystem`:
 - Skip if target has active i-frames (`Health.iframes > 0`)
 
 #### 1.4 Player Health Setup
+
 - Give the player a `Health` component in `spawnPlayer` prefab
 - Content values: `PLAYER_HP = 5`, `PLAYER_IFRAME_DURATION = 0.5`
 
 #### 1.5 Death Handling
+
 - Player death: freeze game, show simple "Game Over" state
   - `Dead` tag component (per-entity, multiplayer-safe) instead of world-level flag
   - `GameScene` checks `hasComponent(world, Dead, playerEid)` in update loop; skips sim when true
 
 #### 1.6 Player Health Rendering (client)
+
 - **Player damage flash:** Brief red tint on player sprite when `Health.iframes` activates (client-side, in `PlayerRenderer`)
 - **Player HP in debug overlay:** Add `playerHP` and `playerMaxHP` to `DebugStats`
 - **"Game Over" text:** Simple PixiJS `Text` shown when local player has `Dead` component (in `GameScene.render`)
 
 ### Deliverables
+
 - Player has HP, takes damage from (future) enemy bullets
 - Entities die when HP reaches 0
 - I-frames prevent damage stacking
@@ -175,6 +187,7 @@ Extend the existing `bulletCollisionSystem`:
 - "Game Over" text appears on player death
 
 ### How to Test
+
 - Unit tests: bullet hitting entity reduces HP, i-frames prevent double-hit
 - **Manual visual:** Debug-spawn an enemy bullet aimed at player → see HP drop in overlay, red flash on sprite, "Game Over" on death
 
@@ -189,34 +202,37 @@ Extend the existing `bulletCollisionSystem`:
 Every wave blends two layers that coexist on screen:
 
 **Fodder tier** — Cheap, disposable, dies fast. Creates bullet hell through volume. AoE chews through them. They're the popcorn — constant, satisfying kills.
+
 - **Swarmer:** 1 HP, rushes player, fires slow single bullets. Cheapest unit (budget cost 1).
 - **Grunt:** 3 HP, approaches, fires single aimed shots. Slightly tougher fodder (budget cost 2).
 
 **Threat tier** — Fewer, mechanically demanding. Each one requires the player's focused attention. They're the priority targets.
+
 - **Shooter:** 3 HP, maintains distance, fires 3-bullet spreads. Forces dodging (budget cost 3).
 - **Charger:** 5 HP, rushes player with a telegraphed charge, contact damage. Punishes stationary play (budget cost 3).
 
 ### Tasks
 
 #### 2.1 Enemy Components (`shared/src/sim/components.ts`)
+
 ```typescript
 const Enemy = {
-  type: Uint8Array,      // EnemyType enum
-  tier: Uint8Array,      // EnemyTier enum: 0=fodder, 1=threat
-}
+  type: Uint8Array, // EnemyType enum
+  tier: Uint8Array, // EnemyTier enum: 0=fodder, 1=threat
+};
 
 const EnemyAI = {
-  state: Uint8Array,          // AIState enum
-  stateTimer: Float32Array,   // time in current state
-  targetEid: Uint16Array,     // entity being targeted
+  state: Uint8Array, // AIState enum
+  stateTimer: Float32Array, // time in current state
+  targetEid: Uint16Array, // entity being targeted
   initialDelay: Float32Array, // random delay before first attack
-}
+};
 
 const Detection = {
   aggroRange: Float32Array,
   attackRange: Float32Array,
-  losRequired: Uint8Array,    // 0 or 1
-}
+  losRequired: Uint8Array, // 0 or 1
+};
 
 const AttackConfig = {
   telegraphDuration: Float32Array,
@@ -226,112 +242,127 @@ const AttackConfig = {
   damage: Uint8Array,
   projectileSpeed: Float32Array,
   projectileCount: Uint8Array,
-  spreadAngle: Float32Array,  // radians, spread fan width
-}
+  spreadAngle: Float32Array, // radians, spread fan width
+};
 
 const Steering = {
   seekWeight: Float32Array,
   separationWeight: Float32Array,
   preferredRange: Float32Array,
   separationRadius: Float32Array,
-}
+};
 ```
 
 Add all to `AllComponents`.
 
 State, type, and tier enums:
+
 ```typescript
 const AIState = {
-  IDLE: 0, CHASE: 1, TELEGRAPH: 2,
-  ATTACK: 3, RECOVERY: 4, STUNNED: 5, FLEE: 6,
-} as const
+  IDLE: 0,
+  CHASE: 1,
+  TELEGRAPH: 2,
+  ATTACK: 3,
+  RECOVERY: 4,
+  STUNNED: 5,
+  FLEE: 6,
+} as const;
 
 const EnemyType = {
-  SWARMER: 0, GRUNT: 1, SHOOTER: 2, CHARGER: 3,
-} as const
+  SWARMER: 0,
+  GRUNT: 1,
+  SHOOTER: 2,
+  CHARGER: 3,
+} as const;
 
 const EnemyTier = {
-  FODDER: 0, THREAT: 1,
-} as const
+  FODDER: 0,
+  THREAT: 1,
+} as const;
 ```
 
 #### 2.2 Enemy Content Definitions (`shared/src/sim/content/enemies.ts`)
 
 **Swarmer (fodder, cost 1):** Cheapest unit. Rushes player, fires weak slow bullets. Dies in 1 hit. The popcorn enemy.
+
 ```typescript
-export const SWARMER_SPEED = 100           // px/s (~50% of player)
-export const SWARMER_RADIUS = 8
-export const SWARMER_HP = 1
-export const SWARMER_AGGRO_RANGE = 400     // wide — always aware
-export const SWARMER_ATTACK_RANGE = 150
-export const SWARMER_TELEGRAPH = 0.2       // very short — they're weak
-export const SWARMER_RECOVERY = 0.3
-export const SWARMER_COOLDOWN = 1.5
-export const SWARMER_DAMAGE = 1
-export const SWARMER_BULLET_SPEED = 100    // slow — dodgeable, but many of them
-export const SWARMER_SEPARATION_RADIUS = 16
-export const SWARMER_BUDGET_COST = 1
-export const SWARMER_TIER = EnemyTier.FODDER
+export const SWARMER_SPEED = 100; // px/s (~50% of player)
+export const SWARMER_RADIUS = 8;
+export const SWARMER_HP = 1;
+export const SWARMER_AGGRO_RANGE = 400; // wide — always aware
+export const SWARMER_ATTACK_RANGE = 150;
+export const SWARMER_TELEGRAPH = 0.2; // very short — they're weak
+export const SWARMER_RECOVERY = 0.3;
+export const SWARMER_COOLDOWN = 1.5;
+export const SWARMER_DAMAGE = 1;
+export const SWARMER_BULLET_SPEED = 100; // slow — dodgeable, but many of them
+export const SWARMER_SEPARATION_RADIUS = 16;
+export const SWARMER_BUDGET_COST = 1;
+export const SWARMER_TIER = EnemyTier.FODDER;
 ```
 
 **Grunt (fodder, cost 2):** Tougher fodder. Approaches, fires aimed single shots.
+
 ```typescript
-export const GRUNT_SPEED = 80              // px/s (~40% of player)
-export const GRUNT_RADIUS = 10
-export const GRUNT_HP = 3
-export const GRUNT_AGGRO_RANGE = 300
-export const GRUNT_ATTACK_RANGE = 200
-export const GRUNT_TELEGRAPH = 0.4
-export const GRUNT_RECOVERY = 0.5
-export const GRUNT_COOLDOWN = 2.0
-export const GRUNT_DAMAGE = 1
-export const GRUNT_BULLET_SPEED = 150      // moderate
-export const GRUNT_SEPARATION_RADIUS = 24
-export const GRUNT_BUDGET_COST = 2
-export const GRUNT_TIER = EnemyTier.FODDER
+export const GRUNT_SPEED = 80; // px/s (~40% of player)
+export const GRUNT_RADIUS = 10;
+export const GRUNT_HP = 3;
+export const GRUNT_AGGRO_RANGE = 300;
+export const GRUNT_ATTACK_RANGE = 200;
+export const GRUNT_TELEGRAPH = 0.4;
+export const GRUNT_RECOVERY = 0.5;
+export const GRUNT_COOLDOWN = 2.0;
+export const GRUNT_DAMAGE = 1;
+export const GRUNT_BULLET_SPEED = 150; // moderate
+export const GRUNT_SEPARATION_RADIUS = 24;
+export const GRUNT_BUDGET_COST = 2;
+export const GRUNT_TIER = EnemyTier.FODDER;
 ```
 
 **Shooter (threat, cost 3):** Maintains distance, fires spreads. Forces dodging.
+
 ```typescript
-export const SHOOTER_SPEED = 60
-export const SHOOTER_RADIUS = 10
-export const SHOOTER_HP = 3
-export const SHOOTER_AGGRO_RANGE = 350
-export const SHOOTER_ATTACK_RANGE = 250
-export const SHOOTER_PREFERRED_RANGE = 200
-export const SHOOTER_TELEGRAPH = 0.35
-export const SHOOTER_RECOVERY = 0.6
-export const SHOOTER_COOLDOWN = 2.5
-export const SHOOTER_DAMAGE = 1
-export const SHOOTER_BULLET_SPEED = 180    // faster — dangerous
-export const SHOOTER_BULLET_COUNT = 3
-export const SHOOTER_SPREAD_ANGLE = 0.35   // ~20 degrees
-export const SHOOTER_BUDGET_COST = 3
-export const SHOOTER_TIER = EnemyTier.THREAT
+export const SHOOTER_SPEED = 60;
+export const SHOOTER_RADIUS = 10;
+export const SHOOTER_HP = 3;
+export const SHOOTER_AGGRO_RANGE = 350;
+export const SHOOTER_ATTACK_RANGE = 250;
+export const SHOOTER_PREFERRED_RANGE = 200;
+export const SHOOTER_TELEGRAPH = 0.35;
+export const SHOOTER_RECOVERY = 0.6;
+export const SHOOTER_COOLDOWN = 2.5;
+export const SHOOTER_DAMAGE = 1;
+export const SHOOTER_BULLET_SPEED = 180; // faster — dangerous
+export const SHOOTER_BULLET_COUNT = 3;
+export const SHOOTER_SPREAD_ANGLE = 0.35; // ~20 degrees
+export const SHOOTER_BUDGET_COST = 3;
+export const SHOOTER_TIER = EnemyTier.THREAT;
 ```
 
 **Charger (threat, cost 3):** Rushes player, contact damage. Long telegraph, long recovery.
+
 ```typescript
-export const CHARGER_SPEED = 60
-export const CHARGER_CHARGE_SPEED = 300    // ~150% of player
-export const CHARGER_RADIUS = 12
-export const CHARGER_HP = 5
-export const CHARGER_AGGRO_RANGE = 250
-export const CHARGER_ATTACK_RANGE = 150
-export const CHARGER_TELEGRAPH = 0.5
-export const CHARGER_RECOVERY = 0.8        // long punish window
-export const CHARGER_COOLDOWN = 3.0
-export const CHARGER_DAMAGE = 2
-export const CHARGER_BUDGET_COST = 3
-export const CHARGER_TIER = EnemyTier.THREAT
+export const CHARGER_SPEED = 60;
+export const CHARGER_CHARGE_SPEED = 300; // ~150% of player
+export const CHARGER_RADIUS = 12;
+export const CHARGER_HP = 5;
+export const CHARGER_AGGRO_RANGE = 250;
+export const CHARGER_ATTACK_RANGE = 150;
+export const CHARGER_TELEGRAPH = 0.5;
+export const CHARGER_RECOVERY = 0.8; // long punish window
+export const CHARGER_COOLDOWN = 3.0;
+export const CHARGER_DAMAGE = 2;
+export const CHARGER_BUDGET_COST = 3;
+export const CHARGER_TIER = EnemyTier.THREAT;
 ```
 
 #### 2.3 Enemy Prefabs (`shared/src/sim/prefabs.ts`)
+
 ```typescript
-function spawnSwarmer(world, x, y): number
-function spawnGrunt(world, x, y): number
-function spawnShooter(world, x, y): number
-function spawnCharger(world, x, y): number
+function spawnSwarmer(world, x, y): number;
+function spawnGrunt(world, x, y): number;
+function spawnShooter(world, x, y): number;
+function spawnCharger(world, x, y): number;
 ```
 
 Each adds: `Position`, `Velocity`, `Speed`, `Collider`, `Health`, `Enemy` (with `tier`), `EnemyAI`, `Detection`, `AttackConfig`, `Steering`. Sets values from content definitions. Collision layer = `CollisionLayer.ENEMY`.
@@ -339,14 +370,16 @@ Each adds: `Position`, `Velocity`, `Speed`, `Collider`, `Health`, `Enemy` (with 
 Also add `spawnEnemyBullet` — like `spawnBullet` but with `CollisionLayer.ENEMY_BULLET`.
 
 #### 2.4 EnemyRenderer — Basic Version (`client/src/render/EnemyRenderer.ts`)
+
 ```typescript
 class EnemyRenderer {
-  sync(world: GameWorld): void    // create/remove sprites for Enemy entities
-  render(world: GameWorld, alpha: number): void  // interpolate positions
+  sync(world: GameWorld): void; // create/remove sprites for Enemy entities
+  render(world: GameWorld, alpha: number): void; // interpolate positions
 }
 ```
 
 Initial version — colored circles (PixiJS `Graphics`) per enemy type:
+
 - **Swarmer:** Small circle (radius 8), pale red/pink — visually cheap
 - **Grunt:** Medium circle (radius 10), red/orange
 - **Shooter:** Medium circle (radius 10), purple — signals ranged danger
@@ -357,12 +390,14 @@ Initial version — colored circles (PixiJS `Graphics`) per enemy type:
 No state visuals yet — just position and type-based color. State visuals come in Phase 3-4.
 
 #### 2.5 GameScene Integration
+
 - Add `EnemyRenderer` to `GameScene`
 - Call `sync` and `render` alongside existing player/bullet renderers
 - Add `enemyCount` to `DebugStats`
 - Hard-spawn a few test enemies in `GameScene.create` (temporary, replaced by wave spawner in Phase 5)
 
 ### Deliverables
+
 - All enemy components defined with tier classification
 - Content values for 4 archetypes across 2 tiers
 - Prefab functions create fully configured enemy entities
@@ -371,6 +406,7 @@ No state visuals yet — just position and type-based color. State visuals come 
 - Player can shoot and kill enemies (health system from Phase 1)
 
 ### How to Test
+
 - Unit test: spawn each type, verify all component values and tier are set correctly
 - **Manual visual:** Start game → see colored circles in the arena. Shoot them → they die and disappear. Swarmer dies in 1 hit, Charger takes 5 hits.
 
@@ -383,21 +419,24 @@ No state visuals yet — just position and type-based color. State visuals come 
 ### Tasks
 
 #### 3.1 Flow Field System (`shared/src/sim/systems/flowField.ts`)
+
 Add to `GameWorld`:
+
 ```typescript
 interface FlowField {
-  width: number
-  height: number
-  cellSize: number
-  dirX: Float32Array
-  dirY: Float32Array
-  dist: Uint16Array
-  playerCellX: number
-  playerCellY: number
+  width: number;
+  height: number;
+  cellSize: number;
+  dirX: Float32Array;
+  dirY: Float32Array;
+  dist: Uint16Array;
+  playerCellX: number;
+  playerCellY: number;
 }
 ```
 
 System: `flowFieldSystem(world, dt)`
+
 - Find player entity position
 - Compute which tilemap cell the player is in
 - If cell hasn't changed since last computation, skip
@@ -405,9 +444,11 @@ System: `flowFieldSystem(world, dt)`
 - Store result on `world.flowField`
 
 #### 3.2 Detection System (`shared/src/sim/systems/enemyDetection.ts`)
+
 ```typescript
-enemyDetectionSystem(world, dt)
+enemyDetectionSystem(world, dt);
 ```
+
 - Query all entities with `Enemy + Detection + Position`
 - Find the player entity (query `Player + Position`)
 - For each enemy:
@@ -420,30 +461,34 @@ enemyDetectionSystem(world, dt)
 **LOS check:** Bresenham line from enemy to player against `world.tilemap`. If any solid tile blocks the line, LOS fails. Run LOS checks every 5 ticks (amortized).
 
 #### 3.3 AI State Machine System (`shared/src/sim/systems/enemyAI.ts`)
+
 ```typescript
-enemyAISystem(world, dt)
+enemyAISystem(world, dt);
 ```
+
 - Query entities with `EnemyAI + Enemy + Detection + Position`
 - Increment `stateTimer` by `dt`
 - Switch on `EnemyAI.state`:
 
-| State | Logic |
-|-------|-------|
-| IDLE | If `targetEid` set → CHASE |
-| CHASE | If in `attackRange` and `cooldownRemaining <= 0` → TELEGRAPH. If target lost → IDLE |
-| TELEGRAPH | If `stateTimer >= telegraphDuration` → ATTACK |
-| ATTACK | Execute attack (handled by enemyAttackSystem), → RECOVERY |
-| RECOVERY | If `stateTimer >= recoveryDuration` → CHASE. Reset `cooldownRemaining` |
-| STUNNED | If `stateTimer >= 0.2` → CHASE |
+| State     | Logic                                                                               |
+| --------- | ----------------------------------------------------------------------------------- |
+| IDLE      | If `targetEid` set → CHASE                                                          |
+| CHASE     | If in `attackRange` and `cooldownRemaining <= 0` → TELEGRAPH. If target lost → IDLE |
+| TELEGRAPH | If `stateTimer >= telegraphDuration` → ATTACK                                       |
+| ATTACK    | Execute attack (handled by enemyAttackSystem), → RECOVERY                           |
+| RECOVERY  | If `stateTimer >= recoveryDuration` → CHASE. Reset `cooldownRemaining`              |
+| STUNNED   | If `stateTimer >= 0.2` → CHASE                                                      |
 
 State transitions reset `stateTimer` to 0.
 
 **Tier-specific behavior:** Fodder enemies have shorter telegraphs and recoveries — they cycle faster, creating a constant stream of slow bullets. Threats have longer, more readable telegraphs — each attack is a moment the player must respect.
 
 #### 3.4 Steering System (`shared/src/sim/systems/enemySteering.ts`)
+
 ```typescript
-enemySteeringSystem(world, dt)
+enemySteeringSystem(world, dt);
 ```
+
 - Query entities with `EnemyAI + Steering + Position + Velocity + Speed`
 - Behavior per state:
   - **IDLE:** Velocity = 0
@@ -459,7 +504,9 @@ enemySteeringSystem(world, dt)
 **Charger special case:** In ATTACK state, set velocity to charge direction × `CHARGER_CHARGE_SPEED`. Direction is locked at the moment of entering TELEGRAPH (aim at player's position at that instant, not tracking).
 
 #### 3.5 EnemyRenderer — AI State Visuals
+
 Extend `EnemyRenderer.render()` to show AI state:
+
 - **IDLE:** Normal color, no movement
 - **CHASE:** Normal color, moving toward player (already visible from position interpolation)
 - **TELEGRAPH:** Flash white/bright — pulsing tint. This is the "incoming attack" warning.
@@ -468,12 +515,15 @@ Extend `EnemyRenderer.render()` to show AI state:
 - **Threat distinction:** Threat-tier enemies render with a subtle outline or larger size — even at this colored-circle stage, the player should subconsciously distinguish fodder from threats
 
 #### 3.6 Debug Overlay Updates
+
 Add to `DebugStats`:
+
 ```typescript
-enemyStates: string  // e.g., "IDLE:2 CHASE:5 TELEGRAPH:1 ATTACK:0"
+enemyStates: string; // e.g., "IDLE:2 CHASE:5 TELEGRAPH:1 ATTACK:0"
 ```
 
 ### Deliverables
+
 - Enemies detect the player and chase
 - FSM drives behavior through states
 - Enemies navigate around obstacles via flow field
@@ -483,6 +533,7 @@ enemyStates: string  // e.g., "IDLE:2 CHASE:5 TELEGRAPH:1 ATTACK:0"
 - Debug overlay shows AI state distribution
 
 ### How to Test
+
 - **Manual visual:** Start game → enemies chase you around the arena. Walk behind a wall → they navigate around it. They don't pile on each other. Enemies flash white periodically (telegraph state). Debug shows state counts.
 
 ---
@@ -494,10 +545,12 @@ enemyStates: string  // e.g., "IDLE:2 CHASE:5 TELEGRAPH:1 ATTACK:0"
 ### Tasks
 
 #### 4.1 Attack Token System
+
 Add to `GameWorld`:
+
 ```typescript
-attackTokens: number      // currently available
-maxAttackTokens: number   // cap (default 3)
+attackTokens: number; // currently available
+maxAttackTokens: number; // cap (default 3)
 ```
 
 **Threats only:** Threats claim a token when entering TELEGRAPH, release when leaving RECOVERY. If no tokens are available, the threat stays in CHASE and repositions.
@@ -505,9 +558,11 @@ maxAttackTokens: number   // cap (default 3)
 **Fodder fires freely.** Fodder enemies do NOT consume attack tokens — they all fire whenever their cooldown expires. This is what creates the bullet hell: many weak projectiles from all directions. The token system only gates the dangerous threat attacks to keep them readable.
 
 #### 4.2 Enemy Attack System (`shared/src/sim/systems/enemyAttack.ts`)
+
 ```typescript
-enemyAttackSystem(world, dt)
+enemyAttackSystem(world, dt);
 ```
+
 - Query entities with `EnemyAI + AttackConfig + Position` where `state === ATTACK`
 - On entering ATTACK state:
   - Spawn enemy bullet(s) aimed at player
@@ -525,20 +580,26 @@ enemyAttackSystem(world, dt)
 **Charger attack:** No projectile — contact damage instead. The charger's ATTACK state sets high velocity toward the player's position at telegraph-start. If the charger's collider overlaps the player during charge, deal damage (checked in the health system via entity-entity collision).
 
 #### 4.3 Initial Attack Delay
+
 Each enemy gets a random `initialDelay` set at spawn:
+
 - **Fodder:** 0.2-0.5s — quick to start firing, creates natural stagger from continuous spawning
 - **Threats:** 0.5-1.0s — gives the player time to register the new threat
 
 The enemy cannot transition from CHASE → TELEGRAPH until this delay has elapsed. This prevents synchronized volleys when a wave spawns.
 
 #### 4.4 Entity-Entity Damage Collision
+
 Add to the collision system or health system:
+
 - Chargers in ATTACK state: if charger collider overlaps player collider, deal `AttackConfig.damage` to player
 - Check collision layers: `ENEMY` layer entity in ATTACK state vs `PLAYER` layer entity
 - Apply player i-frames after hit
 
 #### 4.5 Enemy Bullet Rendering
+
 Enemy bullets already render via the existing `BulletRenderer` (it queries all `Bullet` entities). But visually distinguish enemy bullets from player bullets:
+
 - **Player bullets:** Existing color/style
 - **Enemy bullets (fodder):** Smaller, dim/warm color — visually "cheap" to match the enemies firing them
 - **Enemy bullets (threats):** Brighter, larger — signals danger. The player's eye should track these.
@@ -546,6 +607,7 @@ Enemy bullets already render via the existing `BulletRenderer` (it queries all `
 Extend `BulletRenderer` to check the collision layer and apply different colors/sizes.
 
 #### 4.6 Camera Juice — First Pass
+
 - Screen shake on player taking damage (0.15 trauma)
 - Screen shake on enemy death: small for fodder (0.02 trauma), medium for threats (0.08 trauma)
 - Hit stop on player taking damage (0.05s freeze)
@@ -553,14 +615,17 @@ Extend `BulletRenderer` to check the collision layer and apply different colors/
 This juice is needed now to make Phase 4 feel good during testing. Don't wait for Polish.
 
 #### 4.7 Debug Overlay Updates
+
 Add to `DebugStats`:
+
 ```typescript
-attackTokensUsed: number
-attackTokensMax: number
-activeProjectiles: number
+attackTokensUsed: number;
+attackTokensMax: number;
+activeProjectiles: number;
 ```
 
 ### Deliverables
+
 - Swarmers fire single slow bullets (bullet hell through volume)
 - Grunts fire single aimed bullets
 - Shooters fire 3-bullet spreads
@@ -572,6 +637,7 @@ activeProjectiles: number
 - Debug shows attack tokens and projectile count
 
 ### How to Test
+
 - **Manual visual:** Start game with 10 swarmers + 2 shooters (hard-spawned). See constant slow bullet stream from swarmers. See shooters telegraph (white flash) then fire 3-bullet spreads. Dodge bullets. Get hit → red flash, screen shake, HP drops in debug. Kill enemies → screen shake, they disappear. Die → "Game Over."
 
 ---
@@ -583,6 +649,7 @@ activeProjectiles: number
 ### Design Summary
 
 Every wave blends both tiers simultaneously. The ratio shifts over the stage:
+
 - **Wave 1:** Heavy fodder, 1 threat — learning wave
 - **Wave 2:** More fodder, 2 threats with new archetype — escalation
 - **Wave 3:** Dense fodder, 3 threats with synergy — pressure
@@ -593,38 +660,43 @@ Fodder that dies is immediately replaced from the wave's remaining fodder budget
 ### Tasks
 
 #### 5.1 Wave Definitions (`shared/src/sim/content/waves.ts`)
+
 ```typescript
 interface FodderPool {
-  type: number       // EnemyType (SWARMER or GRUNT)
-  weight: number     // relative spawn probability
+  type: number; // EnemyType (SWARMER or GRUNT)
+  weight: number; // relative spawn probability
 }
 
 interface ThreatEntry {
-  type: number       // EnemyType (SHOOTER or CHARGER)
-  count: number
+  type: number; // EnemyType (SHOOTER or CHARGER)
+  count: number;
 }
 
 interface WaveDefinition {
-  fodderBudget: number       // total fodder points to spend
-  fodderPool: FodderPool[]   // which fodder types, with weights
-  maxFodderAlive: number     // overcrowding cap for fodder
-  threats: ThreatEntry[]     // specific threats that spawn at wave start
-  spawnDelay: number         // seconds before wave starts after previous clears
+  fodderBudget: number; // total fodder points to spend
+  fodderPool: FodderPool[]; // which fodder types, with weights
+  maxFodderAlive: number; // overcrowding cap for fodder
+  threats: ThreatEntry[]; // specific threats that spawn at wave start
+  spawnDelay: number; // seconds before wave starts after previous clears
 }
 
 interface StageEncounter {
-  waves: WaveDefinition[]
+  waves: WaveDefinition[];
 }
 ```
 
 Create stage 1 encounter:
+
 ```typescript
 const STAGE_1_ENCOUNTER: StageEncounter = {
   waves: [
     {
       // Wave 1: Learning — mostly swarmers, 1 shooter
       fodderBudget: 14,
-      fodderPool: [{ type: SWARMER, weight: 3 }, { type: GRUNT, weight: 1 }],
+      fodderPool: [
+        { type: SWARMER, weight: 3 },
+        { type: GRUNT, weight: 1 },
+      ],
       maxFodderAlive: 10,
       threats: [{ type: SHOOTER, count: 1 }],
       spawnDelay: 0,
@@ -632,33 +704,53 @@ const STAGE_1_ENCOUNTER: StageEncounter = {
     {
       // Wave 2: Escalation — more fodder, introduce charger
       fodderBudget: 20,
-      fodderPool: [{ type: SWARMER, weight: 2 }, { type: GRUNT, weight: 1 }],
+      fodderPool: [
+        { type: SWARMER, weight: 2 },
+        { type: GRUNT, weight: 1 },
+      ],
       maxFodderAlive: 14,
-      threats: [{ type: SHOOTER, count: 1 }, { type: CHARGER, count: 1 }],
+      threats: [
+        { type: SHOOTER, count: 1 },
+        { type: CHARGER, count: 1 },
+      ],
       spawnDelay: 6,
     },
     {
       // Wave 3: Pressure — dense fodder, synergistic threats
       fodderBudget: 28,
-      fodderPool: [{ type: SWARMER, weight: 2 }, { type: GRUNT, weight: 2 }],
+      fodderPool: [
+        { type: SWARMER, weight: 2 },
+        { type: GRUNT, weight: 2 },
+      ],
       maxFodderAlive: 18,
-      threats: [{ type: SHOOTER, count: 2 }, { type: CHARGER, count: 1 }],
+      threats: [
+        { type: SHOOTER, count: 2 },
+        { type: CHARGER, count: 1 },
+      ],
       spawnDelay: 5,
     },
     {
       // Wave 4: Climax — peak everything
       fodderBudget: 35,
-      fodderPool: [{ type: SWARMER, weight: 3 }, { type: GRUNT, weight: 2 }],
+      fodderPool: [
+        { type: SWARMER, weight: 3 },
+        { type: GRUNT, weight: 2 },
+      ],
       maxFodderAlive: 22,
-      threats: [{ type: SHOOTER, count: 2 }, { type: CHARGER, count: 2 }],
+      threats: [
+        { type: SHOOTER, count: 2 },
+        { type: CHARGER, count: 2 },
+      ],
       spawnDelay: 5,
     },
   ],
-}
+};
 ```
 
 #### 5.2 Director State on GameWorld (`shared/src/sim/world.ts`)
+
 Add to `GameWorld`:
+
 ```typescript
 encounter: {
   definition: StageEncounter | null
@@ -675,15 +767,18 @@ encounter: {
 ```
 
 #### 5.3 Wave Spawner System (`shared/src/sim/systems/waveSpawner.ts`)
+
 ```typescript
-waveSpawnerSystem(world, dt)
+waveSpawnerSystem(world, dt);
 ```
 
 **Between waves:**
+
 - Decrement `waveTimer`. When expired, activate next wave.
 - On wave activation: spawn all threats immediately + initial burst of fodder.
 
 **During active wave:**
+
 - Track alive fodder count and alive threat count (query `Enemy` entities by tier)
 - **Fodder reinforcement:** If `fodderAliveCount < maxFodderAlive` AND `fodderBudgetRemaining > 0`:
   - Spawn 2-4 fodder per second (spread across ticks) from weighted pool
@@ -694,14 +789,17 @@ waveSpawnerSystem(world, dt)
   - When all waves cleared: set `completed = true`
 
 **Spawn rate tuning:**
+
 - Fodder spawn rate: 2-4 enemies/second during active wave, spread across spawn points
 - Initial burst: spawn up to `maxFodderAlive / 2` fodder in the first second of a wave
 - Threats spawn all at once at wave start (they're the "here we go" moment)
 
 #### 5.4 Spawn Positioning
+
 Spawn points are map-edge positions (contextual: doors, alleys, map borders).
 
 Positioning rules:
+
 - **Minimum distance from player:** 200px — no point-blank spawns
 - **Spawn telegraph:** Enemies exist in a brief spawning state for 0.3s (invulnerable, visible but ghosted)
   - Use `initialDelay` in `EnemyAI` for this grace period
@@ -712,36 +810,44 @@ Positioning rules:
 For the initial test arena: use positions along the playable area edges. Future stages will define contextual spawn points per zone.
 
 #### 5.5 Projectile Density Control
+
 Add to `GameWorld`:
+
 ```typescript
-activeProjectileCount: number  // tracked each tick
-maxProjectiles: number         // cap (~80-100)
+activeProjectileCount: number; // tracked each tick
+maxProjectiles: number; // cap (~80-100)
 ```
 
 In `enemyAttackSystem`: if `activeProjectileCount >= maxProjectiles`, fodder enemies skip their shot (stay in RECOVERY, don't fire). Threats always fire — their bullets are dangerous and few. This prevents truly unreadable screens while maintaining chaos.
 
 #### 5.6 EnemyRenderer — Spawn Visual
+
 Extend `EnemyRenderer` to show spawning state:
+
 - Newly spawned enemies (during `initialDelay`) render at 50% opacity / ghosted
 - Fade to full opacity as delay expires
 - This telegraphs "enemy incoming" without the enemy being a threat yet
 
 #### 5.7 Debug Overlay — Wave Telemetry
+
 Add to `DebugStats`:
+
 ```typescript
-fodderAlive: number
-threatAlive: number
-waveNumber: number
-waveStatus: string      // "active" | "delay" | "completed"
-fodderBudgetLeft: number
+fodderAlive: number;
+threatAlive: number;
+waveNumber: number;
+waveStatus: string; // "active" | "delay" | "completed"
+fodderBudgetLeft: number;
 ```
 
 #### 5.8 GameScene Integration
+
 - Remove hard-spawned test enemies from Phase 2
 - `GameScene.create` starts the stage encounter via `setEncounter(world, STAGE_1_ENCOUNTER)`
 - `GameScene.update` calls `waveSpawnerSystem` as part of the system pipeline
 
 ### Deliverables
+
 - Waves spawn blended fodder + threats
 - Fodder reinforces continuously — screen stays full
 - Threats are finite — killing them is visible progress
@@ -753,6 +859,7 @@ fodderBudgetLeft: number
 - **Debug overlay shows full wave telemetry**
 
 ### How to Test
+
 - **Manual visual:** Start game → Wave 1 spawns: swarmers flood in (ghosted, then solid), 1 shooter steps out. Kill swarmers → new ones replace them immediately. Kill the shooter → fodder thins as budget drains → wave clears. Brief pause → Wave 2: more enemies, charger appears. Play through all 4 waves. Debug shows wave number, fodder budget draining, threat count dropping.
 
 ---
@@ -764,6 +871,7 @@ fodderBudgetLeft: number
 ### Tasks
 
 #### 6.1 Visual Polish
+
 - Charger during ATTACK: stretch sprite in charge direction (squash & stretch)
 - Charger during TELEGRAPH: shake/vibrate in place (winding up)
 - Shooter during TELEGRAPH: aim line or directional indicator toward player
@@ -771,11 +879,14 @@ fodderBudgetLeft: number
 - Death effect: brief scale-down + fade (even with colored circles, this sells the kill)
 
 #### 6.2 Camera Kick on Player Hit
+
 - Camera kick when player is hit (toward damage source direction)
 - This was deferred from Phase 4's first juice pass; now add it
 
 #### 6.3 Combat Tuning Pass
+
 Play through encounters and tune:
+
 - **Fodder spawning rate** — too fast = overwhelming before threats matter; too slow = boring gaps
 - **Fodder bullet speed** — must be slow enough to weave through with 10+ on screen (100px/s baseline)
 - **Threat telegraph durations** — readable amid fodder chaos
@@ -788,6 +899,7 @@ Play through encounters and tune:
 - **Separation radius** — visual clarity (tighter for fodder, wider for threats)
 
 #### 6.4 Edge Cases
+
 - Enemy spawning when player is near a wall / in a corner
 - Multiple chargers charging simultaneously
 - Player dying mid-wave
@@ -797,6 +909,7 @@ Play through encounters and tune:
 - Projectile cap reached while threats need to fire
 
 #### 6.5 Test Coverage
+
 - Unit tests for all new shared systems:
   - `healthSystem`: damage, i-frames, death
   - `enemyAISystem`: state transitions
@@ -807,6 +920,7 @@ Play through encounters and tune:
 - Integration test: spawn blended wave, verify fodder reinforces, threats don't, wave clears correctly
 
 ### Deliverables
+
 - Combat feels responsive and fair
 - The blended fodder/threat model feels right — constant action, clear priorities
 - All edge cases handled
@@ -814,6 +928,7 @@ Play through encounters and tune:
 - Tuned balance values
 
 ### How to Test
+
 - Play through all 4 waves multiple times
 - Verify the bullet hell from fodder is weave-able (not instant death)
 - Verify threats are noticeable amid the chaos (visual distinction + telegraphs)
@@ -826,14 +941,14 @@ Play through encounters and tune:
 
 ## Implementation Order
 
-| Phase | Files | Risk | Visual Test |
-|-------|-------|------|-------------|
-| 1 | components, health system, bulletCollision, player HP rendering | Medium | See HP in debug, damage flash, "Game Over" |
-| 2 | components, content/enemies, prefabs, EnemyRenderer (basic), GameScene | Low | See colored circles in arena, shoot them dead |
-| 3 | flowField, detection, AI, steering, EnemyRenderer (state visuals) | High | See enemies chase you, telegraph flash, separation |
-| 4 | attack system, tokens, entity collision, bullet colors, camera juice | Medium | See enemy bullets, dodge them, take damage, feel juice |
-| 5 | wave spawner, encounter definitions, projectile cap, spawn visuals, debug | Medium | See waves spawn, reinforce, clear, escalate |
-| 6 | visual polish, camera kick, tuning, edge cases, tests | Low | Everything feels good, all tests pass |
+| Phase | Files                                                                     | Risk   | Visual Test                                            |
+| ----- | ------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
+| 1     | components, health system, bulletCollision, player HP rendering           | Medium | See HP in debug, damage flash, "Game Over"             |
+| 2     | components, content/enemies, prefabs, EnemyRenderer (basic), GameScene    | Low    | See colored circles in arena, shoot them dead          |
+| 3     | flowField, detection, AI, steering, EnemyRenderer (state visuals)         | High   | See enemies chase you, telegraph flash, separation     |
+| 4     | attack system, tokens, entity collision, bullet colors, camera juice      | Medium | See enemy bullets, dodge them, take damage, feel juice |
+| 5     | wave spawner, encounter definitions, projectile cap, spawn visuals, debug | Medium | See waves spawn, reinforce, clear, escalate            |
+| 6     | visual polish, camera kick, tuning, edge cases, tests                     | Low    | Everything feels good, all tests pass                  |
 
 ---
 
@@ -847,6 +962,7 @@ bun run dev          # Game runs with enemies
 ```
 
 Manual testing checklist:
+
 1. Game loads; enemies spawn after brief delay (ghosted, then solid)
 2. Swarmers and grunts (fodder) flood in from map edges
 3. Shooter or charger (threat) spawns alongside fodder — visually distinct
@@ -875,6 +991,7 @@ Manual testing checklist:
 ## Task Checklist
 
 ### Phase 1: Health & Damage Foundation
+
 - [x] 1.1 Health component
 - [x] 1.2 Health system
 - [x] 1.3 Bullet-entity collision
@@ -883,21 +1000,24 @@ Manual testing checklist:
 - [x] 1.6 Player health rendering (damage flash, HP in debug, "Game Over" text)
 
 ### Phase 2: Enemy Components, Prefabs & Basic Rendering
-- [ ] 2.1 Enemy components (Enemy with tier, EnemyAI, Detection, AttackConfig, Steering)
-- [ ] 2.2 Enemy content definitions (Swarmer, Grunt, Shooter, Charger with tier + budget cost)
-- [ ] 2.3 Enemy prefabs (swarmer, grunt, shooter, charger)
-- [ ] 2.4 EnemyRenderer — basic colored circles with type-based colors
-- [ ] 2.5 GameScene integration (add renderer, debug enemy count, test spawns)
+
+- [x] 2.1 Enemy components (Enemy with tier, EnemyAI, Detection, AttackConfig, Steering)
+- [x] 2.2 Enemy content definitions (Swarmer, Grunt, Shooter, Charger with tier + budget cost)
+- [x] 2.3 Enemy prefabs (swarmer, grunt, shooter, charger)
+- [x] 2.4 EnemyRenderer — basic colored circles with type-based colors
+- [x] 2.5 GameScene integration (add renderer, debug enemy count, test spawns)
 
 ### Phase 3: Enemy AI Core
-- [ ] 3.1 Flow field system
-- [ ] 3.2 Detection system
-- [ ] 3.3 AI state machine system (tier-aware timing)
-- [ ] 3.4 Steering system (seek, flee, separation, charger charge)
-- [ ] 3.5 EnemyRenderer — AI state visuals (telegraph flash, recovery dim, threat distinction)
-- [ ] 3.6 Debug overlay (AI state distribution)
+
+- [x] 3.1 Flow field system
+- [x] 3.2 Detection system
+- [x] 3.3 AI state machine system (tier-aware timing)
+- [x] 3.4 Steering system (seek, flee, separation, charger charge)
+- [x] 3.5 EnemyRenderer — AI state visuals (telegraph flash, recovery dim, threat distinction)
+- [x] 3.6 Debug overlay (AI state distribution)
 
 ### Phase 4: Enemy Attacks
+
 - [ ] 4.1 Attack token system (threats only; fodder fires freely)
 - [ ] 4.2 Enemy attack system (projectile spawning, tier-specific profiles)
 - [ ] 4.3 Initial attack delay (0.2-0.5s fodder, 0.5-1.0s threats)
@@ -907,6 +1027,7 @@ Manual testing checklist:
 - [ ] 4.7 Debug overlay (attack tokens, projectile count)
 
 ### Phase 5: Director-Wave Spawner
+
 - [ ] 5.1 Wave definitions with dual budgets (fodder + threat)
 - [ ] 5.2 Director state on GameWorld
 - [ ] 5.3 Wave spawner system (fodder reinforcement, threat persistence, wave clear)
@@ -917,6 +1038,7 @@ Manual testing checklist:
 - [ ] 5.8 GameScene integration (replace test spawns with encounter)
 
 ### Phase 6: Polish & Tuning
+
 - [ ] 6.1 Visual polish (charger stretch, aim indicators, damage flash, death effect)
 - [ ] 6.2 Camera kick on player hit
 - [ ] 6.3 Combat tuning pass (fodder rate, bullet speeds, budgets, caps)
@@ -971,19 +1093,19 @@ Each phase builds on the previous and is **visually testable** at completion.
 
 ## Risks & Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Flow field complexity | Medium | Start with direct seek; add flow field only if enemies get stuck |
-| AI state machine bugs | High | Thorough unit tests for each transition |
-| Enemy stacking | Medium | Separation force in steering; test with 20+ fodder |
-| Attack token starvation (threats) | Low | Threats without tokens still reposition, not frozen |
-| Bullet-entity collision perf | Medium | Circle-circle check; spatial hash if >30 entities (likely with swarms) |
-| Fodder reinforcement feels wrong | Medium | Tunable spawn rate + budget; easy to iterate. Test with extremes. |
-| Projectile count tanks FPS | Medium | Projectile cap + bullet lifetime limits. Profile with 25+ enemies firing. |
-| Charger feels unfair | Medium | Long telegraph (0.5s), long recovery (0.8s), clear visual |
-| Bullet hell unreadable | Medium | Slow fodder bullets (100px/s), color-coded by tier, projectile cap |
-| Wave pacing feels flat | Medium | Dual budget system gives two tuning axes per wave; iterate on ratios |
-| Component count growth | Low | bitECS handles many components well; keep SoA arrays |
+| Risk                              | Impact | Mitigation                                                                |
+| --------------------------------- | ------ | ------------------------------------------------------------------------- |
+| Flow field complexity             | Medium | Start with direct seek; add flow field only if enemies get stuck          |
+| AI state machine bugs             | High   | Thorough unit tests for each transition                                   |
+| Enemy stacking                    | Medium | Separation force in steering; test with 20+ fodder                        |
+| Attack token starvation (threats) | Low    | Threats without tokens still reposition, not frozen                       |
+| Bullet-entity collision perf      | Medium | Circle-circle check; spatial hash if >30 entities (likely with swarms)    |
+| Fodder reinforcement feels wrong  | Medium | Tunable spawn rate + budget; easy to iterate. Test with extremes.         |
+| Projectile count tanks FPS        | Medium | Projectile cap + bullet lifetime limits. Profile with 25+ enemies firing. |
+| Charger feels unfair              | Medium | Long telegraph (0.5s), long recovery (0.8s), clear visual                 |
+| Bullet hell unreadable            | Medium | Slow fodder bullets (100px/s), color-coded by tier, projectile cap        |
+| Wave pacing feels flat            | Medium | Dual budget system gives two tuning axes per wave; iterate on ratios      |
+| Component count growth            | Low    | bitECS handles many components well; keep SoA arrays                      |
 
 ---
 
