@@ -51,6 +51,18 @@ const nextPos = add(pos, vel)
 
 Functions: `create`, `add`, `sub`, `scale`, `normalize`, `length`, `dot`, `lerp`, `angle`, `fromAngle`, `distance`, `distanceSq`, `rotate`, `negate`, `perpendicular`, `equals`
 
+**SeededRng** - Deterministic random number generator (mulberry32):
+```typescript
+import { SeededRng } from '@high-noon/shared'
+
+const rng = new SeededRng(42)       // Seed for deterministic sequence
+rng.next()                          // [0, 1)
+rng.nextInt(6)                      // [0, 6) integer
+rng.nextRange(10, 20)               // [10, 20)
+```
+
+Used throughout shared for all random operations (spawn positions, initial delays, pool selection). Never use `Math.random()` in shared — always use `world.rng`.
+
 ### `sim/` - Game Simulation
 
 ECS world and components:
@@ -64,7 +76,7 @@ import {
   playerInputSystem,
 } from '@high-noon/shared'
 
-const world = createGameWorld()
+const world = createGameWorld(42)  // Optional seed for deterministic RNG
 const systems = createSystemRegistry()
 systems.register(playerInputSystem)
 systems.register(movementSystem)
@@ -116,6 +128,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering
 - `healthSystem` - Damage processing, i-frame countdown, death handling
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
+- `waveSpawnerSystem` - Director-Wave hybrid: spawns enemies in escalating blended waves with fodder reinforcement and threat persistence
 - `debugSpawnSystem` - Debug bullet spawning (K key)
 
 **Tilemap:**
@@ -159,6 +172,22 @@ const shooterId = spawnShooter(world, x, y)   // Ranged threat (3 HP, 3-bullet s
 const chargerId = spawnCharger(world, x, y)   // Heavy threat (5 HP, contact damage)
 ```
 
+**Encounters:**
+```typescript
+import { setEncounter, STAGE_1_ENCOUNTER } from '@high-noon/shared'
+
+// Start a 4-wave encounter (replaces hard-spawned enemies)
+setEncounter(world, STAGE_1_ENCOUNTER)
+
+// Access encounter state
+world.encounter?.currentWave      // Current wave index
+world.encounter?.waveActive       // Is a wave actively spawning?
+world.encounter?.completed        // All waves cleared?
+world.encounter?.fodderAliveCount // Alive fodder count
+world.encounter?.threatAliveCount // Alive threat count
+world.encounter?.fodderBudgetRemaining // Remaining fodder budget
+```
+
 **Content:**
 - `PLAYER_SPEED` = 250 pixels/second
 - `PLAYER_RADIUS` = 16 pixels
@@ -175,6 +204,7 @@ const chargerId = spawnCharger(world, x, y)   // Heavy threat (5 HP, contact dam
 - `PLAYER_HP` = 5
 - `PLAYER_IFRAME_DURATION` = 0.5 seconds
 - Enemy content (per type): `*_SPEED`, `*_RADIUS`, `*_HP`, `*_AGGRO_RANGE`, `*_ATTACK_RANGE`, `*_TELEGRAPH`, `*_RECOVERY`, `*_COOLDOWN`, `*_DAMAGE`, `*_SEPARATION_RADIUS`, `*_BUDGET_COST`, `*_TIER`
+- `STAGE_1_ENCOUNTER` - 4-wave encounter definition (escalating fodder + threat budgets)
 - `CHARGER_CHARGE_SPEED` = 300 pixels/second
 - `CHARGER_CHARGE_DURATION` = 0.4 seconds
 - `TILE_SIZE` = 32 pixels
@@ -204,6 +234,8 @@ src/
   math/
     vec2.ts          # 2D vector math
     vec2.test.ts     # Unit tests
+    rng.ts           # Seeded RNG (mulberry32) for deterministic simulation
+    rng.test.ts      # Unit tests
     index.ts
   sim/
     components.ts    # ECS component definitions
@@ -226,11 +258,14 @@ src/
       enemyAI.ts     # FSM state transitions
       enemyAttack.ts # Attack execution (projectiles, charger charge)
       enemySteering.ts   # Seek, separation, orbiting
+      waveSpawner.ts     # Director-Wave spawner (dual budgets, reinforcement)
+      waveSpawner.test.ts # Unit tests
       index.ts
     content/
       player.ts      # Player constants
       weapons.ts     # Weapon and bullet constants
       enemies.ts     # Enemy type definitions (4 archetypes, 2 tiers)
+      waves.ts       # Wave/encounter definitions (STAGE_1_ENCOUNTER)
       maps/
         testArena.ts # Test arena map
       index.ts

@@ -7,6 +7,8 @@
 import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
+import type { StageEncounter } from './content/waves'
+import { SeededRng } from '../math/rng'
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -49,6 +51,22 @@ export type BulletCollisionCallback = (
 ) => void
 
 /**
+ * Director-Wave encounter runtime state
+ */
+export interface EncounterState {
+  definition: StageEncounter
+  currentWave: number
+  waveTimer: number
+  waveActive: boolean
+  completed: boolean
+  fodderBudgetRemaining: number
+  fodderAliveCount: number
+  threatAliveCount: number
+  totalFodderSpawned: number
+  fodderSpawnAccumulator: number
+}
+
+/**
  * Game world containing all ECS state
  */
 export interface GameWorld extends IWorld {
@@ -66,12 +84,18 @@ export interface GameWorld extends IWorld {
   spatialHash: SpatialHash | null
   /** Previous tick's debug spawn button state (for edge detection) */
   debugSpawnWasDown: boolean
+  /** Current encounter state (null = no encounter running) */
+  encounter: EncounterState | null
+  /** Maximum enemy projectiles before fodder stops firing */
+  maxProjectiles: number
+  /** Seeded PRNG for deterministic simulation randomness */
+  rng: SeededRng
 }
 
 /**
  * Create a new game world
  */
-export function createGameWorld(): GameWorld {
+export function createGameWorld(seed?: number): GameWorld {
   const baseWorld = bitCreateWorld()
 
   return {
@@ -83,6 +107,9 @@ export function createGameWorld(): GameWorld {
     flowField: null,
     spatialHash: null,
     debugSpawnWasDown: false,
+    encounter: null,
+    maxProjectiles: 80,
+    rng: new SeededRng(seed ?? Date.now()),
   }
 }
 
@@ -104,5 +131,27 @@ export function resetWorld(world: GameWorld): void {
   world.flowField = null
   world.spatialHash = null
   world.debugSpawnWasDown = false
+  world.encounter = null
+  world.maxProjectiles = 80
+  // Note: rng is intentionally NOT reset — caller should create a new world
+  // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed
+}
+
+/**
+ * Initialize an encounter on the world
+ */
+export function setEncounter(world: GameWorld, encounter: StageEncounter): void {
+  world.encounter = {
+    definition: encounter,
+    currentWave: 0,
+    waveTimer: encounter.waves[0]!.spawnDelay,
+    waveActive: false,
+    completed: false,
+    fodderBudgetRemaining: 0,
+    fodderAliveCount: 0,
+    threatAliveCount: 0,
+    totalFodderSpawned: 0,
+    fodderSpawnAccumulator: 0,
+  }
 }

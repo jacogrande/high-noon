@@ -114,10 +114,17 @@ export class EnemyRenderer {
       let color = normalColor
       let a = 1.0
 
+      // State-based visuals
       if (state === AIState.TELEGRAPH) {
         color = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0 ? 0xffffff : normalColor
       } else if (state === AIState.RECOVERY) {
         a = RECOVERY_ALPHA
+      }
+
+      // Spawn ghost: multiply alpha during initialDelay (composes with state alpha)
+      const delay = EnemyAI.initialDelay[eid]!
+      if (delay > 0) {
+        a *= Math.max(0.5, 1.0 - delay)
       }
 
       // Only update Graphics when value actually changes

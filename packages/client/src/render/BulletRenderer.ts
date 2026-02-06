@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
-import { Bullet, Position, Collider, Velocity, CollisionLayer } from '@high-noon/shared'
+import { Bullet, Position, Collider, Velocity, CollisionLayer, Enemy, EnemyTier } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import { AssetLoader } from '../assets'
 
@@ -41,7 +41,7 @@ export class BulletRenderer {
       // Create sprite if doesn't exist
       if (!this.bulletEntities.has(eid)) {
         const texture = AssetLoader.getBulletTexture()
-        this.registry.createSprite(eid, texture)
+        const sprite = this.registry.createSprite(eid, texture)
         this.bulletEntities.add(eid)
 
         // Set initial rotation based on velocity
@@ -50,9 +50,12 @@ export class BulletRenderer {
         const rotation = Math.atan2(vy, vx)
         this.registry.setRotation(eid, rotation)
 
-        // Tint enemy bullets orange-red
+        // Tint and scale enemy bullets by tier
         if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
-          this.registry.setTint(eid, 0xff6633)
+          const ownerId = Bullet.ownerId[eid]!
+          const isThreat = Enemy.tier[ownerId] === EnemyTier.THREAT
+          sprite.tint = isThreat ? 0xff2222 : 0xff9966
+          sprite.scale.set(isThreat ? 1.3 : 0.8)
         }
       }
     }

@@ -286,7 +286,7 @@ export function spawnSwarmer(world: GameWorld, x: number, y: number): number {
   AttackConfig.spreadAngle[eid] = 0
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = SWARMER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = 0.2 + Math.random() * 0.3
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
 
   return eid
 }
@@ -318,7 +318,7 @@ export function spawnGrunt(world: GameWorld, x: number, y: number): number {
   AttackConfig.spreadAngle[eid] = 0
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = GRUNT_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = 0.2 + Math.random() * 0.3
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
 
   return eid
 }
@@ -350,7 +350,7 @@ export function spawnShooter(world: GameWorld, x: number, y: number): number {
   AttackConfig.spreadAngle[eid] = SHOOTER_SPREAD_ANGLE
   Steering.preferredRange[eid] = SHOOTER_PREFERRED_RANGE
   Steering.separationRadius[eid] = SHOOTER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = 0.5 + Math.random() * 0.5
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
 
   return eid
 }
@@ -382,7 +382,7 @@ export function spawnCharger(world: GameWorld, x: number, y: number): number {
   AttackConfig.spreadAngle[eid] = 0
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = CHARGER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = 0.5 + Math.random() * 0.5
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
 
   return eid
 }

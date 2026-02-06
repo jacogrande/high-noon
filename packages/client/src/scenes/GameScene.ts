@@ -10,14 +10,12 @@ import {
   createSystemRegistry,
   stepWorld,
   spawnPlayer,
-  spawnSwarmer,
-  spawnGrunt,
-  spawnShooter,
-  spawnCharger,
   setWorldTilemap,
+  setEncounter,
   createTestArena,
   getArenaCenter,
   getPlayableBounds,
+  STAGE_1_ENCOUNTER,
   movementSystem,
   playerInputSystem,
   rollSystem,
@@ -33,6 +31,7 @@ import {
   enemySteeringSystem,
   enemyAttackSystem,
   spatialHashSystem,
+  waveSpawnerSystem,
   Player,
   Position,
   Velocity,
@@ -115,6 +114,7 @@ export class GameScene {
     this.systems.register(rollSystem)
     this.systems.register(weaponSystem)
     this.systems.register(debugSpawnSystem)
+    this.systems.register(waveSpawnerSystem)
     this.systems.register(bulletSystem)
     this.systems.register(flowFieldSystem)
     this.systems.register(enemyDetectionSystem)
@@ -145,14 +145,8 @@ export class GameScene {
     const { x: centerX, y: centerY } = getArenaCenter()
     spawnPlayer(this.world, centerX, centerY)
 
-    // Test enemy spawns (temporary — removed in Phase 5)
-    spawnSwarmer(this.world, centerX + 100, centerY - 80)
-    spawnSwarmer(this.world, centerX + 120, centerY - 60)
-    spawnSwarmer(this.world, centerX + 140, centerY - 40)
-    spawnGrunt(this.world, centerX - 100, centerY + 60)
-    spawnGrunt(this.world, centerX - 130, centerY + 80)
-    spawnShooter(this.world, centerX + 200, centerY + 100)
-    spawnCharger(this.world, centerX - 200, centerY - 100)
+    // Start the wave encounter
+    setEncounter(this.world, STAGE_1_ENCOUNTER)
 
     this.playerRenderer.sync(this.world)
 
@@ -329,6 +323,8 @@ export class GameScene {
       .filter(Boolean)
       .join(' ')
 
+    const enc = this.world.encounter
+
     const stats: DebugStats = {
       fps,
       tick: this.world.tick,
@@ -348,6 +344,11 @@ export class GameScene {
       cameraX: camPos.x,
       cameraY: camPos.y,
       cameraTrauma: this.camera.shake.currentTrauma,
+      waveNumber: enc ? enc.currentWave + 1 : 0,
+      waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
+      fodderAlive: enc ? enc.fodderAliveCount : 0,
+      threatAlive: enc ? enc.threatAliveCount : 0,
+      fodderBudgetLeft: enc ? enc.fodderBudgetRemaining : 0,
     }
 
     this.debugRenderer.updateStats(stats)

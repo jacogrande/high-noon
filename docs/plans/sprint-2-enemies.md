@@ -1018,24 +1018,24 @@ Manual testing checklist:
 
 ### Phase 4: Enemy Attacks
 
-- [ ] 4.1 Attack token system (threats only; fodder fires freely)
-- [ ] 4.2 Enemy attack system (projectile spawning, tier-specific profiles)
-- [ ] 4.3 Initial attack delay (0.2-0.5s fodder, 0.5-1.0s threats)
-- [ ] 4.4 Entity-entity damage collision (charger contact damage)
-- [ ] 4.5 Enemy bullet rendering (color-coded by tier in BulletRenderer)
-- [ ] 4.6 Camera juice — first pass (damage shake, death shake, hit stop)
-- [ ] 4.7 Debug overlay (attack tokens, projectile count)
+- [x] ~~4.1 Attack token system~~ (removed — all enemies fire freely)
+- [x] 4.2 Enemy attack system (projectile spawning, tier-specific profiles)
+- [x] 4.3 Initial attack delay (0.2-0.5s fodder, 0.5-1.0s threats)
+- [x] 4.4 Entity-entity damage collision (charger contact damage)
+- [x] 4.5 Enemy bullet rendering (color-coded by tier in BulletRenderer)
+- [x] 4.6 Camera juice — first pass (damage shake, death shake, hit stop)
+- [x] 4.7 Debug overlay (projectile count)
 
 ### Phase 5: Director-Wave Spawner
 
-- [ ] 5.1 Wave definitions with dual budgets (fodder + threat)
-- [ ] 5.2 Director state on GameWorld
-- [ ] 5.3 Wave spawner system (fodder reinforcement, threat persistence, wave clear)
-- [ ] 5.4 Spawn positioning (map edges, min distance, spawn telegraph)
-- [ ] 5.5 Projectile density control
-- [ ] 5.6 EnemyRenderer — spawn ghosting visual
-- [ ] 5.7 Debug overlay (wave number, status, fodder budget, tier counts)
-- [ ] 5.8 GameScene integration (replace test spawns with encounter)
+- [x] 5.1 Wave definitions with dual budgets (fodder + threat)
+- [x] 5.2 Director state on GameWorld
+- [x] 5.3 Wave spawner system (fodder reinforcement, threat persistence, wave clear)
+- [x] 5.4 Spawn positioning (random in playable area, wall rejection, min distance, spawn telegraph)
+- [x] 5.5 Projectile density control
+- [x] 5.6 EnemyRenderer — spawn ghosting visual
+- [x] 5.7 Debug overlay (wave number, status, fodder budget, tier counts)
+- [x] 5.8 GameScene integration (replace test spawns with encounter)
 
 ### Phase 6: Polish & Tuning
 
@@ -1082,7 +1082,7 @@ Each phase builds on the previous and is **visually testable** at completion.
 - Zone system for map-specific spawn points (using generic map-edge spawns for now)
 - Side objectives (defend, rescue, bounty)
 - Kill combo counter and escalating rewards
-- Seeded RNG for deterministic spawns (needed for replays/multiplayer)
+- ~~Seeded RNG for deterministic spawns~~ (done — `SeededRng` mulberry32 in `math/rng.ts`)
 - Sound effects for enemies
 - Particle effects (death explosions, bullet trails)
 - Multiplayer networking (server, prediction, interpolation)

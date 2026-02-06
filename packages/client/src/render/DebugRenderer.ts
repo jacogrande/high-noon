@@ -30,6 +30,12 @@ export interface DebugStats {
   cameraX: number
   cameraY: number
   cameraTrauma: number
+  // Waves
+  waveNumber: number
+  waveStatus: string    // "active" | "delay" | "completed" | "none"
+  fodderAlive: number
+  threatAlive: number
+  fodderBudgetLeft: number
 }
 
 /**
@@ -181,6 +187,8 @@ export class DebugRenderer {
       `Pos: ${stats.playerX.toFixed(1)}, ${stats.playerY.toFixed(1)}    Vel: ${stats.playerVx.toFixed(1)}, ${stats.playerVy.toFixed(1)}`,
       '',
       `Cam: ${stats.cameraX.toFixed(1)}, ${stats.cameraY.toFixed(1)}    Trauma: ${stats.cameraTrauma.toFixed(3)}`,
+      '',
+      `Wave: ${stats.waveNumber}  ${stats.waveStatus}  Fodder: ${stats.fodderAlive} (${stats.fodderBudgetLeft} left)  Threats: ${stats.threatAlive}`,
     ].join('\n')
   }
 

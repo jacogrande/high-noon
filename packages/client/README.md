@@ -92,6 +92,8 @@ debug.updateStats({
   playerX: 400, playerY: 300, playerVx: 200, playerVy: 0,
   enemyCount: 7, enemyStates: 'CHS:5 TEL:1 REC:1',
   activeProjectiles: 12,
+  waveNumber: 1, waveStatus: 'active',
+  fodderAlive: 8, threatAlive: 1, fodderBudgetLeft: 6,
   cameraX: 412, cameraY: 310, cameraTrauma: 0,
 })
 ```
@@ -154,6 +156,7 @@ Enemy type colors:
 AI state visuals:
 - Telegraph: White flash (alternates every 3 ticks)
 - Recovery: Dimmed (60% alpha)
+- Spawn ghost: Fade-in during initialDelay (50% → 100% alpha, composes with state alpha)
 - Threat tier (Shooter, Charger): Yellow outline ring via DebugRenderer
 
 **TilemapRenderer** - Tilemap rendering (debug rectangles):
@@ -190,6 +193,7 @@ scene.destroy()
 
 GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all renderers.
 `Game.tsx` creates GameApp and GameLoop, then delegates all game logic to GameScene.
+Starts a `STAGE_1_ENCOUNTER` on creation (4-wave escalating enemy encounter via Director-Wave spawner).
 
 Camera juice:
 - Player damage: 0.15 trauma + 0.05s hit stop

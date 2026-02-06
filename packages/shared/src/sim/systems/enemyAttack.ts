@@ -12,8 +12,8 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import {
-  EnemyAI, AIState, Enemy, EnemyType, AttackConfig,
-  Position, Velocity, Collider, Health, Invincible, Dead,
+  EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
+  Position, Velocity, Collider, Health, Invincible, Dead, Bullet,
 } from '../components'
 import { spawnBullet, CollisionLayer } from '../prefabs'
 import { transition } from './enemyAI'
@@ -22,6 +22,7 @@ import { ENEMY_BULLET_RANGE } from '../content/weapons'
 import { playerQuery } from '../queries'
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
+const bulletQuery = defineQuery([Bullet])
 
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
@@ -35,6 +36,9 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       break
     }
   }
+
+  // Hoist bullet count for fodder projectile cap (avoid per-enemy query)
+  const activeBulletCount = bulletQuery(world).length
 
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
@@ -98,6 +102,14 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         transition(eid, AIState.RECOVERY)
       }
     } else {
+      // Fodder projectile cap — skip shot if at limit
+      if (Enemy.tier[eid] === EnemyTier.FODDER) {
+        if (activeBulletCount >= world.maxProjectiles) {
+          transition(eid, AIState.RECOVERY)
+          continue
+        }
+      }
+
       // Projectile enemies: spawn bullets aimed at player
       const baseAngle = Math.atan2(playerY - ey, playerX - ex)
       const count = AttackConfig.projectileCount[eid]!
