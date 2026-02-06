@@ -8,6 +8,19 @@ import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
 
 /**
+ * Flow field for BFS pathfinding toward the player
+ */
+export interface FlowField {
+  width: number
+  height: number
+  dirX: Float32Array
+  dirY: Float32Array
+  dist: Uint16Array
+  playerCellX: number
+  playerCellY: number
+}
+
+/**
  * Collision types for callback
  */
 export type CollisionType = 'wall' | 'entity'
@@ -46,6 +59,8 @@ export interface GameWorld extends IWorld {
   tilemap: Tilemap | null
   /** Collision callbacks for bullets (entity ID -> callback) */
   bulletCollisionCallbacks: Map<number, BulletCollisionCallback>
+  /** Flow field for enemy pathfinding toward the player */
+  flowField: FlowField | null
 }
 
 /**
@@ -60,6 +75,7 @@ export function createGameWorld(): GameWorld {
     time: 0,
     tilemap: null,
     bulletCollisionCallbacks: new Map(),
+    flowField: null,
   }
 }
 
@@ -78,5 +94,6 @@ export function resetWorld(world: GameWorld): void {
   world.time = 0
   world.tilemap = null
   world.bulletCollisionCallbacks.clear()
+  world.flowField = null
   // Note: bitECS entities persist - call removeEntity for each if needed
 }

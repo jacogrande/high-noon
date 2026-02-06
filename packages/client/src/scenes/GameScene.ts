@@ -10,6 +10,10 @@ import {
   createSystemRegistry,
   stepWorld,
   spawnPlayer,
+  spawnSwarmer,
+  spawnGrunt,
+  spawnShooter,
+  spawnCharger,
   setWorldTilemap,
   createTestArena,
   getArenaCenter,
@@ -23,6 +27,11 @@ import {
   bulletCollisionSystem,
   healthSystem,
   debugSpawnSystem,
+  flowFieldSystem,
+  enemyDetectionSystem,
+  enemyAISystem,
+  enemySteeringSystem,
+  enemyAttackSystem,
   Player,
   Position,
   Velocity,
@@ -30,11 +39,15 @@ import {
   PlayerStateType,
   Health,
   Dead,
+  Enemy,
+  EnemyAI,
+  AIState,
+  Bullet,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
 } from '@high-noon/shared'
-import { hasComponent } from 'bitecs'
+import { defineQuery, hasComponent } from 'bitecs'
 import { Text, TextStyle } from 'pixi.js'
 import type { GameApp } from '../engine/GameApp'
 import { Input } from '../engine/Input'
@@ -44,9 +57,14 @@ import { DebugRenderer, type DebugStats } from '../render/DebugRenderer'
 import { SpriteRegistry } from '../render/SpriteRegistry'
 import { PlayerRenderer } from '../render/PlayerRenderer'
 import { BulletRenderer } from '../render/BulletRenderer'
+import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 
 const GAME_ZOOM = 2
+
+const enemyAIQuery = defineQuery([Enemy, EnemyAI])
+const bulletCountQuery = defineQuery([Bullet])
+const STATE_LABELS = ['IDL', 'CHS', 'TEL', 'ATK', 'REC', 'STN', 'FLE']
 
 const PLAYER_STATE_NAMES: Record<number, string> = {
   [PlayerStateType.IDLE]: 'idle',
@@ -70,6 +88,7 @@ export class GameScene {
   private readonly spriteRegistry: SpriteRegistry
   private readonly playerRenderer: PlayerRenderer
   private readonly bulletRenderer: BulletRenderer
+  private readonly enemyRenderer: EnemyRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly gameOverText: Text
@@ -96,6 +115,11 @@ export class GameScene {
     this.systems.register(weaponSystem)
     this.systems.register(debugSpawnSystem)
     this.systems.register(bulletSystem)
+    this.systems.register(flowFieldSystem)
+    this.systems.register(enemyDetectionSystem)
+    this.systems.register(enemyAISystem)
+    this.systems.register(enemySteeringSystem)
+    this.systems.register(enemyAttackSystem)
     this.systems.register(movementSystem)
     this.systems.register(bulletCollisionSystem)
     this.systems.register(healthSystem)
@@ -109,6 +133,7 @@ export class GameScene {
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.spriteRegistry)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
+    this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
     this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
     // Debug graphics in entity layer (world space)
@@ -117,6 +142,16 @@ export class GameScene {
     // Spawn player at arena center
     const { x: centerX, y: centerY } = getArenaCenter()
     spawnPlayer(this.world, centerX, centerY)
+
+    // Test enemy spawns (temporary — removed in Phase 5)
+    spawnSwarmer(this.world, centerX + 100, centerY - 80)
+    spawnSwarmer(this.world, centerX + 120, centerY - 60)
+    spawnSwarmer(this.world, centerX + 140, centerY - 40)
+    spawnGrunt(this.world, centerX - 100, centerY + 60)
+    spawnGrunt(this.world, centerX - 130, centerY + 80)
+    spawnShooter(this.world, centerX + 200, centerY + 100)
+    spawnCharger(this.world, centerX - 200, centerY - 100)
+
     this.playerRenderer.sync(this.world)
 
     // Zoom
@@ -188,11 +223,29 @@ export class GameScene {
     // Get input state (now with correct world-space aim)
     const inputState = this.input.getInputState()
 
+    // Snapshot i-frames before sim step for damage detection
+    const prevIframes = playerEid !== null ? Health.iframes[playerEid]! : 0
+
     // Step the simulation
     stepWorld(this.world, this.systems, inputState)
 
+    // Detect player damage (i-frames went from 0 to >0)
+    if (playerEid !== null) {
+      const newIframes = Health.iframes[playerEid]!
+      if (prevIframes === 0 && newIframes > 0) {
+        this.camera.addTrauma(0.15)
+        this.hitStop.freeze(0.05)
+      }
+    }
+
     // Sync renderers (create/remove sprites)
     this.playerRenderer.sync(this.world)
+
+    // Sync enemy renderer — returns death trauma for camera shake
+    const deathTrauma = this.enemyRenderer.sync(this.world)
+    if (deathTrauma > 0) {
+      this.camera.addTrauma(deathTrauma)
+    }
 
     // Detect new bullets for camera effects
     const prevBulletCount = this.bulletRenderer.count
@@ -248,6 +301,9 @@ export class GameScene {
     // Render bullets with interpolation
     this.bulletRenderer.render(this.world, alpha)
 
+    // Render enemies with interpolation
+    this.enemyRenderer.render(this.world, alpha)
+
     // Show Game Over text when local player is dead
     if (this.isPlayerDead()) {
       this.gameOverText.x = this.gameApp.width / 2
@@ -259,6 +315,18 @@ export class GameScene {
     const playerEid = this.playerRenderer.getPlayerEntity()
     const camPos = this.camera.getPosition()
 
+    // Enemy AI state distribution
+    const aiEnemies = enemyAIQuery(this.world)
+    const stateCounts = [0, 0, 0, 0, 0, 0, 0]
+    for (const eid of aiEnemies) {
+      const s = EnemyAI.state[eid]!
+      if (s < 7) stateCounts[s] = stateCounts[s]! + 1
+    }
+    const enemyStates = STATE_LABELS
+      .map((label, i) => stateCounts[i]! > 0 ? `${label}:${stateCounts[i]}` : null)
+      .filter(Boolean)
+      .join(' ')
+
     const stats: DebugStats = {
       fps,
       tick: this.world.tick,
@@ -266,8 +334,11 @@ export class GameScene {
       playerState: playerEid !== null
         ? (PLAYER_STATE_NAMES[PlayerState.state[playerEid]!] ?? 'unknown')
         : '(none)',
+      enemyCount: this.enemyRenderer.count,
+      enemyStates,
       playerHP: playerEid !== null ? Health.current[playerEid]! : 0,
       playerMaxHP: playerEid !== null ? Health.max[playerEid]! : 0,
+      activeProjectiles: bulletCountQuery(this.world).length,
       playerX: playerEid !== null ? Position.x[playerEid]! : 0,
       playerY: playerEid !== null ? Position.y[playerEid]! : 0,
       playerVx: playerEid !== null ? Velocity.x[playerEid]! : 0,
@@ -287,6 +358,7 @@ export class GameScene {
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()
+    this.enemyRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

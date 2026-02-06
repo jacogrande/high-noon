@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
-import { Bullet, Position, Collider, Velocity } from '@high-noon/shared'
+import { Bullet, Position, Collider, Velocity, CollisionLayer } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import { AssetLoader } from '../assets'
 
@@ -49,6 +49,11 @@ export class BulletRenderer {
         const vy = Velocity.y[eid]!
         const rotation = Math.atan2(vy, vx)
         this.registry.setRotation(eid, rotation)
+
+        // Tint enemy bullets orange-red
+        if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
+          this.registry.setTint(eid, 0xff6633)
+        }
       }
     }
 

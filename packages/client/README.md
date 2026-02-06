@@ -79,7 +79,7 @@ const state = input.getInputState()  // Returns InputState for simulation
 
 ### `render/` - Rendering Systems
 
-**DebugRenderer** - Debug shapes and overlay with player/camera telemetry:
+**DebugRenderer** - Debug shapes and overlay with player/camera/enemy AI telemetry:
 ```typescript
 import { DebugRenderer } from './render'
 
@@ -88,7 +88,10 @@ debug.circle(x, y, radius, 0x00ffff)
 debug.rect(x, y, w, h, 0xff0000)
 debug.updateStats({
   fps: 60, tick: 100, entityCount: 5,
-  playerState: 'moving', playerX: 400, playerY: 300, playerVx: 200, playerVy: 0,
+  playerState: 'moving', playerHP: 5, playerMaxHP: 5,
+  playerX: 400, playerY: 300, playerVx: 200, playerVy: 0,
+  enemyCount: 7, enemyStates: 'CHS:5 TEL:1 REC:1',
+  activeProjectiles: 12,
   cameraX: 412, cameraY: 310, cameraTrauma: 0,
 })
 ```
@@ -116,6 +119,42 @@ Visual feedback:
 - Normal: Cyan, opaque
 - Rolling (i-frames): White, semi-transparent (50%)
 - Rolling (recovery): White, opaque
+- Damage flash: Red tint when i-frames active
+
+**BulletRenderer** - Bullet entity rendering with interpolation:
+```typescript
+import { BulletRenderer } from './render'
+
+const bulletRenderer = new BulletRenderer(spriteRegistry)
+bulletRenderer.sync(world)         // Create/remove sprites
+bulletRenderer.render(world, alpha) // Interpolate positions
+bulletRenderer.count               // Current bullet count
+```
+
+Visual feedback:
+- Player bullets: Default white
+- Enemy bullets: Orange-red tint (0xff6633)
+
+**EnemyRenderer** - Enemy entity rendering with AI state visuals:
+```typescript
+import { EnemyRenderer } from './render'
+
+const enemyRenderer = new EnemyRenderer(spriteRegistry, debugRenderer)
+const deathTrauma = enemyRenderer.sync(world)  // Create/remove sprites, returns death trauma
+enemyRenderer.render(world, alpha)              // Interpolate positions + AI state visuals
+enemyRenderer.count                             // Current enemy count
+```
+
+Enemy type colors:
+- Swarmer: Pale pink (0xffaaaa)
+- Grunt: Red-orange (0xff6633)
+- Shooter: Purple (0xaa44dd)
+- Charger: Dark red (0xaa1111)
+
+AI state visuals:
+- Telegraph: White flash (alternates every 3 ticks)
+- Recovery: Dimmed (60% alpha)
+- Threat tier (Shooter, Charger): Yellow outline ring via DebugRenderer
 
 **TilemapRenderer** - Tilemap rendering (debug rectangles):
 ```typescript
@@ -152,6 +191,12 @@ scene.destroy()
 GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all renderers.
 `Game.tsx` creates GameApp and GameLoop, then delegates all game logic to GameScene.
 
+Camera juice:
+- Player damage: 0.15 trauma + 0.05s hit stop
+- Fodder death: 0.02 trauma
+- Threat death: 0.08 trauma
+- Player fire: 0.08 trauma + directional kick
+
 ## Directory Structure
 
 ```
@@ -173,10 +218,11 @@ src/
     noise.ts         # 1D Perlin noise for shake
     index.ts
   render/
-    DebugRenderer.ts    # Debug shapes and stats overlay (player/camera telemetry)
+    DebugRenderer.ts    # Debug shapes and stats overlay (player/camera/enemy AI telemetry)
     SpriteRegistry.ts   # Entity sprite management
-    PlayerRenderer.ts   # Player entity rendering
+    PlayerRenderer.ts   # Player entity rendering with damage flash
     BulletRenderer.ts   # Bullet entity rendering
+    EnemyRenderer.ts    # Enemy entity rendering (colored circles, AI state visuals, threat outlines)
     TilemapRenderer.ts  # Tilemap and collision debug rendering
     index.ts
   scenes/

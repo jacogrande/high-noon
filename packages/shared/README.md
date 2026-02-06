@@ -83,19 +83,40 @@ stepWorld(world, systems, input)  // Advance by one tick
 - `Bullet` - Projectile data (owner, damage, lifetime, range, distanceTraveled)
 - `Weapon` - Weapon stats (fire rate, bullet speed, damage, range)
 - `Invincible` - Tag for i-frame entities
+- `Health` - Health with i-frames (current, max, iframes, iframeDuration)
+- `Dead` - Tag for dead entities (players stay in world; non-players are removed)
+- `Enemy` - Enemy marker with type and tier
+- `EnemyAI` - AI state machine (state, stateTimer, targetEid, initialDelay)
+- `Detection` - Aggro/attack ranges and LOS config
+- `AttackConfig` - Attack timing, damage, projectile config, locked aim direction
+- `Steering` - Movement behavior weights and separation
 
 **Constants:**
 - `TICK_RATE` = 60 (ticks per second)
 - `TICK_S` = 1/60 (seconds per tick)
 - `TICK_MS` = 16.67 (milliseconds per tick)
 
+**Enums:**
+- `PlayerStateType` - IDLE, MOVING, ROLLING
+- `AIState` - IDLE, CHASE, TELEGRAPH, ATTACK, RECOVERY, STUNNED, FLEE
+- `EnemyType` - SWARMER, GRUNT, SHOOTER, CHARGER
+- `EnemyTier` - FODDER, THREAT
+
 **Systems:**
 - `playerInputSystem` - Converts input to velocity, initiates rolls
 - `rollSystem` - Manages roll velocity, i-frames, and recovery
 - `weaponSystem` - Handles firing, cooldown, and bullet spawning
 - `bulletSystem` - Tracks bullet distance traveled, handles despawning
+- `flowFieldSystem` - BFS pathfinding from player position (8-directional, recomputes on tile boundary change)
+- `enemyDetectionSystem` - Aggro acquisition/loss with hysteresis (2x range), staggered LOS checks
+- `enemyAISystem` - FSM state transitions (IDLE/CHASE/TELEGRAPH/ATTACK/RECOVERY/STUNNED), initial delay gating
+- `enemyAttackSystem` - Attack execution: projectile spawning (Swarmer/Grunt/Shooter), charger charge with locked aim + contact damage
+- `enemySteeringSystem` - Flow field seek, separation, shooter preferred-range orbiting
 - `movementSystem` - Applies velocity to position, stores previous for interpolation
+- `bulletCollisionSystem` - Bullet vs wall and bullet vs entity collision with layer filtering
+- `healthSystem` - Damage processing, i-frame countdown, death handling
 - `collisionSystem` - Resolves circle vs tilemap and circle vs circle collisions
+- `debugSpawnSystem` - Debug bullet spawning (K key)
 
 **Tilemap:**
 ```typescript
@@ -116,7 +137,10 @@ if (isSolidAt(tilemap, worldX, worldY)) {
 
 **Prefabs:**
 ```typescript
-import { spawnPlayer, spawnBullet } from '@high-noon/shared'
+import {
+  spawnPlayer, spawnBullet,
+  spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger,
+} from '@high-noon/shared'
 
 const playerId = spawnPlayer(world, x, y)  // Creates player with weapon
 
@@ -127,6 +151,12 @@ const bulletId = spawnBullet(world, {
   range: 400,     // Max travel distance in pixels
   ownerId: playerId,
 })
+
+// Enemy prefabs — each creates a fully configured enemy entity
+const swarmerId = spawnSwarmer(world, x, y)   // Fast fragile fodder (1 HP)
+const gruntId = spawnGrunt(world, x, y)       // Sturdy melee fodder (3 HP)
+const shooterId = spawnShooter(world, x, y)   // Ranged threat (3 HP, 3-bullet spread)
+const chargerId = spawnCharger(world, x, y)   // Heavy threat (5 HP, contact damage)
 ```
 
 **Content:**
@@ -141,6 +171,12 @@ const bulletId = spawnBullet(world, {
 - `PISTOL_RANGE` = 400 pixels
 - `BULLET_RADIUS` = 4 pixels
 - `BULLET_LIFETIME` = 5.0 seconds (failsafe)
+- `ENEMY_BULLET_RANGE` = 500 pixels
+- `PLAYER_HP` = 5
+- `PLAYER_IFRAME_DURATION` = 0.5 seconds
+- Enemy content (per type): `*_SPEED`, `*_RADIUS`, `*_HP`, `*_AGGRO_RANGE`, `*_ATTACK_RANGE`, `*_TELEGRAPH`, `*_RECOVERY`, `*_COOLDOWN`, `*_DAMAGE`, `*_SEPARATION_RADIUS`, `*_BUDGET_COST`, `*_TIER`
+- `CHARGER_CHARGE_SPEED` = 300 pixels/second
+- `CHARGER_CHARGE_DURATION` = 0.4 seconds
 - `TILE_SIZE` = 32 pixels
 - `ARENA_WIDTH` = 25 tiles (800px)
 - `ARENA_HEIGHT` = 19 tiles (608px)
@@ -182,10 +218,19 @@ src/
       collision.ts   # Circle vs tilemap/circle collision
       weapon.ts      # Firing, cooldown, bullet spawning
       bullet.ts      # Bullet distance tracking, despawning
+      bulletCollision.ts # Bullet vs wall/entity collision
+      health.ts      # Damage processing, i-frames, death
+      debugSpawn.ts  # Debug bullet spawning
+      flowField.ts   # BFS pathfinding from player position
+      enemyDetection.ts  # Aggro, LOS, target selection
+      enemyAI.ts     # FSM state transitions
+      enemyAttack.ts # Attack execution (projectiles, charger charge)
+      enemySteering.ts   # Seek, separation, orbiting
       index.ts
     content/
       player.ts      # Player constants
       weapons.ts     # Weapon and bullet constants
+      enemies.ts     # Enemy type definitions (4 archetypes, 2 tiers)
       maps/
         testArena.ts # Test arena map
       index.ts

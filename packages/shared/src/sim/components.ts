@@ -162,6 +162,70 @@ export const Dead = {
 }
 
 // ============================================================================
+// Enemy Components
+// ============================================================================
+
+/** AI state machine states */
+export const AIState = {
+  IDLE: 0, CHASE: 1, TELEGRAPH: 2, ATTACK: 3, RECOVERY: 4, STUNNED: 5, FLEE: 6,
+} as const
+
+/** Enemy type identifiers */
+export const EnemyType = {
+  SWARMER: 0, GRUNT: 1, SHOOTER: 2, CHARGER: 3,
+} as const
+
+/** Enemy tier (determines budget cost and threat level) */
+export const EnemyTier = {
+  FODDER: 0, THREAT: 1,
+} as const
+
+/** Marks entity as an enemy */
+export const Enemy = {
+  type: new Uint8Array(MAX_ENTITIES),
+  tier: new Uint8Array(MAX_ENTITIES),
+}
+
+/** AI state machine data */
+export const EnemyAI = {
+  state: new Uint8Array(MAX_ENTITIES),
+  stateTimer: new Float32Array(MAX_ENTITIES),
+  targetEid: new Uint16Array(MAX_ENTITIES),
+  initialDelay: new Float32Array(MAX_ENTITIES),
+}
+
+/** Detection ranges for AI */
+export const Detection = {
+  aggroRange: new Float32Array(MAX_ENTITIES),
+  attackRange: new Float32Array(MAX_ENTITIES),
+  losRequired: new Uint8Array(MAX_ENTITIES),
+}
+
+/** Attack configuration */
+export const AttackConfig = {
+  telegraphDuration: new Float32Array(MAX_ENTITIES),
+  recoveryDuration: new Float32Array(MAX_ENTITIES),
+  cooldown: new Float32Array(MAX_ENTITIES),
+  cooldownRemaining: new Float32Array(MAX_ENTITIES),
+  damage: new Uint8Array(MAX_ENTITIES),
+  projectileSpeed: new Float32Array(MAX_ENTITIES),
+  projectileCount: new Uint8Array(MAX_ENTITIES),
+  spreadAngle: new Float32Array(MAX_ENTITIES),
+  /** Locked aim direction X (set at TELEGRAPH entry for chargers) */
+  aimX: new Float32Array(MAX_ENTITIES),
+  /** Locked aim direction Y (set at TELEGRAPH entry for chargers) */
+  aimY: new Float32Array(MAX_ENTITIES),
+}
+
+/** Steering behavior weights */
+export const Steering = {
+  seekWeight: new Float32Array(MAX_ENTITIES),
+  separationWeight: new Float32Array(MAX_ENTITIES),
+  preferredRange: new Float32Array(MAX_ENTITIES),
+  separationRadius: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Component Registration
 // ============================================================================
 
@@ -183,4 +247,9 @@ export const AllComponents = [
   Invincible,
   Health,
   Dead,
+  Enemy,
+  EnemyAI,
+  Detection,
+  AttackConfig,
+  Steering,
 ] as const

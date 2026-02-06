@@ -21,6 +21,11 @@ export interface DebugStats {
   // Health
   playerHP: number
   playerMaxHP: number
+  // Enemies
+  enemyCount: number
+  enemyStates: string
+  // Combat
+  activeProjectiles: number
   // Camera
   cameraX: number
   cameraY: number
@@ -171,7 +176,8 @@ export class DebugRenderer {
       `FPS: ${stats.fps}        Tick: ${stats.tick}      Entities: ${stats.entityCount}`,
       '',
       `Player: ${stats.playerState}`,
-      `HP: ${stats.playerHP}/${stats.playerMaxHP}`,
+      `HP: ${stats.playerHP}/${stats.playerMaxHP}    Enemies: ${stats.enemyCount}  ${stats.enemyStates}`,
+      `Projectiles: ${stats.activeProjectiles}`,
       `Pos: ${stats.playerX.toFixed(1)}, ${stats.playerY.toFixed(1)}    Vel: ${stats.playerVx.toFixed(1)}, ${stats.playerVy.toFixed(1)}`,
       '',
       `Cam: ${stats.cameraX.toFixed(1)}, ${stats.cameraY.toFixed(1)}    Trauma: ${stats.cameraTrauma.toFixed(3)}`,

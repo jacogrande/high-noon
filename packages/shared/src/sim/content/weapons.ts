@@ -29,3 +29,6 @@ export const BULLET_RADIUS = 4
 
 /** Failsafe despawn time in seconds */
 export const BULLET_LIFETIME = 5.0
+
+/** Range for enemy-fired bullets in pixels */
+export const ENEMY_BULLET_RANGE = 500
