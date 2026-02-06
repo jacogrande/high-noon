@@ -5,16 +5,20 @@
  * Combines flow field seek, separation, and preferred-range orbiting.
  */
 
-import { defineQuery } from 'bitecs'
+import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, Player } from '../components'
+import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy } from '../components'
 import { worldToTile } from '../tilemap'
+import { forEachInRadius } from '../SpatialHash'
+import { playerQuery } from '../queries'
 
 const steeringQuery = defineQuery([EnemyAI, Steering, Position, Velocity, Speed, Enemy])
-const playerQuery = defineQuery([Player, Position])
 
 /** Hysteresis band around preferredRange for flee/orbit/seek transitions */
 const ORBIT_MARGIN = 30
+
+/** Golden angle in radians (~137.5°) — maximally distributes overlapping entities */
+const GOLDEN_ANGLE = 2.399
 
 export function enemySteeringSystem(world: GameWorld, _dt: number): void {
   const enemies = steeringQuery(world)
@@ -95,28 +99,30 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
     const sepRadius = Steering.separationRadius[eid]!
     const sepRadiusSq = sepRadius * sepRadius
 
-    for (const other of enemies) {
-      if (other === eid) continue
+    if (world.spatialHash) {
+      forEachInRadius(world.spatialHash, ex, ey, sepRadius, (other) => {
+        if (other === eid) return
+        if (!hasComponent(world, Enemy, other)) return
 
-      const ox = Position.x[other]!
-      const oy = Position.y[other]!
-      const dx = ex - ox
-      const dy = ey - oy
-      const distSq = dx * dx + dy * dy
+        const ox = Position.x[other]!
+        const oy = Position.y[other]!
+        const dx = ex - ox
+        const dy = ey - oy
+        const distSq = dx * dx + dy * dy
 
-      if (distSq >= sepRadiusSq) continue
+        if (distSq >= sepRadiusSq) return
 
-      if (distSq === 0) {
-        // Deterministic golden-angle offset when exactly overlapping
-        const angle = (eid * 2.399) % (Math.PI * 2)
-        sepX += Math.cos(angle) * 0.5
-        sepY += Math.sin(angle) * 0.5
-      } else {
-        const d = Math.sqrt(distSq)
-        const weight = (sepRadius - d) / sepRadius
-        sepX += (dx / d) * weight
-        sepY += (dy / d) * weight
-      }
+        if (distSq === 0) {
+          const angle = (eid * GOLDEN_ANGLE) % (Math.PI * 2)
+          sepX += Math.cos(angle) * 0.5
+          sepY += Math.sin(angle) * 0.5
+        } else {
+          const d = Math.sqrt(distSq)
+          const weight = (sepRadius - d) / sepRadius
+          sepX += (dx / d) * weight
+          sepY += (dy / d) * weight
+        }
+      })
     }
 
     // d) Combine and set velocity

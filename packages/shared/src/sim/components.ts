@@ -199,6 +199,8 @@ export const Detection = {
   aggroRange: new Float32Array(MAX_ENTITIES),
   attackRange: new Float32Array(MAX_ENTITIES),
   losRequired: new Uint8Array(MAX_ENTITIES),
+  /** LOS check stagger bucket (0-4), assigned at spawn for determinism */
+  staggerOffset: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Attack configuration */

@@ -32,6 +32,7 @@ import {
   enemyAISystem,
   enemySteeringSystem,
   enemyAttackSystem,
+  spatialHashSystem,
   Player,
   Position,
   Velocity,
@@ -118,6 +119,7 @@ export class GameScene {
     this.systems.register(flowFieldSystem)
     this.systems.register(enemyDetectionSystem)
     this.systems.register(enemyAISystem)
+    this.systems.register(spatialHashSystem)
     this.systems.register(enemySteeringSystem)
     this.systems.register(enemyAttackSystem)
     this.systems.register(movementSystem)

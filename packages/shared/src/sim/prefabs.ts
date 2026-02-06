@@ -58,6 +58,15 @@ import {
   CHARGER_SEPARATION_RADIUS, CHARGER_TIER,
 } from './content/enemies'
 
+/** Largest collider radius across all entity types (for spatial hash query padding) */
+export const MAX_COLLIDER_RADIUS = Math.max(
+  PLAYER_RADIUS,
+  SWARMER_RADIUS,
+  GRUNT_RADIUS,
+  SHOOTER_RADIUS,
+  CHARGER_RADIUS,
+)
+
 /** Collision layers */
 export const CollisionLayer = {
   PLAYER: 1 << 0,
@@ -228,7 +237,7 @@ function addEnemyComponents(world: GameWorld, eid: number): void {
 }
 
 /** Set common enemy defaults shared by all types */
-function setEnemyDefaults(eid: number, x: number, y: number): void {
+function setEnemyDefaults(world: GameWorld, eid: number, x: number, y: number): void {
   Position.x[eid] = x
   Position.y[eid] = y
   Position.prevX[eid] = x
@@ -242,6 +251,7 @@ function setEnemyDefaults(eid: number, x: number, y: number): void {
   EnemyAI.stateTimer[eid] = 0
   EnemyAI.targetEid[eid] = NO_TARGET
   EnemyAI.initialDelay[eid] = 0
+  Detection.staggerOffset[eid] = world.tick % 5
   AttackConfig.cooldownRemaining[eid] = 0
   AttackConfig.aimX[eid] = 0
   AttackConfig.aimY[eid] = 0
@@ -255,7 +265,7 @@ function setEnemyDefaults(eid: number, x: number, y: number): void {
 export function spawnSwarmer(world: GameWorld, x: number, y: number): number {
   const eid = addEntity(world)
   addEnemyComponents(world, eid)
-  setEnemyDefaults(eid, x, y)
+  setEnemyDefaults(world, eid, x, y)
 
   Enemy.type[eid] = EnemyType.SWARMER
   Enemy.tier[eid] = SWARMER_TIER
@@ -287,7 +297,7 @@ export function spawnSwarmer(world: GameWorld, x: number, y: number): number {
 export function spawnGrunt(world: GameWorld, x: number, y: number): number {
   const eid = addEntity(world)
   addEnemyComponents(world, eid)
-  setEnemyDefaults(eid, x, y)
+  setEnemyDefaults(world, eid, x, y)
 
   Enemy.type[eid] = EnemyType.GRUNT
   Enemy.tier[eid] = GRUNT_TIER
@@ -319,7 +329,7 @@ export function spawnGrunt(world: GameWorld, x: number, y: number): number {
 export function spawnShooter(world: GameWorld, x: number, y: number): number {
   const eid = addEntity(world)
   addEnemyComponents(world, eid)
-  setEnemyDefaults(eid, x, y)
+  setEnemyDefaults(world, eid, x, y)
 
   Enemy.type[eid] = EnemyType.SHOOTER
   Enemy.tier[eid] = SHOOTER_TIER
@@ -351,7 +361,7 @@ export function spawnShooter(world: GameWorld, x: number, y: number): number {
 export function spawnCharger(world: GameWorld, x: number, y: number): number {
   const eid = addEntity(world)
   addEnemyComponents(world, eid)
-  setEnemyDefaults(eid, x, y)
+  setEnemyDefaults(world, eid, x, y)
 
   Enemy.type[eid] = EnemyType.CHARGER
   Enemy.tier[eid] = CHARGER_TIER

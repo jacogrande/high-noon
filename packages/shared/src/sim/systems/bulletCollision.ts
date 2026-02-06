@@ -14,14 +14,12 @@
 import { defineQuery, removeEntity, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Bullet, Position, Collider, Health, Invincible } from '../components'
-import { CollisionLayer } from '../prefabs'
+import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
 import { isSolidAt } from '../tilemap'
+import { forEachInRadius } from '../SpatialHash'
 
 // Query for bullet entities
 const bulletQuery = defineQuery([Bullet, Position, Collider])
-
-// Query for entities that can take damage
-const damagableQuery = defineQuery([Position, Collider, Health])
 
 /**
  * Check if a bullet on the given layer can damage a target on the given layer.
@@ -45,7 +43,6 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
   if (!tilemap) return
 
   const bullets = bulletQuery(world)
-  const targets = damagableQuery(world)
   const bulletsToRemove: number[] = []
 
   for (const eid of bullets) {
@@ -56,39 +53,43 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     // --- Entity collision (checked first) ---
     let hitEntity = false
 
-    for (const targetEid of targets) {
-      // Skip owner
-      if (targetEid === Bullet.ownerId[eid]) continue
-      // Skip invincible entities (roll i-frames)
-      if (hasComponent(world, Invincible, targetEid)) continue
-      // Skip entities in damage i-frames
-      if (Health.iframes[targetEid]! > 0) continue
+    const queryRadius = radius + MAX_COLLIDER_RADIUS
+    if (world.spatialHash) {
+      forEachInRadius(world.spatialHash, x, y, queryRadius, (targetEid) => {
+        if (hitEntity) return
+        if (!hasComponent(world, Health, targetEid)) return
+        // Skip owner
+        if (targetEid === Bullet.ownerId[eid]) return
+        // Skip invincible entities (roll i-frames)
+        if (hasComponent(world, Invincible, targetEid)) return
+        // Skip entities in damage i-frames
+        if (Health.iframes[targetEid]! > 0) return
 
-      // Layer check
-      if (!canBulletHitTarget(Collider.layer[eid]!, Collider.layer[targetEid]!)) continue
+        // Layer check
+        if (!canBulletHitTarget(Collider.layer[eid]!, Collider.layer[targetEid]!)) return
 
-      // Circle-circle overlap (no sqrt needed)
-      const tx = Position.x[targetEid]!
-      const ty = Position.y[targetEid]!
-      const dx = x - tx
-      const dy = y - ty
-      const distSq = dx * dx + dy * dy
-      const minDist = radius + Collider.radius[targetEid]!
-      if (distSq >= minDist * minDist) continue
+        // Circle-circle overlap (no sqrt needed)
+        const tx = Position.x[targetEid]!
+        const ty = Position.y[targetEid]!
+        const dx = x - tx
+        const dy = y - ty
+        const distSq = dx * dx + dy * dy
+        const minDist = radius + Collider.radius[targetEid]!
+        if (distSq >= minDist * minDist) return
 
-      // HIT — apply damage
-      Health.current[targetEid] = Health.current[targetEid]! - Bullet.damage[eid]!
-      Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+        // HIT — apply damage
+        Health.current[targetEid] = Health.current[targetEid]! - Bullet.damage[eid]!
+        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
 
-      // Call collision callback
-      const callback = world.bulletCollisionCallbacks.get(eid)
-      if (callback) {
-        callback(world, eid, { type: 'entity', hitEntity: targetEid, x, y })
-      }
+        // Call collision callback
+        const callback = world.bulletCollisionCallbacks.get(eid)
+        if (callback) {
+          callback(world, eid, { type: 'entity', hitEntity: targetEid, x, y })
+        }
 
-      bulletsToRemove.push(eid)
-      hitEntity = true
-      break // bullet hits one entity max
+        bulletsToRemove.push(eid)
+        hitEntity = true
+      })
     }
 
     if (hitEntity) continue // skip wall check for this bullet
@@ -116,7 +117,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
   // Remove bullets that hit something
   for (const eid of bulletsToRemove) {
-    // Clean up callback registry
+    // Clean up callback registry (also cleaned in healthSystem on death)
     world.bulletCollisionCallbacks.delete(eid)
     // Remove entity
     removeEntity(world, eid)

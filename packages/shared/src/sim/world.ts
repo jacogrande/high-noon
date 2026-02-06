@@ -6,6 +6,7 @@
 
 import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
+import type { SpatialHash } from './SpatialHash'
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -61,6 +62,10 @@ export interface GameWorld extends IWorld {
   bulletCollisionCallbacks: Map<number, BulletCollisionCallback>
   /** Flow field for enemy pathfinding toward the player */
   flowField: FlowField | null
+  /** Spatial hash for broadphase collision queries */
+  spatialHash: SpatialHash | null
+  /** Previous tick's debug spawn button state (for edge detection) */
+  debugSpawnWasDown: boolean
 }
 
 /**
@@ -76,6 +81,8 @@ export function createGameWorld(): GameWorld {
     tilemap: null,
     bulletCollisionCallbacks: new Map(),
     flowField: null,
+    spatialHash: null,
+    debugSpawnWasDown: false,
   }
 }
 
@@ -95,5 +102,7 @@ export function resetWorld(world: GameWorld): void {
   world.tilemap = null
   world.bulletCollisionCallbacks.clear()
   world.flowField = null
+  world.spatialHash = null
+  world.debugSpawnWasDown = false
   // Note: bitECS entities persist - call removeEntity for each if needed
 }

@@ -14,13 +14,13 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Position, Velocity, Collider, Bullet } from '../components'
+import { MAX_COLLIDER_RADIUS } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { getTilesInCircle, getTileBounds, isSolidAt } from '../tilemap'
+import { forEachInRadius } from '../SpatialHash'
 
-// Query for all entities with collision
 // Note: bitECS queries are stateless and safe to share across multiple worlds.
 // Each query call filters the specific world passed as argument.
-const collidableQuery = defineQuery([Position, Collider])
 const movingCollidableQuery = defineQuery([Position, Velocity, Collider])
 
 /**
@@ -227,37 +227,36 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
 
   // Entity vs Entity collisions (for future enemies, etc.)
   // Currently only handles player vs other collidables
-  const allCollidables = collidableQuery(world)
+  if (world.spatialHash) {
+    for (const eid1 of movingEntities) {
+      const x1 = Position.x[eid1]!
+      const y1 = Position.y[eid1]!
+      const r1 = Collider.radius[eid1]!
+      const layer1 = Collider.layer[eid1]!
 
-  for (const eid1 of movingEntities) {
-    const x1 = Position.x[eid1]!
-    const y1 = Position.y[eid1]!
-    const r1 = Collider.radius[eid1]!
-    const layer1 = Collider.layer[eid1]!
+      const queryRadius = r1 + MAX_COLLIDER_RADIUS
 
-    for (const eid2 of allCollidables) {
-      // Skip self
-      if (eid1 === eid2) continue
+      forEachInRadius(world.spatialHash, x1, y1, queryRadius, (eid2) => {
+        if (eid1 === eid2) return
 
-      const x2 = Position.x[eid2]!
-      const y2 = Position.y[eid2]!
-      const r2 = Collider.radius[eid2]!
-      const layer2 = Collider.layer[eid2]!
+        const layer2 = Collider.layer[eid2]!
 
-      // Skip if same layer (players don't collide with players, etc.)
-      // This can be customized with a collision matrix later
-      if (layer1 === layer2) continue
+        // Skip if same layer (players don't collide with players, etc.)
+        if (layer1 === layer2) return
 
-      // Skip all bullet pairs — bullets are handled by bulletCollisionSystem.
-      // Push-out here would trap bullets near invincible entities.
-      if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) continue
+        // Skip all bullet pairs — bullets are handled by bulletCollisionSystem.
+        if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
 
-      const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
-      if (collision) {
-        // Push out the moving entity
-        Position.x[eid1] = x1 + collision.overlapX
-        Position.y[eid1] = y1 + collision.overlapY
-      }
+        const x2 = Position.x[eid2]!
+        const y2 = Position.y[eid2]!
+        const r2 = Collider.radius[eid2]!
+
+        const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
+        if (collision) {
+          Position.x[eid1] = x1 + collision.overlapX
+          Position.y[eid1] = y1 + collision.overlapY
+        }
+      })
     }
   }
 }
