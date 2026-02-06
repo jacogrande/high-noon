@@ -128,9 +128,10 @@ Visual feedback:
 import { BulletRenderer } from './render'
 
 const bulletRenderer = new BulletRenderer(spriteRegistry)
-bulletRenderer.sync(world)         // Create/remove sprites
-bulletRenderer.render(world, alpha) // Interpolate positions
-bulletRenderer.count               // Current bullet count
+bulletRenderer.sync(world)           // Create/remove sprites, populates removedPositions
+bulletRenderer.render(world, alpha)  // Interpolate positions
+bulletRenderer.count                 // Current bullet count
+bulletRenderer.removedPositions      // Positions of player bullets removed this tick
 ```
 
 Visual feedback:
@@ -142,9 +143,12 @@ Visual feedback:
 import { EnemyRenderer } from './render'
 
 const enemyRenderer = new EnemyRenderer(spriteRegistry, debugRenderer)
-const deathTrauma = enemyRenderer.sync(world)  // Create/remove sprites, returns death trauma
-enemyRenderer.render(world, alpha)              // Interpolate positions + AI state visuals
-enemyRenderer.count                             // Current enemy count
+const result = enemyRenderer.sync(world)  // Returns EnemySyncResult (consume immediately)
+// result.deathTrauma — accumulated trauma for camera shake
+// result.deaths — per-death {x, y, color, isThreat} for particles
+// result.hits — per-hit {x, y, color} for impact particles
+enemyRenderer.render(world, alpha)        // Interpolate positions + AI state visuals
+enemyRenderer.count                       // Current enemy count
 ```
 
 Enemy type colors:
@@ -181,6 +185,33 @@ collisionDebug.toggle()  // Toggle visibility
 collisionDebug.drawCollider(x, y, radius, color)
 collisionDebug.drawTileHighlight(tileX, tileY, tileSize, color)
 ```
+
+### `fx/` - Particle Effects
+
+**ParticlePool** - Pre-allocated sprite pool with SoA data layout:
+```typescript
+import { ParticlePool } from './fx'
+
+const particles = new ParticlePool(fxLayer)  // 512 pre-allocated Texture.WHITE sprites
+particles.emit({ x, y, vx, vy, life, startScale, endScale, startAlpha, endAlpha, tint })
+particles.update(dt)    // Advance active particles, recycle expired (call in render loop)
+particles.destroy()
+```
+
+Pool exhaustion silently drops new emissions (no crash). Swap-remove for O(1) recycle.
+
+**Emitter presets** - Game-specific emission functions:
+```typescript
+import { emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from './fx'
+
+emitMuzzleFlash(pool, x, y, aimAngle)           // 3-5 yellow particles, ±35° spread
+emitDeathBurst(pool, x, y, color, isThreat)     // 8-12 (fodder) or 15-20 (threat) colored burst
+emitWallImpact(pool, x, y)                      // 4-6 grey particles, full circle
+emitEntityImpact(pool, x, y, color)             // 3-5 enemy-colored particles on hit
+emitLevelUpSparkle(pool, x, y)                  // 12-16 gold particles, upward bias
+```
+
+Uses `Math.random()` for visual randomness (client-only, not deterministic sim).
 
 ### `scenes/` - Game Scenes
 
@@ -226,11 +257,19 @@ src/
     HitStop.ts       # Frame freeze effect
     noise.ts         # 1D Perlin noise for shake
     index.ts
+  audio/
+    SoundManager.ts     # Howler.js wrapper for audio playback
+    sounds.ts           # Sound path/volume definitions
+    index.ts
+  fx/
+    ParticlePool.ts     # Pre-allocated sprite pool with SoA data
+    emitters.ts         # 5 emitter preset functions
+    index.ts
   render/
     DebugRenderer.ts    # Debug shapes and stats overlay (player/camera/enemy AI telemetry)
     SpriteRegistry.ts   # Entity sprite management
     PlayerRenderer.ts   # Player entity rendering with damage flash
-    BulletRenderer.ts   # Bullet entity rendering
+    BulletRenderer.ts   # Bullet entity rendering, tracks removed player bullet positions
     EnemyRenderer.ts    # Enemy entity rendering (colored circles, AI state visuals, threat outlines)
     TilemapRenderer.ts  # Tilemap and collision debug rendering
     index.ts

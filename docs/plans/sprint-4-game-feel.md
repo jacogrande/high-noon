@@ -11,10 +11,10 @@ Add audio feedback, particle effects, floating damage numbers, a minimal HUD, sc
 ## Success Criteria
 
 - [x] Gunfire, hits, deaths, level-up, and upgrade selection all have sound effects
-- [ ] Muzzle flash particles on weapon fire
-- [ ] Enemy death burst particles (colored by enemy type)
-- [ ] Bullet impact particles (wall hits)
-- [ ] Level-up sparkle particles
+- [x] Muzzle flash particles on weapon fire
+- [x] Enemy death burst particles (colored by enemy type)
+- [x] Bullet impact particles (wall hits)
+- [x] Level-up sparkle particles
 - [ ] Floating damage numbers on enemy hits
 - [ ] HP bar, XP bar, and wave indicator HUD (not debug overlay)
 - [ ] Low-HP damage vignette (dark red screen edges)
@@ -375,10 +375,10 @@ Phases 2/3 and 4 are independent and can be worked in parallel after Phase 1.
 
 ### Phase 2: Particle System
 
-- [ ] 2.1 ParticlePool class with sprite pooling
-- [ ] 2.2 Five emitter presets (muzzle flash, wall impact, entity impact, death burst, level-up sparkle)
-- [ ] 2.3 EnemyRenderer/BulletRenderer expose death and impact positions
-- [ ] 2.4 Wire emitters in GameScene
+- [x] 2.1 ParticlePool class with sprite pooling
+- [x] 2.2 Five emitter presets (muzzle flash, wall impact, entity impact, death burst, level-up sparkle)
+- [x] 2.3 EnemyRenderer/BulletRenderer expose death and impact positions
+- [x] 2.4 Wire emitters in GameScene
 
 ### Phase 3: Damage Numbers
 

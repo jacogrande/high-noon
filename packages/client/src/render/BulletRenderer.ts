@@ -20,6 +20,8 @@ const bulletRenderQuery = defineQuery([Bullet, Position, Collider])
 export class BulletRenderer {
   private readonly registry: SpriteRegistry
   private readonly bulletEntities = new Set<number>()
+  private readonly playerBullets = new Set<number>()
+  readonly removedPositions: Array<{ x: number; y: number }> = []
 
   constructor(registry: SpriteRegistry) {
     this.registry = registry
@@ -30,6 +32,8 @@ export class BulletRenderer {
    * Creates sprites for new bullets, removes for despawned ones
    */
   sync(world: GameWorld): void {
+    this.removedPositions.length = 0
+
     const bullets = bulletRenderQuery(world)
 
     // Track which entities exist this frame
@@ -50,6 +54,11 @@ export class BulletRenderer {
         const rotation = Math.atan2(vy, vx)
         this.registry.setRotation(eid, rotation)
 
+        // Track player bullets for removal particles
+        if (Collider.layer[eid] === CollisionLayer.PLAYER_BULLET) {
+          this.playerBullets.add(eid)
+        }
+
         // Tint and scale enemy bullets by tier
         if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
           const ownerId = Bullet.ownerId[eid]!
@@ -63,6 +72,14 @@ export class BulletRenderer {
     // Remove sprites for despawned bullets
     for (const eid of this.bulletEntities) {
       if (!currentEntities.has(eid)) {
+        // Capture position of removed player bullets for impact particles
+        if (this.playerBullets.has(eid)) {
+          const displayObj = this.registry.get(eid)
+          if (displayObj) {
+            this.removedPositions.push({ x: displayObj.x, y: displayObj.y })
+          }
+          this.playerBullets.delete(eid)
+        }
         this.registry.remove(eid)
         this.bulletEntities.delete(eid)
       }
@@ -108,5 +125,7 @@ export class BulletRenderer {
       this.registry.remove(eid)
     }
     this.bulletEntities.clear()
+    this.playerBullets.clear()
+    this.removedPositions.length = 0
   }
 }

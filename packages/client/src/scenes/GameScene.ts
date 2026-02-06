@@ -67,6 +67,7 @@ import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 import { SoundManager } from '../audio/SoundManager'
 import { SOUND_DEFS } from '../audio/sounds'
+import { ParticlePool, emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from '../fx'
 
 const GAME_ZOOM = 2
 
@@ -100,6 +101,7 @@ export class GameScene {
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly sound: SoundManager
+  private readonly particles: ParticlePool
   private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
@@ -177,6 +179,10 @@ export class GameScene {
     // Audio
     this.sound = new SoundManager()
     this.sound.loadAll(SOUND_DEFS)
+
+    // Particles
+    this.particles = new ParticlePool(this.gameApp.layers.fx)
+
     this.lastRenderTime = performance.now()
 
     // Game Over text (hidden by default)
@@ -297,15 +303,26 @@ export class GameScene {
     // Sync renderers (create/remove sprites)
     this.playerRenderer.sync(this.world)
 
-    // Sync enemy renderer — returns death trauma for camera shake
-    const deathTrauma = this.enemyRenderer.sync(this.world)
-    if (deathTrauma > 0) {
-      this.camera.addTrauma(deathTrauma)
+    // Sync enemy renderer — returns death trauma + per-death data
+    const enemySync = this.enemyRenderer.sync(this.world)
+    if (enemySync.deathTrauma > 0) {
+      this.camera.addTrauma(enemySync.deathTrauma)
       this.sound.play('enemy_die')
+    }
+    for (const death of enemySync.deaths) {
+      emitDeathBurst(this.particles, death.x, death.y, death.color, death.isThreat)
+    }
+    for (const hit of enemySync.hits) {
+      emitEntityImpact(this.particles, hit.x, hit.y, hit.color)
     }
 
     // Sync bullet sprites
     this.bulletRenderer.sync(this.world)
+
+    // Bullet removal particles (player bullets only)
+    for (const pos of this.bulletRenderer.removedPositions) {
+      emitWallImpact(this.particles, pos.x, pos.y)
+    }
 
     // Detect player fire (cooldown increased means weapon fired and reset this tick)
     if (playerEid !== null && Weapon.cooldown[playerEid]! > prevCooldown) {
@@ -313,6 +330,7 @@ export class GameScene {
       this.camera.addTrauma(0.08)
       this.camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
       this.sound.play('fire')
+      emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
     }
 
     // Level-up detection: check if upgradeState.level surpassed lastProcessedLevel
@@ -324,6 +342,9 @@ export class GameScene {
       )
       this.paused = true
       this.sound.play('level_up')
+      if (playerEid !== null) {
+        emitLevelUpSparkle(this.particles, Position.x[playerEid]!, Position.y[playerEid]!)
+      }
     }
 
     // Update camera target
@@ -373,6 +394,9 @@ export class GameScene {
 
     // Render enemies with interpolation
     this.enemyRenderer.render(this.world, alpha, realDt)
+
+    // Update particles (visual-only, uses real frame dt)
+    this.particles.update(realDt)
 
     // Show Game Over text when local player is dead
     if (this.isPlayerDead()) {
@@ -431,6 +455,7 @@ export class GameScene {
   }
 
   destroy(): void {
+    this.particles.destroy()
     this.sound.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()

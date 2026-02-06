@@ -39,6 +39,13 @@ interface DeathEffect {
   duration: number
 }
 
+/** Data returned from sync() for particle/camera consumers */
+export interface EnemySyncResult {
+  deathTrauma: number
+  deaths: Array<{ x: number; y: number; color: number; isThreat: boolean }>
+  hits: Array<{ x: number; y: number; color: number }>
+}
+
 // Define query for enemy entities with rendering components
 const enemyRenderQuery = defineQuery([Enemy, Position, Collider])
 
@@ -50,12 +57,15 @@ export class EnemyRenderer {
   private readonly debug: DebugRenderer | undefined
   private readonly enemyEntities = new Set<number>()
   private readonly enemyTiers = new Map<number, number>()
+  private readonly enemyTypes = new Map<number, number>()
   private readonly lastColor = new Map<number, number>()
   private readonly lastAlpha = new Map<number, number>()
   private readonly currentEntities = new Set<number>()
   private readonly lastHP = new Map<number, number>()
   private readonly damageFlashTimer = new Map<number, number>()
   private readonly deathEffects: DeathEffect[] = []
+  /** Reused result object (mutated every sync() call) — consumer must read immediately */
+  private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -65,11 +75,15 @@ export class EnemyRenderer {
   /**
    * Sync sprites with enemy entities.
    * Creates circles for new enemies, removes for dead ones.
-   * Returns accumulated death trauma for camera shake.
+   * Returns death trauma and per-death data for particles.
    */
-  sync(world: GameWorld): number {
+  sync(world: GameWorld): EnemySyncResult {
+    const result = this.syncResult
+    result.deathTrauma = 0
+    result.deaths.length = 0
+    result.hits.length = 0
+
     const enemies = enemyRenderQuery(world)
-    let deathTrauma = 0
 
     // Track which entities exist this frame
     const currentEntities = this.currentEntities
@@ -78,15 +92,27 @@ export class EnemyRenderer {
     for (const eid of enemies) {
       currentEntities.add(eid)
 
-      // Create sprite if doesn't exist
       if (!this.enemyEntities.has(eid)) {
+        // Create sprite for new enemy
         const type = Enemy.type[eid]!
         const color = ENEMY_COLORS[type] ?? 0xff0000
         const radius = Collider.radius[eid]!
         this.registry.createCircle(eid, radius, color)
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
+        this.enemyTypes.set(eid, type)
         this.lastHP.set(eid, Health.current[eid]!)
+      } else {
+        // Detect damage on existing enemies (HP decreased this tick)
+        const currentHP = Health.current[eid]!
+        const prevHP = this.lastHP.get(eid) ?? currentHP
+        if (currentHP < prevHP) {
+          this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
+          const cachedType = this.enemyTypes.get(eid)
+          const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
+          result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color })
+        }
+        this.lastHP.set(eid, currentHP)
       }
     }
 
@@ -94,13 +120,23 @@ export class EnemyRenderer {
     for (const eid of this.enemyEntities) {
       if (!currentEntities.has(eid)) {
         const tier = this.enemyTiers.get(eid)
-        deathTrauma += tier === EnemyTier.THREAT ? 0.08 : 0.02
+        const isThreat = tier === EnemyTier.THREAT
+        result.deathTrauma += isThreat ? 0.08 : 0.02
+
+        // Read position from display object (ECS data may be recycled)
+        const displayObj = this.registry.get(eid)
+        const cachedType = this.enemyTypes.get(eid)
+        const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
+        if (displayObj) {
+          result.deaths.push({ x: displayObj.x, y: displayObj.y, color, isThreat })
+        }
 
         // Start death effect instead of immediate removal
         this.deathEffects.push({ eid, timer: 0, duration: DEATH_EFFECT_DURATION })
 
         this.enemyEntities.delete(eid)
         this.enemyTiers.delete(eid)
+        this.enemyTypes.delete(eid)
         this.lastColor.delete(eid)
         this.lastAlpha.delete(eid)
         this.lastHP.delete(eid)
@@ -108,7 +144,7 @@ export class EnemyRenderer {
       }
     }
 
-    return deathTrauma
+    return result
   }
 
   /**
@@ -135,15 +171,7 @@ export class EnemyRenderer {
       let color = normalColor
       let a = 1.0
 
-      // Damage flash: detect HP decrease
-      const currentHP = Health.current[eid]!
-      const prevHP = this.lastHP.get(eid) ?? currentHP
-      if (currentHP < prevHP) {
-        this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
-      }
-      this.lastHP.set(eid, currentHP)
-
-      // Damage flash timer
+      // Damage flash timer (set by sync() on HP decrease)
       const flashTimer = this.damageFlashTimer.get(eid) ?? 0
       if (flashTimer > 0) {
         color = 0xff0000
@@ -249,6 +277,7 @@ export class EnemyRenderer {
     this.deathEffects.length = 0
     this.enemyEntities.clear()
     this.enemyTiers.clear()
+    this.enemyTypes.clear()
     this.lastColor.clear()
     this.lastAlpha.clear()
     this.lastHP.clear()
