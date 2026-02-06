@@ -13,15 +13,15 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import {
   EnemyAI, AIState, Enemy, EnemyType, AttackConfig,
-  Position, Velocity, Collider, Health, Invincible, Dead, Player,
+  Position, Velocity, Collider, Health, Invincible, Dead,
 } from '../components'
 import { spawnBullet, CollisionLayer } from '../prefabs'
 import { transition } from './enemyAI'
 import { CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION } from '../content/enemies'
 import { ENEMY_BULLET_RANGE } from '../content/weapons'
+import { playerQuery } from '../queries'
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
-const playerQuery = defineQuery([Player, Position])
 
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
@@ -70,17 +70,17 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const playerY = Position.y[playerEid]!
 
     if (Enemy.type[eid] === EnemyType.CHARGER) {
-      // Charger: rush in locked aim direction
-      const aimX = AttackConfig.aimX[eid]!
-      const aimY = AttackConfig.aimY[eid]!
-      Velocity.x[eid] = aimX * CHARGER_CHARGE_SPEED
-      Velocity.y[eid] = aimY * CHARGER_CHARGE_SPEED
+      // Charger: set rush velocity once on ATTACK entry (aimX/aimY locked at TELEGRAPH)
+      if (EnemyAI.stateTimer[eid]! === 0) {
+        Velocity.x[eid] = AttackConfig.aimX[eid]! * CHARGER_CHARGE_SPEED
+        Velocity.y[eid] = AttackConfig.aimY[eid]! * CHARGER_CHARGE_SPEED
+      }
 
       // Contact damage check
       const chargerR = Collider.radius[eid]!
       const playerR = Collider.radius[playerEid]!
-      const cdx = Position.x[playerEid]! - ex
-      const cdy = Position.y[playerEid]! - ey
+      const cdx = playerX - ex
+      const cdy = playerY - ey
       const distSq = cdx * cdx + cdy * cdy
       const minDist = chargerR + playerR
 

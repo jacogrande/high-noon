@@ -88,9 +88,6 @@ export function stepWorld(
   systems: SystemRegistry,
   input?: InputState
 ): void {
-  // Store previous positions for interpolation
-  // (This will be done by movement system after we have entities)
-
   // Run all registered systems
   for (const system of systems.getSystems()) {
     system(world, TICK_S, input)

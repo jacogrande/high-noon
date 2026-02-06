@@ -12,6 +12,11 @@ import { Enemy, EnemyType, EnemyTier, Position, Collider, EnemyAI, AIState } fro
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
 
+/** Flash interval during telegraph state (in sim ticks) */
+const TELEGRAPH_FLASH_TICKS = 3
+/** Alpha applied during recovery state */
+const RECOVERY_ALPHA = 0.6
+
 /** Colors per enemy type (rendering data, client-only) */
 const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.SWARMER]: 0xffaaaa,   // pale pink
@@ -33,6 +38,7 @@ export class EnemyRenderer {
   private readonly enemyTiers = new Map<number, number>()
   private readonly lastColor = new Map<number, number>()
   private readonly lastAlpha = new Map<number, number>()
+  private readonly currentEntities = new Set<number>()
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -49,7 +55,8 @@ export class EnemyRenderer {
     let deathTrauma = 0
 
     // Track which entities exist this frame
-    const currentEntities = new Set<number>()
+    const currentEntities = this.currentEntities
+    currentEntities.clear()
 
     for (const eid of enemies) {
       currentEntities.add(eid)
@@ -108,10 +115,9 @@ export class EnemyRenderer {
       let a = 1.0
 
       if (state === AIState.TELEGRAPH) {
-        // Flash between normal and white every 3 ticks
-        color = Math.floor(world.tick / 3) % 2 === 0 ? 0xffffff : normalColor
+        color = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0 ? 0xffffff : normalColor
       } else if (state === AIState.RECOVERY) {
-        a = 0.6
+        a = RECOVERY_ALPHA
       }
 
       // Only update Graphics when value actually changes
@@ -149,5 +155,6 @@ export class EnemyRenderer {
     this.enemyTiers.clear()
     this.lastColor.clear()
     this.lastAlpha.clear()
+    this.currentEntities.clear()
   }
 }

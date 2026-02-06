@@ -11,9 +11,9 @@ import { Enemy, Detection, Position, EnemyAI, Player, Dead } from '../components
 import { NO_TARGET } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { worldToTile, isSolidAt } from '../tilemap'
+import { playerQuery } from '../queries'
 
 const enemyQuery = defineQuery([Enemy, Detection, Position, EnemyAI])
-const playerQuery = defineQuery([Player, Position])
 
 /**
  * Bresenham line-of-sight check between two world positions.
@@ -121,7 +121,7 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
         if (losReq === 0) {
           // No LOS required
           EnemyAI.targetEid[eid] = playerEid
-        } else if (tilemap && world.tick % 5 === eid % 5) {
+        } else if (tilemap && world.tick % 5 === Detection.staggerOffset[eid]!) {
           // Staggered LOS check
           if (hasLineOfSight(tilemap, ex, ey, playerX, playerY)) {
             EnemyAI.targetEid[eid] = playerEid

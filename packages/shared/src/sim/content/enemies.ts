@@ -78,9 +78,8 @@ export const CHARGER_RECOVERY = 0.8
 export const CHARGER_COOLDOWN = 3.0
 export const CHARGER_DAMAGE = 2
 export const CHARGER_CHARGE_SPEED = 300
+/** Duration of charger's ATTACK rush in seconds */
+export const CHARGER_CHARGE_DURATION = 0.4
 export const CHARGER_SEPARATION_RADIUS = 28
 export const CHARGER_BUDGET_COST = 3
 export const CHARGER_TIER = EnemyTier.THREAT
-
-/** Duration of charger's ATTACK rush in seconds */
-export const CHARGER_CHARGE_DURATION = 0.4

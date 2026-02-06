@@ -27,7 +27,7 @@ export function healthSystem(world: GameWorld, dt: number): void {
         // Player death — tag as dead, keep entity for rendering
         addComponent(world, Dead, eid)
       } else {
-        // Non-player death — clean up
+        // Non-player death — clean up (also cleaned in bulletCollisionSystem on hit)
         world.bulletCollisionCallbacks.delete(eid)
         removeEntity(world, eid)
       }

@@ -6,12 +6,11 @@
  * Recomputes only when the player crosses a tile boundary.
  */
 
-import { defineQuery, hasComponent } from 'bitecs'
+import { hasComponent } from 'bitecs'
 import type { GameWorld, FlowField } from '../world'
-import { Player, Position, Dead } from '../components'
+import { Position, Dead } from '../components'
 import { worldToTile, isSolidAt } from '../tilemap'
-
-const playerQuery = defineQuery([Player, Position])
+import { playerQuery } from '../queries'
 
 const UNREACHABLE = 0xFFFF
 const INV_SQRT2 = 0.7071067811865476

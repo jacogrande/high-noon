@@ -7,23 +7,18 @@
  * single-player and multiplayer (server runs the same system).
  */
 
-import { defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Player, Position } from '../components'
+import { Position } from '../components'
 import { spawnBullet, CollisionLayer, NO_OWNER } from '../prefabs'
 import { type InputState, Button, hasButton } from '../../net/input'
-
-const playerQuery = defineQuery([Player, Position])
-
-/** Track previous tick's button state for edge detection */
-let wasDown = false
+import { playerQuery } from '../queries'
 
 export function debugSpawnSystem(world: GameWorld, _dt: number, input?: InputState): void {
   if (!input) return
 
   const isDown = hasButton(input, Button.DEBUG_SPAWN)
-  const justPressed = isDown && !wasDown
-  wasDown = isDown
+  const justPressed = isDown && !world.debugSpawnWasDown
+  world.debugSpawnWasDown = isDown
 
   if (!justPressed) return
 
