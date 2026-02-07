@@ -14,7 +14,7 @@ export type AnimationState = (typeof ANIMATION_STATES)[number]
 
 /** Animation speeds (frames per second) */
 export const ANIMATION_SPEEDS: Record<AnimationState, number> = {
-  idle: 1, // Static, 1 frame
+  idle: 2, // Gentle bob using walk sprites (~30 ticks per frame)
   walk: 8, // 8 FPS walk cycle
   roll: 12, // Fast roll/dodge animation
   run: 8, // Run cycle
@@ -24,7 +24,7 @@ export const ANIMATION_SPEEDS: Record<AnimationState, number> = {
 
 /** Number of frames per animation */
 export const ANIMATION_FRAME_COUNTS: Record<AnimationState, number> = {
-  idle: 1,
+  idle: 2,
   walk: 2,
   roll: 3,
   run: 2,

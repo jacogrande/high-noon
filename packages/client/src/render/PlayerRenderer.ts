@@ -109,13 +109,18 @@ export class PlayerRenderer {
       const isInvincible = hasComponent(world, Invincible, eid)
 
       // Map PlayerStateType to animation state
+      // Idle uses walk sprites for a gentle bob; walk uses run sprites for more energy
       let animState: AnimationState
+      let spriteAnim: AnimationState
       if (playerState === PlayerStateType.ROLLING) {
         animState = 'roll'
+        spriteAnim = 'roll'
       } else if (playerState === PlayerStateType.MOVING) {
         animState = 'walk'
+        spriteAnim = 'run'
       } else {
         animState = 'idle'
+        spriteAnim = 'walk'
       }
 
       // Get 8-way direction from aim angle
@@ -125,7 +130,7 @@ export class PlayerRenderer {
       const frame = getAnimationFrame(animState, world.tick)
 
       // Update sprite texture
-      const texture = AssetLoader.getPlayerTexture(animState, direction, frame)
+      const texture = AssetLoader.getPlayerTexture(spriteAnim, direction, frame)
       this.registry.setTexture(eid, texture)
 
       // Set alpha based on invincibility
