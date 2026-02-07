@@ -10,9 +10,12 @@ import {
 import {
   PISTOL_FIRE_RATE, PISTOL_BULLET_SPEED,
   PISTOL_BULLET_DAMAGE, PISTOL_RANGE,
+  PISTOL_CYLINDER_SIZE, PISTOL_RELOAD_TIME,
+  PISTOL_MIN_FIRE_INTERVAL, PISTOL_HOLD_FIRE_RATE,
+  PISTOL_LAST_ROUND_MULTIPLIER,
 } from './content/weapons'
 import { getLevelForXP } from './content/xp'
-import { Weapon, Speed, Health } from './components'
+import { Weapon, Speed, Health, Cylinder } from './components'
 import type { GameWorld } from './world'
 
 export interface UpgradeState {
@@ -33,6 +36,11 @@ export interface UpgradeState {
   rollDuration: number
   rollIframeRatio: number
   rollSpeedMultiplier: number
+  cylinderSize: number
+  reloadTime: number
+  minFireInterval: number
+  holdFireRate: number
+  lastRoundMultiplier: number
 }
 
 export function initUpgradeState(): UpgradeState {
@@ -52,6 +60,11 @@ export function initUpgradeState(): UpgradeState {
     rollDuration: ROLL_DURATION,
     rollIframeRatio: ROLL_IFRAME_RATIO,
     rollSpeedMultiplier: ROLL_SPEED_MULTIPLIER,
+    cylinderSize: PISTOL_CYLINDER_SIZE,
+    reloadTime: PISTOL_RELOAD_TIME,
+    minFireInterval: PISTOL_MIN_FIRE_INTERVAL,
+    holdFireRate: PISTOL_HOLD_FIRE_RATE,
+    lastRoundMultiplier: PISTOL_LAST_ROUND_MULTIPLIER,
   }
 }
 
@@ -100,6 +113,13 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.rollDuration = calc(ROLL_DURATION, 'rollDuration')
   state.rollIframeRatio = calc(ROLL_IFRAME_RATIO, 'rollIframeRatio')
   state.rollSpeedMultiplier = calc(ROLL_SPEED_MULTIPLIER, 'rollSpeedMultiplier')
+
+  // Cylinder stats (no upgrade mods defined yet, but calc() will apply them when added)
+  state.cylinderSize = calc(PISTOL_CYLINDER_SIZE, 'cylinderSize')
+  state.reloadTime = calc(PISTOL_RELOAD_TIME, 'reloadTime')
+  state.minFireInterval = calc(PISTOL_MIN_FIRE_INTERVAL, 'minFireInterval')
+  state.holdFireRate = calc(PISTOL_HOLD_FIRE_RATE, 'holdFireRate')
+  state.lastRoundMultiplier = calc(PISTOL_LAST_ROUND_MULTIPLIER, 'lastRoundMultiplier')
 }
 
 /**
@@ -143,6 +163,10 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
 
   // I-frame duration
   Health.iframeDuration[playerEid] = state.iframeDuration
+
+  // Cylinder stats (only maxRounds and reloadTime — live state is not overwritten)
+  Cylinder.maxRounds[playerEid] = Math.round(state.cylinderSize)
+  Cylinder.reloadTime[playerEid] = state.reloadTime
 }
 
 /**

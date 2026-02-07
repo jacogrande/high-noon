@@ -23,6 +23,8 @@ const RECOVERY_ALPHA = 0.6
 const DAMAGE_FLASH_DURATION = 0.1
 /** Duration of death effect in seconds */
 const DEATH_EFFECT_DURATION = 0.15
+/** Duration of spawn effect in seconds */
+const SPAWN_EFFECT_DURATION = 0.5
 
 /** Colors per enemy type (rendering data, client-only) */
 const ENEMY_COLORS: Record<number, number> = {
@@ -63,6 +65,7 @@ export class EnemyRenderer {
   private readonly currentEntities = new Set<number>()
   private readonly lastHP = new Map<number, number>()
   private readonly damageFlashTimer = new Map<number, number>()
+  private readonly spawnTimer = new Map<number, number>()
   private readonly deathEffects: DeathEffect[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
@@ -102,6 +105,7 @@ export class EnemyRenderer {
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
         this.enemyTypes.set(eid, type)
         this.lastHP.set(eid, Health.current[eid]!)
+        this.spawnTimer.set(eid, SPAWN_EFFECT_DURATION)
       } else {
         // Detect damage on existing enemies (HP decreased this tick)
         const currentHP = Health.current[eid]!
@@ -145,6 +149,7 @@ export class EnemyRenderer {
         this.lastAlpha.delete(eid)
         this.lastHP.delete(eid)
         this.damageFlashTimer.delete(eid)
+        this.spawnTimer.delete(eid)
       }
     }
 
@@ -206,6 +211,16 @@ export class EnemyRenderer {
       } else {
         this.registry.setRotation(eid, 0)
         this.registry.setScale(eid, 1, 1)
+      }
+
+      // Spawn effect: scale up + white flash over 0.5s
+      const spawnRemaining = this.spawnTimer.get(eid) ?? 0
+      if (spawnRemaining > 0) {
+        const t = 1 - spawnRemaining / SPAWN_EFFECT_DURATION // 0→1
+        const scale = t * t // ease-in quadratic
+        this.registry.setScale(eid, scale, scale)
+        color = t < 0.5 ? 0xffffff : color
+        this.spawnTimer.set(eid, spawnRemaining - realDt)
       }
 
       this.registry.setPosition(eid, renderX, renderY)
@@ -286,6 +301,7 @@ export class EnemyRenderer {
     this.lastAlpha.clear()
     this.lastHP.clear()
     this.damageFlashTimer.clear()
+    this.spawnTimer.clear()
     this.currentEntities.clear()
   }
 }

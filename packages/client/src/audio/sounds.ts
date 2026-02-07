@@ -13,6 +13,9 @@ export const SOUND_DEFS = {
   level_up:       { src: '/assets/sfx/level_up.ogg',       volume: 0.5 },
   upgrade_select: { src: '/assets/sfx/upgrade_select.ogg', volume: 0.4 },
   wave_start:     { src: '/assets/sfx/wave_start.ogg',     volume: 0.4 },
+  reload_start:   { src: '/assets/sfx/reload_start.ogg',   volume: 0.4 },
+  reload_complete: { src: '/assets/sfx/reload_complete.ogg', volume: 0.4 },
+  dry_fire:       { src: '/assets/sfx/dry_fire.ogg',       volume: 0.3 },
 } as const satisfies Record<string, SoundDef>
 
 export type SoundName = keyof typeof SOUND_DEFS

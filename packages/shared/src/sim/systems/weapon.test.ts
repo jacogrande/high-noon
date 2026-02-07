@@ -4,8 +4,8 @@ import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { weaponSystem } from './weapon'
 import { Button, createInputState, setButton, type InputState } from '../../net/input'
-import { Weapon, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player } from '../components'
-import { PISTOL_FIRE_RATE } from '../content/weapons'
+import { Weapon, Cylinder, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player } from '../components'
+import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL } from '../content/weapons'
 
 describe('weaponSystem', () => {
   let world: GameWorld
@@ -24,43 +24,49 @@ describe('weaponSystem', () => {
   }
 
   describe('cooldown', () => {
-    test('decrements cooldown each tick', () => {
-      // Set initial cooldown
-      Weapon.cooldown[playerEid] = 0.5
-
-      // Run system without shooting
-      const input = createInputState()
-      weaponSystem(world, 0.1, input)
-
-      expect(Weapon.cooldown[playerEid]).toBeCloseTo(0.4)
-    })
-
-    test('cooldown does not go below zero', () => {
-      Weapon.cooldown[playerEid] = 0.05
-
-      const input = createInputState()
-      weaponSystem(world, 0.1, input)
-
-      expect(Weapon.cooldown[playerEid]).toBe(0)
-    })
-
-    test('cannot fire while on cooldown', () => {
-      Weapon.cooldown[playerEid] = 0.5
+    test('hold: cannot fire while cooldown is positive', () => {
+      Player.shootWasDown[playerEid] = 1
+      Cylinder.fireCooldown[playerEid] = 0.1
 
       const input = createShootInput()
       weaponSystem(world, 1 / 60, input)
 
-      // No bullet should be spawned - count entities with Bullet component
-      const bullets = countBullets(world)
-      expect(bullets).toBe(0)
+      expect(countBullets(world)).toBe(0)
     })
 
-    test('sets cooldown after firing', () => {
+    test('always sets hold-rate cooldown after firing', () => {
+      Player.shootWasDown[playerEid] = 0
       const input = createShootInput()
       weaponSystem(world, 1 / 60, input)
 
-      const expectedCooldown = 1 / PISTOL_FIRE_RATE
-      expect(Weapon.cooldown[playerEid]).toBeCloseTo(expectedCooldown)
+      const expectedCooldown = 1 / PISTOL_HOLD_FIRE_RATE
+      expect(Cylinder.fireCooldown[playerEid]).toBeCloseTo(expectedCooldown)
+    })
+
+    test('fresh click: fires through remaining cooldown if minFireInterval elapsed', () => {
+      // Simulate: previous shot set 200ms cooldown, 100ms has passed → 100ms remains
+      // elapsed = 200ms - 100ms = 100ms >= 75ms → should fire
+      Player.shootWasDown[playerEid] = 0
+      const holdCooldown = 1 / PISTOL_HOLD_FIRE_RATE
+      Cylinder.fireCooldown[playerEid] = holdCooldown - 0.1 // 100ms elapsed
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(countBullets(world)).toBe(1)
+    })
+
+    test('fresh click: blocked if less than minFireInterval elapsed', () => {
+      // Simulate: previous shot set 200ms cooldown, only 50ms passed → 150ms remains
+      // elapsed = 200ms - 150ms = 50ms < 75ms → should NOT fire
+      Player.shootWasDown[playerEid] = 0
+      const holdCooldown = 1 / PISTOL_HOLD_FIRE_RATE
+      Cylinder.fireCooldown[playerEid] = holdCooldown - 0.05 // only 50ms elapsed
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(countBullets(world)).toBe(0)
     })
   })
 

@@ -16,6 +16,7 @@ import {
   Speed,
   Collider,
   Weapon,
+  Cylinder,
   Bullet,
   Health,
   Enemy,
@@ -39,6 +40,8 @@ import {
   PISTOL_BULLET_SPEED,
   PISTOL_BULLET_DAMAGE,
   PISTOL_RANGE,
+  PISTOL_CYLINDER_SIZE,
+  PISTOL_RELOAD_TIME,
   BULLET_RADIUS,
   BULLET_LIFETIME,
 } from './content/weapons'
@@ -146,6 +149,16 @@ export function spawnPlayer(
   Weapon.bulletDamage[eid] = PISTOL_BULLET_DAMAGE
   Weapon.cooldown[eid] = 0
   Weapon.range[eid] = PISTOL_RANGE
+
+  // Set cylinder (revolver ammo)
+  addComponent(world, Cylinder, eid)
+  Cylinder.rounds[eid] = PISTOL_CYLINDER_SIZE
+  Cylinder.maxRounds[eid] = PISTOL_CYLINDER_SIZE
+  Cylinder.reloading[eid] = 0
+  Cylinder.reloadTimer[eid] = 0
+  Cylinder.reloadTime[eid] = PISTOL_RELOAD_TIME
+  Cylinder.firstShotAfterReload[eid] = 0
+  Cylinder.fireCooldown[eid] = 0
 
   return eid
 }

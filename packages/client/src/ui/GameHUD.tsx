@@ -18,6 +18,35 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
             : `WAVE ${state.waveNumber} / ${state.totalWaves}`}
       </div>
 
+      {/* Cylinder — bottom-left */}
+      <div style={styles.bottomLeft}>
+        <div style={styles.chamberRow}>
+          {Array.from({ length: state.cylinderMax }, (_, i) => {
+            const loaded = i < state.cylinderRounds
+            const isLastRound = state.cylinderRounds === 1 && i === 0
+            return (
+              <div key={i} style={{
+                ...styles.chamber,
+                backgroundColor: loaded
+                  ? (isLastRound ? '#ff4444' : '#ffcc00')
+                  : 'rgba(255, 204, 0, 0.2)',
+                boxShadow: loaded
+                  ? (isLastRound ? '0 0 6px rgba(255, 68, 68, 0.6)' : '0 0 4px rgba(255, 204, 0, 0.4)')
+                  : 'none',
+              }} />
+            )
+          })}
+        </div>
+        {state.isReloading && (
+          <>
+            <div style={styles.reloadBarOuter}>
+              <div style={{ ...styles.reloadFill, width: `${state.reloadProgress * 100}%` }} />
+            </div>
+            <div style={styles.reloadLabel}>RELOADING</div>
+          </>
+        )}
+      </div>
+
       {/* HP + XP stacked — bottom-right */}
       <div style={styles.bottomRight}>
         {/* XP bar (smaller, above HP) */}
@@ -64,6 +93,46 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#aaaaaa',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+    letterSpacing: '0.1em',
+  },
+  // Cylinder — bottom-left
+  bottomLeft: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  chamberRow: {
+    display: 'flex',
+    gap: 5,
+  },
+  chamber: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    transition: 'background-color 0.1s ease-out, box-shadow 0.1s ease-out',
+  },
+  reloadBarOuter: {
+    width: 73,
+    height: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  reloadFill: {
+    height: '100%',
+    backgroundColor: '#ffcc00',
+    borderRadius: 2,
+    transition: 'width 0.05s linear',
+  },
+  reloadLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#ffcc00',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     letterSpacing: '0.1em',
   },

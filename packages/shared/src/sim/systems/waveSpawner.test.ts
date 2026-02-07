@@ -415,6 +415,24 @@ describe('waveSpawnerSystem', () => {
         expect(dist).toBeGreaterThanOrEqual(minDist)
       }
     })
+
+    test('ring spawn positions cluster near spawnRadius', () => {
+      const rng = new SeededRng(42)
+      const playerX = 800
+      const playerY = 600
+      const spawnRadius = 300
+      const radiusSpread = 50
+
+      for (let i = 0; i < 100; i++) {
+        const pos = pickSpawnPosition(rng, playerX, playerY, null, 200, spawnRadius, radiusSpread)
+        const dx = pos.x - playerX
+        const dy = pos.y - playerY
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        // Player is centered — no clamping needed, all spawns should be within ring
+        expect(dist).toBeGreaterThanOrEqual(spawnRadius - radiusSpread)
+        expect(dist).toBeLessThanOrEqual(spawnRadius + radiusSpread)
+      }
+    })
   })
 
   describe('encounter state', () => {

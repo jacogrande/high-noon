@@ -40,6 +40,8 @@ export const Player = {
   aimAngle: new Float32Array(MAX_ENTITIES),
   /** Whether roll button was held last tick (for re-press detection) */
   rollButtonWasDown: new Uint8Array(MAX_ENTITIES),
+  /** Whether shoot button was held last tick (for click vs hold detection) */
+  shootWasDown: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Player state enum values */
@@ -162,6 +164,28 @@ export const Dead = {
 }
 
 // ============================================================================
+// Cylinder Components
+// ============================================================================
+
+/** Revolver cylinder state (ammo, reload, fire cooldown) */
+export const Cylinder = {
+  /** Current loaded rounds */
+  rounds: new Uint8Array(MAX_ENTITIES),
+  /** Maximum cylinder capacity */
+  maxRounds: new Uint8Array(MAX_ENTITIES),
+  /** Whether currently reloading (0/1) */
+  reloading: new Uint8Array(MAX_ENTITIES),
+  /** Elapsed reload time in seconds */
+  reloadTimer: new Float32Array(MAX_ENTITIES),
+  /** Total reload duration in seconds */
+  reloadTime: new Float32Array(MAX_ENTITIES),
+  /** Whether next shot is the first after a reload (0/1, for Steady Hand) */
+  firstShotAfterReload: new Uint8Array(MAX_ENTITIES),
+  /** Minimum time between shots in seconds (fire rate limiter) */
+  fireCooldown: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Enemy Components
 // ============================================================================
 
@@ -246,6 +270,7 @@ export const AllComponents = [
   StaticBody,
   Bullet,
   Weapon,
+  Cylinder,
   Invincible,
   Health,
   Dead,

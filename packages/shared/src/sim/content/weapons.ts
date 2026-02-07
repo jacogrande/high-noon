@@ -21,6 +21,25 @@ export const PISTOL_BULLET_DAMAGE = 10
 export const PISTOL_RANGE = 400
 
 // ============================================================================
+// Cylinder (revolver ammo)
+// ============================================================================
+
+/** Number of rounds in a full cylinder */
+export const PISTOL_CYLINDER_SIZE = 6
+
+/** Time in seconds to reload a full cylinder */
+export const PISTOL_RELOAD_TIME = 1.2
+
+/** Minimum time between shots in seconds (click-to-fire soft floor) */
+export const PISTOL_MIN_FIRE_INTERVAL = 0.075
+
+/** Shots per second when holding fire button */
+export const PISTOL_HOLD_FIRE_RATE = 3
+
+/** Damage multiplier applied to the last round in the cylinder */
+export const PISTOL_LAST_ROUND_MULTIPLIER = 1.5
+
+// ============================================================================
 // Bullet Parameters
 // ============================================================================
 

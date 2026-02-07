@@ -58,11 +58,15 @@ function getSpawnBounds() {
 }
 
 /**
- * Pick a spawn position anywhere in the playable area that is:
+ * Pick a spawn position in the playable area that is:
  * - At least minDist pixels from the player
  * - Not inside a solid tile (wall/obstacle)
  *
- * Retries up to 20 times, then relaxes minDist to 0 for a final batch.
+ * When spawnRadius > 0, uses ring-based spawning: picks points at
+ * spawnRadius ± radiusSpread from the player (just off-screen).
+ * Falls back to uniform random if ring positions fail (e.g. player near edge).
+ *
+ * When spawnRadius = 0, uses uniform random (legacy behavior).
  */
 export function pickSpawnPosition(
   rng: SeededRng,
@@ -70,22 +74,43 @@ export function pickSpawnPosition(
   playerY: number,
   tilemap: Tilemap | null,
   minDist = 200,
+  spawnRadius = 0,
+  radiusSpread = 0,
 ): { x: number; y: number } {
   const { left, right, top, bottom } = getSpawnBounds()
 
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const x = rng.nextRange(left, right)
-    const y = rng.nextRange(top, bottom)
+  if (spawnRadius > 0) {
+    // Ring-based spawning: pick points on a ring around the player
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const angle = rng.next() * Math.PI * 2
+      const dist = spawnRadius + rng.nextRange(-radiusSpread, radiusSpread)
+      const x = Math.max(left, Math.min(right, playerX + Math.cos(angle) * dist))
+      const y = Math.max(top, Math.min(bottom, playerY + Math.sin(angle) * dist))
 
-    // Reject if inside a wall
-    if (tilemap && isSolidAt(tilemap, x, y)) continue
+      // Reject if inside a wall
+      if (tilemap && isSolidAt(tilemap, x, y)) continue
 
-    // Reject if too close to player
-    const dx = x - playerX
-    const dy = y - playerY
-    if (dx * dx + dy * dy < minDist * minDist) continue
+      // Reject if clamping moved the point too close to the player
+      const dx = x - playerX
+      const dy = y - playerY
+      if (dx * dx + dy * dy < minDist * minDist) continue
 
-    return { x, y }
+      return { x, y }
+    }
+  } else {
+    // Uniform random spawning (legacy behavior)
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const x = rng.nextRange(left, right)
+      const y = rng.nextRange(top, bottom)
+
+      if (tilemap && isSolidAt(tilemap, x, y)) continue
+
+      const dx = x - playerX
+      const dy = y - playerY
+      if (dx * dx + dy * dy < minDist * minDist) continue
+
+      return { x, y }
+    }
   }
 
   // Relaxed fallback — drop minDist requirement, still avoid walls
@@ -182,11 +207,11 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       enc.fodderSpawnAccumulator = 0
       enc.threatKilledThisWave = 0
 
-      // Spawn all threats at once
+      // Spawn all threats at once — further out for reaction time
       let threatCount = 0
       for (const threat of waveDef.threats) {
         for (let i = 0; i < threat.count; i++) {
-          const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap)
+          const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 400, 80)
           spawnEnemy(world, threat.type, pos.x, pos.y)
           threatsSpawnedThisTick++
           threatCount++
@@ -200,7 +225,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
         const type = pickFromPool(rng, waveDef.fodderPool)
         const cost = BUDGET_COST[type] ?? 1
         if (enc.fodderBudgetRemaining < cost) continue
-        const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap)
+        const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 280, 60)
         spawnEnemy(world, type, pos.x, pos.y)
         enc.fodderBudgetRemaining -= cost
         enc.totalFodderSpawned++
@@ -232,7 +257,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       for (const entry of waveDef.fodderPool) {
         const entryCost = BUDGET_COST[entry.type] ?? 1
         if (enc.fodderBudgetRemaining >= entryCost) {
-          const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap)
+          const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 280, 60)
           spawnEnemy(world, entry.type, pos.x, pos.y)
           enc.fodderBudgetRemaining -= entryCost
           enc.totalFodderSpawned++
@@ -243,7 +268,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       }
       if (!found) break
     } else {
-      const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap)
+      const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 280, 60)
       spawnEnemy(world, type, pos.x, pos.y)
       enc.fodderBudgetRemaining -= cost
       enc.totalFodderSpawned++

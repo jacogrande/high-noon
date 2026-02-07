@@ -19,6 +19,7 @@ import {
   movementSystem,
   playerInputSystem,
   rollSystem,
+  cylinderSystem,
   collisionSystem,
   weaponSystem,
   bulletSystem,
@@ -45,7 +46,7 @@ import {
   Enemy,
   EnemyAI,
   AIState,
-  Weapon,
+  Cylinder,
   Bullet,
   type GameWorld,
   type SystemRegistry,
@@ -54,6 +55,8 @@ import {
   MAX_LEVEL,
   type UpgradeDef,
   type UpgradeId,
+  hasButton,
+  Button,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import { Text, TextStyle } from 'pixi.js'
@@ -97,6 +100,10 @@ export interface HUDState {
   waveNumber: number
   totalWaves: number
   waveStatus: 'active' | 'delay' | 'completed' | 'none'
+  cylinderRounds: number
+  cylinderMax: number
+  isReloading: boolean
+  reloadProgress: number
 }
 
 export class GameScene {
@@ -122,6 +129,7 @@ export class GameScene {
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private paused = false
   private lastProcessedLevel = 0
+  private dryFireCooldown = 0
 
   private constructor(config: GameSceneConfig) {
     this.gameApp = config.gameApp
@@ -140,6 +148,7 @@ export class GameScene {
     // Register systems in execution order
     this.systems.register(playerInputSystem)
     this.systems.register(rollSystem)
+    this.systems.register(cylinderSystem)
     this.systems.register(weaponSystem)
     this.systems.register(debugSpawnSystem)
     this.systems.register(waveSpawnerSystem)
@@ -256,6 +265,17 @@ export class GameScene {
       waveNumber: enc ? enc.currentWave + 1 : 0,
       totalWaves: enc ? enc.definition.waves.length : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
+      cylinderRounds: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+        ? Cylinder.rounds[playerEid]! : 0,
+      cylinderMax: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+        ? Cylinder.maxRounds[playerEid]! : 0,
+      isReloading: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+        ? Cylinder.reloading[playerEid]! === 1 : false,
+      reloadProgress: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+        ? (Cylinder.reloading[playerEid]! === 1 && Cylinder.reloadTime[playerEid]! > 0
+            ? Math.min(1, Cylinder.reloadTimer[playerEid]! / Cylinder.reloadTime[playerEid]!)
+            : 0)
+        : 0,
     }
   }
 
@@ -313,9 +333,14 @@ export class GameScene {
     // Get input state (now with correct world-space aim)
     const inputState = this.input.getInputState()
 
-    // Snapshot i-frames and weapon cooldown before sim step for change detection
+    // Snapshot i-frames and cylinder state before sim step for change detection
     const prevIframes = playerEid !== null ? Health.iframes[playerEid]! : 0
-    const prevCooldown = playerEid !== null ? Weapon.cooldown[playerEid]! : 1
+    const prevRounds = playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+      ? Cylinder.rounds[playerEid]!
+      : -1
+    const prevReloading = playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+      ? Cylinder.reloading[playerEid]!
+      : 0
 
     // Step the simulation
     stepWorld(this.world, this.systems, inputState)
@@ -361,13 +386,35 @@ export class GameScene {
       emitWallImpact(this.particles, pos.x, pos.y)
     }
 
-    // Detect player fire (cooldown increased means weapon fired and reset this tick)
-    if (playerEid !== null && Weapon.cooldown[playerEid]! > prevCooldown) {
-      const angle = Player.aimAngle[playerEid]!
-      this.camera.addTrauma(0.08)
-      this.camera.applyKick(Math.cos(angle), Math.sin(angle), 3)
-      this.sound.play('fire')
-      emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
+    // Detect player fire (cylinder rounds decreased)
+    if (playerEid !== null && prevRounds >= 0 && hasComponent(this.world, Cylinder, playerEid)) {
+      const newRounds = Cylinder.rounds[playerEid]!
+      if (newRounds < prevRounds) {
+        const angle = Player.aimAngle[playerEid]!
+        this.camera.addTrauma(0.15)
+        this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
+        this.sound.play('fire')
+        emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
+      }
+    }
+
+    // Detect reload state transitions
+    if (playerEid !== null && hasComponent(this.world, Cylinder, playerEid)) {
+      const nowReloading = Cylinder.reloading[playerEid]!
+      if (prevReloading === 0 && nowReloading === 1) {
+        this.sound.play('reload_start')
+      } else if (prevReloading === 1 && nowReloading === 0) {
+        this.sound.play('reload_complete')
+      }
+    }
+
+    // Dry fire: shoot pressed, empty cylinder, not reloading
+    this.dryFireCooldown = Math.max(0, this.dryFireCooldown - dt)
+    if (playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+        && Cylinder.rounds[playerEid]! === 0 && hasButton(inputState, Button.SHOOT)
+        && Cylinder.reloading[playerEid]! === 0 && this.dryFireCooldown <= 0) {
+      this.sound.play('dry_fire')
+      this.dryFireCooldown = 0.3
     }
 
     // Level-up detection: check if upgradeState.level surpassed lastProcessedLevel
