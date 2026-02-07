@@ -13,7 +13,7 @@ import { SHERIFF } from './content/characters'
 import { LEVEL_THRESHOLDS, MAX_LEVEL, getLevelForXP } from './content/xp'
 import { createGameWorld, type GameWorld } from './world'
 import { spawnPlayer } from './prefabs'
-import { Weapon, Speed, Health } from './components'
+import { Weapon, Speed, Health, Cylinder } from './components'
 
 describe('initUpgradeState', () => {
   test('base values match SHERIFF baseStats', () => {
@@ -358,5 +358,152 @@ describe('writeStatsToECS', () => {
     writeStatsToECS(world, playerEid)
 
     expect(Weapon.bulletDamage[playerEid]).toBe(255)
+  })
+
+  test('applies Last Stand damage bonus when active', () => {
+    world.upgradeState.bulletDamage = 10
+    world.upgradeState.lastStandActive = true
+    world.upgradeState.lastStandTimer = 3.0
+
+    writeStatsToECS(world, playerEid)
+
+    // 10 * 1.5 = 15
+    expect(Weapon.bulletDamage[playerEid]).toBe(15)
+  })
+
+  test('applies Last Stand speed bonus when active', () => {
+    world.upgradeState.speed = 250
+    world.upgradeState.lastStandActive = true
+    world.upgradeState.lastStandTimer = 3.0
+
+    writeStatsToECS(world, playerEid)
+
+    // 250 * 1.2 = 300
+    expect(Speed.max[playerEid]).toBe(300)
+    expect(Speed.current[playerEid]).toBe(300)
+  })
+
+  test('does not apply Last Stand bonuses when inactive', () => {
+    world.upgradeState.bulletDamage = 10
+    world.upgradeState.speed = 250
+    world.upgradeState.lastStandActive = false
+
+    writeStatsToECS(world, playerEid)
+
+    expect(Weapon.bulletDamage[playerEid]).toBe(10)
+    expect(Speed.max[playerEid]).toBe(250)
+  })
+
+  test('Last Stand bonuses are idempotent across multiple calls', () => {
+    world.upgradeState.bulletDamage = 10
+    world.upgradeState.speed = 250
+    world.upgradeState.lastStandActive = true
+    world.upgradeState.lastStandTimer = 3.0
+
+    // Call multiple times — should not compound
+    writeStatsToECS(world, playerEid)
+    writeStatsToECS(world, playerEid)
+    writeStatsToECS(world, playerEid)
+
+    expect(Weapon.bulletDamage[playerEid]).toBe(15) // still 10 * 1.5
+    expect(Speed.max[playerEid]).toBe(300) // still 250 * 1.2
+  })
+
+  test('writes cylinder stats', () => {
+    world.upgradeState.cylinderSize = 8
+    world.upgradeState.reloadTime = 0.9
+
+    writeStatsToECS(world, playerEid)
+
+    expect(Cylinder.maxRounds[playerEid]).toBe(8)
+    expect(Cylinder.reloadTime[playerEid]).toBeCloseTo(0.9)
+  })
+})
+
+describe('full skill tree progression', () => {
+  let state: UpgradeState
+
+  beforeEach(() => {
+    state = initUpgradeState(SHERIFF)
+    state.pendingPoints = 15
+  })
+
+  test('taking all Marksman nodes applies cumulative stats', () => {
+    // T1-T5 in Marksman
+    takeNode(state, 'steady_hand')
+    takeNode(state, 'piercing_rounds')
+    takeNode(state, 'called_shot')
+    takeNode(state, 'dead_to_rights')
+    takeNode(state, 'judge_jury_executioner')
+
+    expect(state.pendingPoints).toBe(10)
+    expect(state.nodesTaken.size).toBe(5)
+    // Called Shot: +2 showdownDuration, +0.5 showdownDamageMultiplier
+    expect(state.showdownDuration).toBeCloseTo(SHERIFF.baseStats.showdownDuration + 2)
+    expect(state.showdownDamageMultiplier).toBeCloseTo(SHERIFF.baseStats.showdownDamageMultiplier + 0.5)
+    // Dead to Rights: +3 showdownKillRefund
+    expect(state.showdownKillRefund).toBeCloseTo(SHERIFF.baseStats.showdownKillRefund + 3)
+  })
+
+  test('taking all Gunslinger nodes applies cumulative stats', () => {
+    takeNode(state, 'fan_the_hammer')
+    takeNode(state, 'speed_loader')
+    takeNode(state, 'hot_lead')
+    takeNode(state, 'drum_cylinder')
+    takeNode(state, 'dead_mans_hand')
+
+    expect(state.pendingPoints).toBe(10)
+    // Fan the Hammer: holdFireRate * 1.3
+    expect(state.holdFireRate).toBeCloseTo(SHERIFF.baseStats.holdFireRate * 1.3)
+    // Speed Loader: reloadTime * 0.7
+    expect(state.reloadTime).toBeCloseTo(SHERIFF.baseStats.reloadTime * 0.7)
+    // Hot Lead: bulletDamage * 1.25, bulletSpeed * 0.85
+    expect(state.bulletDamage).toBeCloseTo(SHERIFF.baseStats.bulletDamage * 1.25)
+    expect(state.bulletSpeed).toBeCloseTo(SHERIFF.baseStats.bulletSpeed * 0.85)
+    // Drum Cylinder: cylinderSize + 2
+    expect(state.cylinderSize).toBe(SHERIFF.baseStats.cylinderSize + 2)
+  })
+
+  test('taking all Lawman nodes applies cumulative stats', () => {
+    takeNode(state, 'tin_star')
+    takeNode(state, 'quick_reload')
+    takeNode(state, 'iron_will')
+    takeNode(state, 'second_wind')
+    takeNode(state, 'last_stand')
+
+    expect(state.pendingPoints).toBe(10)
+    // Tin Star: maxHP + 2
+    expect(state.maxHP).toBe(SHERIFF.baseStats.maxHP + 2)
+    // Quick Reload: reloadTime * 0.6
+    expect(state.reloadTime).toBeCloseTo(SHERIFF.baseStats.reloadTime * 0.6)
+    // Iron Will: iframeDuration + 0.3, rollSpeedMultiplier * 1.25
+    expect(state.iframeDuration).toBeCloseTo(SHERIFF.baseStats.iframeDuration + 0.3)
+    expect(state.rollSpeedMultiplier).toBeCloseTo(SHERIFF.baseStats.rollSpeedMultiplier * 1.25)
+  })
+
+  test('cross-branch progression works independently', () => {
+    // Take T1 from each branch
+    takeNode(state, 'steady_hand')
+    takeNode(state, 'fan_the_hammer')
+    takeNode(state, 'tin_star')
+
+    expect(state.pendingPoints).toBe(12)
+    expect(state.nodesTaken.size).toBe(3)
+
+    // Stats from all three should be applied
+    expect(state.holdFireRate).toBeCloseTo(SHERIFF.baseStats.holdFireRate * 1.3)
+    expect(state.maxHP).toBe(SHERIFF.baseStats.maxHP + 2)
+  })
+
+  test('stacking reload mods from different branches', () => {
+    // Quick Reload (Lawman T2): reloadTime * 0.6
+    takeNode(state, 'tin_star')
+    takeNode(state, 'quick_reload')
+    // Speed Loader (Gunslinger T2): reloadTime * 0.7
+    takeNode(state, 'fan_the_hammer')
+    takeNode(state, 'speed_loader')
+
+    // Both multiplicative: base * 0.6 * 0.7
+    expect(state.reloadTime).toBeCloseTo(SHERIFF.baseStats.reloadTime * 0.6 * 0.7)
   })
 })

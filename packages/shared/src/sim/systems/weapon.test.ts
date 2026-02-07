@@ -1,11 +1,13 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
-import { hasComponent, addComponent } from 'bitecs'
+import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { weaponSystem } from './weapon'
 import { Button, createInputState, setButton, type InputState } from '../../net/input'
 import { Weapon, Cylinder, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player } from '../components'
-import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL } from '../content/weapons'
+import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL, PISTOL_CYLINDER_SIZE, PISTOL_LAST_ROUND_MULTIPLIER, PISTOL_BULLET_DAMAGE } from '../content/weapons'
+
+const bulletQuery = defineQuery([Bullet])
 
 describe('weaponSystem', () => {
   let world: GameWorld
@@ -153,6 +155,91 @@ describe('weaponSystem', () => {
     })
   })
 
+  describe('cylinder interaction', () => {
+    test('firing decrements cylinder rounds', () => {
+      Cylinder.rounds[playerEid] = 6
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(Cylinder.rounds[playerEid]).toBe(5)
+    })
+
+    test('cannot fire with 0 rounds', () => {
+      Cylinder.rounds[playerEid] = 0
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(countBullets(world)).toBe(0)
+    })
+
+    test('last round applies damage multiplier', () => {
+      Cylinder.rounds[playerEid] = 1 // exactly 1 round left
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      const bulletEid = findBulletEntity(world)
+      expect(bulletEid).not.toBeNull()
+
+      const expectedDamage = Math.min(
+        255,
+        Math.round(PISTOL_BULLET_DAMAGE * PISTOL_LAST_ROUND_MULTIPLIER),
+      )
+      expect(Bullet.damage[bulletEid!]).toBe(expectedDamage)
+    })
+
+    test('non-last round does not apply multiplier', () => {
+      Cylinder.rounds[playerEid] = 2
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      const bulletEid = findBulletEntity(world)
+      expect(bulletEid).not.toBeNull()
+      expect(Bullet.damage[bulletEid!]).toBe(PISTOL_BULLET_DAMAGE)
+    })
+
+    test('fires onCylinderEmpty hook when last round consumed', () => {
+      Cylinder.rounds[playerEid] = 1
+      let hookFired = false
+      world.hooks.register('onCylinderEmpty', 'test', () => {
+        hookFired = true
+      })
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(Cylinder.rounds[playerEid]).toBe(0)
+      expect(hookFired).toBe(true)
+    })
+
+    test('does not fire onCylinderEmpty when rounds remain', () => {
+      Cylinder.rounds[playerEid] = 2
+      let hookFired = false
+      world.hooks.register('onCylinderEmpty', 'test', () => {
+        hookFired = true
+      })
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(Cylinder.rounds[playerEid]).toBe(1)
+      expect(hookFired).toBe(false)
+    })
+
+    test('resets firstShotAfterReload on fire', () => {
+      Cylinder.firstShotAfterReload[playerEid] = 1
+      Cylinder.rounds[playerEid] = 3
+
+      const input = createShootInput()
+      weaponSystem(world, 1 / 60, input)
+
+      expect(Cylinder.firstShotAfterReload[playerEid]).toBe(0)
+    })
+  })
+
   describe('no input', () => {
     test('does nothing without input state', () => {
       weaponSystem(world, 1 / 60, undefined)
@@ -163,24 +250,13 @@ describe('weaponSystem', () => {
   })
 })
 
-// Helper to count bullet entities
+// Helper to count bullet entities (uses bitECS query for cross-test safety)
 function countBullets(world: GameWorld): number {
-  let count = 0
-  // Check entities starting from 1 (entity 0 is often reserved)
-  for (let eid = 0; eid < 100; eid++) {
-    if (hasComponent(world, Bullet, eid)) {
-      count++
-    }
-  }
-  return count
+  return bulletQuery(world).length
 }
 
-// Helper to find a bullet entity
+// Helper to find a bullet entity (uses bitECS query for cross-test safety)
 function findBulletEntity(world: GameWorld): number | null {
-  for (let eid = 0; eid < 100; eid++) {
-    if (hasComponent(world, Bullet, eid)) {
-      return eid
-    }
-  }
-  return null
+  const bullets = bulletQuery(world)
+  return bullets.length > 0 ? bullets[0]! : null
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
-import { hasComponent, addComponent } from 'bitecs'
+import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import {
   spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
@@ -24,12 +24,9 @@ describe('enemyAttackSystem', () => {
     playerEid = spawnPlayer(world, 200, 200)
   })
 
+  const bulletQuery = defineQuery([Bullet])
   function countBullets(): number {
-    let count = 0
-    for (let eid = 0; eid < 200; eid++) {
-      if (hasComponent(world, Bullet, eid)) count++
-    }
-    return count
+    return bulletQuery(world).length
   }
 
   describe('projectile enemies', () => {
