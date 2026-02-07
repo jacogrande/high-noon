@@ -18,6 +18,7 @@ import {
   PlayerStateType,
   Invincible,
   Health,
+  Dead,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import {
@@ -43,6 +44,7 @@ const playerPositionQuery = defineQuery([Player, Position])
 export class PlayerRenderer {
   private readonly registry: SpriteRegistry
   private playerEntity: number | null = null
+  private deathStartTime: number | null = null
 
   constructor(registry: SpriteRegistry) {
     this.registry = registry
@@ -107,12 +109,15 @@ export class PlayerRenderer {
       const playerState = PlayerState.state[eid]!
       const aimAngle = Player.aimAngle[eid]!
       const isInvincible = hasComponent(world, Invincible, eid)
+      const isDead = hasComponent(world, Dead, eid)
 
-      // Map PlayerStateType to animation state
+      // Death takes priority over all other states
       // Hurt overrides other states when damage i-frames are active
-      const isHurt = hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
+      const isHurt = !isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
       let animState: AnimationState
-      if (isHurt) {
+      if (isDead) {
+        animState = 'death'
+      } else if (isHurt) {
         animState = 'hurt'
       } else if (playerState === PlayerStateType.ROLLING) {
         animState = 'roll'
@@ -128,9 +133,19 @@ export class PlayerRenderer {
       // W mirrors E sprite with horizontal flip
       const needsMirror = direction === 'W'
 
-      // Get animation frame — hurt plays from the start of the hit, others use global tick
+      // Get animation frame — death and hurt play from start of event, others use global tick
       let frame: number
-      if (isHurt) {
+      if (isDead) {
+        if (this.deathStartTime === null) {
+          this.deathStartTime = performance.now()
+        }
+        const elapsedSec = (performance.now() - this.deathStartTime) / 1000
+        const fps = ANIMATION_SPEEDS.death
+        frame = Math.min(
+          Math.floor(elapsedSec * fps),
+          ANIMATION_FRAME_COUNTS.death - 1
+        )
+      } else if (isHurt) {
         const elapsed = Health.iframeDuration[eid]! - Health.iframes[eid]!
         const elapsedTicks = elapsed * 60
         const ticksPerFrame = 60 / ANIMATION_SPEEDS.hurt
@@ -152,15 +167,15 @@ export class PlayerRenderer {
         sprite.scale.x = needsMirror ? -Math.abs(sprite.scale.x) : Math.abs(sprite.scale.x)
       }
 
-      // Set alpha based on invincibility
-      if (isInvincible) {
+      // Set alpha based on invincibility (dead = normal alpha)
+      if (!isDead && isInvincible) {
         this.registry.setAlpha(eid, ALPHA_INVINCIBLE)
       } else {
         this.registry.setAlpha(eid, ALPHA_NORMAL)
       }
 
-      // Damage flash: red flicker when damage i-frames active
-      if (hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
+      // Damage flash: red flicker when damage i-frames active (skip when dead)
+      if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
         const flash = Math.floor(world.tick / 3) % 2 === 0
         this.registry.setTint(eid, flash ? 0xFF4444 : 0xFFFFFF)
       } else {

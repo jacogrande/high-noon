@@ -17,7 +17,7 @@ export const SPRITE_ROW: Record<Exclude<Direction, 'W'>, number> = {
 }
 
 /** Player animation states (game-facing) */
-export const ANIMATION_STATES = ['idle', 'walk', 'roll', 'hurt'] as const
+export const ANIMATION_STATES = ['idle', 'walk', 'roll', 'hurt', 'death'] as const
 export type AnimationState = (typeof ANIMATION_STATES)[number]
 
 /** Cell size in the sprite sheets (px) */
@@ -29,6 +29,7 @@ export const PLAYER_SPRITE_INFO: Record<AnimationState, { file: string; frames: 
   walk: { file: 'run.png', frames: 8 },
   roll: { file: 'jump.png', frames: 6 },
   hurt: { file: 'hurt.png', frames: 4 },
+  death: { file: 'death.png', frames: 6 },
 }
 
 /** Animation speeds (frames per second) */
@@ -37,6 +38,7 @@ export const ANIMATION_SPEEDS: Record<AnimationState, number> = {
   walk: 10,
   roll: 12,
   hurt: 8,
+  death: 8,
 }
 
 /** Number of frames per animation (derived from PLAYER_SPRITE_INFO) */
@@ -45,6 +47,7 @@ export const ANIMATION_FRAME_COUNTS: Record<AnimationState, number> = {
   walk: PLAYER_SPRITE_INFO.walk.frames,
   roll: PLAYER_SPRITE_INFO.roll.frames,
   hurt: PLAYER_SPRITE_INFO.hurt.frames,
+  death: PLAYER_SPRITE_INFO.death.frames,
 }
 
 /**

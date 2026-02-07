@@ -61,7 +61,7 @@ import {
   Button,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
-import { Text, TextStyle } from 'pixi.js'
+import { Text, TextStyle, Graphics } from 'pixi.js'
 import type { GameApp } from '../engine/GameApp'
 import { Input } from '../engine/Input'
 import { Camera } from '../engine/Camera'
@@ -78,6 +78,11 @@ import { SOUND_DEFS } from '../audio/sounds'
 import { ParticlePool, FloatingTextPool, emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from '../fx'
 
 const GAME_ZOOM = 2
+
+/** Death sequence timing */
+const DEATH_ANIM_DURATION = 0.75 // 6 frames at 8 FPS (seconds)
+const FADE_DURATION = 1.0         // black fade-in duration (seconds)
+const GAME_OVER_DELAY = DEATH_ANIM_DURATION + FADE_DURATION
 
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
@@ -113,6 +118,7 @@ export interface HUDState {
   showdownTimeLeft: number
   showdownDurationMax: number
   pendingPoints: number
+  isDead: boolean
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'
@@ -149,6 +155,8 @@ export class GameScene {
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
   private readonly gameOverText: Text
+  private readonly fadeOverlay: Graphics
+  private deathTime: number | null = null
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private lastProcessedLevel = 0
@@ -236,14 +244,22 @@ export class GameScene {
 
     this.lastRenderTime = performance.now()
 
+    // Black fade overlay (hidden by default)
+    this.fadeOverlay = new Graphics()
+    this.fadeOverlay.rect(0, 0, 1, 1)
+    this.fadeOverlay.fill(0x000000)
+    this.fadeOverlay.alpha = 0
+    this.fadeOverlay.visible = false
+    this.gameApp.layers.ui.addChild(this.fadeOverlay)
+
     // Game Over text (hidden by default)
     this.gameOverText = new Text({
       text: 'GAME OVER',
       style: new TextStyle({
         fontFamily: 'monospace',
-        fontSize: 48,
-        fill: '#ff0000',
-        stroke: { color: '#000000', width: 4 },
+        fontSize: 72,
+        fill: '#cc0000',
+        stroke: { color: '#000000', width: 6 },
       }),
     })
     this.gameOverText.anchor.set(0.5)
@@ -319,6 +335,7 @@ export class GameScene {
         ? Showdown.duration[playerEid]! : 0,
       showdownDurationMax: this.world.upgradeState.showdownDuration,
       pendingPoints: this.world.upgradeState.pendingPoints,
+      isDead: this.isPlayerDead(),
     }
   }
 
@@ -551,11 +568,28 @@ export class GameScene {
     this.particles.update(realDt)
     this.floatingText.update(realDt)
 
-    // Show Game Over text when local player is dead
+    // Death sequence: anim → fade to black → GAME OVER text
     if (this.isPlayerDead()) {
-      this.gameOverText.x = this.gameApp.width / 2
-      this.gameOverText.y = this.gameApp.height / 2
-      this.gameOverText.visible = true
+      if (this.deathTime === null) {
+        this.deathTime = performance.now()
+      }
+
+      const elapsed = (performance.now() - this.deathTime) / 1000
+
+      // Phase 2: Fade to black after death animation completes
+      if (elapsed > DEATH_ANIM_DURATION) {
+        this.fadeOverlay.visible = true
+        this.fadeOverlay.scale.set(this.gameApp.width, this.gameApp.height)
+        const fadeProgress = Math.min((elapsed - DEATH_ANIM_DURATION) / FADE_DURATION, 1)
+        this.fadeOverlay.alpha = fadeProgress
+      }
+
+      // Phase 3: Show GAME OVER text after fade completes
+      if (elapsed > GAME_OVER_DELAY) {
+        this.gameOverText.x = this.gameApp.width / 2
+        this.gameOverText.y = this.gameApp.height / 2
+        this.gameOverText.visible = true
+      }
     }
 
     // Build expanded debug stats (playerEid already declared above)
@@ -613,6 +647,7 @@ export class GameScene {
     this.sound.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
+    this.fadeOverlay.destroy()
     this.gameOverText.destroy()
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()

@@ -186,7 +186,7 @@ export function Game() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showSkillTree && <GameHUD state={hudState} />}
+      {hudState && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
       {showSkillTree && skillTreeData && (
         <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
       )}
