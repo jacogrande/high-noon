@@ -17,6 +17,8 @@ The core game simulation using bitECS.
 - `components.ts` - All component definitions
 - `prefabs.ts` - Entity factory functions (spawnPlayer, etc.)
 - `tilemap.ts` - Tilemap data structure and collision helpers
+- `upgrade.ts` - Skill tree state, stat recomputation, and ECS stat writing
+- `hooks.ts` - HookRegistry for behavioral node effects (transform + notify hooks)
 - `systems/` - Individual system implementations
 - `content/` - Data-driven game content definitions
 

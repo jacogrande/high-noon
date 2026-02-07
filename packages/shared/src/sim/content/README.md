@@ -10,6 +10,10 @@ Data-driven game content definitions.
 - `waves.ts` - Wave/encounter definitions (STAGE_1_ENCOUNTER)
 - `xp.ts` - XP values per enemy type, level thresholds, `getLevelForXP()`
 - `upgrades.ts` - 15 upgrade definitions (enums, stat mods, rarity weights)
+- `characters/` - Character definitions (base stats, skill branches, node defs)
+  - `types.ts` - CharacterDef, SkillBranch, SkillNodeDef, StatMod types
+  - `sheriff.ts` - Sheriff character: 5 branches, 15 skill nodes (all implemented)
+- `nodeEffects.ts` - Behavioral effect handlers for skill nodes (pierce, burst, dodge-heal, timed buffs)
 - `maps/testArena.ts` - Test arena map with walls and obstacles
 
 ## Planned Content
@@ -53,6 +57,19 @@ export const BULLET_RADIUS = 4             // collision radius
 export const BULLET_LIFETIME = 5.0         // failsafe despawn (seconds)
 ```
 
+## Node Effect System
+
+Behavioral skill effects that can't be expressed as pure stat mods are registered
+as event hooks via `nodeEffects.ts`. When a node is taken, `applyNodeEffect(world, nodeId)`
+registers the appropriate handlers on the world's `HookRegistry`.
+
+Current behavioral effects:
+- **Piercing Rounds** — `onBulletHit` transform: bullets pass through one extra enemy
+- **Judge, Jury & Executioner** — `onBulletHit` transform: 2x damage on last cylinder round
+- **Second Wind** — `onRollDodge` notify: heal 1 HP when rolling through a projectile
+- **Dead Man's Hand** — `onCylinderEmpty` notify: 3-shot burst spread on empty cylinder
+- **Last Stand** — `onHealthChanged` notify: +50% damage/+20% speed for 5s at 1 HP
+
 ## Dependencies
 
-None - pure data definitions.
+None - pure data definitions (nodeEffects.ts depends on sim components and hooks).

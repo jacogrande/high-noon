@@ -5,14 +5,15 @@ Individual ECS systems that operate on the game world.
 ## Current Systems
 
 - `playerInput.ts` - Convert input to player velocity, initiate rolls
-- `roll.ts` - Manage roll state, i-frames, and locked velocity
-- `showdown.ts` - Showdown ability: mark enemy, speed bonus, kill detection, cooldown
+- `roll.ts` - Manage roll state, i-frames, locked velocity, and dodge detection (onRollDodge hook)
+- `showdown.ts` - Showdown ability: mark enemy, speed bonus, kill detection, cooldown, onShowdownActivate hook
 - `cylinder.ts` - Revolver cylinder: reload state machine, fire cooldown, auto-reload
-- `weapon.ts` - Handle firing, cooldowns, spawn bullets (cylinder-aware)
+- `weapon.ts` - Handle firing, cooldowns, spawn bullets (cylinder-aware), onCylinderEmpty hook
 - `bullet.ts` - Track bullet distance traveled, despawn at range/lifetime
-- `bulletCollision.ts` - Bullet vs entity (circle-circle, layer filtering, Showdown pierce/bonus damage) and bullet vs tilemap
+- `bulletCollision.ts` - Bullet vs entity (circle-circle, layer filtering, Showdown pierce/bonus damage, hook-based pierce) and bullet vs tilemap
 - `movement.ts` - Apply velocity to position, store previous for interpolation
-- `health.ts` - Iframe countdown, death processing (Dead tag for players, removeEntity for others), XP awards
+- `health.ts` - Iframe countdown, death processing (Dead tag for players, removeEntity for others), XP awards, onKill hook
+- `buffSystem.ts` - Timed buff state ticking (Last Stand timer); stat bonuses applied idempotently in writeStatsToECS
 - `collision.ts` - Circle vs tilemap and circle vs circle collision detection/resolution
 - `debugSpawn.ts` - Debug: spawn test enemy bullets on DEBUG_SPAWN button press
 - `flowField.ts` - BFS pathfinding toward the player for enemy navigation
@@ -43,8 +44,9 @@ Systems run in a specific order each tick:
 14. `enemyAttackSystem` - Attack execution
 15. `movementSystem` - Applies velocity, stores prev position
 16. `bulletCollisionSystem` - Entity hits then wall hits, Showdown pierce/bonus
-17. `healthSystem` - Iframe countdown, death processing, XP
-18. `collisionSystem` - Push-out resolution
+17. `healthSystem` - Iframe countdown, death processing, XP, onKill hook
+18. `buffSystem` - Timed buff ticking (Last Stand)
+19. `collisionSystem` - Push-out resolution
 
 ## Design Pattern
 
