@@ -2,6 +2,7 @@ import type { CharacterDef, StatName, SkillNodeDef, SkillBranch } from './conten
 import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
 import type { GameWorld } from './world'
+import { applyNodeEffect } from './content/nodeEffects'
 
 export interface UpgradeState {
   characterDef: CharacterDef
@@ -36,6 +37,10 @@ export interface UpgradeState {
   showdownDamageMultiplier: number
   showdownSpeedBonus: number
   showdownMarkRange: number
+
+  // Timed buff state
+  lastStandActive: boolean
+  lastStandTimer: number
 }
 
 export function initUpgradeState(charDef: CharacterDef): UpgradeState {
@@ -67,6 +72,8 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     showdownDamageMultiplier: b.showdownDamageMultiplier,
     showdownSpeedBonus: b.showdownSpeedBonus,
     showdownMarkRange: b.showdownMarkRange,
+    lastStandActive: false,
+    lastStandTimer: 0,
   }
 }
 
@@ -155,13 +162,19 @@ export function canTakeNode(state: UpgradeState, nodeId: string): boolean {
 
 /**
  * Take a skill node: validates, adds to nodesTaken, decrements pendingPoints,
- * and recomputes stats. Returns true on success.
+ * recomputes stats, and registers behavioral hooks. Returns true on success.
  */
-export function takeNode(state: UpgradeState, nodeId: string): boolean {
+export function takeNode(state: UpgradeState, nodeId: string, world?: GameWorld): boolean {
   if (!canTakeNode(state, nodeId)) return false
   state.nodesTaken.add(nodeId)
   state.pendingPoints--
   recomputePlayerStats(state)
+
+  // Register behavioral hooks for this node (if any)
+  if (world) {
+    applyNodeEffect(world, nodeId)
+  }
+
   return true
 }
 
@@ -180,21 +193,35 @@ export function findNode(
   return null
 }
 
+// Last Stand buff multipliers (applied idempotently in writeStatsToECS)
+const LAST_STAND_DAMAGE_BONUS = 1.5
+const LAST_STAND_SPEED_BONUS = 1.2
+
 /**
  * Write computed stats from UpgradeState into ECS components on the player entity.
+ * Also applies active timed buffs (Last Stand) idempotently.
  */
 export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   const state = world.upgradeState
 
   // Weapon stats
+  let bulletDamage = state.bulletDamage
+  let speed = state.speed
+
+  // Apply Last Stand buff bonuses (idempotent — always computed from base)
+  if (state.lastStandActive) {
+    bulletDamage *= LAST_STAND_DAMAGE_BONUS
+    speed *= LAST_STAND_SPEED_BONUS
+  }
+
   Weapon.fireRate[playerEid] = state.fireRate
-  Weapon.bulletDamage[playerEid] = Math.min(255, Math.round(state.bulletDamage))
+  Weapon.bulletDamage[playerEid] = Math.min(255, Math.round(bulletDamage))
   Weapon.bulletSpeed[playerEid] = state.bulletSpeed
   Weapon.range[playerEid] = state.range
 
   // Movement
-  Speed.max[playerEid] = state.speed
-  Speed.current[playerEid] = state.speed
+  Speed.max[playerEid] = speed
+  Speed.current[playerEid] = speed
 
   // Health — heal the delta if max increased
   const oldMax = Health.max[playerEid]!

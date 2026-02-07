@@ -43,6 +43,8 @@ export function bulletSystem(world: GameWorld, dt: number): void {
     if (distanceTraveled >= range || lifetime <= 0) {
       // Clean up collision callback if registered
       world.bulletCollisionCallbacks.delete(eid)
+      world.bulletPierceHits.delete(eid)
+      world.hookPierceCount.delete(eid)
       removeEntity(world, eid)
     }
   }

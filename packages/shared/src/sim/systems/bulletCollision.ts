@@ -13,7 +13,7 @@
 
 import { defineQuery, removeEntity, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown } from '../components'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET } from '../prefabs'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -104,9 +104,30 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
           damage = Math.min(255, Math.round(damage * world.upgradeState.showdownDamageMultiplier))
         }
 
+        // Fire onBulletHit hooks for player bullets (pierce, JJE bonus, etc.)
+        const isPlayerBullet = Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET
+        if (isPlayerBullet && world.hooks.hasHandlers('onBulletHit')) {
+          const hookResult = world.hooks.fireBulletHit(world, eid, targetEid, damage)
+          damage = hookResult.damage
+          if (hookResult.pierce && shouldRemoveBullet) {
+            // Hook requested pierce — track hit entity so we don't hit again
+            shouldRemoveBullet = false
+            shouldStopIteration = false
+            let hits = world.bulletPierceHits.get(eid)
+            if (!hits) { hits = new Set(); world.bulletPierceHits.set(eid, hits) }
+            hits.add(targetEid)
+          }
+        }
+
         // HIT — apply damage
-        Health.current[targetEid] = Health.current[targetEid]! - damage
+        const oldHP = Health.current[targetEid]!
+        Health.current[targetEid] = oldHP - damage
         Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+
+        // Fire onHealthChanged for player targets
+        if (hasComponent(world, Player, targetEid)) {
+          world.hooks.fireHealthChanged(world, targetEid, oldHP, Health.current[targetEid]!)
+        }
 
         // Store hit direction for camera kick (bullet travel direction = toward player)
         if (Collider.layer[targetEid]! === CollisionLayer.PLAYER) {
@@ -159,6 +180,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     world.bulletCollisionCallbacks.delete(eid)
     // Clean up pierce hit tracking
     world.bulletPierceHits.delete(eid)
+    world.hookPierceCount.delete(eid)
     // Remove entity
     removeEntity(world, eid)
   }

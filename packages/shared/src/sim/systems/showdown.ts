@@ -129,6 +129,7 @@ export function showdownSystem(
           Showdown.targetEid[eid] = bestEid
           Showdown.duration[eid] = us.showdownDuration
           world.showdownActivatedThisTick = true
+          world.hooks.fireShowdownActivate(world, eid)
         }
       }
 

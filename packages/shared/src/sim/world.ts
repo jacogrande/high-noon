@@ -11,6 +11,7 @@ import type { StageEncounter } from './content/waves'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF } from './content/characters'
+import { HookRegistry } from './hooks'
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -106,6 +107,10 @@ export interface GameWorld extends IWorld {
   upgradeState: UpgradeState
   /** Pierce hit tracking: bulletEid → set of already-hit entity EIDs */
   bulletPierceHits: Map<number, Set<number>>
+  /** Roll dodge tracking: rollingEid → set of already-dodged bullet EIDs */
+  rollDodgedBullets: Map<number, Set<number>>
+  /** Hook pierce count tracking: bulletEid → number of hook-requested pierces */
+  hookPierceCount: Map<number, number>
   /** Debug: pause enemy spawning */
   spawnsPaused: boolean
   /** Set to true when a Showdown marked target is killed this tick */
@@ -114,6 +119,8 @@ export interface GameWorld extends IWorld {
   showdownActivatedThisTick: boolean
   /** Set to true when Showdown duration expires naturally this tick */
   showdownExpiredThisTick: boolean
+  /** Hook registry for behavioral node effects */
+  hooks: HookRegistry
 }
 
 /**
@@ -139,9 +146,12 @@ export function createGameWorld(seed?: number): GameWorld {
     upgradeState: initUpgradeState(SHERIFF),
     spawnsPaused: false,
     bulletPierceHits: new Map(),
+    rollDodgedBullets: new Map(),
+    hookPierceCount: new Map(),
     showdownKillThisTick: false,
     showdownActivatedThisTick: false,
     showdownExpiredThisTick: false,
+    hooks: new HookRegistry(),
   }
 }
 
@@ -170,9 +180,12 @@ export function resetWorld(world: GameWorld): void {
   world.upgradeState = initUpgradeState(SHERIFF)
   world.spawnsPaused = false
   world.bulletPierceHits.clear()
+  world.rollDodgedBullets.clear()
+  world.hookPierceCount.clear()
   world.showdownKillThisTick = false
   world.showdownActivatedThisTick = false
   world.showdownExpiredThisTick = false
+  world.hooks.clear()
   // Note: rng is intentionally NOT reset — caller should create a new world
   // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed

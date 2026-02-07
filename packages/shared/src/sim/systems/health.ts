@@ -13,6 +13,7 @@ import { XP_VALUES } from '../content/xp'
 import { awardXP } from '../upgrade'
 
 const healthQuery = defineQuery([Health])
+const playerQuery = defineQuery([Player, Health])
 
 export function healthSystem(world: GameWorld, dt: number): void {
   const entities = healthQuery(world)
@@ -29,6 +30,12 @@ export function healthSystem(world: GameWorld, dt: number): void {
         // Player death — tag as dead, keep entity for rendering
         addComponent(world, Dead, eid)
       } else {
+        // Fire onKill hook for player kills
+        const players = playerQuery(world)
+        if (players.length > 0) {
+          world.hooks.fireKill(world, players[0]!, eid)
+        }
+
         // Award XP for enemy kills
         const xp = XP_VALUES[Enemy.type[eid]!]
         if (xp !== undefined) {

@@ -142,8 +142,14 @@ describe('canTakeNode', () => {
   })
 
   test('returns false for unimplemented node', () => {
-    // fan_the_hammer is Gunslinger T1, implemented: false
-    expect(canTakeNode(state, 'fan_the_hammer')).toBe(false)
+    // Override a node to be unimplemented for this test
+    const node = state.characterDef.branches
+      .flatMap(b => b.nodes)
+      .find(n => n.id === 'steady_hand')!
+    const origImpl = node.implemented
+    node.implemented = false
+    expect(canTakeNode(state, 'steady_hand')).toBe(false)
+    node.implemented = origImpl
   })
 
   test('returns false when prerequisite not met', () => {
@@ -226,7 +232,14 @@ describe('takeNode', () => {
   })
 
   test('unimplemented node blocks taking', () => {
-    expect(takeNode(state, 'fan_the_hammer')).toBe(false)
+    // Override a node to be unimplemented for this test
+    const node = state.characterDef.branches
+      .flatMap(b => b.nodes)
+      .find(n => n.id === 'steady_hand')!
+    const origImpl = node.implemented
+    node.implemented = false
+    expect(takeNode(state, 'steady_hand')).toBe(false)
+    node.implemented = origImpl
   })
 })
 

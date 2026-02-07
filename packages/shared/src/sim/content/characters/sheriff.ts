@@ -81,7 +81,9 @@ export const SHERIFF: CharacterDef = {
           description: 'Showdown kill refund increased, allowing chain kills.',
           tier: 4,
           implemented: true,
-          mods: [],
+          mods: [
+            { stat: 'showdownKillRefund', op: 'add', value: 3 },
+          ],
         },
         {
           id: 'judge_jury_executioner',
@@ -104,7 +106,7 @@ export const SHERIFF: CharacterDef = {
           name: 'Fan the Hammer',
           description: 'Hold-fire rate increased by 30%.',
           tier: 1,
-          implemented: false,
+          implemented: true,
           mods: [
             { stat: 'holdFireRate', op: 'mul', value: 1.3 },
           ],
@@ -114,7 +116,7 @@ export const SHERIFF: CharacterDef = {
           name: 'Speed Loader',
           description: 'Reload 30% faster.',
           tier: 2,
-          implemented: false,
+          implemented: true,
           mods: [
             { stat: 'reloadTime', op: 'mul', value: 0.7 },
           ],
@@ -124,7 +126,7 @@ export const SHERIFF: CharacterDef = {
           name: 'Hot Lead',
           description: 'Bullets deal +25% damage but travel 15% slower.',
           tier: 3,
-          implemented: false,
+          implemented: true,
           mods: [
             { stat: 'bulletDamage', op: 'mul', value: 1.25 },
             { stat: 'bulletSpeed', op: 'mul', value: 0.85 },
@@ -135,7 +137,7 @@ export const SHERIFF: CharacterDef = {
           name: 'Drum Cylinder',
           description: 'Cylinder holds 2 extra rounds.',
           tier: 4,
-          implemented: false,
+          implemented: true,
           mods: [
             { stat: 'cylinderSize', op: 'add', value: 2 },
           ],
@@ -145,7 +147,7 @@ export const SHERIFF: CharacterDef = {
           name: "Dead Man's Hand",
           description: 'Emptying the cylinder triggers a burst of 3 shots in a spread.',
           tier: 5,
-          implemented: false,
+          implemented: true,
           mods: [],
         },
       ],
@@ -200,7 +202,7 @@ export const SHERIFF: CharacterDef = {
           name: 'Last Stand',
           description: 'At 1 HP, gain +50% damage and +20% speed for 5 seconds.',
           tier: 5,
-          implemented: false,
+          implemented: true,
           mods: [],
         },
       ],

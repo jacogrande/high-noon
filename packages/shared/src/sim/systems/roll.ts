@@ -22,10 +22,18 @@ import {
   PlayerState,
   PlayerStateType,
   Invincible,
+  Position,
+  Collider,
+  Bullet,
+  Player,
 } from '../components'
+import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
+import { forEachInRadius } from '../SpatialHash'
 
 // Query for entities currently rolling
 const rollingQuery = defineQuery([Roll, Velocity, Speed, PlayerState])
+
+// rollDodgedBullets lives on world (world.rollDodgedBullets) to avoid module-level state
 
 /**
  * Roll system - manages roll state and applies roll velocity
@@ -55,6 +63,9 @@ export function rollSystem(world: GameWorld, dt: number): void {
         removeComponent(world, Invincible, eid)
       }
 
+      // Clean up dodge tracking
+      world.rollDodgedBullets.delete(eid)
+
       // Restore normal state (will be set by playerInput next tick)
       PlayerState.state[eid] = PlayerStateType.IDLE
 
@@ -76,6 +87,39 @@ export function rollSystem(world: GameWorld, dt: number): void {
       addComponent(world, Invincible, eid)
     } else if (!shouldBeInvincible && isInvincible) {
       removeComponent(world, Invincible, eid)
+    }
+
+    // Detect roll dodges during i-frames (for Second Wind hook)
+    if (shouldBeInvincible && hasComponent(world, Player, eid) &&
+        world.hooks.hasHandlers('onRollDodge') && world.spatialHash) {
+      const px = Position.x[eid]!
+      const py = Position.y[eid]!
+      const playerRadius = Collider.radius[eid]!
+      const queryRadius = playerRadius + MAX_COLLIDER_RADIUS
+
+      let dodged = world.rollDodgedBullets.get(eid)
+
+      forEachInRadius(world.spatialHash, px, py, queryRadius, (bulletEid) => {
+        if (!hasComponent(world, Bullet, bulletEid)) return
+        if (Collider.layer[bulletEid]! !== CollisionLayer.ENEMY_BULLET) return
+
+        // Skip already-dodged bullets this roll
+        if (dodged && dodged.has(bulletEid)) return
+
+        // Circle-circle overlap check
+        const bx = Position.x[bulletEid]!
+        const by = Position.y[bulletEid]!
+        const dx = px - bx
+        const dy = py - by
+        const distSq = dx * dx + dy * dy
+        const minDist = playerRadius + Collider.radius[bulletEid]!
+        if (distSq >= minDist * minDist) return
+
+        // Dodge detected!
+        if (!dodged) { dodged = new Set(); world.rollDodgedBullets.set(eid, dodged) }
+        dodged.add(bulletEid)
+        world.hooks.fireRollDodge(world, eid, bulletEid)
+      })
     }
 
     // Apply roll velocity (locked direction, boosted speed)

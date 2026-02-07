@@ -34,6 +34,7 @@ import {
   enemyAttackSystem,
   spatialHashSystem,
   waveSpawnerSystem,
+  buffSystem,
   writeStatsToECS,
   canTakeNode,
   takeNode,
@@ -185,6 +186,7 @@ export class GameScene {
     this.systems.register(movementSystem)
     this.systems.register(bulletCollisionSystem)
     this.systems.register(healthSystem)
+    this.systems.register(buffSystem)
     this.systems.register(collisionSystem)
 
     // Renderers
@@ -359,7 +361,7 @@ export class GameScene {
   selectNode(nodeId: string): boolean {
     const playerEid = this.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
-    const success = takeNode(this.world.upgradeState, nodeId)
+    const success = takeNode(this.world.upgradeState, nodeId, this.world)
     if (success) {
       writeStatsToECS(this.world, playerEid)
       this.sound.play('upgrade_select')

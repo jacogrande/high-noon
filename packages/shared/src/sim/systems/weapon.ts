@@ -106,6 +106,11 @@ export function weaponSystem(
       Cylinder.rounds[eid] = Cylinder.rounds[eid]! - 1
       Cylinder.firstShotAfterReload[eid] = 0
 
+      // Fire onCylinderEmpty hook when last round consumed
+      if (Cylinder.rounds[eid] === 0) {
+        world.hooks.fireCylinderEmpty(world, eid)
+      }
+
       // Always set hold-rate cooldown. Click-to-fire advantage is at the
       // gate (rising edge can fire through remaining cooldown early).
       Cylinder.fireCooldown[eid] = 1 / world.upgradeState.holdFireRate
