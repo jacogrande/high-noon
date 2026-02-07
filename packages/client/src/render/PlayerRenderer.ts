@@ -22,8 +22,10 @@ import {
 import { SpriteRegistry } from './SpriteRegistry'
 import {
   AssetLoader,
-  angleToDirection8,
+  angleToDirection,
   getAnimationFrame,
+  ANIMATION_SPEEDS,
+  ANIMATION_FRAME_COUNTS,
   type AnimationState,
 } from '../assets'
 
@@ -61,7 +63,6 @@ export class PlayerRenderer {
 
       // Create sprite if doesn't exist
       if (!this.registry.has(eid)) {
-        // Get initial texture (idle, facing east)
         const texture = AssetLoader.getPlayerTexture('idle', 'E', 0)
         const sprite = this.registry.createSprite(eid, texture)
         sprite.texture.source.scaleMode = 'nearest'
@@ -92,7 +93,6 @@ export class PlayerRenderer {
 
     for (const eid of players) {
       // Interpolate between previous and current position
-      // Note: Non-null assertions safe because entities come from query
       const prevX = Position.prevX[eid]!
       const prevY = Position.prevY[eid]!
       const currX = Position.x[eid]!
@@ -109,29 +109,48 @@ export class PlayerRenderer {
       const isInvincible = hasComponent(world, Invincible, eid)
 
       // Map PlayerStateType to animation state
-      // Idle uses walk sprites for a gentle bob; walk uses run sprites for more energy
+      // Hurt overrides other states when damage i-frames are active
+      const isHurt = hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
       let animState: AnimationState
-      let spriteAnim: AnimationState
-      if (playerState === PlayerStateType.ROLLING) {
+      if (isHurt) {
+        animState = 'hurt'
+      } else if (playerState === PlayerStateType.ROLLING) {
         animState = 'roll'
-        spriteAnim = 'roll'
       } else if (playerState === PlayerStateType.MOVING) {
         animState = 'walk'
-        spriteAnim = 'run'
       } else {
         animState = 'idle'
-        spriteAnim = 'walk'
       }
 
-      // Get 8-way direction from aim angle
-      const direction = angleToDirection8(aimAngle)
+      // Get 4-way direction from aim angle
+      const direction = angleToDirection(aimAngle)
 
-      // Get animation frame based on world tick
-      const frame = getAnimationFrame(animState, world.tick)
+      // W mirrors E sprite with horizontal flip
+      const needsMirror = direction === 'W'
+
+      // Get animation frame — hurt plays from the start of the hit, others use global tick
+      let frame: number
+      if (isHurt) {
+        const elapsed = Health.iframeDuration[eid]! - Health.iframes[eid]!
+        const elapsedTicks = elapsed * 60
+        const ticksPerFrame = 60 / ANIMATION_SPEEDS.hurt
+        frame = Math.min(
+          Math.floor(elapsedTicks / ticksPerFrame),
+          ANIMATION_FRAME_COUNTS.hurt - 1
+        )
+      } else {
+        frame = getAnimationFrame(animState, world.tick)
+      }
 
       // Update sprite texture
-      const texture = AssetLoader.getPlayerTexture(spriteAnim, direction, frame)
+      const texture = AssetLoader.getPlayerTexture(animState, direction, frame)
       this.registry.setTexture(eid, texture)
+
+      // Flip sprite for west direction
+      const sprite = this.registry.getSprite(eid)
+      if (sprite) {
+        sprite.scale.x = needsMirror ? -Math.abs(sprite.scale.x) : Math.abs(sprite.scale.x)
+      }
 
       // Set alpha based on invincibility
       if (isInvincible) {

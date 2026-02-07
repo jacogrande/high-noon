@@ -2,17 +2,27 @@
  * Asset Loader
  *
  * Centralized asset loading using PixiJS Assets API.
- * Handles loading spritesheets and textures for the game.
+ * Loads individual sprite sheet PNGs and slices them into sub-textures.
  */
 
-import { Assets, Spritesheet, Texture } from 'pixi.js'
+import { Assets, Texture, Rectangle } from 'pixi.js'
 import { TileType } from '@high-noon/shared'
-import { DIRECTIONS, ANIMATION_STATES, type Direction, type AnimationState } from './animations'
+import type { Spritesheet } from 'pixi.js'
+import {
+  ANIMATION_STATES,
+  PLAYER_SPRITE_INFO,
+  SPRITE_CELL_SIZE,
+  SPRITE_ROW,
+  type Direction,
+  type AnimationState,
+} from './animations'
 
-/** Asset manifest - paths to all game assets */
+/** Base path for character sprite sheets */
+const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
+
+/** Asset manifest for non-character assets */
 const MANIFEST = {
   tileset: '/assets/sprites/tileset.json',
-  player: '/assets/sprites/player.json',
   bullet: '/assets/sprites/bullet.png',
 } as const
 
@@ -23,22 +33,25 @@ const TILE_FRAME_MAP: Record<number, string> = {
   [TileType.FLOOR]: 'tile_floor',
 }
 
+/** Sprite directions that exist in the sprite sheet (W mirrors E) */
+const SPRITE_DIRS = ['N', 'E', 'S'] as const
+
 /**
  * Singleton asset loader
  */
 export class AssetLoader {
   private static loaded = false
   private static tilesetSheet: Spritesheet | null = null
-  private static playerSheet: Spritesheet | null = null
   private static bulletTexture: Texture | null = null
+
+  /** Pre-sliced player textures: key = `${state}_${spriteDir}_${frame}` */
+  private static playerTextures = new Map<string, Texture>()
 
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000
 
   /**
    * Load all game assets
-   *
-   * @param onProgress - Optional progress callback (0-1)
    */
   static async loadAll(onProgress?: (progress: number) => void): Promise<void> {
     if (this.loaded) {
@@ -47,16 +60,25 @@ export class AssetLoader {
     }
 
     console.log('[AssetLoader] Starting asset load...')
-    const assetKeys = Object.keys(MANIFEST) as (keyof typeof MANIFEST)[]
 
-    // Add all assets to loader
-    for (const key of assetKeys) {
-      console.log(`[AssetLoader] Adding asset: ${key} -> ${MANIFEST[key]}`)
-      Assets.add({ alias: key, src: MANIFEST[key] })
+    // Load tileset + bullet
+    Assets.add({ alias: 'tileset', src: MANIFEST.tileset })
+    Assets.add({ alias: 'bullet', src: MANIFEST.bullet })
+
+    // Add character sprite sheets
+    for (const state of ANIMATION_STATES) {
+      const info = PLAYER_SPRITE_INFO[state]
+      const alias = `char_${state}`
+      Assets.add({ alias, src: `${CHAR_SPRITE_BASE}/${info.file}` })
     }
 
-    // Load with timeout
-    const loadPromise = Assets.load(assetKeys, (progress) => {
+    const allAliases = [
+      'tileset',
+      'bullet',
+      ...ANIMATION_STATES.map((s) => `char_${s}`),
+    ]
+
+    const loadPromise = Assets.load(allAliases, (progress) => {
       console.log(`[AssetLoader] Progress: ${(progress * 100).toFixed(1)}%`)
       onProgress?.(progress)
     })
@@ -76,26 +98,49 @@ export class AssetLoader {
     }
 
     console.log('[AssetLoader] Assets loaded, storing references...')
-    console.log('[AssetLoader] Loaded keys:', Object.keys(loaded))
 
-    // Store references
     this.tilesetSheet = loaded.tileset as Spritesheet
-    this.playerSheet = loaded.player as Spritesheet
     this.bulletTexture = loaded.bullet as Texture
 
-    // Validate that we got what we expected
     if (!this.tilesetSheet?.textures) {
       throw new Error('Tileset spritesheet failed to load or has no textures')
-    }
-    if (!this.playerSheet?.textures) {
-      throw new Error('Player spritesheet failed to load or has no textures')
     }
     if (!this.bulletTexture) {
       throw new Error('Bullet texture failed to load')
     }
 
-    console.log('[AssetLoader] Tileset textures:', Object.keys(this.tilesetSheet.textures))
-    console.log('[AssetLoader] Player textures:', Object.keys(this.playerSheet.textures).length, 'frames')
+    // Slice character sprite sheets into individual frame textures
+    for (const state of ANIMATION_STATES) {
+      const info = PLAYER_SPRITE_INFO[state]
+      const baseTexture = loaded[`char_${state}`] as Texture
+
+      if (!baseTexture) {
+        throw new Error(`Character sprite sheet failed to load: ${info.file}`)
+      }
+
+      // Ensure nearest-neighbor scaling for pixel art
+      baseTexture.source.scaleMode = 'nearest'
+
+      for (const dir of SPRITE_DIRS) {
+        const row = SPRITE_ROW[dir]
+        for (let frame = 0; frame < info.frames; frame++) {
+          const rect = new Rectangle(
+            frame * SPRITE_CELL_SIZE,
+            row * SPRITE_CELL_SIZE,
+            SPRITE_CELL_SIZE,
+            SPRITE_CELL_SIZE
+          )
+          const subTexture = new Texture({
+            source: baseTexture.source,
+            frame: rect,
+          })
+          const key = `${state}_${dir}_${frame}`
+          this.playerTextures.set(key, subTexture)
+        }
+      }
+    }
+
+    console.log('[AssetLoader] Player textures sliced:', this.playerTextures.size, 'frames')
     console.log('[AssetLoader] All assets loaded successfully')
 
     this.loaded = true
@@ -130,56 +175,23 @@ export class AssetLoader {
   }
 
   /**
-   * Get player texture for a specific animation state and direction
+   * Get player texture for a specific animation state and direction.
+   * W direction automatically uses the E sprite (caller handles the flip).
    */
   static getPlayerTexture(state: AnimationState, direction: Direction, frame: number): Texture {
-    if (!this.playerSheet) {
-      throw new Error('Assets not loaded. Call AssetLoader.loadAll() first.')
-    }
-
-    const frameName = `player_${state}_${direction}_${frame}`
-    const texture = this.playerSheet.textures[frameName]
+    // W mirrors E in the sprite sheet
+    const spriteDir = direction === 'W' ? 'E' : direction
+    const key = `${state}_${spriteDir}_${frame}`
+    const texture = this.playerTextures.get(key)
     if (!texture) {
-      // Fall back to idle frame 0 if specific frame not found
-      const fallback = this.playerSheet.textures[`player_idle_${direction}_0`]
+      // Fall back to idle E frame 0
+      const fallback = this.playerTextures.get('idle_E_0')
       if (!fallback) {
-        throw new Error(`Player texture not found: ${frameName}`)
+        throw new Error(`Player texture not found: ${key}`)
       }
       return fallback
     }
-
     return texture
-  }
-
-  /**
-   * Get all textures for a player animation
-   */
-  static getPlayerAnimationTextures(state: AnimationState, direction: Direction): Texture[] {
-    if (!this.playerSheet) {
-      throw new Error('Assets not loaded. Call AssetLoader.loadAll() first.')
-    }
-
-    const textures: Texture[] = []
-    let frame = 0
-
-    // Collect all frames for this animation
-    while (true) {
-      const frameName = `player_${state}_${direction}_${frame}`
-      const texture = this.playerSheet.textures[frameName]
-      if (!texture) break
-      textures.push(texture)
-      frame++
-    }
-
-    // Ensure at least one texture
-    if (textures.length === 0) {
-      const fallback = this.playerSheet.textures[`player_idle_${direction}_0`]
-      if (fallback) {
-        textures.push(fallback)
-      }
-    }
-
-    return textures
   }
 
   /**
@@ -193,19 +205,12 @@ export class AssetLoader {
   }
 
   /**
-   * Get the player spritesheet (for AnimatedSprite)
-   */
-  static getPlayerSpritesheet(): Spritesheet | null {
-    return this.playerSheet
-  }
-
-  /**
    * Reset loader state (for testing)
    */
   static reset(): void {
     this.loaded = false
     this.tilesetSheet = null
-    this.playerSheet = null
     this.bulletTexture = null
+    this.playerTextures.clear()
   }
 }

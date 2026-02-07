@@ -1,2239 +1,318 @@
 {
   "frames": {
-    "player_idle_E_0": {
-      "frame": {
-        "x": 40,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+    "player_idle_S_0": {
+      "frame": { "x": 160, "y": 0, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
-    "player_idle_NE_0": {
-      "frame": {
-        "x": 60,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_idle_NW_0": {
-      "frame": {
-        "x": 100,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_idle_N_0": {
-      "frame": {
-        "x": 80,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+    "player_idle_S_1": {
+      "frame": { "x": 180, "y": 0, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
     "player_idle_SE_0": {
-      "frame": {
-        "x": 20,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+      "frame": { "x": 0, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
-    "player_idle_SW_0": {
-      "frame": {
-        "x": 140,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+    "player_idle_SE_1": {
+      "frame": { "x": 20, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
-    "player_idle_S_0": {
-      "frame": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+    "player_idle_E_0": {
+      "frame": { "x": 60, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_E_1": {
+      "frame": { "x": 80, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_NE_0": {
+      "frame": { "x": 100, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_NE_1": {
+      "frame": { "x": 120, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_N_0": {
+      "frame": { "x": 140, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_N_1": {
+      "frame": { "x": 160, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_NW_0": {
+      "frame": { "x": 100, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_NW_1": {
+      "frame": { "x": 120, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
     "player_idle_W_0": {
-      "frame": {
-        "x": 120,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_E_0": {
-      "frame": {
-        "x": 120,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_E_1": {
-      "frame": {
-        "x": 140,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_E_2": {
-      "frame": {
-        "x": 160,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NE_0": {
-      "frame": {
-        "x": 180,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NE_1": {
-      "frame": {
-        "x": 0,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NE_2": {
-      "frame": {
-        "x": 20,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NW_0": {
-      "frame": {
-        "x": 100,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NW_1": {
-      "frame": {
-        "x": 120,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_NW_2": {
-      "frame": {
-        "x": 140,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_N_0": {
-      "frame": {
-        "x": 40,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_N_1": {
-      "frame": {
-        "x": 60,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_N_2": {
-      "frame": {
-        "x": 80,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SE_0": {
-      "frame": {
-        "x": 60,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SE_1": {
-      "frame": {
-        "x": 80,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SE_2": {
-      "frame": {
-        "x": 100,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SW_0": {
-      "frame": {
-        "x": 20,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SW_1": {
-      "frame": {
-        "x": 40,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_SW_2": {
-      "frame": {
-        "x": 60,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_S_0": {
-      "frame": {
-        "x": 0,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_S_1": {
-      "frame": {
-        "x": 20,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_S_2": {
-      "frame": {
-        "x": 40,
-        "y": 80,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_W_0": {
-      "frame": {
-        "x": 160,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_W_1": {
-      "frame": {
-        "x": 180,
-        "y": 100,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_interact_W_2": {
-      "frame": {
-        "x": 0,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_E_0": {
-      "frame": {
-        "x": 0,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_E_1": {
-      "frame": {
-        "x": 20,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_E_2": {
-      "frame": {
-        "x": 40,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NE_0": {
-      "frame": {
-        "x": 60,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NE_1": {
-      "frame": {
-        "x": 80,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NE_2": {
-      "frame": {
-        "x": 100,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NW_0": {
-      "frame": {
-        "x": 180,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NW_1": {
-      "frame": {
-        "x": 0,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_NW_2": {
-      "frame": {
-        "x": 20,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_N_0": {
-      "frame": {
-        "x": 120,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_N_1": {
-      "frame": {
-        "x": 140,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_N_2": {
-      "frame": {
-        "x": 160,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SE_0": {
-      "frame": {
-        "x": 140,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SE_1": {
-      "frame": {
-        "x": 160,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SE_2": {
-      "frame": {
-        "x": 180,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SW_0": {
-      "frame": {
-        "x": 100,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SW_1": {
-      "frame": {
-        "x": 120,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_SW_2": {
-      "frame": {
-        "x": 140,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_S_0": {
-      "frame": {
-        "x": 80,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_S_1": {
-      "frame": {
-        "x": 100,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_S_2": {
-      "frame": {
-        "x": 120,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_W_0": {
-      "frame": {
-        "x": 40,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_W_1": {
-      "frame": {
-        "x": 60,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_jump_W_2": {
-      "frame": {
-        "x": 80,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_E_0": {
-      "frame": {
-        "x": 0,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_E_1": {
-      "frame": {
-        "x": 20,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_E_2": {
-      "frame": {
-        "x": 40,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NE_0": {
-      "frame": {
-        "x": 60,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NE_1": {
-      "frame": {
-        "x": 80,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NE_2": {
-      "frame": {
-        "x": 100,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NW_0": {
-      "frame": {
-        "x": 180,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NW_1": {
-      "frame": {
-        "x": 0,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_NW_2": {
-      "frame": {
-        "x": 20,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_N_0": {
-      "frame": {
-        "x": 120,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_N_1": {
-      "frame": {
-        "x": 140,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_N_2": {
-      "frame": {
-        "x": 160,
-        "y": 140,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SE_0": {
-      "frame": {
-        "x": 140,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SE_1": {
-      "frame": {
-        "x": 160,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SE_2": {
-      "frame": {
-        "x": 180,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SW_0": {
-      "frame": {
-        "x": 100,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SW_1": {
-      "frame": {
-        "x": 120,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_SW_2": {
-      "frame": {
-        "x": 140,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_S_0": {
-      "frame": {
-        "x": 80,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_S_1": {
-      "frame": {
-        "x": 100,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_S_2": {
-      "frame": {
-        "x": 120,
-        "y": 120,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_W_0": {
-      "frame": {
-        "x": 40,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_W_1": {
-      "frame": {
-        "x": 60,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_roll_W_2": {
-      "frame": {
-        "x": 80,
-        "y": 160,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_E_0": {
-      "frame": {
-        "x": 160,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_E_1": {
-      "frame": {
-        "x": 180,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_NE_0": {
-      "frame": {
-        "x": 0,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_NE_1": {
-      "frame": {
-        "x": 20,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_NW_0": {
-      "frame": {
-        "x": 80,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_NW_1": {
-      "frame": {
-        "x": 100,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_N_0": {
-      "frame": {
-        "x": 40,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_N_1": {
-      "frame": {
-        "x": 60,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_SE_0": {
-      "frame": {
-        "x": 120,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_SE_1": {
-      "frame": {
-        "x": 140,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_SW_0": {
-      "frame": {
-        "x": 160,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_SW_1": {
-      "frame": {
-        "x": 180,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_S_0": {
-      "frame": {
-        "x": 80,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_S_1": {
-      "frame": {
-        "x": 100,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_W_0": {
-      "frame": {
-        "x": 120,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_run_W_1": {
-      "frame": {
-        "x": 140,
-        "y": 60,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_E_0": {
-      "frame": {
-        "x": 40,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_E_1": {
-      "frame": {
-        "x": 60,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_NE_0": {
-      "frame": {
-        "x": 80,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_NE_1": {
-      "frame": {
-        "x": 100,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_NW_0": {
-      "frame": {
-        "x": 160,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_NW_1": {
-      "frame": {
-        "x": 180,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_N_0": {
-      "frame": {
-        "x": 120,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_N_1": {
-      "frame": {
-        "x": 140,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_SE_0": {
-      "frame": {
-        "x": 0,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_SE_1": {
-      "frame": {
-        "x": 20,
-        "y": 20,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_SW_0": {
-      "frame": {
-        "x": 40,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
-    "player_walk_SW_1": {
-      "frame": {
-        "x": 60,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
-    },
+      "frame": { "x": 60, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_W_1": {
+      "frame": { "x": 80, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_SW_0": {
+      "frame": { "x": 0, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_idle_SW_1": {
+      "frame": { "x": 20, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+
     "player_walk_S_0": {
-      "frame": {
-        "x": 160,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+      "frame": { "x": 180, "y": 20, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
     "player_walk_S_1": {
-      "frame": {
-        "x": 180,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+      "frame": { "x": 0, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_SE_0": {
+      "frame": { "x": 40, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_SE_1": {
+      "frame": { "x": 60, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_E_0": {
+      "frame": { "x": 80, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_E_1": {
+      "frame": { "x": 100, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_NE_0": {
+      "frame": { "x": 120, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_NE_1": {
+      "frame": { "x": 140, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_N_0": {
+      "frame": { "x": 180, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_N_1": {
+      "frame": { "x": 0, "y": 60, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_NW_0": {
+      "frame": { "x": 120, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_NW_1": {
+      "frame": { "x": 140, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
     "player_walk_W_0": {
-      "frame": {
-        "x": 0,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+      "frame": { "x": 80, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     },
     "player_walk_W_1": {
-      "frame": {
-        "x": 20,
-        "y": 40,
-        "w": 20,
-        "h": 20
-      },
-      "sourceSize": {
-        "w": 20,
-        "h": 20
-      },
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 20,
-        "h": 20
-      }
+      "frame": { "x": 100, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_SW_0": {
+      "frame": { "x": 40, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_walk_SW_1": {
+      "frame": { "x": 60, "y": 40, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+
+    "player_roll_S_0": {
+      "frame": { "x": 100, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_S_1": {
+      "frame": { "x": 120, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_S_2": {
+      "frame": { "x": 140, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SE_0": {
+      "frame": { "x": 160, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SE_1": {
+      "frame": { "x": 180, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SE_2": {
+      "frame": { "x": 0, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_E_0": {
+      "frame": { "x": 20, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_E_1": {
+      "frame": { "x": 40, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_E_2": {
+      "frame": { "x": 60, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NE_0": {
+      "frame": { "x": 80, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NE_1": {
+      "frame": { "x": 100, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NE_2": {
+      "frame": { "x": 120, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_N_0": {
+      "frame": { "x": 140, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_N_1": {
+      "frame": { "x": 160, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_N_2": {
+      "frame": { "x": 180, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NW_0": {
+      "frame": { "x": 80, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NW_1": {
+      "frame": { "x": 100, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_NW_2": {
+      "frame": { "x": 120, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_W_0": {
+      "frame": { "x": 20, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_W_1": {
+      "frame": { "x": 40, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_W_2": {
+      "frame": { "x": 60, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SW_0": {
+      "frame": { "x": 160, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SW_1": {
+      "frame": { "x": 180, "y": 120, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
+    },
+    "player_roll_SW_2": {
+      "frame": { "x": 0, "y": 140, "w": 20, "h": 20 },
+      "sourceSize": { "w": 20, "h": 20 },
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 20 }
     }
   },
   "meta": {
     "image": "player.png",
     "format": "RGBA8888",
-    "size": {
-      "w": 200,
-      "h": 180
-    },
+    "size": { "w": 200, "h": 180 },
     "scale": 1
   },
   "animations": {
-    "idle_E": [
-      "player_idle_E_0"
-    ],
-    "idle_N": [
-      "player_idle_N_0"
-    ],
-    "idle_NE": [
-      "player_idle_NE_0"
-    ],
-    "idle_NW": [
-      "player_idle_NW_0"
-    ],
-    "idle_S": [
-      "player_idle_S_0"
-    ],
-    "idle_SE": [
-      "player_idle_SE_0"
-    ],
-    "idle_SW": [
-      "player_idle_SW_0"
-    ],
-    "idle_W": [
-      "player_idle_W_0"
-    ],
-    "interact_E": [
-      "player_interact_E_0",
-      "player_interact_E_1",
-      "player_interact_E_2"
-    ],
-    "interact_N": [
-      "player_interact_N_0",
-      "player_interact_N_1",
-      "player_interact_N_2"
-    ],
-    "interact_NE": [
-      "player_interact_NE_0",
-      "player_interact_NE_1",
-      "player_interact_NE_2"
-    ],
-    "interact_NW": [
-      "player_interact_NW_0",
-      "player_interact_NW_1",
-      "player_interact_NW_2"
-    ],
-    "interact_S": [
-      "player_interact_S_0",
-      "player_interact_S_1",
-      "player_interact_S_2"
-    ],
-    "interact_SE": [
-      "player_interact_SE_0",
-      "player_interact_SE_1",
-      "player_interact_SE_2"
-    ],
-    "interact_SW": [
-      "player_interact_SW_0",
-      "player_interact_SW_1",
-      "player_interact_SW_2"
-    ],
-    "interact_W": [
-      "player_interact_W_0",
-      "player_interact_W_1",
-      "player_interact_W_2"
-    ],
-    "jump_E": [
-      "player_jump_E_0",
-      "player_jump_E_1",
-      "player_jump_E_2"
-    ],
-    "jump_N": [
-      "player_jump_N_0",
-      "player_jump_N_1",
-      "player_jump_N_2"
-    ],
-    "jump_NE": [
-      "player_jump_NE_0",
-      "player_jump_NE_1",
-      "player_jump_NE_2"
-    ],
-    "jump_NW": [
-      "player_jump_NW_0",
-      "player_jump_NW_1",
-      "player_jump_NW_2"
-    ],
-    "jump_S": [
-      "player_jump_S_0",
-      "player_jump_S_1",
-      "player_jump_S_2"
-    ],
-    "jump_SE": [
-      "player_jump_SE_0",
-      "player_jump_SE_1",
-      "player_jump_SE_2"
-    ],
-    "jump_SW": [
-      "player_jump_SW_0",
-      "player_jump_SW_1",
-      "player_jump_SW_2"
-    ],
-    "jump_W": [
-      "player_jump_W_0",
-      "player_jump_W_1",
-      "player_jump_W_2"
-    ],
-    "roll_E": [
-      "player_roll_E_0",
-      "player_roll_E_1",
-      "player_roll_E_2"
-    ],
-    "roll_N": [
-      "player_roll_N_0",
-      "player_roll_N_1",
-      "player_roll_N_2"
-    ],
-    "roll_NE": [
-      "player_roll_NE_0",
-      "player_roll_NE_1",
-      "player_roll_NE_2"
-    ],
-    "roll_NW": [
-      "player_roll_NW_0",
-      "player_roll_NW_1",
-      "player_roll_NW_2"
-    ],
-    "roll_S": [
-      "player_roll_S_0",
-      "player_roll_S_1",
-      "player_roll_S_2"
-    ],
-    "roll_SE": [
-      "player_roll_SE_0",
-      "player_roll_SE_1",
-      "player_roll_SE_2"
-    ],
-    "roll_SW": [
-      "player_roll_SW_0",
-      "player_roll_SW_1",
-      "player_roll_SW_2"
-    ],
-    "roll_W": [
-      "player_roll_W_0",
-      "player_roll_W_1",
-      "player_roll_W_2"
-    ],
-    "run_E": [
-      "player_run_E_0",
-      "player_run_E_1"
-    ],
-    "run_N": [
-      "player_run_N_0",
-      "player_run_N_1"
-    ],
-    "run_NE": [
-      "player_run_NE_0",
-      "player_run_NE_1"
-    ],
-    "run_NW": [
-      "player_run_NW_0",
-      "player_run_NW_1"
-    ],
-    "run_S": [
-      "player_run_S_0",
-      "player_run_S_1"
-    ],
-    "run_SE": [
-      "player_run_SE_0",
-      "player_run_SE_1"
-    ],
-    "run_SW": [
-      "player_run_SW_0",
-      "player_run_SW_1"
-    ],
-    "run_W": [
-      "player_run_W_0",
-      "player_run_W_1"
-    ],
-    "walk_E": [
-      "player_walk_E_0",
-      "player_walk_E_1"
-    ],
-    "walk_N": [
-      "player_walk_N_0",
-      "player_walk_N_1"
-    ],
-    "walk_NE": [
-      "player_walk_NE_0",
-      "player_walk_NE_1"
-    ],
-    "walk_NW": [
-      "player_walk_NW_0",
-      "player_walk_NW_1"
-    ],
-    "walk_S": [
-      "player_walk_S_0",
-      "player_walk_S_1"
-    ],
-    "walk_SE": [
-      "player_walk_SE_0",
-      "player_walk_SE_1"
-    ],
-    "walk_SW": [
-      "player_walk_SW_0",
-      "player_walk_SW_1"
-    ],
-    "walk_W": [
-      "player_walk_W_0",
-      "player_walk_W_1"
-    ]
+    "idle_S": ["player_idle_S_0", "player_idle_S_1"],
+    "idle_SE": ["player_idle_SE_0", "player_idle_SE_1"],
+    "idle_E": ["player_idle_E_0", "player_idle_E_1"],
+    "idle_NE": ["player_idle_NE_0", "player_idle_NE_1"],
+    "idle_N": ["player_idle_N_0", "player_idle_N_1"],
+    "idle_NW": ["player_idle_NW_0", "player_idle_NW_1"],
+    "idle_W": ["player_idle_W_0", "player_idle_W_1"],
+    "idle_SW": ["player_idle_SW_0", "player_idle_SW_1"],
+    "walk_S": ["player_walk_S_0", "player_walk_S_1"],
+    "walk_SE": ["player_walk_SE_0", "player_walk_SE_1"],
+    "walk_E": ["player_walk_E_0", "player_walk_E_1"],
+    "walk_NE": ["player_walk_NE_0", "player_walk_NE_1"],
+    "walk_N": ["player_walk_N_0", "player_walk_N_1"],
+    "walk_NW": ["player_walk_NW_0", "player_walk_NW_1"],
+    "walk_W": ["player_walk_W_0", "player_walk_W_1"],
+    "walk_SW": ["player_walk_SW_0", "player_walk_SW_1"],
+    "roll_S": ["player_roll_S_0", "player_roll_S_1", "player_roll_S_2"],
+    "roll_SE": ["player_roll_SE_0", "player_roll_SE_1", "player_roll_SE_2"],
+    "roll_E": ["player_roll_E_0", "player_roll_E_1", "player_roll_E_2"],
+    "roll_NE": ["player_roll_NE_0", "player_roll_NE_1", "player_roll_NE_2"],
+    "roll_N": ["player_roll_N_0", "player_roll_N_1", "player_roll_N_2"],
+    "roll_NW": ["player_roll_NW_0", "player_roll_NW_1", "player_roll_NW_2"],
+    "roll_W": ["player_roll_W_0", "player_roll_W_1", "player_roll_W_2"],
+    "roll_SW": ["player_roll_SW_0", "player_roll_SW_1", "player_roll_SW_2"]
   }
 }
