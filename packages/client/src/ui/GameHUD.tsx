@@ -18,8 +18,45 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
             : `WAVE ${state.waveNumber} / ${state.totalWaves}`}
       </div>
 
-      {/* Cylinder — bottom-left */}
+      {/* Cylinder + Showdown — bottom-left */}
       <div style={styles.bottomLeft}>
+        {/* Showdown ability indicator */}
+        <div style={styles.abilityRow}>
+          {state.showdownActive ? (
+            <>
+              <div style={{ ...styles.abilityKey, ...styles.abilityActive }}>Q</div>
+              <div style={styles.abilityBarOuter}>
+                <div style={{
+                  ...styles.abilityBarFill,
+                  ...styles.abilityBarActive,
+                  width: `${state.showdownDurationMax > 0 ? (state.showdownTimeLeft / state.showdownDurationMax) * 100 : 0}%`,
+                }} />
+              </div>
+              <div style={{ ...styles.abilityLabel, color: '#ff6633' }}>
+                {state.showdownTimeLeft.toFixed(1)}s
+              </div>
+            </>
+          ) : state.showdownCooldown > 0 ? (
+            <>
+              <div style={{ ...styles.abilityKey, ...styles.abilityOnCooldown }}>Q</div>
+              <div style={styles.abilityBarOuter}>
+                <div style={{
+                  ...styles.abilityBarFill,
+                  ...styles.abilityBarCooldown,
+                  width: `${state.showdownCooldownMax > 0 ? (1 - state.showdownCooldown / state.showdownCooldownMax) * 100 : 0}%`,
+                }} />
+              </div>
+              <div style={{ ...styles.abilityLabel, color: '#666666' }}>
+                {state.showdownCooldown.toFixed(1)}s
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ ...styles.abilityKey, ...styles.abilityReady }}>Q</div>
+              <div style={{ ...styles.abilityLabel, color: '#00ffcc' }}>READY</div>
+            </>
+          )}
+        </div>
         <div style={styles.chamberRow}>
           {Array.from({ length: state.cylinderMax }, (_, i) => {
             const loaded = i < state.cylinderRounds
@@ -135,6 +172,68 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ffcc00',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     letterSpacing: '0.1em',
+  },
+  // Showdown ability indicator
+  abilityRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  abilityKey: {
+    width: 16,
+    height: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 9,
+    fontWeight: 'bold',
+    borderRadius: 2,
+    border: '1px solid',
+    lineHeight: 1,
+  },
+  abilityReady: {
+    color: '#00ffcc',
+    borderColor: '#00ffcc',
+    backgroundColor: 'rgba(0, 255, 204, 0.15)',
+    textShadow: '0 0 6px rgba(0, 255, 204, 0.6)',
+    boxShadow: '0 0 6px rgba(0, 255, 204, 0.3)',
+  },
+  abilityActive: {
+    color: '#ff6633',
+    borderColor: '#ff6633',
+    backgroundColor: 'rgba(255, 102, 51, 0.2)',
+    textShadow: '0 0 6px rgba(255, 102, 51, 0.6)',
+    boxShadow: '0 0 6px rgba(255, 102, 51, 0.3)',
+  },
+  abilityOnCooldown: {
+    color: '#666666',
+    borderColor: '#444444',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  abilityBarOuter: {
+    width: 40,
+    height: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  abilityBarFill: {
+    height: '100%',
+    borderRadius: 2,
+    transition: 'width 0.05s linear',
+  },
+  abilityBarActive: {
+    backgroundColor: '#ff6633',
+  },
+  abilityBarCooldown: {
+    backgroundColor: '#555555',
+  },
+  abilityLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+    whiteSpace: 'nowrap' as const,
   },
   // Bottom-right stack
   bottomRight: {

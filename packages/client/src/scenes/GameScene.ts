@@ -49,6 +49,7 @@ import {
   AIState,
   Cylinder,
   Showdown,
+  NO_TARGET,
   Bullet,
   type GameWorld,
   type SystemRegistry,
@@ -71,6 +72,7 @@ import { SpriteRegistry } from '../render/SpriteRegistry'
 import { PlayerRenderer } from '../render/PlayerRenderer'
 import { BulletRenderer } from '../render/BulletRenderer'
 import { EnemyRenderer } from '../render/EnemyRenderer'
+import { ShowdownRenderer } from '../render/ShowdownRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
 import { SoundManager } from '../audio/SoundManager'
 import { SOUND_DEFS } from '../audio/sounds'
@@ -110,6 +112,7 @@ export interface HUDState {
   showdownCooldown: number
   showdownCooldownMax: number
   showdownTimeLeft: number
+  showdownDurationMax: number
 }
 
 export class GameScene {
@@ -125,6 +128,7 @@ export class GameScene {
   private readonly playerRenderer: PlayerRenderer
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
+  private readonly showdownRenderer: ShowdownRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly sound: SoundManager
@@ -180,6 +184,7 @@ export class GameScene {
     this.playerRenderer = new PlayerRenderer(this.spriteRegistry)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
+    this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
     // Debug graphics in entity layer (world space)
@@ -303,6 +308,7 @@ export class GameScene {
       showdownCooldownMax: this.world.upgradeState.showdownCooldown,
       showdownTimeLeft: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
         ? Showdown.duration[playerEid]! : 0,
+      showdownDurationMax: this.world.upgradeState.showdownDuration,
     }
   }
 
@@ -375,6 +381,13 @@ export class GameScene {
     // Showdown audio cues
     if (this.world.showdownActivatedThisTick) this.sound.play('showdown_activate')
     if (this.world.showdownKillThisTick) this.sound.play('showdown_kill')
+    if (this.world.showdownExpiredThisTick) this.sound.play('showdown_expire')
+
+    // Set showdown target for enemy tinting
+    this.enemyRenderer.showdownTargetEid =
+      playerEid !== null && hasComponent(this.world, Showdown, playerEid) && Showdown.active[playerEid]! === 1
+        ? Showdown.targetEid[playerEid]!
+        : NO_TARGET
 
     // Detect player damage (i-frames went from 0 to >0)
     if (playerEid !== null) {
@@ -510,6 +523,10 @@ export class GameScene {
     // Render enemies with interpolation
     this.enemyRenderer.render(this.world, alpha, realDt)
 
+    // Render showdown mark + line
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    this.showdownRenderer.render(this.world, playerEid, alpha, realDt)
+
     // Update particles (visual-only, uses real frame dt)
     this.particles.update(realDt)
     this.floatingText.update(realDt)
@@ -521,8 +538,7 @@ export class GameScene {
       this.gameOverText.visible = true
     }
 
-    // Build expanded debug stats
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    // Build expanded debug stats (playerEid already declared above)
     const camPos = this.camera.getPosition()
 
     // Enemy AI state distribution
@@ -581,6 +597,7 @@ export class GameScene {
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()
     this.enemyRenderer.destroy()
+    this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

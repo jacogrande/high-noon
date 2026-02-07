@@ -111,6 +111,8 @@ export interface GameWorld extends IWorld {
   showdownKillThisTick: boolean
   /** Set to true when Showdown is activated this tick */
   showdownActivatedThisTick: boolean
+  /** Set to true when Showdown duration expires naturally this tick */
+  showdownExpiredThisTick: boolean
 }
 
 /**
@@ -138,6 +140,7 @@ export function createGameWorld(seed?: number): GameWorld {
     bulletPierceHits: new Map(),
     showdownKillThisTick: false,
     showdownActivatedThisTick: false,
+    showdownExpiredThisTick: false,
   }
 }
 
@@ -168,6 +171,7 @@ export function resetWorld(world: GameWorld): void {
   world.bulletPierceHits.clear()
   world.showdownKillThisTick = false
   world.showdownActivatedThisTick = false
+  world.showdownExpiredThisTick = false
   // Note: rng is intentionally NOT reset — caller should create a new world
   // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed

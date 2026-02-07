@@ -69,6 +69,8 @@ export class EnemyRenderer {
   private readonly deathEffects: DeathEffect[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
+  /** Entity ID of the Showdown-marked target (set by GameScene each tick) */
+  showdownTargetEid: number = NO_TARGET
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -179,6 +181,11 @@ export class EnemyRenderer {
 
       let color = normalColor
       let a = 1.0
+
+      // Showdown target tint (persistent, overridden by damage flash / telegraph)
+      if (eid === this.showdownTargetEid) {
+        color = 0xff4444
+      }
 
       // Damage flash timer (set by sync() on HP decrease)
       const flashTimer = this.damageFlashTimer.get(eid) ?? 0

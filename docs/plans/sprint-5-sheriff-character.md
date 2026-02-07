@@ -17,7 +17,7 @@ The Sheriff has a revolver that fires as fast as you click (6 shots, then reload
 - [x] Last round deals 1.5x damage
 - [x] Cylinder state visible in HUD
 - [x] Showdown ability: mark enemy, +100% damage, pierce to target, kill refund
-- [ ] Showdown visual indicators (mark on enemy, cooldown in HUD)
+- [x] Showdown visual indicators (mark on enemy, cooldown in HUD)
 - [ ] Skill tree UI replaces random upgrade cards on level-up
 - [ ] 9 of 15 nodes are functional (full Marksman, Lawman T1-T4)
 - [ ] 6 nodes defined but greyed out as "coming soon" (full Gunslinger, Lawman T5)

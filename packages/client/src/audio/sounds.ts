@@ -18,6 +18,7 @@ export const SOUND_DEFS = {
   dry_fire:          { src: '/assets/sfx/dry_fire.ogg',          volume: 0.3 },
   showdown_activate: { src: '/assets/sfx/showdown_activate.ogg', volume: 0.5 },
   showdown_kill:     { src: '/assets/sfx/showdown_kill.ogg',     volume: 0.4 },
+  showdown_expire:   { src: '/assets/sfx/showdown_expire.ogg',   volume: 0.35 },
 } as const satisfies Record<string, SoundDef>
 
 export type SoundName = keyof typeof SOUND_DEFS

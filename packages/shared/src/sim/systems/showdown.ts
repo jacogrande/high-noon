@@ -40,6 +40,7 @@ export function showdownSystem(
   // Reset per-tick event flags
   world.showdownKillThisTick = false
   world.showdownActivatedThisTick = false
+  world.showdownExpiredThisTick = false
 
   const players = showdownPlayerQuery(world)
 
@@ -78,6 +79,7 @@ export function showdownSystem(
           Showdown.targetEid[eid] = NO_TARGET
           Showdown.duration[eid] = 0
           Showdown.cooldown[eid] = us.showdownCooldown
+          world.showdownExpiredThisTick = true
         } else {
           // Speed bonus (skip during roll)
           if (!hasComponent(world, Roll, eid)) {
