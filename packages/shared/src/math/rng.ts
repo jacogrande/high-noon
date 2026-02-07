@@ -30,4 +30,9 @@ export class SeededRng {
   nextRange(min: number, max: number): number {
     return min + this.next() * (max - min)
   }
+
+  /** Reset to a new seed (for replay support) */
+  reset(seed: number): void {
+    this.seed = seed | 0
+  }
 }

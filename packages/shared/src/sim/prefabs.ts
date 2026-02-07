@@ -5,7 +5,7 @@
  * all required components and default values.
  */
 
-import { addEntity, addComponent } from 'bitecs'
+import { addEntity, addComponent, removeEntity } from 'bitecs'
 import type { GameWorld, BulletCollisionCallback } from './world'
 import {
   Position,
@@ -237,6 +237,18 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
   }
 
   return eid
+}
+
+/**
+ * Remove a bullet entity and clean up all associated world state.
+ * Centralizes cleanup that was previously duplicated across bullet.ts,
+ * bulletCollision.ts, and health.ts.
+ */
+export function removeBullet(world: GameWorld, eid: number): void {
+  world.bulletCollisionCallbacks.delete(eid)
+  world.bulletPierceHits.delete(eid)
+  world.hookPierceCount.delete(eid)
+  removeEntity(world, eid)
 }
 
 // ============================================================================

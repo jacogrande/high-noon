@@ -11,10 +11,11 @@
  * the entity takes the hit.
  */
 
-import { defineQuery, removeEntity, hasComponent } from 'bitecs'
+import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player } from '../components'
-import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET } from '../prefabs'
+import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET, removeBullet } from '../prefabs'
+import { clampDamage } from '../damage'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
 
@@ -101,7 +102,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
           hits.add(targetEid)
         } else if (ownerHasShowdown && targetEid === showdownTarget) {
           // Target hit: bonus damage, bullet stops
-          damage = Math.min(255, Math.round(damage * world.upgradeState.showdownDamageMultiplier))
+          damage = clampDamage(damage * world.upgradeState.showdownDamageMultiplier)
         }
 
         // Fire onBulletHit hooks for player bullets (pierce, JJE bonus, etc.)
@@ -176,12 +177,6 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
   // Remove bullets that hit something
   for (const eid of bulletsToRemove) {
-    // Clean up callback registry (also cleaned in healthSystem on death)
-    world.bulletCollisionCallbacks.delete(eid)
-    // Clean up pierce hit tracking
-    world.bulletPierceHits.delete(eid)
-    world.hookPierceCount.delete(eid)
-    // Remove entity
-    removeEntity(world, eid)
+    removeBullet(world, eid)
   }
 }

@@ -189,6 +189,45 @@ describe('showdownSystem', () => {
 
       expect(Showdown.cooldown[playerEid]).toBeCloseTo(SHOWDOWN_COOLDOWN)
     })
+
+    test('sets showdownExpiredThisTick on expiry', () => {
+      const enemy = spawnTestEnemy(world, 200, 100)
+      Showdown.active[playerEid] = 1
+      Showdown.targetEid[playerEid] = enemy
+      Showdown.duration[playerEid] = 0.01
+
+      const input = createInputState()
+      showdownSystem(world, 0.02, input)
+
+      expect(world.showdownExpiredThisTick).toBe(true)
+    })
+
+    test('does not set showdownExpiredThisTick when still active', () => {
+      const enemy = spawnTestEnemy(world, 200, 100)
+      Showdown.active[playerEid] = 1
+      Showdown.targetEid[playerEid] = enemy
+      Showdown.duration[playerEid] = 3.0
+
+      const input = createInputState()
+      showdownSystem(world, dt, input)
+
+      expect(world.showdownExpiredThisTick).toBe(false)
+    })
+
+    test('does not set showdownExpiredThisTick on kill (kill not expiry)', () => {
+      const enemy = spawnTestEnemy(world, 200, 100, 5)
+      Showdown.active[playerEid] = 1
+      Showdown.targetEid[playerEid] = enemy
+      Showdown.duration[playerEid] = 3.0
+
+      Health.current[enemy] = 0
+
+      const input = createInputState()
+      showdownSystem(world, dt, input)
+
+      expect(world.showdownKillThisTick).toBe(true)
+      expect(world.showdownExpiredThisTick).toBe(false)
+    })
   })
 
   describe('kill detection', () => {
@@ -254,19 +293,16 @@ describe('showdownSystem', () => {
   })
 
   describe('speed bonus', () => {
-    test('scales velocity by speed bonus while active', () => {
+    test('sets Speed.current to max * bonus while active', () => {
       const enemy = spawnTestEnemy(world, 200, 100)
       Showdown.active[playerEid] = 1
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
-      Velocity.x[playerEid] = 100
-      Velocity.y[playerEid] = 0
-
       const input = createInputState()
       showdownSystem(world, dt, input)
 
-      expect(Velocity.x[playerEid]).toBeCloseTo(100 * SHOWDOWN_SPEED_BONUS)
+      expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]! * SHOWDOWN_SPEED_BONUS)
     })
 
     test('does NOT scale during roll', () => {
@@ -275,17 +311,41 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
+      const baseSpeed = Speed.current[playerEid]!
       addComponent(world, Roll, playerEid)
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      Velocity.x[playerEid] = 100
-      Velocity.y[playerEid] = 0
+      const input = createInputState()
+      showdownSystem(world, dt, input)
+
+      expect(Speed.current[playerEid]).toBeCloseTo(baseSpeed)
+    })
+
+    test('resets Speed.current on kill', () => {
+      const enemy = spawnTestEnemy(world, 200, 100, 5)
+      Showdown.active[playerEid] = 1
+      Showdown.targetEid[playerEid] = enemy
+      Showdown.duration[playerEid] = 3.0
+
+      Health.current[enemy] = 0
 
       const input = createInputState()
       showdownSystem(world, dt, input)
 
-      expect(Velocity.x[playerEid]).toBeCloseTo(100)
+      expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]!)
+    })
+
+    test('resets Speed.current on expiry', () => {
+      const enemy = spawnTestEnemy(world, 200, 100)
+      Showdown.active[playerEid] = 1
+      Showdown.targetEid[playerEid] = enemy
+      Showdown.duration[playerEid] = 0.01
+
+      const input = createInputState()
+      showdownSystem(world, 0.02, input)
+
+      expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]!)
     })
   })
 
@@ -324,13 +384,10 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
-      Velocity.x[playerEid] = 100
-      Velocity.y[playerEid] = 0
-
       showdownSystem(world, dt)
 
       // Speed bonus should still apply
-      expect(Velocity.x[playerEid]).toBeCloseTo(100 * SHOWDOWN_SPEED_BONUS)
+      expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]! * SHOWDOWN_SPEED_BONUS)
       // Duration should still decrement
       expect(Showdown.duration[playerEid]).toBeCloseTo(3.0 - dt)
     })

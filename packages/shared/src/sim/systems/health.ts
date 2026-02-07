@@ -41,8 +41,10 @@ export function healthSystem(world: GameWorld, dt: number): void {
         if (xp !== undefined) {
           awardXP(world.upgradeState, xp)
         }
-        // Non-player death — clean up (also cleaned in bulletCollisionSystem on hit)
+        // Non-player death — clean up any stale map entries keyed by this eid
         world.bulletCollisionCallbacks.delete(eid)
+        world.bulletPierceHits.delete(eid)
+        world.hookPierceCount.delete(eid)
         removeEntity(world, eid)
       }
     }

@@ -95,12 +95,14 @@ interface HookEntry<H> {
 // ============================================================================
 
 export class HookRegistry {
-  private _onBulletHit: HookEntry<OnBulletHitHandler>[] = []
-  private _onKill: HookEntry<OnKillHandler>[] = []
-  private _onRollDodge: HookEntry<OnRollDodgeHandler>[] = []
-  private _onCylinderEmpty: HookEntry<OnCylinderEmptyHandler>[] = []
-  private _onHealthChanged: HookEntry<OnHealthChangedHandler>[] = []
-  private _onShowdownActivate: HookEntry<OnShowdownActivateHandler>[] = []
+  private _handlers: { [K in HookId]: HookEntry<HookHandlerMap[K]>[] } = {
+    onBulletHit: [],
+    onKill: [],
+    onRollDodge: [],
+    onCylinderEmpty: [],
+    onHealthChanged: [],
+    onShowdownActivate: [],
+  }
 
   /** Register a handler for a hook event */
   register<K extends HookId>(
@@ -109,10 +111,8 @@ export class HookRegistry {
     handler: HookHandlerMap[K],
     priority = 0,
   ): void {
-    const entry = { id, handler, priority } as HookEntry<any>
-    const list = this._getList(hook)
-    list.push(entry)
-    // Sort by priority (lower runs first)
+    const list = this._handlers[hook] as HookEntry<HookHandlerMap[K]>[]
+    list.push({ id, handler, priority })
     if (list.length > 1) {
       list.sort((a, b) => a.priority - b.priority)
     }
@@ -120,22 +120,20 @@ export class HookRegistry {
 
   /** Unregister all handlers with a given id */
   unregister(id: string): void {
-    this._onBulletHit = this._onBulletHit.filter(e => e.id !== id)
-    this._onKill = this._onKill.filter(e => e.id !== id)
-    this._onRollDodge = this._onRollDodge.filter(e => e.id !== id)
-    this._onCylinderEmpty = this._onCylinderEmpty.filter(e => e.id !== id)
-    this._onHealthChanged = this._onHealthChanged.filter(e => e.id !== id)
-    this._onShowdownActivate = this._onShowdownActivate.filter(e => e.id !== id)
+    const h = this._handlers
+    h.onBulletHit = h.onBulletHit.filter(e => e.id !== id)
+    h.onKill = h.onKill.filter(e => e.id !== id)
+    h.onRollDodge = h.onRollDodge.filter(e => e.id !== id)
+    h.onCylinderEmpty = h.onCylinderEmpty.filter(e => e.id !== id)
+    h.onHealthChanged = h.onHealthChanged.filter(e => e.id !== id)
+    h.onShowdownActivate = h.onShowdownActivate.filter(e => e.id !== id)
   }
 
   /** Remove all registered handlers */
   clear(): void {
-    this._onBulletHit.length = 0
-    this._onKill.length = 0
-    this._onRollDodge.length = 0
-    this._onCylinderEmpty.length = 0
-    this._onHealthChanged.length = 0
-    this._onShowdownActivate.length = 0
+    for (const key of Object.keys(this._handlers) as HookId[]) {
+      this._handlers[key].length = 0
+    }
   }
 
   // --- Transform hooks (return modified result) ---
@@ -150,11 +148,12 @@ export class HookRegistry {
     targetEid: number,
     baseDamage: number,
   ): BulletHitResult {
-    if (this._onBulletHit.length === 0) {
+    const handlers = this._handlers.onBulletHit
+    if (handlers.length === 0) {
       return { damage: baseDamage, pierce: false }
     }
     let result: BulletHitResult = { damage: baseDamage, pierce: false }
-    for (const entry of this._onBulletHit) {
+    for (const entry of handlers) {
       const hookResult = entry.handler(world, bulletEid, targetEid, result.damage)
       result = { damage: hookResult.damage, pierce: result.pierce || hookResult.pierce }
     }
@@ -164,31 +163,31 @@ export class HookRegistry {
   // --- Notify hooks (side effects only) ---
 
   fireKill(world: GameWorld, playerEid: number, victimEid: number): void {
-    for (const entry of this._onKill) {
+    for (const entry of this._handlers.onKill) {
       entry.handler(world, playerEid, victimEid)
     }
   }
 
   fireRollDodge(world: GameWorld, playerEid: number, dodgedBulletEid: number): void {
-    for (const entry of this._onRollDodge) {
+    for (const entry of this._handlers.onRollDodge) {
       entry.handler(world, playerEid, dodgedBulletEid)
     }
   }
 
   fireCylinderEmpty(world: GameWorld, playerEid: number): void {
-    for (const entry of this._onCylinderEmpty) {
+    for (const entry of this._handlers.onCylinderEmpty) {
       entry.handler(world, playerEid)
     }
   }
 
   fireHealthChanged(world: GameWorld, playerEid: number, oldHP: number, newHP: number): void {
-    for (const entry of this._onHealthChanged) {
+    for (const entry of this._handlers.onHealthChanged) {
       entry.handler(world, playerEid, oldHP, newHP)
     }
   }
 
   fireShowdownActivate(world: GameWorld, playerEid: number): void {
-    for (const entry of this._onShowdownActivate) {
+    for (const entry of this._handlers.onShowdownActivate) {
       entry.handler(world, playerEid)
     }
   }
@@ -196,17 +195,6 @@ export class HookRegistry {
   // --- Query helpers ---
 
   hasHandlers(hook: HookId): boolean {
-    return this._getList(hook).length > 0
-  }
-
-  private _getList(hook: HookId): HookEntry<any>[] {
-    switch (hook) {
-      case 'onBulletHit': return this._onBulletHit
-      case 'onKill': return this._onKill
-      case 'onRollDodge': return this._onRollDodge
-      case 'onCylinderEmpty': return this._onCylinderEmpty
-      case 'onHealthChanged': return this._onHealthChanged
-      case 'onShowdownActivate': return this._onShowdownActivate
-    }
+    return this._handlers[hook].length > 0
   }
 }

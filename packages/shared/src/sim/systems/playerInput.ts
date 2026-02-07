@@ -115,8 +115,7 @@ export function playerInputSystem(
         : PlayerStateType.IDLE
 
       // Apply velocity based on current speed
-      // Use max speed directly (instant acceleration per mechanics doc)
-      const speed = Speed.max[eid]!
+      const speed = Speed.current[eid]!
       Velocity.x[eid] = moveX * speed
       Velocity.y[eid] = moveY * speed
     }

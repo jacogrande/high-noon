@@ -5,9 +5,10 @@
  * Bullets despawn when they exceed their range or lifetime.
  */
 
-import { defineQuery, removeEntity } from 'bitecs'
+import { defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Bullet, Position, Velocity } from '../components'
+import { removeBullet } from '../prefabs'
 
 // Query for all bullet entities
 const bulletQuery = defineQuery([Bullet, Position, Velocity])
@@ -41,11 +42,7 @@ export function bulletSystem(world: GameWorld, dt: number): void {
     const lifetime = Bullet.lifetime[eid]!
 
     if (distanceTraveled >= range || lifetime <= 0) {
-      // Clean up collision callback if registered
-      world.bulletCollisionCallbacks.delete(eid)
-      world.bulletPierceHits.delete(eid)
-      world.hookPierceCount.delete(eid)
-      removeEntity(world, eid)
+      removeBullet(world, eid)
     }
   }
 }

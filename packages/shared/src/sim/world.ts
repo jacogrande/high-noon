@@ -97,6 +97,8 @@ export interface GameWorld extends IWorld {
   encounter: EncounterState | null
   /** Maximum enemy projectiles before fodder stops firing */
   maxProjectiles: number
+  /** Initial seed used to create the RNG (stored for replay reset) */
+  initialSeed: number
   /** Seeded PRNG for deterministic simulation randomness */
   rng: SeededRng
   /** Direction of last hit on player (unit vector X, for camera kick) */
@@ -128,6 +130,7 @@ export interface GameWorld extends IWorld {
  */
 export function createGameWorld(seed?: number): GameWorld {
   const baseWorld = bitCreateWorld()
+  const resolvedSeed = seed ?? Date.now()
 
   return {
     ...baseWorld,
@@ -140,7 +143,8 @@ export function createGameWorld(seed?: number): GameWorld {
     debugSpawnWasDown: false,
     encounter: null,
     maxProjectiles: 80,
-    rng: new SeededRng(seed ?? Date.now()),
+    initialSeed: resolvedSeed,
+    rng: new SeededRng(resolvedSeed),
     lastPlayerHitDirX: 0,
     lastPlayerHitDirY: 0,
     upgradeState: initUpgradeState(SHERIFF),
@@ -186,8 +190,7 @@ export function resetWorld(world: GameWorld): void {
   world.showdownActivatedThisTick = false
   world.showdownExpiredThisTick = false
   world.hooks.clear()
-  // Note: rng is intentionally NOT reset — caller should create a new world
-  // or explicitly re-seed if needed for replay
+  world.rng.reset(world.initialSeed)
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

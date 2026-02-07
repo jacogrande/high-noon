@@ -8,8 +8,10 @@
 
 import type { GameWorld } from '../world'
 import type { HookRegistry, BulletHitResult } from '../hooks'
-import { Health, Bullet, Player, Position, Weapon, Cylinder } from '../components'
+import { Health, Bullet, Player, Position, Weapon, Cylinder, Collider } from '../components'
 import { spawnBullet } from '../prefabs'
+import { clampDamage } from '../damage'
+import { BULLET_RADIUS } from './weapons'
 
 // ============================================================================
 // Effect registration functions (one per behavioral node)
@@ -58,7 +60,7 @@ function registerJJE(hooks: HookRegistry): void {
     // Check if the bullet owner's cylinder is empty (this was the last round)
     const ownerId = Bullet.ownerId[bulletEid]!
     if (Cylinder.rounds[ownerId] === 0) {
-      return { damage: Math.min(255, Math.round(damage * JJE_LAST_ROUND_BONUS)), pierce: false }
+      return { damage: clampDamage(damage * JJE_LAST_ROUND_BONUS), pierce: false }
     }
     return { damage, pierce: false }
   }, 10) // higher priority = runs after pierce
@@ -94,7 +96,7 @@ function registerDeadMansHand(hooks: HookRegistry): void {
   ) => {
     const aimAngle = Player.aimAngle[playerEid]!
     // Offset spawn point forward along aim direction to avoid self-collision
-    const spawnOffset = 6
+    const spawnOffset = Collider.radius[playerEid]! + BULLET_RADIUS + 2
     const x = Position.x[playerEid]! + Math.cos(aimAngle) * spawnOffset
     const y = Position.y[playerEid]! + Math.sin(aimAngle) * spawnOffset
     const bulletSpeed = Weapon.bulletSpeed[playerEid]!

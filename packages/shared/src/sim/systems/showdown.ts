@@ -15,6 +15,7 @@ import {
   Showdown,
   Position,
   Velocity,
+  Speed,
   Enemy,
   Health,
   Dead,
@@ -63,28 +64,29 @@ export function showdownSystem(
         hasComponent(world, Dead, targetEid)
 
       if (targetDead) {
-        // Kill — grant cooldown refund
+        // Kill — grant cooldown refund, reset speed
         Showdown.active[eid] = 0
         Showdown.targetEid[eid] = NO_TARGET
         Showdown.duration[eid] = 0
         Showdown.cooldown[eid] = Math.max(0, us.showdownCooldown - us.showdownKillRefund)
+        Speed.current[eid] = Speed.max[eid]!
         world.showdownKillThisTick = true
       } else {
         // Decrement duration
         Showdown.duration[eid] = Showdown.duration[eid]! - dt
 
         if (Showdown.duration[eid]! <= 0) {
-          // Expired — full cooldown
+          // Expired — full cooldown, reset speed
           Showdown.active[eid] = 0
           Showdown.targetEid[eid] = NO_TARGET
           Showdown.duration[eid] = 0
           Showdown.cooldown[eid] = us.showdownCooldown
+          Speed.current[eid] = Speed.max[eid]!
           world.showdownExpiredThisTick = true
         } else {
-          // Speed bonus (skip during roll)
+          // Speed bonus via Speed.current (skip during roll)
           if (!hasComponent(world, Roll, eid)) {
-            Velocity.x[eid] = Velocity.x[eid]! * us.showdownSpeedBonus
-            Velocity.y[eid] = Velocity.y[eid]! * us.showdownSpeedBonus
+            Speed.current[eid] = Speed.max[eid]! * us.showdownSpeedBonus
           }
         }
       }

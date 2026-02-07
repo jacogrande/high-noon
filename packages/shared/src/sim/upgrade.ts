@@ -3,6 +3,7 @@ import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
 import type { GameWorld } from './world'
 import { applyNodeEffect } from './content/nodeEffects'
+import { clampDamage } from './damage'
 
 export interface UpgradeState {
   characterDef: CharacterDef
@@ -215,7 +216,7 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   }
 
   Weapon.fireRate[playerEid] = state.fireRate
-  Weapon.bulletDamage[playerEid] = Math.min(255, Math.round(bulletDamage))
+  Weapon.bulletDamage[playerEid] = clampDamage(bulletDamage)
   Weapon.bulletSpeed[playerEid] = state.bulletSpeed
   Weapon.range[playerEid] = state.range
 
@@ -236,7 +237,15 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   // I-frame duration
   Health.iframeDuration[playerEid] = state.iframeDuration
 
-  // Cylinder stats (only maxRounds and reloadTime — live state is not overwritten)
-  Cylinder.maxRounds[playerEid] = Math.round(state.cylinderSize)
+  // Cylinder stats — grant extra rounds immediately if capacity increased
+  const newMaxRounds = Math.round(state.cylinderSize)
+  const oldMaxRounds = Cylinder.maxRounds[playerEid]!
+  Cylinder.maxRounds[playerEid] = newMaxRounds
+  if (newMaxRounds > oldMaxRounds && Cylinder.reloading[playerEid] === 0) {
+    Cylinder.rounds[playerEid] = Math.min(
+      Cylinder.rounds[playerEid]! + (newMaxRounds - oldMaxRounds),
+      newMaxRounds,
+    )
+  }
   Cylinder.reloadTime[playerEid] = state.reloadTime
 }

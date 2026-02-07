@@ -19,6 +19,7 @@ import {
   PlayerStateType,
 } from '../components'
 import { spawnBullet } from '../prefabs'
+import { clampDamage } from '../damage'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
@@ -83,7 +84,7 @@ export function weaponSystem(
     // Last round bonus: if cylinder has exactly 1 round, apply multiplier
     if (hasCylinder && Cylinder.rounds[eid] === 1) {
       const multiplier = world.upgradeState.lastRoundMultiplier
-      bulletDamage = Math.min(255, Math.round(bulletDamage * multiplier))
+      bulletDamage = clampDamage(bulletDamage * multiplier)
     }
 
     // Calculate bullet velocity
