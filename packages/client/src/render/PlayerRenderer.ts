@@ -63,7 +63,9 @@ export class PlayerRenderer {
       if (!this.registry.has(eid)) {
         // Get initial texture (idle, facing east)
         const texture = AssetLoader.getPlayerTexture('idle', 'E', 0)
-        this.registry.createSprite(eid, texture)
+        const sprite = this.registry.createSprite(eid, texture)
+        sprite.texture.source.scaleMode = 'nearest'
+        sprite.scale.set(2)
         this.playerEntity = eid
       }
     }

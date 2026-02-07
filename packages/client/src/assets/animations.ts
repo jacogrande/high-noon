@@ -9,21 +9,27 @@ export const DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const
 export type Direction = (typeof DIRECTIONS)[number]
 
 /** Player animation states */
-export const ANIMATION_STATES = ['idle', 'walk', 'roll'] as const
+export const ANIMATION_STATES = ['idle', 'walk', 'roll', 'run', 'jump', 'interact'] as const
 export type AnimationState = (typeof ANIMATION_STATES)[number]
 
 /** Animation speeds (frames per second) */
 export const ANIMATION_SPEEDS: Record<AnimationState, number> = {
   idle: 1, // Static, 1 frame
-  walk: 10, // 10 FPS walk cycle
-  roll: 15, // Fast roll animation
+  walk: 8, // 8 FPS walk cycle
+  roll: 12, // Fast roll/dodge animation
+  run: 8, // Run cycle
+  jump: 10, // Jump animation
+  interact: 6, // Interact animation
 }
 
 /** Number of frames per animation */
 export const ANIMATION_FRAME_COUNTS: Record<AnimationState, number> = {
   idle: 1,
-  walk: 4,
-  roll: 4,
+  walk: 2,
+  roll: 3,
+  run: 2,
+  jump: 3,
+  interact: 3,
 }
 
 /**
