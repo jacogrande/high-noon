@@ -34,9 +34,9 @@ import {
   enemyAttackSystem,
   spatialHashSystem,
   waveSpawnerSystem,
-  generateUpgradeChoices,
-  applyUpgrade,
   writeStatsToECS,
+  canTakeNode,
+  takeNode,
   Player,
   Position,
   Velocity,
@@ -56,8 +56,6 @@ import {
   type Tilemap,
   LEVEL_THRESHOLDS,
   MAX_LEVEL,
-  type UpgradeDef,
-  type UpgradeId,
   hasButton,
   Button,
 } from '@high-noon/shared'
@@ -113,6 +111,21 @@ export interface HUDState {
   showdownCooldownMax: number
   showdownTimeLeft: number
   showdownDurationMax: number
+  pendingPoints: number
+}
+
+export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'
+
+export interface SkillTreeUIData {
+  branches: Array<{
+    id: string; name: string; description: string
+    nodes: Array<{
+      id: string; name: string; description: string; tier: number
+      state: SkillNodeState
+    }>
+  }>
+  pendingPoints: number
+  level: number
 }
 
 export class GameScene {
@@ -137,7 +150,6 @@ export class GameScene {
   private readonly gameOverText: Text
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
-  private paused = false
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
 
@@ -268,11 +280,6 @@ export class GameScene {
     return eid !== null && hasComponent(this.world, Dead, eid)
   }
 
-  /** Returns pending upgrade choices, or empty array if none */
-  getPendingChoices(): UpgradeDef[] {
-    return this.world.upgradeState.pendingChoices
-  }
-
   /** Returns current HUD display state */
   getHUDState(): HUDState {
     const playerEid = this.playerRenderer.getPlayerEntity()
@@ -309,47 +316,63 @@ export class GameScene {
       showdownTimeLeft: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
         ? Showdown.duration[playerEid]! : 0,
       showdownDurationMax: this.world.upgradeState.showdownDuration,
+      pendingPoints: this.world.upgradeState.pendingPoints,
     }
   }
 
-  /** Apply selected upgrade, write to ECS, and resume (or show next level-up) */
-  selectUpgrade(id: UpgradeId): void {
-    const playerEid = this.playerRenderer.getPlayerEntity()
-    if (playerEid === null) return
-    this.sound.play('upgrade_select')
+  hasPendingPoints(): boolean {
+    return this.world.upgradeState.pendingPoints > 0
+  }
 
-    applyUpgrade(this.world.upgradeState, id)
-    writeStatsToECS(this.world, playerEid)
-    this.world.upgradeState.pendingChoices = []
-
-    // Check for additional pending level-ups (multi-level jump)
-    if (this.world.upgradeState.level > this.lastProcessedLevel) {
-      this.lastProcessedLevel++
-      this.world.upgradeState.pendingChoices = generateUpgradeChoices(
-        this.world.upgradeState,
-        this.world.rng,
-      )
-      // Stay paused — next choice screen will show
-    } else {
-      this.paused = false
+  getSkillTreeData(): SkillTreeUIData {
+    const state = this.world.upgradeState
+    return {
+      branches: state.characterDef.branches.map(branch => ({
+        id: branch.id,
+        name: branch.name,
+        description: branch.description,
+        nodes: branch.nodes.map(node => {
+          let nodeState: SkillNodeState
+          if (state.nodesTaken.has(node.id)) {
+            nodeState = 'taken'
+          } else if (!node.implemented) {
+            nodeState = 'unimplemented'
+          } else if (canTakeNode(state, node.id)) {
+            nodeState = 'available'
+          } else {
+            nodeState = 'locked'
+          }
+          return {
+            id: node.id,
+            name: node.name,
+            description: node.description,
+            tier: node.tier,
+            state: nodeState,
+          }
+        }),
+      })),
+      pendingPoints: state.pendingPoints,
+      level: state.level,
     }
+  }
+
+  selectNode(nodeId: string): boolean {
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    if (playerEid === null) return false
+    const success = takeNode(this.world.upgradeState, nodeId)
+    if (success) {
+      writeStatsToECS(this.world, playerEid)
+      this.sound.play('upgrade_select')
+    }
+    return success
   }
 
   update(dt: number): void {
     // Stop simulation when local player is dead
-    if (this.isPlayerDead()) {
-      if (this.paused) {
-        this.paused = false
-        this.world.upgradeState.pendingChoices = []
-      }
-      return
-    }
+    if (this.isPlayerDead()) return
 
     // Skip sim tick if hit-stopped
     if (this.hitStop.isFrozen) return
-
-    // Skip sim tick while upgrade choice is pending
-    if (this.paused) return
 
     // Get player entity for position lookups
     const playerEid = this.playerRenderer.getPlayerEntity()
@@ -461,14 +484,9 @@ export class GameScene {
       this.dryFireCooldown = 0.3
     }
 
-    // Level-up detection: check if upgradeState.level surpassed lastProcessedLevel
+    // Level-up detection
     if (this.world.upgradeState.level > this.lastProcessedLevel) {
-      this.lastProcessedLevel++
-      this.world.upgradeState.pendingChoices = generateUpgradeChoices(
-        this.world.upgradeState,
-        this.world.rng,
-      )
-      this.paused = true
+      this.lastProcessedLevel = this.world.upgradeState.level
       this.sound.play('level_up')
       if (playerEid !== null) {
         emitLevelUpSparkle(this.particles, Position.x[playerEid]!, Position.y[playerEid]!)
@@ -581,6 +599,7 @@ export class GameScene {
       fodderBudgetLeft: enc ? enc.fodderBudgetRemaining : 0,
       xp: this.world.upgradeState.xp,
       level: this.world.upgradeState.level,
+      pendingPts: this.world.upgradeState.pendingPoints,
     }
 
     this.debugRenderer.updateStats(stats)

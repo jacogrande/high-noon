@@ -1,34 +1,20 @@
-import {
-  UPGRADES, CHOICES_PER_LEVEL, RARITY_WEIGHTS, UpgradeRarity,
-  type UpgradeDef, type UpgradeId,
-} from './content/upgrades'
-import type { SeededRng } from '../math/rng'
-import {
-  PLAYER_SPEED, PLAYER_HP, PLAYER_IFRAME_DURATION,
-  ROLL_DURATION, ROLL_IFRAME_RATIO, ROLL_SPEED_MULTIPLIER,
-} from './content/player'
-import {
-  PISTOL_FIRE_RATE, PISTOL_BULLET_SPEED,
-  PISTOL_BULLET_DAMAGE, PISTOL_RANGE,
-  PISTOL_CYLINDER_SIZE, PISTOL_RELOAD_TIME,
-  PISTOL_MIN_FIRE_INTERVAL, PISTOL_HOLD_FIRE_RATE,
-  PISTOL_LAST_ROUND_MULTIPLIER,
-  SHOWDOWN_DURATION, SHOWDOWN_COOLDOWN,
-  SHOWDOWN_KILL_REFUND, SHOWDOWN_DAMAGE_MULTIPLIER,
-  SHOWDOWN_SPEED_BONUS, SHOWDOWN_MARK_RANGE,
-} from './content/weapons'
+import type { CharacterDef, StatName, SkillNodeDef, SkillBranch } from './content/characters'
 import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
 import type { GameWorld } from './world'
 
 export interface UpgradeState {
+  characterDef: CharacterDef
+
+  // XP/Level
   xp: number
   level: number
-  pendingChoices: UpgradeDef[]     // empty = no pending level-up
-  acquired: Map<UpgradeId, number> // upgradeId → stack count
-  killCounter: number              // for vampiric rounds
 
-  // Computed stats (base + all mods applied)
+  // Skill tree
+  pendingPoints: number
+  nodesTaken: Set<string>
+
+  // Computed stats (field names unchanged — zero downstream changes)
   fireRate: number
   bulletDamage: number
   bulletSpeed: number
@@ -52,34 +38,35 @@ export interface UpgradeState {
   showdownMarkRange: number
 }
 
-export function initUpgradeState(): UpgradeState {
+export function initUpgradeState(charDef: CharacterDef): UpgradeState {
+  const b = charDef.baseStats
   return {
+    characterDef: charDef,
     xp: 0,
     level: 0,
-    pendingChoices: [],
-    acquired: new Map(),
-    killCounter: 0,
-    fireRate: PISTOL_FIRE_RATE,
-    bulletDamage: PISTOL_BULLET_DAMAGE,
-    bulletSpeed: PISTOL_BULLET_SPEED,
-    range: PISTOL_RANGE,
-    speed: PLAYER_SPEED,
-    maxHP: PLAYER_HP,
-    iframeDuration: PLAYER_IFRAME_DURATION,
-    rollDuration: ROLL_DURATION,
-    rollIframeRatio: ROLL_IFRAME_RATIO,
-    rollSpeedMultiplier: ROLL_SPEED_MULTIPLIER,
-    cylinderSize: PISTOL_CYLINDER_SIZE,
-    reloadTime: PISTOL_RELOAD_TIME,
-    minFireInterval: PISTOL_MIN_FIRE_INTERVAL,
-    holdFireRate: PISTOL_HOLD_FIRE_RATE,
-    lastRoundMultiplier: PISTOL_LAST_ROUND_MULTIPLIER,
-    showdownDuration: SHOWDOWN_DURATION,
-    showdownCooldown: SHOWDOWN_COOLDOWN,
-    showdownKillRefund: SHOWDOWN_KILL_REFUND,
-    showdownDamageMultiplier: SHOWDOWN_DAMAGE_MULTIPLIER,
-    showdownSpeedBonus: SHOWDOWN_SPEED_BONUS,
-    showdownMarkRange: SHOWDOWN_MARK_RANGE,
+    pendingPoints: 0,
+    nodesTaken: new Set(),
+    fireRate: b.fireRate,
+    bulletDamage: b.bulletDamage,
+    bulletSpeed: b.bulletSpeed,
+    range: b.range,
+    speed: b.speed,
+    maxHP: b.maxHP,
+    iframeDuration: b.iframeDuration,
+    rollDuration: b.rollDuration,
+    rollIframeRatio: b.rollIframeRatio,
+    rollSpeedMultiplier: b.rollSpeedMultiplier,
+    cylinderSize: b.cylinderSize,
+    reloadTime: b.reloadTime,
+    minFireInterval: b.minFireInterval,
+    holdFireRate: b.holdFireRate,
+    lastRoundMultiplier: b.lastRoundMultiplier,
+    showdownDuration: b.showdownDuration,
+    showdownCooldown: b.showdownCooldown,
+    showdownKillRefund: b.showdownKillRefund,
+    showdownDamageMultiplier: b.showdownDamageMultiplier,
+    showdownSpeedBonus: b.showdownSpeedBonus,
+    showdownMarkRange: b.showdownMarkRange,
   }
 }
 
@@ -87,6 +74,7 @@ export function awardXP(state: UpgradeState, amount: number): boolean {
   state.xp += amount
   const newLevel = getLevelForXP(state.xp)
   if (newLevel > state.level) {
+    state.pendingPoints += (newLevel - state.level)
     state.level = newLevel
     return true
   }
@@ -94,72 +82,106 @@ export function awardXP(state: UpgradeState, amount: number): boolean {
 }
 
 /**
- * Recompute all player stats from base constants + acquired upgrade mods.
+ * Recompute all player stats from character base stats + taken skill node mods.
  * Order: all additive mods first, then all multiplicative mods.
- * Multiplicative stacking uses exponentiation (e.g. 3 stacks of 1.2x = 1.2^3).
  */
 export function recomputePlayerStats(state: UpgradeState): void {
-  // Accumulate add/mul totals per stat across all acquired upgrades
-  const addTotals: Record<string, number> = {}
-  const mulTotals: Record<string, number> = {}
+  const addTotals: Partial<Record<StatName, number>> = {}
+  const mulTotals: Partial<Record<StatName, number>> = {}
 
-  for (const [id, stacks] of state.acquired) {
-    const def = UPGRADES[id]
-    for (const mod of def.mods) {
+  for (const nodeId of state.nodesTaken) {
+    const result = findNode(state.characterDef, nodeId)
+    if (!result) continue
+    for (const mod of result.node.mods) {
       if (mod.op === 'add') {
-        addTotals[mod.stat] = (addTotals[mod.stat] ?? 0) + mod.value * stacks
+        addTotals[mod.stat] = (addTotals[mod.stat] ?? 0) + mod.value
       } else {
-        mulTotals[mod.stat] = (mulTotals[mod.stat] ?? 1) * (mod.value ** stacks)
+        mulTotals[mod.stat] = (mulTotals[mod.stat] ?? 1) * mod.value
       }
     }
   }
 
-  // (base + additive sum) * multiplicative product
-  const calc = (base: number, stat: string): number =>
-    (base + (addTotals[stat] ?? 0)) * (mulTotals[stat] ?? 1)
+  const base = state.characterDef.baseStats
+  const calc = (stat: StatName): number =>
+    (base[stat] + (addTotals[stat] ?? 0)) * (mulTotals[stat] ?? 1)
 
-  state.fireRate = calc(PISTOL_FIRE_RATE, 'fireRate')
-  state.bulletDamage = calc(PISTOL_BULLET_DAMAGE, 'bulletDamage')
-  state.bulletSpeed = calc(PISTOL_BULLET_SPEED, 'bulletSpeed')
-  state.range = calc(PISTOL_RANGE, 'range')
-  state.speed = calc(PLAYER_SPEED, 'speed')
-  state.maxHP = calc(PLAYER_HP, 'maxHP')
-  state.iframeDuration = calc(PLAYER_IFRAME_DURATION, 'iframeDuration')
-  state.rollDuration = calc(ROLL_DURATION, 'rollDuration')
-  state.rollIframeRatio = calc(ROLL_IFRAME_RATIO, 'rollIframeRatio')
-  state.rollSpeedMultiplier = calc(ROLL_SPEED_MULTIPLIER, 'rollSpeedMultiplier')
-
-  // Cylinder stats (no upgrade mods defined yet, but calc() will apply them when added)
-  state.cylinderSize = calc(PISTOL_CYLINDER_SIZE, 'cylinderSize')
-  state.reloadTime = calc(PISTOL_RELOAD_TIME, 'reloadTime')
-  state.minFireInterval = calc(PISTOL_MIN_FIRE_INTERVAL, 'minFireInterval')
-  state.holdFireRate = calc(PISTOL_HOLD_FIRE_RATE, 'holdFireRate')
-  state.lastRoundMultiplier = calc(PISTOL_LAST_ROUND_MULTIPLIER, 'lastRoundMultiplier')
-
-  // Showdown stats
-  state.showdownDuration = calc(SHOWDOWN_DURATION, 'showdownDuration')
-  state.showdownCooldown = calc(SHOWDOWN_COOLDOWN, 'showdownCooldown')
-  state.showdownKillRefund = calc(SHOWDOWN_KILL_REFUND, 'showdownKillRefund')
-  state.showdownDamageMultiplier = calc(SHOWDOWN_DAMAGE_MULTIPLIER, 'showdownDamageMultiplier')
-  state.showdownSpeedBonus = calc(SHOWDOWN_SPEED_BONUS, 'showdownSpeedBonus')
-  state.showdownMarkRange = calc(SHOWDOWN_MARK_RANGE, 'showdownMarkRange')
+  state.fireRate = calc('fireRate')
+  state.bulletDamage = calc('bulletDamage')
+  state.bulletSpeed = calc('bulletSpeed')
+  state.range = calc('range')
+  state.speed = calc('speed')
+  state.maxHP = calc('maxHP')
+  state.iframeDuration = calc('iframeDuration')
+  state.rollDuration = calc('rollDuration')
+  state.rollIframeRatio = calc('rollIframeRatio')
+  state.rollSpeedMultiplier = calc('rollSpeedMultiplier')
+  state.cylinderSize = calc('cylinderSize')
+  state.reloadTime = calc('reloadTime')
+  state.minFireInterval = calc('minFireInterval')
+  state.holdFireRate = calc('holdFireRate')
+  state.lastRoundMultiplier = calc('lastRoundMultiplier')
+  state.showdownDuration = calc('showdownDuration')
+  state.showdownCooldown = calc('showdownCooldown')
+  state.showdownKillRefund = calc('showdownKillRefund')
+  state.showdownDamageMultiplier = calc('showdownDamageMultiplier')
+  state.showdownSpeedBonus = calc('showdownSpeedBonus')
+  state.showdownMarkRange = calc('showdownMarkRange')
 }
 
 /**
- * Apply an upgrade: increment stack count and recompute stats.
- * No-op if the upgrade is already at maxStacks.
+ * Check if a skill node can be taken.
+ * Returns true if: pendingPoints > 0, not already taken, node is implemented,
+ * and all lower-tier nodes in the same branch are taken.
  */
-export function applyUpgrade(state: UpgradeState, id: UpgradeId): void {
-  const def = UPGRADES[id]
-  const current = state.acquired.get(id) ?? 0
-  if (current >= def.maxStacks) return
-  state.acquired.set(id, current + 1)
+export function canTakeNode(state: UpgradeState, nodeId: string): boolean {
+  if (state.pendingPoints <= 0) return false
+  if (state.nodesTaken.has(nodeId)) return false
+
+  const result = findNode(state.characterDef, nodeId)
+  if (!result) return false
+
+  const { node, branch } = result
+  if (!node.implemented) return false
+
+  // Check prerequisite: all lower-tier nodes in the same branch must be taken
+  for (const branchNode of branch.nodes) {
+    if (branchNode.tier < node.tier && !state.nodesTaken.has(branchNode.id)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Take a skill node: validates, adds to nodesTaken, decrements pendingPoints,
+ * and recomputes stats. Returns true on success.
+ */
+export function takeNode(state: UpgradeState, nodeId: string): boolean {
+  if (!canTakeNode(state, nodeId)) return false
+  state.nodesTaken.add(nodeId)
+  state.pendingPoints--
   recomputePlayerStats(state)
+  return true
+}
+
+/**
+ * Find a skill node by ID across all branches.
+ */
+export function findNode(
+  charDef: CharacterDef,
+  nodeId: string,
+): { node: SkillNodeDef; branch: SkillBranch } | null {
+  for (const branch of charDef.branches) {
+    for (const node of branch.nodes) {
+      if (node.id === nodeId) return { node, branch }
+    }
+  }
+  return null
 }
 
 /**
  * Write computed stats from UpgradeState into ECS components on the player entity.
- * Call after applyUpgrade() to push changes into the simulation.
  */
 export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   const state = world.upgradeState
@@ -190,56 +212,4 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   // Cylinder stats (only maxRounds and reloadTime — live state is not overwritten)
   Cylinder.maxRounds[playerEid] = Math.round(state.cylinderSize)
   Cylinder.reloadTime[playerEid] = state.reloadTime
-}
-
-/**
- * Generate weighted random upgrade choices for a level-up.
- * Uses seeded RNG for determinism. No duplicates in a single choice set.
- * Excludes upgrades that are already at maxStacks.
- */
-export function generateUpgradeChoices(
-  state: UpgradeState,
-  rng: SeededRng,
-  count: number = CHOICES_PER_LEVEL,
-): UpgradeDef[] {
-  // Collect all non-maxed upgrades, split by rarity
-  const common: UpgradeDef[] = []
-  const rare: UpgradeDef[] = []
-
-  for (const def of Object.values(UPGRADES) as UpgradeDef[]) {
-    const stacks = state.acquired.get(def.id) ?? 0
-    if (stacks >= def.maxStacks) continue
-    // Skip upgrades with no stat mods (e.g. Vampiric Rounds — mechanic not yet implemented)
-    if (def.mods.length === 0) continue
-    if (def.rarity === UpgradeRarity.COMMON) common.push(def)
-    else rare.push(def)
-  }
-
-  const available = common.length + rare.length
-  if (available === 0) return []
-
-  const choices: UpgradeDef[] = []
-  const chosenIds = new Set<UpgradeId>()
-  const actualCount = Math.min(count, available)
-
-  for (let i = 0; i < actualCount; i++) {
-    // Roll rarity: 25% Rare, 75% Common
-    const wantRare = rng.next() < RARITY_WEIGHTS[UpgradeRarity.RARE]
-
-    // Get pool for rolled rarity, excluding already-chosen
-    let pool = (wantRare ? rare : common).filter(d => !chosenIds.has(d.id))
-
-    // Fallback to other rarity if pool exhausted
-    if (pool.length === 0) {
-      pool = (wantRare ? common : rare).filter(d => !chosenIds.has(d.id))
-    }
-
-    if (pool.length === 0) break
-
-    const pick = pool[rng.nextInt(pool.length)]!
-    choices.push(pick)
-    chosenIds.add(pick.id)
-  }
-
-  return choices
 }

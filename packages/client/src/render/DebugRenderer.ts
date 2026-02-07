@@ -39,6 +39,7 @@ export interface DebugStats {
   // Upgrades
   xp: number
   level: number
+  pendingPts: number
 }
 
 /**
@@ -192,7 +193,7 @@ export class DebugRenderer {
       `Cam: ${stats.cameraX.toFixed(1)}, ${stats.cameraY.toFixed(1)}    Trauma: ${stats.cameraTrauma.toFixed(3)}`,
       '',
       `Wave: ${stats.waveNumber}  ${stats.waveStatus}  Fodder: ${stats.fodderAlive} (${stats.fodderBudgetLeft} left)  Threats: ${stats.threatAlive}`,
-      `XP: ${stats.xp}  Level: ${stats.level}`,
+      `XP: ${stats.xp}  Level: ${stats.level}  PendingPts: ${stats.pendingPts}`,
     ].join('\n')
   }
 

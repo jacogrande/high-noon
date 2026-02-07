@@ -88,7 +88,12 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       <div style={styles.bottomRight}>
         {/* XP bar (smaller, above HP) */}
         <div style={styles.xpRow}>
-          <div style={styles.levelBadge}>LVL {state.level}</div>
+          <div style={styles.levelBadge}>
+            LVL {state.level}
+            {state.pendingPoints > 0 && (
+              <span style={styles.pendingBadge}>+{state.pendingPoints}</span>
+            )}
+          </div>
           <div style={styles.xpBarOuter}>
             <div style={{ ...styles.xpFill, width: `${xpPct}%` }} />
           </div>
@@ -264,6 +269,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#00ffff',
     textShadow: '0 0 6px rgba(0, 255, 255, 0.4)',
     whiteSpace: 'nowrap',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 3,
+  },
+  pendingBadge: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#ffcc00',
+    textShadow: '0 0 6px rgba(255, 204, 0, 0.6)',
   },
   xpFill: {
     height: '100%',

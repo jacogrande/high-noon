@@ -1,24 +1,24 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import type { UpgradeDef, UpgradeId } from '@high-noon/shared'
-import type { HUDState } from '../scenes/GameScene'
+import type { HUDState, SkillTreeUIData } from '../scenes/GameScene'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { GameScene } from '../scenes/GameScene'
 import { AssetLoader } from '../assets'
-import { UpgradePanel } from '../ui/UpgradePanel'
 import { GameHUD } from '../ui/GameHUD'
+import { SkillTreePanel } from '../ui/SkillTreePanel'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<GameScene | null>(null)
-  const showingChoicesRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  const [pendingChoices, setPendingChoices] = useState<UpgradeDef[] | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
+  const [showSkillTree, setShowSkillTree] = useState(false)
+  const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const showingTreeRef = useRef(false)
   const lastHudUpdateRef = useRef(0)
 
   // First effect: Load assets (doesn't need container)
@@ -88,15 +88,16 @@ export function Game() {
         (dt) => scene!.update(dt),
         (alpha) => {
           scene!.render(alpha, gameLoop!.fps)
-          // Poll for pending upgrade choices
-          const choices = scene!.getPendingChoices()
-          const hasChoices = choices.length > 0
-          if (hasChoices && !showingChoicesRef.current) {
-            showingChoicesRef.current = true
-            setPendingChoices(choices)
-          } else if (!hasChoices && showingChoicesRef.current) {
-            showingChoicesRef.current = false
-            setPendingChoices(null)
+          // Poll for skill tree open/close
+          const hasPts = scene!.hasPendingPoints()
+          if (hasPts && !showingTreeRef.current) {
+            showingTreeRef.current = true
+            setSkillTreeData(scene!.getSkillTreeData())
+            setShowSkillTree(true)
+          } else if (!hasPts && showingTreeRef.current) {
+            showingTreeRef.current = false
+            setShowSkillTree(false)
+            setSkillTreeData(null)
           }
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
@@ -120,17 +121,17 @@ export function Game() {
     }
   }, [loading, error])
 
-  const handleUpgradeSelect = useCallback((id: UpgradeId) => {
+  const handleNodeSelect = useCallback((nodeId: string) => {
     const scene = sceneRef.current
     if (!scene) return
-    scene.selectUpgrade(id)
-    // Immediately check for next level-up (multi-level jump)
-    const nextChoices = scene.getPendingChoices()
-    if (nextChoices.length > 0) {
-      setPendingChoices(nextChoices)
+    scene.selectNode(nodeId)
+    // Re-check: still have points? Update tree data. Otherwise close.
+    if (scene.hasPendingPoints()) {
+      setSkillTreeData(scene.getSkillTreeData())
     } else {
-      showingChoicesRef.current = false
-      setPendingChoices(null)
+      showingTreeRef.current = false
+      setShowSkillTree(false)
+      setSkillTreeData(null)
     }
   }, [])
 
@@ -185,9 +186,9 @@ export function Game() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !pendingChoices && <GameHUD state={hudState} />}
-      {pendingChoices && (
-        <UpgradePanel choices={pendingChoices} onSelect={handleUpgradeSelect} />
+      {hudState && !showSkillTree && <GameHUD state={hudState} />}
+      {showSkillTree && skillTreeData && (
+        <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
       )}
     </div>
   )

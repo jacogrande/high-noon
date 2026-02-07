@@ -10,6 +10,7 @@ import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
+import { SHERIFF } from './content/characters'
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -135,7 +136,7 @@ export function createGameWorld(seed?: number): GameWorld {
     rng: new SeededRng(seed ?? Date.now()),
     lastPlayerHitDirX: 0,
     lastPlayerHitDirY: 0,
-    upgradeState: initUpgradeState(),
+    upgradeState: initUpgradeState(SHERIFF),
     spawnsPaused: false,
     bulletPierceHits: new Map(),
     showdownKillThisTick: false,
@@ -166,7 +167,7 @@ export function resetWorld(world: GameWorld): void {
   world.maxProjectiles = 80
   world.lastPlayerHitDirX = 0
   world.lastPlayerHitDirY = 0
-  world.upgradeState = initUpgradeState()
+  world.upgradeState = initUpgradeState(SHERIFF)
   world.spawnsPaused = false
   world.bulletPierceHits.clear()
   world.showdownKillThisTick = false
