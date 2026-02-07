@@ -17,6 +17,8 @@ export const Button = {
   DEBUG_SPAWN: 1 << 6,
   /** Reload the cylinder */
   RELOAD: 1 << 7,
+  /** Showdown ability */
+  ABILITY: 1 << 8,
 } as const
 
 export type ButtonFlag = (typeof Button)[keyof typeof Button]
@@ -33,6 +35,10 @@ export type InputState = {
   moveX: number
   /** Normalized movement Y (-1 to 1) */
   moveY: number
+  /** Cursor world X position (for Showdown targeting) */
+  cursorWorldX: number
+  /** Cursor world Y position (for Showdown targeting) */
+  cursorWorldY: number
 }
 
 /** Create a default (empty) input state */
@@ -42,6 +48,8 @@ export function createInputState(): InputState {
     aimAngle: 0,
     moveX: 0,
     moveY: 0,
+    cursorWorldX: 0,
+    cursorWorldY: 0,
   }
 }
 

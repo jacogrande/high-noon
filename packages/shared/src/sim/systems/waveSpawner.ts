@@ -157,6 +157,7 @@ function spawnEnemy(world: GameWorld, type: number, x: number, y: number): numbe
 export function waveSpawnerSystem(world: GameWorld, dt: number): void {
   const enc = world.encounter
   if (!enc || enc.completed) return
+  if (world.spawnsPaused) return
 
   const rng = world.rng
 

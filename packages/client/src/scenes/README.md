@@ -43,5 +43,6 @@ and `render()` displays a "GAME OVER" text overlay.
 
 - **Backtick** - Toggle debug overlay and collision visualization
 - **K** - Spawn a test enemy bullet aimed at the player (via shared `debugSpawnSystem`)
+- **P** - Pause enemy spawning and kill all active enemies (toggle)
 
 The debug overlay shows FPS, tick, entity count, player state/HP/position/velocity, and camera position/trauma.

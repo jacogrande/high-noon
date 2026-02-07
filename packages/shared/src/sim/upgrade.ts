@@ -13,6 +13,9 @@ import {
   PISTOL_CYLINDER_SIZE, PISTOL_RELOAD_TIME,
   PISTOL_MIN_FIRE_INTERVAL, PISTOL_HOLD_FIRE_RATE,
   PISTOL_LAST_ROUND_MULTIPLIER,
+  SHOWDOWN_DURATION, SHOWDOWN_COOLDOWN,
+  SHOWDOWN_KILL_REFUND, SHOWDOWN_DAMAGE_MULTIPLIER,
+  SHOWDOWN_SPEED_BONUS, SHOWDOWN_MARK_RANGE,
 } from './content/weapons'
 import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
@@ -41,6 +44,12 @@ export interface UpgradeState {
   minFireInterval: number
   holdFireRate: number
   lastRoundMultiplier: number
+  showdownDuration: number
+  showdownCooldown: number
+  showdownKillRefund: number
+  showdownDamageMultiplier: number
+  showdownSpeedBonus: number
+  showdownMarkRange: number
 }
 
 export function initUpgradeState(): UpgradeState {
@@ -65,6 +74,12 @@ export function initUpgradeState(): UpgradeState {
     minFireInterval: PISTOL_MIN_FIRE_INTERVAL,
     holdFireRate: PISTOL_HOLD_FIRE_RATE,
     lastRoundMultiplier: PISTOL_LAST_ROUND_MULTIPLIER,
+    showdownDuration: SHOWDOWN_DURATION,
+    showdownCooldown: SHOWDOWN_COOLDOWN,
+    showdownKillRefund: SHOWDOWN_KILL_REFUND,
+    showdownDamageMultiplier: SHOWDOWN_DAMAGE_MULTIPLIER,
+    showdownSpeedBonus: SHOWDOWN_SPEED_BONUS,
+    showdownMarkRange: SHOWDOWN_MARK_RANGE,
   }
 }
 
@@ -120,6 +135,14 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.minFireInterval = calc(PISTOL_MIN_FIRE_INTERVAL, 'minFireInterval')
   state.holdFireRate = calc(PISTOL_HOLD_FIRE_RATE, 'holdFireRate')
   state.lastRoundMultiplier = calc(PISTOL_LAST_ROUND_MULTIPLIER, 'lastRoundMultiplier')
+
+  // Showdown stats
+  state.showdownDuration = calc(SHOWDOWN_DURATION, 'showdownDuration')
+  state.showdownCooldown = calc(SHOWDOWN_COOLDOWN, 'showdownCooldown')
+  state.showdownKillRefund = calc(SHOWDOWN_KILL_REFUND, 'showdownKillRefund')
+  state.showdownDamageMultiplier = calc(SHOWDOWN_DAMAGE_MULTIPLIER, 'showdownDamageMultiplier')
+  state.showdownSpeedBonus = calc(SHOWDOWN_SPEED_BONUS, 'showdownSpeedBonus')
+  state.showdownMarkRange = calc(SHOWDOWN_MARK_RANGE, 'showdownMarkRange')
 }
 
 /**

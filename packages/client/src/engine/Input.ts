@@ -15,6 +15,7 @@ export class Input {
   private mouseX = 0
   private mouseY = 0
   private mouseDown = false
+  private mouseRightDown = false
 
   /** Reference position for aim calculation (usually player position) */
   private refX = 0
@@ -62,12 +63,16 @@ export class Input {
   private onMouseDown = (e: MouseEvent): void => {
     if (e.button === 0) {
       this.mouseDown = true
+    } else if (e.button === 2) {
+      this.mouseRightDown = true
     }
   }
 
   private onMouseUp = (e: MouseEvent): void => {
     if (e.button === 0) {
       this.mouseDown = false
+    } else if (e.button === 2) {
+      this.mouseRightDown = false
     }
   }
 
@@ -168,6 +173,11 @@ export class Input {
       input.buttons |= Button.RELOAD
     }
 
+    // Ability (Showdown)
+    if (this.mouseRightDown || this.keys.has('KeyQ')) {
+      input.buttons |= Button.ABILITY
+    }
+
     // Convert mouse screen position to world space, then calculate aim angle
     const dx = this.screenToWorldX(this.mouseX) - this.refX
     const dy = this.screenToWorldY(this.mouseY) - this.refY
@@ -191,6 +201,10 @@ export class Input {
 
     input.moveX = moveX
     input.moveY = moveY
+
+    // Cursor world position (for Showdown targeting)
+    input.cursorWorldX = this.screenToWorldX(this.mouseX)
+    input.cursorWorldY = this.screenToWorldY(this.mouseY)
 
     return input
   }

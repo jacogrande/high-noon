@@ -51,3 +51,25 @@ export const BULLET_LIFETIME = 5.0
 
 /** Range for enemy-fired bullets in pixels */
 export const ENEMY_BULLET_RANGE = 500
+
+// ============================================================================
+// Showdown Ability
+// ============================================================================
+
+/** Duration of Showdown in seconds */
+export const SHOWDOWN_DURATION = 4.0
+
+/** Cooldown after Showdown ends in seconds */
+export const SHOWDOWN_COOLDOWN = 12.0
+
+/** Seconds refunded from cooldown on marked target kill */
+export const SHOWDOWN_KILL_REFUND = 4.0
+
+/** Damage multiplier against marked target */
+export const SHOWDOWN_DAMAGE_MULTIPLIER = 2.0
+
+/** Speed multiplier while Showdown is active */
+export const SHOWDOWN_SPEED_BONUS = 1.1
+
+/** Maximum range to mark an enemy (pixels) */
+export const SHOWDOWN_MARK_RANGE = 500

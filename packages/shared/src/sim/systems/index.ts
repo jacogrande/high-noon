@@ -8,6 +8,7 @@
 export { movementSystem } from './movement'
 export { playerInputSystem } from './playerInput'
 export { rollSystem } from './roll'
+export { showdownSystem } from './showdown'
 export { cylinderSystem } from './cylinder'
 export { collisionSystem } from './collision'
 export { weaponSystem } from './weapon'

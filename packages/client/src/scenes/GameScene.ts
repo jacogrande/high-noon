@@ -19,6 +19,7 @@ import {
   movementSystem,
   playerInputSystem,
   rollSystem,
+  showdownSystem,
   cylinderSystem,
   collisionSystem,
   weaponSystem,
@@ -47,6 +48,7 @@ import {
   EnemyAI,
   AIState,
   Cylinder,
+  Showdown,
   Bullet,
   type GameWorld,
   type SystemRegistry,
@@ -104,6 +106,10 @@ export interface HUDState {
   cylinderMax: number
   isReloading: boolean
   reloadProgress: number
+  showdownActive: boolean
+  showdownCooldown: number
+  showdownCooldownMax: number
+  showdownTimeLeft: number
 }
 
 export class GameScene {
@@ -148,6 +154,7 @@ export class GameScene {
     // Register systems in execution order
     this.systems.register(playerInputSystem)
     this.systems.register(rollSystem)
+    this.systems.register(showdownSystem)
     this.systems.register(cylinderSystem)
     this.systems.register(weaponSystem)
     this.systems.register(debugSpawnSystem)
@@ -224,11 +231,24 @@ export class GameScene {
     this.gameOverText.visible = false
     this.gameApp.layers.ui.addChild(this.gameOverText)
 
-    // Debug toggle (backtick)
+    // Debug toggles
     this.handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Backquote') {
         this.debugRenderer.toggle()
         this.collisionDebugRenderer.toggle()
+      }
+      // P = pause spawns + kill all enemies
+      if (e.code === 'KeyP') {
+        this.world.spawnsPaused = !this.world.spawnsPaused
+        if (this.world.spawnsPaused) {
+          const enemies = enemyAIQuery(this.world)
+          for (const eid of enemies) {
+            Health.current[eid] = 0
+          }
+          console.log(`Enemy spawns PAUSED — killed ${enemies.length} enemies`)
+        } else {
+          console.log('Enemy spawns RESUMED')
+        }
       }
     }
     window.addEventListener('keydown', this.handleKeyDown)
@@ -276,6 +296,13 @@ export class GameScene {
             ? Math.min(1, Cylinder.reloadTimer[playerEid]! / Cylinder.reloadTime[playerEid]!)
             : 0)
         : 0,
+      showdownActive: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
+        ? Showdown.active[playerEid]! === 1 : false,
+      showdownCooldown: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
+        ? Showdown.cooldown[playerEid]! : 0,
+      showdownCooldownMax: this.world.upgradeState.showdownCooldown,
+      showdownTimeLeft: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
+        ? Showdown.duration[playerEid]! : 0,
     }
   }
 
@@ -344,6 +371,10 @@ export class GameScene {
 
     // Step the simulation
     stepWorld(this.world, this.systems, inputState)
+
+    // Showdown audio cues
+    if (this.world.showdownActivatedThisTick) this.sound.play('showdown_activate')
+    if (this.world.showdownKillThisTick) this.sound.play('showdown_kill')
 
     // Detect player damage (i-frames went from 0 to >0)
     if (playerEid !== null) {

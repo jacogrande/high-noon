@@ -26,6 +26,7 @@ import {
   Steering,
   EnemyType,
   AIState,
+  Showdown,
 } from './components'
 import {
   PLAYER_SPEED,
@@ -159,6 +160,13 @@ export function spawnPlayer(
   Cylinder.reloadTime[eid] = PISTOL_RELOAD_TIME
   Cylinder.firstShotAfterReload[eid] = 0
   Cylinder.fireCooldown[eid] = 0
+
+  // Set Showdown ability
+  addComponent(world, Showdown, eid)
+  Showdown.active[eid] = 0
+  Showdown.targetEid[eid] = NO_TARGET
+  Showdown.duration[eid] = 0
+  Showdown.cooldown[eid] = 0
 
   return eid
 }

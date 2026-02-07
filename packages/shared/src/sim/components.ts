@@ -42,6 +42,8 @@ export const Player = {
   rollButtonWasDown: new Uint8Array(MAX_ENTITIES),
   /** Whether shoot button was held last tick (for click vs hold detection) */
   shootWasDown: new Uint8Array(MAX_ENTITIES),
+  /** Whether ability button was held last tick (for re-press detection) */
+  abilityWasDown: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Player state enum values */
@@ -186,6 +188,22 @@ export const Cylinder = {
 }
 
 // ============================================================================
+// Showdown Components
+// ============================================================================
+
+/** Showdown ability state */
+export const Showdown = {
+  /** Whether Showdown is active (0/1) */
+  active: new Uint8Array(MAX_ENTITIES),
+  /** Entity ID of marked target (NO_TARGET when inactive) */
+  targetEid: new Uint16Array(MAX_ENTITIES),
+  /** Remaining duration in seconds */
+  duration: new Float32Array(MAX_ENTITIES),
+  /** Remaining cooldown in seconds */
+  cooldown: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Enemy Components
 // ============================================================================
 
@@ -272,6 +290,7 @@ export const AllComponents = [
   Weapon,
   Cylinder,
   Invincible,
+  Showdown,
   Health,
   Dead,
   Enemy,

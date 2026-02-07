@@ -103,6 +103,14 @@ export interface GameWorld extends IWorld {
   lastPlayerHitDirY: number
   /** Player upgrade/progression state */
   upgradeState: UpgradeState
+  /** Pierce hit tracking: bulletEid → set of already-hit entity EIDs */
+  bulletPierceHits: Map<number, Set<number>>
+  /** Debug: pause enemy spawning */
+  spawnsPaused: boolean
+  /** Set to true when a Showdown marked target is killed this tick */
+  showdownKillThisTick: boolean
+  /** Set to true when Showdown is activated this tick */
+  showdownActivatedThisTick: boolean
 }
 
 /**
@@ -126,6 +134,10 @@ export function createGameWorld(seed?: number): GameWorld {
     lastPlayerHitDirX: 0,
     lastPlayerHitDirY: 0,
     upgradeState: initUpgradeState(),
+    spawnsPaused: false,
+    bulletPierceHits: new Map(),
+    showdownKillThisTick: false,
+    showdownActivatedThisTick: false,
   }
 }
 
@@ -152,6 +164,10 @@ export function resetWorld(world: GameWorld): void {
   world.lastPlayerHitDirX = 0
   world.lastPlayerHitDirY = 0
   world.upgradeState = initUpgradeState()
+  world.spawnsPaused = false
+  world.bulletPierceHits.clear()
+  world.showdownKillThisTick = false
+  world.showdownActivatedThisTick = false
   // Note: rng is intentionally NOT reset — caller should create a new world
   // or explicitly re-seed if needed for replay
   // Note: bitECS entities persist - call removeEntity for each if needed

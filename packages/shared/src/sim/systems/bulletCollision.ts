@@ -13,8 +13,8 @@
 
 import { defineQuery, removeEntity, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Velocity, Collider, Health, Invincible } from '../components'
-import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown } from '../components'
+import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET } from '../prefabs'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
 
@@ -55,6 +55,12 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
     const queryRadius = radius + MAX_COLLIDER_RADIUS
     if (world.spatialHash) {
+      // Determine Showdown state for this bullet's owner
+      const bulletOwner = Bullet.ownerId[eid]!
+      const ownerHasShowdown =
+        hasComponent(world, Showdown, bulletOwner) && Showdown.active[bulletOwner] === 1
+      const showdownTarget = ownerHasShowdown ? Showdown.targetEid[bulletOwner]! : NO_TARGET
+
       forEachInRadius(world.spatialHash, x, y, queryRadius, (targetEid) => {
         if (hitEntity) return
         if (!hasComponent(world, Health, targetEid)) return
@@ -68,6 +74,10 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         // Layer check
         if (!canBulletHitTarget(Collider.layer[eid]!, Collider.layer[targetEid]!)) return
 
+        // Skip already-pierced entities
+        const pierceHits = world.bulletPierceHits.get(eid)
+        if (pierceHits && pierceHits.has(targetEid)) return
+
         // Circle-circle overlap (no sqrt needed)
         const tx = Position.x[targetEid]!
         const ty = Position.y[targetEid]!
@@ -77,8 +87,25 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         const minDist = radius + Collider.radius[targetEid]!
         if (distSq >= minDist * minDist) return
 
+        // Determine damage and pierce behavior
+        let damage = Bullet.damage[eid]!
+        let shouldRemoveBullet = true
+        let shouldStopIteration = true
+
+        if (ownerHasShowdown && targetEid !== showdownTarget) {
+          // Pierce: bullet passes through non-target
+          shouldRemoveBullet = false
+          shouldStopIteration = false
+          let hits = world.bulletPierceHits.get(eid)
+          if (!hits) { hits = new Set(); world.bulletPierceHits.set(eid, hits) }
+          hits.add(targetEid)
+        } else if (ownerHasShowdown && targetEid === showdownTarget) {
+          // Target hit: bonus damage, bullet stops
+          damage = Math.min(255, Math.round(damage * world.upgradeState.showdownDamageMultiplier))
+        }
+
         // HIT — apply damage
-        Health.current[targetEid] = Health.current[targetEid]! - Bullet.damage[eid]!
+        Health.current[targetEid] = Health.current[targetEid]! - damage
         Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
 
         // Store hit direction for camera kick (bullet travel direction = toward player)
@@ -98,8 +125,8 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
           callback(world, eid, { type: 'entity', hitEntity: targetEid, x, y })
         }
 
-        bulletsToRemove.push(eid)
-        hitEntity = true
+        if (shouldRemoveBullet) bulletsToRemove.push(eid)
+        if (shouldStopIteration) hitEntity = true
       })
     }
 
@@ -130,6 +157,8 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
   for (const eid of bulletsToRemove) {
     // Clean up callback registry (also cleaned in healthSystem on death)
     world.bulletCollisionCallbacks.delete(eid)
+    // Clean up pierce hit tracking
+    world.bulletPierceHits.delete(eid)
     // Remove entity
     removeEntity(world, eid)
   }
