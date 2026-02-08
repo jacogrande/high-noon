@@ -15,43 +15,34 @@ import {
   EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
   Position, Velocity, Collider, Health, Invincible, Dead, Bullet,
 } from '../components'
-import { spawnBullet, CollisionLayer } from '../prefabs'
+import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
 import { CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION } from '../content/enemies'
 import { ENEMY_BULLET_RANGE } from '../content/weapons'
-import { playerQuery } from '../queries'
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
 const bulletQuery = defineQuery([Bullet])
 
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
-  const players = playerQuery(world)
-
-  // Find first alive player
-  let playerEid: number | null = null
-  for (const pid of players) {
-    if (!hasComponent(world, Dead, pid)) {
-      playerEid = pid
-      break
-    }
-  }
 
   // Hoist bullet count for fodder projectile cap (avoid per-enemy query)
   const activeBulletCount = bulletQuery(world).length
 
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
+    const targetEid = EnemyAI.targetEid[eid]!
+    const hasTarget = targetEid !== NO_TARGET && !hasComponent(world, Dead, targetEid)
 
     // Lock charger aim direction on first tick of TELEGRAPH
     if (
       state === AIState.TELEGRAPH &&
       EnemyAI.stateTimer[eid]! === 0 &&
       Enemy.type[eid] === EnemyType.CHARGER &&
-      playerEid !== null
+      hasTarget
     ) {
-      const dx = Position.x[playerEid]! - Position.x[eid]!
-      const dy = Position.y[playerEid]! - Position.y[eid]!
+      const dx = Position.x[targetEid]! - Position.x[eid]!
+      const dy = Position.y[targetEid]! - Position.y[eid]!
       const len = Math.sqrt(dx * dx + dy * dy)
       if (len > 0) {
         AttackConfig.aimX[eid] = dx / len
@@ -62,16 +53,16 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     // Only process entities in ATTACK state
     if (state !== AIState.ATTACK) continue
 
-    // Skip if no alive player
-    if (playerEid === null) {
+    // No valid target → abort to recovery
+    if (!hasTarget) {
       transition(eid, AIState.RECOVERY)
       continue
     }
 
     const ex = Position.x[eid]!
     const ey = Position.y[eid]!
-    const playerX = Position.x[playerEid]!
-    const playerY = Position.y[playerEid]!
+    const targetX = Position.x[targetEid]!
+    const targetY = Position.y[targetEid]!
 
     // Zero velocity for non-charger attackers (steering delegates ATTACK to this system)
     if (Enemy.type[eid] !== EnemyType.CHARGER) {
@@ -86,25 +77,27 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         Velocity.y[eid] = AttackConfig.aimY[eid]! * CHARGER_CHARGE_SPEED
       }
 
-      // Contact damage check
+      // Contact damage check against assigned target
       const chargerR = Collider.radius[eid]!
-      const playerR = Collider.radius[playerEid]!
-      const cdx = playerX - ex
-      const cdy = playerY - ey
+      const targetR = Collider.radius[targetEid]!
+      const cdx = targetX - ex
+      const cdy = targetY - ey
       const distSq = cdx * cdx + cdy * cdy
-      const minDist = chargerR + playerR
+      const minDist = chargerR + targetR
 
       if (
         distSq <= minDist * minDist &&
-        Health.iframes[playerEid]! <= 0 &&
-        !hasComponent(world, Invincible, playerEid)
+        Health.iframes[targetEid]! <= 0 &&
+        !hasComponent(world, Invincible, targetEid)
       ) {
-        Health.current[playerEid] = Health.current[playerEid]! - AttackConfig.damage[eid]!
-        Health.iframes[playerEid] = Health.iframeDuration[playerEid]!
+        Health.current[targetEid] = Health.current[targetEid]! - AttackConfig.damage[eid]!
+        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
 
-        // Store hit direction for camera kick (charger charge direction)
-        world.lastPlayerHitDirX = AttackConfig.aimX[eid]!
-        world.lastPlayerHitDirY = AttackConfig.aimY[eid]!
+        // Store hit direction per-player for camera kick (charger charge direction)
+        world.lastPlayerHitDir.set(targetEid, {
+          x: AttackConfig.aimX[eid]!,
+          y: AttackConfig.aimY[eid]!,
+        })
       }
 
       // Check charge duration
@@ -120,8 +113,8 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         }
       }
 
-      // Projectile enemies: spawn bullets aimed at player
-      const baseAngle = Math.atan2(playerY - ey, playerX - ex)
+      // Projectile enemies: spawn bullets aimed at assigned target
+      const baseAngle = Math.atan2(targetY - ey, targetX - ex)
       const count = AttackConfig.projectileCount[eid]!
       const spread = AttackConfig.spreadAngle[eid]!
       const speed = AttackConfig.projectileSpeed[eid]!

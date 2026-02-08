@@ -33,6 +33,7 @@ describe('enemyAttackSystem', () => {
     test('swarmer in ATTACK spawns 1 bullet', () => {
       const eid = spawnSwarmer(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
@@ -43,6 +44,7 @@ describe('enemyAttackSystem', () => {
     test('shooter in ATTACK spawns 3 bullets with spread', () => {
       const eid = spawnShooter(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
@@ -53,6 +55,7 @@ describe('enemyAttackSystem', () => {
     test('transitions to RECOVERY after attack', () => {
       const eid = spawnSwarmer(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
@@ -65,6 +68,7 @@ describe('enemyAttackSystem', () => {
     test('skips attack when at maxProjectiles', () => {
       const eid = spawnSwarmer(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       transition(eid, AIState.ATTACK)
 
       // Set max projectiles to 0 to trigger cap
@@ -81,6 +85,7 @@ describe('enemyAttackSystem', () => {
     test('sets velocity on ATTACK entry', () => {
       const eid = spawnCharger(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
 
       // Set locked aim direction (normally set during TELEGRAPH)
       AttackConfig.aimX[eid] = 1
@@ -97,6 +102,7 @@ describe('enemyAttackSystem', () => {
     test('deals contact damage when overlapping player', () => {
       const eid = spawnCharger(world, 200, 200)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       AttackConfig.aimX[eid] = 1
       AttackConfig.aimY[eid] = 0
       transition(eid, AIState.ATTACK)
@@ -115,6 +121,7 @@ describe('enemyAttackSystem', () => {
     test('stores hit direction for camera kick on player hit', () => {
       const eid = spawnCharger(world, 200, 200)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       AttackConfig.aimX[eid] = 0.707
       AttackConfig.aimY[eid] = 0.707
       transition(eid, AIState.ATTACK)
@@ -124,13 +131,15 @@ describe('enemyAttackSystem', () => {
 
       enemyAttackSystem(world, 1 / 60)
 
-      expect(world.lastPlayerHitDirX).toBeCloseTo(0.707)
-      expect(world.lastPlayerHitDirY).toBeCloseTo(0.707)
+      const hitDir = world.lastPlayerHitDir.get(playerEid)!
+      expect(hitDir.x).toBeCloseTo(0.707)
+      expect(hitDir.y).toBeCloseTo(0.707)
     })
 
     test('transitions to RECOVERY after CHARGER_CHARGE_DURATION', () => {
       const eid = spawnCharger(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       AttackConfig.aimX[eid] = 1
       AttackConfig.aimY[eid] = 0
       transition(eid, AIState.ATTACK)
@@ -146,6 +155,7 @@ describe('enemyAttackSystem', () => {
     test('does not deal damage when player has iframes', () => {
       const eid = spawnCharger(world, 200, 200)
       EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
       AttackConfig.aimX[eid] = 1
       AttackConfig.aimY[eid] = 0
       transition(eid, AIState.ATTACK)

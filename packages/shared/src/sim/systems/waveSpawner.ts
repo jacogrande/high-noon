@@ -14,7 +14,7 @@ import { Enemy, EnemyType, EnemyTier, Position, Dead } from '../components'
 import { spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger } from '../prefabs'
 import { getPlayableBounds } from '../content/maps/testArena'
 import { isSolidAt, type Tilemap } from '../tilemap'
-import { playerQuery } from '../queries'
+import { getAlivePlayers } from '../queries'
 import {
   SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
 } from '../content/enemies'
@@ -161,16 +161,17 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
 
   const rng = world.rng
 
-  // Find player position for spawn distance checks
-  const players = playerQuery(world)
+  // Compute centroid of alive players for spawn distance checks
+  const alivePlayers = getAlivePlayers(world)
   let playerX = 0
   let playerY = 0
-  for (const pid of players) {
-    if (!hasComponent(world, Dead, pid)) {
-      playerX = Position.x[pid]!
-      playerY = Position.y[pid]!
-      break
+  if (alivePlayers.length > 0) {
+    for (const pid of alivePlayers) {
+      playerX += Position.x[pid]!
+      playerY += Position.y[pid]!
     }
+    playerX /= alivePlayers.length
+    playerY /= alivePlayers.length
   }
 
   // Count alive enemies by tier (single query, used for both reinforcement and clear check)

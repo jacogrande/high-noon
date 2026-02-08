@@ -16,7 +16,9 @@
     "build:client": "bun run --cwd packages/client build",
     "test": "bun test",
     "lint": "eslint packages/*/src/**/*.ts",
-    "typecheck": "tsc --build --force"
+    "typecheck": "tsc --build --force",
+    "dev:server": "bun run build:shared && bun --watch packages/server/src/index.ts",
+    "build:server": "bun run --cwd packages/server build"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

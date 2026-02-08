@@ -130,14 +130,13 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
           world.hooks.fireHealthChanged(world, targetEid, oldHP, Health.current[targetEid]!)
         }
 
-        // Store hit direction for camera kick (bullet travel direction = toward player)
+        // Store hit direction per-player for camera kick (bullet travel direction)
         if (Collider.layer[targetEid]! === CollisionLayer.PLAYER) {
           const bvx = Velocity.x[eid]!
           const bvy = Velocity.y[eid]!
           const blen = Math.sqrt(bvx * bvx + bvy * bvy)
           if (blen > 0) {
-            world.lastPlayerHitDirX = bvx / blen
-            world.lastPlayerHitDirY = bvy / blen
+            world.lastPlayerHitDir.set(targetEid, { x: bvx / blen, y: bvy / blen })
           }
         }
 

@@ -31,19 +31,24 @@ Events represent things that happened:
 - `Pickup` - Item collected (entity, item key)
 - `Death` - Entity died (entity, killer)
 
+## Binary Snapshots
+
+`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer — callers must consume or copy the data before the next encode call.
+
 ## Serialization
 
-Binary encoding is recommended for bandwidth efficiency:
+Binary encoding is used for bandwidth efficiency:
 - Quantize floats to integers where precision allows
 - Use bitfields for boolean flags
-- Delta-encode where possible
+- Shared buffer reuse to avoid per-frame allocation
 
 ## Dependencies
 
 - `../math` - Quantization helpers
+- `../sim` - Component definitions for snapshot encoding
 
 ## Dependents
 
 - `../sim` - Uses event types
 - `@high-noon/client` - Message encoding/decoding
-- `@high-noon/server` - Message encoding/decoding
+- `@high-noon/server` - Snapshot broadcast, message encoding/decoding

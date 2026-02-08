@@ -23,8 +23,8 @@ export interface FlowField {
   dirX: Float32Array
   dirY: Float32Array
   dist: Uint16Array
-  playerCellX: number
-  playerCellY: number
+  /** Sorted alive-player tile positions key for cache invalidation */
+  seedKey: string
 }
 
 /**
@@ -110,10 +110,8 @@ export interface GameWorld extends IWorld {
   initialSeed: number
   /** Seeded PRNG for deterministic simulation randomness */
   rng: SeededRng
-  /** Direction of last hit on player (unit vector X, for camera kick) */
-  lastPlayerHitDirX: number
-  /** Direction of last hit on player (unit vector Y, for camera kick) */
-  lastPlayerHitDirY: number
+  /** Per-player last hit direction (unit vector, for camera kick). Key = player entity ID */
+  lastPlayerHitDir: Map<number, { x: number; y: number }>
   /** Player upgrade/progression state */
   upgradeState: UpgradeState
   /** Pierce hit tracking: bulletEid → set of already-hit entity EIDs */
@@ -158,8 +156,7 @@ export function createGameWorld(seed?: number): GameWorld {
     maxProjectiles: 80,
     initialSeed: resolvedSeed,
     rng: new SeededRng(resolvedSeed),
-    lastPlayerHitDirX: 0,
-    lastPlayerHitDirY: 0,
+    lastPlayerHitDir: new Map(),
     upgradeState: initUpgradeState(SHERIFF),
     spawnsPaused: false,
     bulletPierceHits: new Map(),
@@ -194,8 +191,7 @@ export function resetWorld(world: GameWorld): void {
   world.debugSpawnWasDown = false
   world.encounter = null
   world.maxProjectiles = 80
-  world.lastPlayerHitDirX = 0
-  world.lastPlayerHitDirY = 0
+  world.lastPlayerHitDir.clear()
   world.upgradeState = initUpgradeState(SHERIFF)
   world.spawnsPaused = false
   world.bulletPierceHits.clear()

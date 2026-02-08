@@ -6,11 +6,10 @@
  * Recomputes only when the player crosses a tile boundary.
  */
 
-import { hasComponent } from 'bitecs'
 import type { GameWorld, FlowField } from '../world'
-import { Position, Dead } from '../components'
+import { Position } from '../components'
 import { worldToTile, isSolidAt } from '../tilemap'
-import { playerQuery } from '../queries'
+import { getAlivePlayers } from '../queries'
 
 const UNREACHABLE = 0xFFFF
 const INV_SQRT2 = 0.7071067811865476
@@ -25,32 +24,38 @@ const NEIGHBOR_DIAG = [true, false, true, false, false, true, false, true]
 const DIAG_CARD_A = [1, -1, 1, -1, -1, 6, -1, 6] // N or S
 const DIAG_CARD_B = [3, -1, 4, -1, -1, 3, -1, 4] // W or E
 
-// Pre-allocated BFS queue (reused across calls).
-// Module-level for zero-allocation reuse. This is safe for determinism because
-// the buffer is fully overwritten each BFS call and never read across invocations.
+// Pre-allocated buffers (reused across calls). Module-level for zero-allocation reuse.
+// Safe for determinism because they are fully overwritten each call.
 let queueBuffer: Uint32Array | null = null
+const _seeds: { idx: number }[] = []
+const _keyParts: string[] = []
 
 export function flowFieldSystem(world: GameWorld, _dt: number): void {
   const tilemap = world.tilemap
   if (!tilemap) return
 
-  const players = playerQuery(world)
-  if (players.length === 0) return
+  const alivePlayers = getAlivePlayers(world)
+  if (alivePlayers.length === 0) return
 
-  const playerEid = players[0]!
-  if (hasComponent(world, Dead, playerEid)) return
+  // Build seed key from sorted alive player tile positions (reuse module-level arrays)
+  const w = tilemap.width
+  const h = tilemap.height
+  _seeds.length = 0
+  _keyParts.length = 0
 
-  const px = Position.x[playerEid]!
-  const py = Position.y[playerEid]!
-  const { tileX: pcx, tileY: pcy } = worldToTile(tilemap, px, py)
+  for (const pid of alivePlayers) {
+    const { tileX, tileY } = worldToTile(tilemap, Position.x[pid]!, Position.y[pid]!)
+    _seeds.push({ idx: tileY * w + tileX })
+    _keyParts.push(`${tileX},${tileY}`)
+  }
+  _keyParts.sort()
+  const seedKey = _keyParts.join('|')
 
-  // Skip if player hasn't moved to a new cell
-  if (world.flowField && world.flowField.playerCellX === pcx && world.flowField.playerCellY === pcy) {
+  // Skip if no player has moved to a new cell
+  if (world.flowField && world.flowField.seedKey === seedKey) {
     return
   }
 
-  const w = tilemap.width
-  const h = tilemap.height
   const totalCells = w * h
 
   // Allocate or reuse flow field
@@ -62,8 +67,7 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
       dirX: new Float32Array(totalCells),
       dirY: new Float32Array(totalCells),
       dist: new Uint16Array(totalCells),
-      playerCellX: -1,
-      playerCellY: -1,
+      seedKey: '',
     }
   } else {
     ff = world.flowField
@@ -77,15 +81,14 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
     queueBuffer = new Uint32Array(totalCells)
   }
 
-  // BFS from player cell
-  const playerIdx = pcy * w + pcx
-  ff.dist[playerIdx] = 0
-  queueBuffer[0] = playerIdx
+  // Multi-source BFS: seed from all alive player cells
   let head = 0
-  let tail = 1
+  let tail = 0
+  for (const seed of _seeds) {
+    ff.dist[seed.idx] = 0
+    queueBuffer[tail++] = seed.idx
+  }
 
-  // Pre-compute solid lookup for each cell (avoids repeated isSolidAt calls)
-  // Using the tile center for solid checks
   const halfTile = tilemap.tileSize / 2
 
   while (head < tail) {
@@ -130,7 +133,7 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
 
       ff.dist[nIdx] = curDist + 1
 
-      // Direction: from neighbor toward current cell (one step closer to player)
+      // Direction: from neighbor toward current cell (one step closer to nearest player)
       const dirX = cx - nx // always -1, 0, or 1
       const dirY = cy - ny
       if (NEIGHBOR_DIAG[n]) {
@@ -145,7 +148,6 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
     }
   }
 
-  ff.playerCellX = pcx
-  ff.playerCellY = pcy
+  ff.seedKey = seedKey
   world.flowField = ff
 }

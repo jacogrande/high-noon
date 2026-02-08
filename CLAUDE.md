@@ -111,8 +111,10 @@ The recommended implementation order is:
 ```bash
 bun install           # Install all dependencies
 bun run dev           # Start client dev server at localhost:3000
+bun run dev:server    # Build shared + start server at ws://localhost:2567
 bun run build         # Build shared + client packages
 bun run build:shared  # Build shared package only
 bun run build:client  # Build client package only
+bun run build:server  # Build server package
 bun run typecheck     # Type check all packages
 ```

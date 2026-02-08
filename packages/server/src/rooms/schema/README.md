@@ -5,44 +5,40 @@ Colyseus schema definitions for synchronized state.
 ## Responsibilities
 
 - Define the structure of automatically-synced room state
-- Keep synced state minimal for bandwidth efficiency
-- Provide typed access to state on both server and client
+- Keep synced state minimal — entity state goes via binary snapshots
+- Provide typed access to lobby metadata on both server and client
 
 ## Key Files
 
-- `RoomState.ts` - Root state schema
-- `PlayerState.ts` - Per-player synced data
+- `GameRoomState.ts` - Root state schema (`GameRoomState`) and per-player metadata (`PlayerMeta`)
 
 ## Design Philosophy
 
-**Keep it small.** Colyseus schema sync is great for structured data that changes frequently and needs to be consistent. But syncing thousands of entities (bullets) is wasteful.
+**Keep it small.** Schema sync is used only for lobby metadata (phase, player names, tick counter). All entity state (positions, health, enemies, bullets) is sent via binary snapshots at 20Hz using `encodeSnapshot`/`sendBytes`.
 
-**What to sync:**
-- Player positions and health
-- Key enemy positions (bosses, elite enemies)
-- Run metadata (seed, wave, score)
-- Room/round state
+**What is synced via schema (10Hz):**
+- Game phase (`lobby` / `playing`)
+- Player metadata (name, ready flag)
+- Server tick counter
 
-**What NOT to sync (use events instead):**
-- Bullet positions
-- Particle effects
-- Transient visual entities
+**What is synced via binary snapshots (20Hz):**
+- All entity positions, health, state
+- Enemy and bullet data
 
-## Example Schema
+## Current Schema
 
 ```typescript
 import { Schema, type, MapSchema } from '@colyseus/schema'
 
-class PlayerState extends Schema {
-  @type('number') x: number = 0
-  @type('number') y: number = 0
-  @type('number') health: number = 100
+class PlayerMeta extends Schema {
+  @type('string') name: string = ''
+  @type('boolean') ready: boolean = false
 }
 
-class RoomState extends Schema {
-  @type({ map: PlayerState }) players = new MapSchema<PlayerState>()
-  @type('number') tick: number = 0
-  @type('number') seed: number = 0
+class GameRoomState extends Schema {
+  @type('string') phase: string = 'lobby'
+  @type({ map: PlayerMeta }) players = new MapSchema<PlayerMeta>()
+  @type('uint32') serverTick: number = 0
 }
 ```
 

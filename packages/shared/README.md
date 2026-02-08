@@ -71,17 +71,16 @@ ECS world and components:
 import {
   createGameWorld,
   createSystemRegistry,
+  registerAllSystems,
   stepWorld,
-  movementSystem,
-  playerInputSystem,
 } from '@high-noon/shared'
 
 const world = createGameWorld(42)  // Optional seed for deterministic RNG
 const systems = createSystemRegistry()
-systems.register(playerInputSystem)
-systems.register(movementSystem)
+registerAllSystems(systems)        // Register all 19 systems in canonical order
 
-stepWorld(world, systems, input)  // Advance by one tick
+stepWorld(world, systems, input)   // Advance by one tick (single-player)
+stepWorld(world, systems)          // Advance by one tick (server — reads world.playerInputs)
 ```
 
 **Components:**
@@ -101,7 +100,7 @@ stepWorld(world, systems, input)  // Advance by one tick
 
 **GameWorld fields:**
 - `upgradeState` - Player upgrade/progression state (`UpgradeState` — XP, level, acquired upgrades, computed stats)
-- `lastPlayerHitDirX/Y` - Direction of last hit on player (unit vector, for directional camera kick)
+- `lastPlayerHitDir` - Per-entity Map of last hit direction on player (`Map<number, {x, y}>`, unit vector, for directional camera kick)
 - `EnemyAI` - AI state machine (state, stateTimer, targetEid, initialDelay)
 - `Detection` - Aggro/attack ranges and LOS config
 - `AttackConfig` - Attack timing, damage, projectile config, locked aim direction
@@ -248,6 +247,22 @@ Wave advancement is **threat-kill-threshold** based: each wave defines a `threat
 - `ARENA_WIDTH` = 25 tiles (800px)
 - `ARENA_HEIGHT` = 19 tiles (608px)
 
+**Player Registry (multiplayer):**
+```typescript
+import { addPlayer, removePlayer } from '@high-noon/shared'
+
+const eid = addPlayer(world, sessionId)  // Register player by session ID, returns EID
+removePlayer(world, sessionId)           // Unregister player
+```
+
+**Shared Queries:**
+```typescript
+import { playerQuery, getAlivePlayers } from '@high-noon/shared'
+
+const allPlayers = playerQuery(world)       // All player entities with Position
+const alive = getAlivePlayers(world)        // Alive players only (cached per-tick)
+```
+
 ### `net/` - Network Protocol
 
 Input state definitions:
@@ -263,6 +278,14 @@ if (hasButton(input, Button.SHOOT)) {
 
 **Button flags:** `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `SHOOT`, `ROLL`
 
+**Binary Snapshots:**
+```typescript
+import { encodeSnapshot, decodeSnapshot } from '@high-noon/shared'
+
+const bytes = encodeSnapshot(world)        // Uint8Array view (shared buffer, zero-alloc)
+const state = decodeSnapshot(bytes)        // Decoded entity state
+```
+
 ## Directory Structure
 
 ```
@@ -277,6 +300,8 @@ src/
   sim/
     components.ts    # ECS component definitions
     world.ts         # World creation (includes upgradeState)
+    queries.ts       # Shared queries (playerQuery, getAlivePlayers with per-tick cache)
+    playerRegistry.ts # Per-player input routing (addPlayer, removePlayer)
     upgrade.ts       # UpgradeState, awardXP, applyUpgrade, recomputePlayerStats, writeStatsToECS
     step.ts          # Fixed timestep logic
     prefabs.ts       # Entity factory functions
@@ -315,5 +340,7 @@ src/
     index.ts
   net/
     input.ts         # Input state types
+    snapshot.ts      # Binary snapshot encode/decode
+    snapshot.test.ts # Unit tests
     index.ts
 ```

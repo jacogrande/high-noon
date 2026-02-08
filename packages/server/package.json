@@ -7,11 +7,13 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@high-noon/shared": "workspace:*"
+    "@high-noon/shared": "workspace:*",
+    "colyseus": "^0.16.0",
+    "@colyseus/schema": "^3.0.0"
   }
 }

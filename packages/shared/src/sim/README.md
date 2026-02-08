@@ -46,15 +46,35 @@ function movementSystem(world: GameWorld, dt: number): void {
 
 ## System Registry
 
-Systems are registered and executed via `SystemRegistry`:
+Systems are registered and executed via `SystemRegistry`. Use `registerAllSystems` to register all 19 systems in canonical order:
 
 ```typescript
-const systems = createSystemRegistry()
-systems.register(playerInputSystem)
-systems.register(movementSystem)
+import { createSystemRegistry, registerAllSystems, stepWorld } from '@high-noon/shared'
 
-stepWorld(world, systems, input)
+const systems = createSystemRegistry()
+registerAllSystems(systems)
+
+stepWorld(world, systems, input)  // Single-player (passes input to all players)
+stepWorld(world, systems)         // Server (reads world.playerInputs per-entity)
 ```
+
+## Player Registry
+
+For multiplayer, players are registered by session ID:
+
+```typescript
+import { addPlayer, removePlayer } from '@high-noon/shared'
+
+const eid = addPlayer(world, sessionId)
+removePlayer(world, sessionId)
+```
+
+## Shared Queries
+
+`queries.ts` provides cached queries used by multiple systems:
+
+- `playerQuery` — All player entities with Position
+- `getAlivePlayers(world)` — Alive players only (per-tick WeakMap cache)
 
 ## Dependencies
 

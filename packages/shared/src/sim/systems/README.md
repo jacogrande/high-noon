@@ -48,6 +48,17 @@ Systems run in a specific order each tick:
 18. `buffSystem` - Timed buff ticking (Last Stand)
 19. `collisionSystem` - Push-out resolution
 
+## registerAllSystems
+
+Both client and server use `registerAllSystems(systems)` to register all 19 systems in the canonical execution order. This prevents order divergence between client and server.
+
+```typescript
+import { createSystemRegistry, registerAllSystems } from '@high-noon/shared'
+
+const systems = createSystemRegistry()
+registerAllSystems(systems)
+```
+
 ## Design Pattern
 
 Systems should:

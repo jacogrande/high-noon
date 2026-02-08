@@ -417,8 +417,9 @@ describe('bulletCollisionSystem', () => {
       bulletCollisionSystem(world, 1 / 60)
 
       // Hit direction should be normalized bullet velocity direction (left = -1, 0)
-      expect(world.lastPlayerHitDirX).toBeCloseTo(-1)
-      expect(world.lastPlayerHitDirY).toBeCloseTo(0)
+      const hitDir = world.lastPlayerHitDir.get(playerEid)!
+      expect(hitDir.x).toBeCloseTo(-1)
+      expect(hitDir.y).toBeCloseTo(0)
     })
   })
 

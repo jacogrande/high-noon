@@ -16,25 +16,7 @@ import {
   getArenaCenter,
   getPlayableBounds,
   STAGE_1_ENCOUNTER,
-  movementSystem,
-  playerInputSystem,
-  rollSystem,
-  showdownSystem,
-  cylinderSystem,
-  collisionSystem,
-  weaponSystem,
-  bulletSystem,
-  bulletCollisionSystem,
-  healthSystem,
-  debugSpawnSystem,
-  flowFieldSystem,
-  enemyDetectionSystem,
-  enemyAISystem,
-  enemySteeringSystem,
-  enemyAttackSystem,
-  spatialHashSystem,
-  waveSpawnerSystem,
-  buffSystem,
+  registerAllSystems,
   writeStatsToECS,
   canTakeNode,
   takeNode,
@@ -176,26 +158,8 @@ export class GameScene {
     setWorldTilemap(this.world, this.tilemap)
     this.systems = createSystemRegistry()
 
-    // Register systems in execution order
-    this.systems.register(playerInputSystem)
-    this.systems.register(rollSystem)
-    this.systems.register(showdownSystem)
-    this.systems.register(cylinderSystem)
-    this.systems.register(weaponSystem)
-    this.systems.register(debugSpawnSystem)
-    this.systems.register(waveSpawnerSystem)
-    this.systems.register(bulletSystem)
-    this.systems.register(flowFieldSystem)
-    this.systems.register(enemyDetectionSystem)
-    this.systems.register(enemyAISystem)
-    this.systems.register(spatialHashSystem)
-    this.systems.register(enemySteeringSystem)
-    this.systems.register(enemyAttackSystem)
-    this.systems.register(movementSystem)
-    this.systems.register(bulletCollisionSystem)
-    this.systems.register(healthSystem)
-    this.systems.register(buffSystem)
-    this.systems.register(collisionSystem)
+    // Register all 19 simulation systems in canonical order
+    registerAllSystems(this.systems)
 
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
@@ -438,11 +402,10 @@ export class GameScene {
         this.camera.addTrauma(0.15)
         this.hitStop.freeze(0.05)
         this.sound.play('player_hit')
-        // Directional camera kick toward damage source
-        const hdx = this.world.lastPlayerHitDirX
-        const hdy = this.world.lastPlayerHitDirY
-        if (hdx !== 0 || hdy !== 0) {
-          this.camera.applyKick(hdx, hdy, 4)
+        // Directional camera kick toward damage source (per-player)
+        const hitDir = this.world.lastPlayerHitDir.get(playerEid)
+        if (hitDir && (hitDir.x !== 0 || hitDir.y !== 0)) {
+          this.camera.applyKick(hitDir.x, hitDir.y, 4)
         }
       }
     }

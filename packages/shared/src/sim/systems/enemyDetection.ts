@@ -11,7 +11,7 @@ import { Enemy, Detection, Position, EnemyAI, Player, Dead } from '../components
 import { NO_TARGET } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { worldToTile, isSolidAt } from '../tilemap'
-import { playerQuery } from '../queries'
+import { getAlivePlayers } from '../queries'
 
 const enemyQuery = defineQuery([Enemy, Detection, Position, EnemyAI])
 
@@ -81,61 +81,75 @@ function hasLineOfSight(
 }
 
 export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
-  const players = playerQuery(world)
+  const alivePlayers = getAlivePlayers(world)
   const enemies = enemyQuery(world)
 
-  // No player or player is dead → clear all targets
-  if (players.length === 0) {
+  // No alive players → clear all targets
+  if (alivePlayers.length === 0) {
     for (const eid of enemies) {
       EnemyAI.targetEid[eid] = NO_TARGET
     }
     return
   }
 
-  const playerEid = players[0]!
-  if (hasComponent(world, Dead, playerEid)) {
-    for (const eid of enemies) {
-      EnemyAI.targetEid[eid] = NO_TARGET
-    }
-    return
-  }
-
-  const playerX = Position.x[playerEid]!
-  const playerY = Position.y[playerEid]!
   const tilemap = world.tilemap
 
   for (const eid of enemies) {
     const ex = Position.x[eid]!
     const ey = Position.y[eid]!
     const aggroRange = Detection.aggroRange[eid]!
-    const dx = playerX - ex
-    const dy = playerY - ey
-    const distSq = dx * dx + dy * dy
     const currentTarget = EnemyAI.targetEid[eid]!
 
-    if (currentTarget === NO_TARGET) {
-      // No target — try to acquire
-      const aggroRangeSq = aggroRange * aggroRange
-      if (distSq < aggroRangeSq) {
-        const losReq = Detection.losRequired[eid]!
-        if (losReq === 0) {
-          // No LOS required
-          EnemyAI.targetEid[eid] = playerEid
-        } else if (tilemap && world.tick % 5 === Detection.staggerOffset[eid]!) {
-          // Staggered LOS check
-          if (hasLineOfSight(tilemap, ex, ey, playerX, playerY)) {
-            EnemyAI.targetEid[eid] = playerEid
-          }
+    if (currentTarget !== NO_TARGET) {
+      // Has target — validate it's still alive, present, and within leash
+      if (
+        hasComponent(world, Dead, currentTarget) ||
+        !hasComponent(world, Player, currentTarget) ||
+        !hasComponent(world, Position, currentTarget)
+      ) {
+        // Target dead, removed, or missing position → clear and fall through to acquire new one
+        EnemyAI.targetEid[eid] = NO_TARGET
+      } else {
+        // Leash check: lose target at 2× aggro range from *assigned target*
+        const tx = Position.x[currentTarget]!
+        const ty = Position.y[currentTarget]!
+        const dx = tx - ex
+        const dy = ty - ey
+        const distSq = dx * dx + dy * dy
+        const leashRangeSq = (aggroRange * 2) * (aggroRange * 2)
+        if (distSq > leashRangeSq) {
+          EnemyAI.targetEid[eid] = NO_TARGET
+        } else {
+          // Current target still valid → keep it (stability)
+          continue
         }
       }
-    } else {
-      // Has target — hysteresis: lose target at 2× aggro range
-      const leashRangeSq = (aggroRange * 2) * (aggroRange * 2)
-      if (distSq > leashRangeSq) {
-        EnemyAI.targetEid[eid] = NO_TARGET
-      } else if (!hasComponent(world, Player, currentTarget)) {
-        // Dead target cleanup
-        EnemyAI.targetEid[eid] = NO_TARGET
+    }
+
+    // No target (or just cleared) — find nearest alive player within aggro range
+    const aggroRangeSq = aggroRange * aggroRange
+    let bestEid = NO_TARGET
+    let bestDistSq = Infinity
+
+    for (const pid of alivePlayers) {
+      const dx = Position.x[pid]! - ex
+      const dy = Position.y[pid]! - ey
+      const dSq = dx * dx + dy * dy
+      if (dSq < aggroRangeSq && dSq < bestDistSq) {
+        bestDistSq = dSq
+        bestEid = pid
+      }
+    }
+
+    if (bestEid === NO_TARGET) continue
+
+    // LOS check (staggered)
+    const losReq = Detection.losRequired[eid]!
+    if (losReq === 0) {
+      EnemyAI.targetEid[eid] = bestEid
+    } else if (tilemap && world.tick % 5 === Detection.staggerOffset[eid]!) {
+      if (hasLineOfSight(tilemap, ex, ey, Position.x[bestEid]!, Position.y[bestEid]!)) {
+        EnemyAI.targetEid[eid] = bestEid
       }
     }
   }

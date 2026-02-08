@@ -8,9 +8,9 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy } from '../components'
+import { NO_TARGET } from '../prefabs'
 import { worldToTile } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
-import { playerQuery } from '../queries'
 
 const steeringQuery = defineQuery([EnemyAI, Steering, Position, Velocity, Speed, Enemy])
 
@@ -22,12 +22,6 @@ const GOLDEN_ANGLE = 2.399
 
 export function enemySteeringSystem(world: GameWorld, _dt: number): void {
   const enemies = steeringQuery(world)
-  const players = playerQuery(world)
-
-  const hasPlayer = players.length > 0
-  const playerEid = hasPlayer ? players[0]! : 0
-  const playerX = hasPlayer ? Position.x[playerEid]! : 0
-  const playerY = hasPlayer ? Position.y[playerEid]! : 0
 
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
@@ -39,6 +33,13 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       continue
     }
     if (state === AIState.ATTACK) continue
+
+    const targetEid = EnemyAI.targetEid[eid]!
+    const hasTarget = targetEid !== NO_TARGET
+
+    // Read target position
+    const targetX = hasTarget ? Position.x[targetEid]! : 0
+    const targetY = hasTarget ? Position.y[targetEid]! : 0
 
     const ex = Position.x[eid]!
     const ey = Position.y[eid]!
@@ -60,10 +61,10 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       }
     }
 
-    // Fall back to direct seek if flow field direction is zero
-    if (seekX === 0 && seekY === 0 && hasPlayer) {
-      const dx = playerX - ex
-      const dy = playerY - ey
+    // Fall back to direct seek toward assigned target
+    if (seekX === 0 && seekY === 0 && hasTarget) {
+      const dx = targetX - ex
+      const dy = targetY - ey
       const len = Math.sqrt(dx * dx + dy * dy)
       if (len > 0) {
         seekX = dx / len
@@ -71,11 +72,11 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       }
     }
 
-    // b) Shooter preferred-range orbiting
+    // b) Shooter preferred-range orbiting (relative to assigned target)
     const preferredRange = Steering.preferredRange[eid]!
-    if (preferredRange > 0 && hasPlayer) {
-      const dx = playerX - ex
-      const dy = playerY - ey
+    if (preferredRange > 0 && hasTarget) {
+      const dx = targetX - ex
+      const dy = targetY - ey
       const dist = Math.sqrt(dx * dx + dy * dy)
 
       if (dist > 0) {
@@ -84,7 +85,7 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
           seekX = -seekX
           seekY = -seekY
         } else if (dist <= preferredRange + ORBIT_MARGIN) {
-          // Sweet spot → orbit (perpendicular to player direction)
+          // Sweet spot → orbit (perpendicular to target direction)
           const nx = dx / dist
           const ny = dy / dist
           seekX = -ny
@@ -92,6 +93,13 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
         }
         // else: too far → keep current seek direction
       }
+    }
+
+    // No target → stop moving entirely (skip separation too)
+    if (!hasTarget) {
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+      continue
     }
 
     // c) Separation force
