@@ -58,6 +58,11 @@ function abilityInput(cursorX = 0, cursorY = 0): InputState {
   return input
 }
 
+/** Set per-entity input on world.playerInputs */
+function setInput(world: GameWorld, eid: number, input: InputState): void {
+  world.playerInputs.set(eid, input)
+}
+
 describe('showdownSystem', () => {
   let world: GameWorld
   let playerEid: number
@@ -73,8 +78,8 @@ describe('showdownSystem', () => {
       const nearEnemy = spawnTestEnemy(world, 200, 100)
       const farEnemy = spawnTestEnemy(world, 500, 100)
 
-      const input = abilityInput(200, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(1)
       expect(Showdown.targetEid[playerEid]).toBe(nearEnemy)
@@ -84,8 +89,8 @@ describe('showdownSystem', () => {
     test('ignores enemies beyond mark range', () => {
       spawnTestEnemy(world, 100 + SHOWDOWN_MARK_RANGE + 100, 100)
 
-      const input = abilityInput(100, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(100, 100))
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
       expect(Showdown.targetEid[playerEid]).toBe(NO_TARGET)
@@ -95,8 +100,8 @@ describe('showdownSystem', () => {
       spawnTestEnemy(world, 200, 100)
       Showdown.cooldown[playerEid] = 5.0
 
-      const input = abilityInput(200, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
     })
@@ -109,8 +114,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy1
       Showdown.duration[playerEid] = 3.0
 
-      const input = abilityInput(300, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(300, 100))
+      showdownSystem(world, dt)
 
       // Still targeting enemy1, not enemy2
       expect(Showdown.targetEid[playerEid]).toBe(enemy1)
@@ -119,9 +124,9 @@ describe('showdownSystem', () => {
     test('requires re-press (hold does not re-activate)', () => {
       spawnTestEnemy(world, 200, 100)
 
-      // First press — activates
-      const input1 = abilityInput(200, 100)
-      showdownSystem(world, dt, input1)
+      // First press -- activates
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
       expect(Showdown.active[playerEid]).toBe(1)
 
       // Expire the showdown manually
@@ -129,24 +134,24 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = NO_TARGET
       Showdown.duration[playerEid] = 0
 
-      // Hold — should NOT re-activate (wasDown = 1)
-      const input2 = abilityInput(200, 100)
-      showdownSystem(world, dt, input2)
+      // Hold -- should NOT re-activate (wasDown = 1)
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
       expect(Showdown.active[playerEid]).toBe(0)
     })
 
     test('sets showdownActivatedThisTick', () => {
       spawnTestEnemy(world, 200, 100)
 
-      const input = abilityInput(200, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
 
       expect(world.showdownActivatedThisTick).toBe(true)
     })
 
     test('does not set showdownActivatedThisTick when no enemy in range', () => {
-      const input = abilityInput(200, 100)
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, abilityInput(200, 100))
+      showdownSystem(world, dt)
 
       expect(world.showdownActivatedThisTick).toBe(false)
     })
@@ -159,8 +164,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
-      const input = createInputState()
-      showdownSystem(world, 0.5, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 0.5)
 
       expect(Showdown.duration[playerEid]).toBeCloseTo(2.5)
     })
@@ -171,8 +176,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 0.01
 
-      const input = createInputState()
-      showdownSystem(world, 0.02, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 0.02)
 
       expect(Showdown.active[playerEid]).toBe(0)
       expect(Showdown.targetEid[playerEid]).toBe(NO_TARGET)
@@ -184,8 +189,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 0.01
 
-      const input = createInputState()
-      showdownSystem(world, 0.02, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 0.02)
 
       expect(Showdown.cooldown[playerEid]).toBeCloseTo(SHOWDOWN_COOLDOWN)
     })
@@ -196,8 +201,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 0.01
 
-      const input = createInputState()
-      showdownSystem(world, 0.02, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 0.02)
 
       expect(world.showdownExpiredThisTick).toBe(true)
     })
@@ -208,8 +213,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(world.showdownExpiredThisTick).toBe(false)
     })
@@ -222,8 +227,8 @@ describe('showdownSystem', () => {
 
       Health.current[enemy] = 0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(world.showdownKillThisTick).toBe(true)
       expect(world.showdownExpiredThisTick).toBe(false)
@@ -240,8 +245,8 @@ describe('showdownSystem', () => {
       // Simulate damage from previous tick
       Health.current[enemy] = 0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
       expect(world.showdownKillThisTick).toBe(true)
@@ -255,8 +260,8 @@ describe('showdownSystem', () => {
 
       Health.current[enemy] = 0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Showdown.cooldown[playerEid]).toBeCloseTo(SHOWDOWN_COOLDOWN - SHOWDOWN_KILL_REFUND)
     })
@@ -269,8 +274,8 @@ describe('showdownSystem', () => {
 
       Health.current[enemy] = -5
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
       expect(Showdown.targetEid[playerEid]).toBe(NO_TARGET)
@@ -284,8 +289,8 @@ describe('showdownSystem', () => {
 
       addComponent(world, Dead, enemy)
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
       expect(world.showdownKillThisTick).toBe(true)
@@ -299,8 +304,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]! * SHOWDOWN_SPEED_BONUS)
     })
@@ -316,8 +321,8 @@ describe('showdownSystem', () => {
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Speed.current[playerEid]).toBeCloseTo(baseSpeed)
     })
@@ -330,8 +335,8 @@ describe('showdownSystem', () => {
 
       Health.current[enemy] = 0
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]!)
     })
@@ -342,8 +347,8 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 0.01
 
-      const input = createInputState()
-      showdownSystem(world, 0.02, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 0.02)
 
       expect(Speed.current[playerEid]).toBeCloseTo(Speed.max[playerEid]!)
     })
@@ -353,8 +358,8 @@ describe('showdownSystem', () => {
     test('decrements each tick', () => {
       Showdown.cooldown[playerEid] = 5.0
 
-      const input = createInputState()
-      showdownSystem(world, 1.0, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, 1.0)
 
       expect(Showdown.cooldown[playerEid]).toBeCloseTo(4.0)
     })
@@ -362,8 +367,8 @@ describe('showdownSystem', () => {
     test('does not go below 0', () => {
       Showdown.cooldown[playerEid] = 0.005
 
-      const input = createInputState()
-      showdownSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      showdownSystem(world, dt)
 
       expect(Showdown.cooldown[playerEid]).toBe(0)
     })
@@ -373,6 +378,7 @@ describe('showdownSystem', () => {
     test('does nothing without input state (no activation)', () => {
       spawnTestEnemy(world, 200, 100)
 
+      // playerInputs is empty
       showdownSystem(world, dt)
 
       expect(Showdown.active[playerEid]).toBe(0)
@@ -384,6 +390,7 @@ describe('showdownSystem', () => {
       Showdown.targetEid[playerEid] = enemy
       Showdown.duration[playerEid] = 3.0
 
+      // playerInputs is empty
       showdownSystem(world, dt)
 
       // Speed bonus should still apply

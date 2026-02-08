@@ -8,7 +8,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { hasButton, Button, type InputState } from '../../net/input'
+import { hasButton, Button } from '../../net/input'
 import {
   Player,
   Position,
@@ -27,20 +27,24 @@ const weaponQuery = defineQuery([Weapon, Position, Player])
 /**
  * Weapon system - handles firing with cylinder-based ammo
  *
+ * Each player entity reads its own input from world.playerInputs.
+ *
  * @param world - The game world
  * @param dt - Delta time in seconds
- * @param input - Current input state
  */
 export function weaponSystem(
   world: GameWorld,
   dt: number,
-  input?: InputState
 ): void {
-  if (!input) return
-
   const entities = weaponQuery(world)
 
   for (const eid of entities) {
+    const input = world.playerInputs.get(eid)
+    if (!input) {
+      Player.shootWasDown[eid] = 0
+      continue
+    }
+
     // Check if player wants to shoot
     const wantsShoot = hasButton(input, Button.SHOOT)
     const wasShootDown = Player.shootWasDown[eid] === 1

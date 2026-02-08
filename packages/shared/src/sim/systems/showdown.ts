@@ -9,7 +9,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { hasButton, Button, type InputState } from '../../net/input'
+import { hasButton, Button } from '../../net/input'
 import {
   Player,
   Showdown,
@@ -29,14 +29,14 @@ const aliveEnemyQuery = defineQuery([Enemy, Position, Health])
 /**
  * Showdown system - manages ability activation, kill detection, speed bonus
  *
+ * Each player entity reads its own input from world.playerInputs.
+ *
  * @param world - The game world
  * @param dt - Delta time in seconds
- * @param input - Current input state
  */
 export function showdownSystem(
   world: GameWorld,
   dt: number,
-  input?: InputState,
 ): void {
   // Reset per-tick event flags
   world.showdownKillThisTick = false
@@ -64,7 +64,7 @@ export function showdownSystem(
         hasComponent(world, Dead, targetEid)
 
       if (targetDead) {
-        // Kill — grant cooldown refund, reset speed
+        // Kill -- grant cooldown refund, reset speed
         Showdown.active[eid] = 0
         Showdown.targetEid[eid] = NO_TARGET
         Showdown.duration[eid] = 0
@@ -76,7 +76,7 @@ export function showdownSystem(
         Showdown.duration[eid] = Showdown.duration[eid]! - dt
 
         if (Showdown.duration[eid]! <= 0) {
-          // Expired — full cooldown, reset speed
+          // Expired -- full cooldown, reset speed
           Showdown.active[eid] = 0
           Showdown.targetEid[eid] = NO_TARGET
           Showdown.duration[eid] = 0
@@ -93,6 +93,7 @@ export function showdownSystem(
     }
 
     // --- Activation (rising edge, not active, off cooldown) ---
+    const input = world.playerInputs.get(eid)
     if (input) {
       const wantsAbility = hasButton(input, Button.ABILITY)
       const wasDown = Player.abilityWasDown[eid] === 1
@@ -137,6 +138,8 @@ export function showdownSystem(
 
       // Track button state for re-press detection
       Player.abilityWasDown[eid] = wantsAbility ? 1 : 0
+    } else {
+      Player.abilityWasDown[eid] = 0
     }
   }
 }

@@ -7,6 +7,7 @@
 
 import type { GameWorld } from './world'
 import type { InputState } from '../net/input'
+import { playerQuery } from './queries'
 
 // ============================================================================
 // Constants
@@ -27,9 +28,9 @@ export const TICK_MS = 1000 / TICK_RATE
 
 /**
  * System function signature
- * Systems take the world, delta time, and optionally input
+ * Systems take the world and delta time. Input is read from world.playerInputs.
  */
-export type System = (world: GameWorld, dt: number, input?: InputState) => void
+export type System = (world: GameWorld, dt: number) => void
 
 /**
  * Create a new system registry
@@ -81,17 +82,28 @@ export type SystemRegistry = ReturnType<typeof createSystemRegistry>
  *
  * @param world - The game world to update
  * @param systems - The system registry to use
- * @param input - Player input for this tick
+ * @param input - Optional single-player input (populates world.playerInputs for all player entities)
  */
 export function stepWorld(
   world: GameWorld,
   systems: SystemRegistry,
   input?: InputState
 ): void {
+  // Single-player bridge: populate playerInputs from the single input
+  if (input) {
+    const players = playerQuery(world)
+    for (const eid of players) {
+      world.playerInputs.set(eid, input)
+    }
+  }
+
   // Run all registered systems
   for (const system of systems.getSystems()) {
-    system(world, TICK_S, input)
+    system(world, TICK_S)
   }
+
+  // Clear inputs after tick (server re-populates from network each tick)
+  world.playerInputs.clear()
 
   // Increment tick counter
   world.tick++

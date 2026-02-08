@@ -9,6 +9,11 @@ import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL, PISTOL_CYLINDER_SIZE, 
 
 const bulletQuery = defineQuery([Bullet])
 
+/** Set per-entity input on world.playerInputs */
+function setInput(world: GameWorld, eid: number, input: InputState): void {
+  world.playerInputs.set(eid, input)
+}
+
 describe('weaponSystem', () => {
   let world: GameWorld
   let playerEid: number
@@ -30,43 +35,43 @@ describe('weaponSystem', () => {
       Player.shootWasDown[playerEid] = 1
       Cylinder.fireCooldown[playerEid] = 0.1
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(countBullets(world)).toBe(0)
     })
 
     test('always sets hold-rate cooldown after firing', () => {
       Player.shootWasDown[playerEid] = 0
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const expectedCooldown = 1 / PISTOL_HOLD_FIRE_RATE
       expect(Cylinder.fireCooldown[playerEid]).toBeCloseTo(expectedCooldown)
     })
 
     test('fresh click: fires through remaining cooldown if minFireInterval elapsed', () => {
-      // Simulate: previous shot set 200ms cooldown, 100ms has passed → 100ms remains
-      // elapsed = 200ms - 100ms = 100ms >= 75ms → should fire
+      // Simulate: previous shot set 200ms cooldown, 100ms has passed -> 100ms remains
+      // elapsed = 200ms - 100ms = 100ms >= 75ms -> should fire
       Player.shootWasDown[playerEid] = 0
       const holdCooldown = 1 / PISTOL_HOLD_FIRE_RATE
       Cylinder.fireCooldown[playerEid] = holdCooldown - 0.1 // 100ms elapsed
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(countBullets(world)).toBe(1)
     })
 
     test('fresh click: blocked if less than minFireInterval elapsed', () => {
-      // Simulate: previous shot set 200ms cooldown, only 50ms passed → 150ms remains
-      // elapsed = 200ms - 150ms = 50ms < 75ms → should NOT fire
+      // Simulate: previous shot set 200ms cooldown, only 50ms passed -> 150ms remains
+      // elapsed = 200ms - 150ms = 50ms < 75ms -> should NOT fire
       Player.shootWasDown[playerEid] = 0
       const holdCooldown = 1 / PISTOL_HOLD_FIRE_RATE
       Cylinder.fireCooldown[playerEid] = holdCooldown - 0.05 // only 50ms elapsed
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(countBullets(world)).toBe(0)
     })
@@ -74,24 +79,24 @@ describe('weaponSystem', () => {
 
   describe('firing', () => {
     test('spawns bullet when shoot pressed and cooldown is zero', () => {
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(1)
     })
 
     test('does not spawn bullet without shoot input', () => {
-      const input = createInputState()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createInputState())
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(0)
     })
 
     test('bullet spawns at player position', () => {
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bulletEid = findBulletEntity(world)
       expect(bulletEid).not.toBeNull()
@@ -104,8 +109,8 @@ describe('weaponSystem', () => {
       // Set player aim angle directly (normally done by playerInputSystem)
       Player.aimAngle[playerEid] = aimAngle
 
-      const input = createShootInput(aimAngle)
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput(aimAngle))
+      weaponSystem(world, 1 / 60)
 
       const bulletEid = findBulletEntity(world)
       expect(bulletEid).not.toBeNull()
@@ -126,8 +131,8 @@ describe('weaponSystem', () => {
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(0)
@@ -136,8 +141,8 @@ describe('weaponSystem', () => {
     test('cannot fire while in ROLLING state', () => {
       PlayerState.state[playerEid] = PlayerStateType.ROLLING
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(0)
@@ -147,8 +152,8 @@ describe('weaponSystem', () => {
       // Player not rolling
       PlayerState.state[playerEid] = PlayerStateType.IDLE
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(1)
@@ -159,8 +164,8 @@ describe('weaponSystem', () => {
     test('firing decrements cylinder rounds', () => {
       Cylinder.rounds[playerEid] = 6
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(Cylinder.rounds[playerEid]).toBe(5)
     })
@@ -168,8 +173,8 @@ describe('weaponSystem', () => {
     test('cannot fire with 0 rounds', () => {
       Cylinder.rounds[playerEid] = 0
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(countBullets(world)).toBe(0)
     })
@@ -177,8 +182,8 @@ describe('weaponSystem', () => {
     test('last round applies damage multiplier', () => {
       Cylinder.rounds[playerEid] = 1 // exactly 1 round left
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bulletEid = findBulletEntity(world)
       expect(bulletEid).not.toBeNull()
@@ -193,8 +198,8 @@ describe('weaponSystem', () => {
     test('non-last round does not apply multiplier', () => {
       Cylinder.rounds[playerEid] = 2
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       const bulletEid = findBulletEntity(world)
       expect(bulletEid).not.toBeNull()
@@ -208,8 +213,8 @@ describe('weaponSystem', () => {
         hookFired = true
       })
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(Cylinder.rounds[playerEid]).toBe(0)
       expect(hookFired).toBe(true)
@@ -222,8 +227,8 @@ describe('weaponSystem', () => {
         hookFired = true
       })
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(Cylinder.rounds[playerEid]).toBe(1)
       expect(hookFired).toBe(false)
@@ -233,8 +238,8 @@ describe('weaponSystem', () => {
       Cylinder.firstShotAfterReload[playerEid] = 1
       Cylinder.rounds[playerEid] = 3
 
-      const input = createShootInput()
-      weaponSystem(world, 1 / 60, input)
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
 
       expect(Cylinder.firstShotAfterReload[playerEid]).toBe(0)
     })
@@ -242,7 +247,8 @@ describe('weaponSystem', () => {
 
   describe('no input', () => {
     test('does nothing without input state', () => {
-      weaponSystem(world, 1 / 60, undefined)
+      // playerInputs is empty — no input for this entity
+      weaponSystem(world, 1 / 60)
 
       const bullets = countBullets(world)
       expect(bullets).toBe(0)

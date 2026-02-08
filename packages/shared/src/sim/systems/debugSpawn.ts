@@ -10,13 +10,19 @@
 import type { GameWorld } from '../world'
 import { Position } from '../components'
 import { spawnBullet, CollisionLayer, NO_OWNER } from '../prefabs'
-import { type InputState, Button, hasButton } from '../../net/input'
+import { Button, hasButton } from '../../net/input'
 import { playerQuery } from '../queries'
 
-export function debugSpawnSystem(world: GameWorld, _dt: number, input?: InputState): void {
-  if (!input) return
+export function debugSpawnSystem(world: GameWorld, _dt: number): void {
+  // Check if ANY player pressed debug spawn
+  let isDown = false
+  for (const [, input] of world.playerInputs) {
+    if (hasButton(input, Button.DEBUG_SPAWN)) {
+      isDown = true
+      break
+    }
+  }
 
-  const isDown = hasButton(input, Button.DEBUG_SPAWN)
   const justPressed = isDown && !world.debugSpawnWasDown
   world.debugSpawnWasDown = isDown
 
@@ -24,7 +30,7 @@ export function debugSpawnSystem(world: GameWorld, _dt: number, input?: InputSta
 
   const players = playerQuery(world)
   for (const eid of players) {
-    // Spawn 50px away at 150px/s → arrives in ~0.2s.
+    // Spawn 50px away at 150px/s -> arrives in ~0.2s.
     // Roll i-frames last 0.15s, so rolling toward the bullet
     // (or rolling right as it arrives) should block damage.
     spawnBullet(world, {

@@ -8,6 +8,7 @@ import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
+import type { InputState } from '../net/input'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF } from './content/characters'
@@ -76,6 +77,14 @@ export interface EncounterState {
 }
 
 /**
+ * Info about a connected player in the registry
+ */
+export interface PlayerInfo {
+  eid: number
+  slot: number
+}
+
+/**
  * Game world containing all ECS state
  */
 export interface GameWorld extends IWorld {
@@ -123,6 +132,10 @@ export interface GameWorld extends IWorld {
   showdownExpiredThisTick: boolean
   /** Hook registry for behavioral node effects */
   hooks: HookRegistry
+  /** Per-entity input map (entity ID → InputState). Populated each tick. */
+  playerInputs: Map<number, InputState>
+  /** Player registry: session ID → PlayerInfo (for multiplayer) */
+  players: Map<string, PlayerInfo>
 }
 
 /**
@@ -156,6 +169,8 @@ export function createGameWorld(seed?: number): GameWorld {
     showdownActivatedThisTick: false,
     showdownExpiredThisTick: false,
     hooks: new HookRegistry(),
+    playerInputs: new Map(),
+    players: new Map(),
   }
 }
 
@@ -190,6 +205,8 @@ export function resetWorld(world: GameWorld): void {
   world.showdownActivatedThisTick = false
   world.showdownExpiredThisTick = false
   world.hooks.clear()
+  world.playerInputs.clear()
+  world.players.clear()
   world.rng.reset(world.initialSeed)
   // Note: bitECS entities persist - call removeEntity for each if needed
 }

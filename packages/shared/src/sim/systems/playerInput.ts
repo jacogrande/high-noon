@@ -8,7 +8,7 @@
 
 import { defineQuery, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { hasButton, Button, type InputState } from '../../net/input'
+import { hasButton, Button } from '../../net/input'
 import {
   Player,
   PlayerState,
@@ -27,25 +27,25 @@ const playerQuery = defineQuery([Player, Velocity, Speed, PlayerState])
  * Movement is instant/snappy per the mechanics doc:
  * "Lean toward instant/snappy... The bullet-hell nature demands precise positioning."
  *
- * Note: Currently handles single-player input. For multiplayer, the server will
- * need to call this per-player or use a modified pattern that maps inputs to
- * specific player entity IDs.
+ * Each player entity reads its own input from world.playerInputs.
  *
  * @param world - The game world
  * @param _dt - Delta time (unused - instant acceleration)
- * @param input - Current input state
  */
 export function playerInputSystem(
   world: GameWorld,
   _dt: number,
-  input?: InputState
 ): void {
-  if (!input) return
-
   // Query all player entities
   const players = playerQuery(world)
 
   for (const eid of players) {
+    const input = world.playerInputs.get(eid)
+    if (!input) {
+      Player.rollButtonWasDown[eid] = 0
+      continue
+    }
+
     // Update aim angle
     Player.aimAngle[eid] = input.aimAngle
 

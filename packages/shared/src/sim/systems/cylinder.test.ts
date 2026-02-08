@@ -3,9 +3,14 @@ import { addComponent } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { cylinderSystem } from './cylinder'
-import { Button, createInputState, setButton } from '../../net/input'
+import { Button, createInputState, setButton, type InputState } from '../../net/input'
 import { Cylinder, Roll, PlayerState, PlayerStateType } from '../components'
 import { PISTOL_CYLINDER_SIZE, PISTOL_RELOAD_TIME } from '../content/weapons'
+
+/** Set per-entity input on world.playerInputs */
+function setInput(world: GameWorld, eid: number, input: InputState): void {
+  world.playerInputs.set(eid, input)
+}
 
 describe('cylinderSystem', () => {
   let world: GameWorld
@@ -21,8 +26,8 @@ describe('cylinderSystem', () => {
     test('decrements fireCooldown each tick', () => {
       Cylinder.fireCooldown[playerEid] = 0.5
 
-      const input = createInputState()
-      cylinderSystem(world, 0.1, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, 0.1)
 
       expect(Cylinder.fireCooldown[playerEid]).toBeCloseTo(0.4)
     })
@@ -30,8 +35,8 @@ describe('cylinderSystem', () => {
     test('does not go below zero', () => {
       Cylinder.fireCooldown[playerEid] = 0.005
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.fireCooldown[playerEid]).toBe(0)
     })
@@ -46,8 +51,8 @@ describe('cylinderSystem', () => {
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(0)
       expect(Cylinder.reloadTimer[playerEid]).toBe(0)
@@ -59,8 +64,8 @@ describe('cylinderSystem', () => {
 
       PlayerState.state[playerEid] = PlayerStateType.ROLLING
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(0)
       expect(Cylinder.reloadTimer[playerEid]).toBe(0)
@@ -71,8 +76,8 @@ describe('cylinderSystem', () => {
       Cylinder.reloadTimer[playerEid] = 0.5
       PlayerState.state[playerEid] = PlayerStateType.IDLE
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(1)
       expect(Cylinder.reloadTimer[playerEid]).toBeGreaterThan(0.5)
@@ -87,8 +92,8 @@ describe('cylinderSystem', () => {
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.rounds[playerEid]).toBe(2)
     })
@@ -99,8 +104,8 @@ describe('cylinderSystem', () => {
       Cylinder.reloading[playerEid] = 1
       Cylinder.reloadTimer[playerEid] = 0
 
-      const input = createInputState()
-      cylinderSystem(world, 0.1, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, 0.1)
 
       expect(Cylinder.reloadTimer[playerEid]).toBeCloseTo(0.1)
     })
@@ -110,8 +115,8 @@ describe('cylinderSystem', () => {
       Cylinder.reloading[playerEid] = 1
       Cylinder.reloadTimer[playerEid] = PISTOL_RELOAD_TIME - 0.01
 
-      const input = createInputState()
-      cylinderSystem(world, 0.05, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, 0.05)
 
       expect(Cylinder.reloading[playerEid]).toBe(0)
       expect(Cylinder.reloadTimer[playerEid]).toBe(0)
@@ -124,8 +129,8 @@ describe('cylinderSystem', () => {
       Cylinder.reloadTimer[playerEid] = PISTOL_RELOAD_TIME - 0.01
       Cylinder.firstShotAfterReload[playerEid] = 0
 
-      const input = createInputState()
-      cylinderSystem(world, 0.05, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, 0.05)
 
       expect(Cylinder.firstShotAfterReload[playerEid]).toBe(1)
     })
@@ -135,8 +140,8 @@ describe('cylinderSystem', () => {
       Cylinder.reloading[playerEid] = 1
       Cylinder.reloadTimer[playerEid] = 0
 
-      const input = createInputState()
-      cylinderSystem(world, 0.5, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, 0.5)
 
       expect(Cylinder.reloading[playerEid]).toBe(1)
       expect(Cylinder.rounds[playerEid]).toBe(0)
@@ -149,7 +154,8 @@ describe('cylinderSystem', () => {
 
       const input = createInputState()
       input.buttons = setButton(input.buttons, Button.RELOAD)
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, input)
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(1)
       expect(Cylinder.reloadTimer[playerEid]).toBe(0)
@@ -160,7 +166,8 @@ describe('cylinderSystem', () => {
 
       const input = createInputState()
       input.buttons = setButton(input.buttons, Button.RELOAD)
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, input)
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(0)
     })
@@ -172,7 +179,8 @@ describe('cylinderSystem', () => {
 
       const input = createInputState()
       input.buttons = setButton(input.buttons, Button.RELOAD)
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, input)
+      cylinderSystem(world, dt)
 
       // Timer should advance, not reset
       expect(Cylinder.reloadTimer[playerEid]).toBeGreaterThan(0.8)
@@ -183,8 +191,8 @@ describe('cylinderSystem', () => {
     test('triggers reload when rounds reach 0', () => {
       Cylinder.rounds[playerEid] = 0
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(1)
       expect(Cylinder.reloadTimer[playerEid]).toBe(0)
@@ -193,20 +201,21 @@ describe('cylinderSystem', () => {
     test('does not trigger when rounds remain', () => {
       Cylinder.rounds[playerEid] = 1
 
-      const input = createInputState()
-      cylinderSystem(world, dt, input)
+      setInput(world, playerEid, createInputState())
+      cylinderSystem(world, dt)
 
       expect(Cylinder.reloading[playerEid]).toBe(0)
     })
   })
 
   describe('no input', () => {
-    test('does nothing without input state', () => {
+    test('still ticks cooldown without input state', () => {
       Cylinder.fireCooldown[playerEid] = 0.5
-      cylinderSystem(world, dt, undefined)
+      // playerInputs is empty — no input for this entity
+      cylinderSystem(world, dt)
 
-      // fireCooldown should not change
-      expect(Cylinder.fireCooldown[playerEid]).toBe(0.5)
+      // fireCooldown should still decrement (input-independent)
+      expect(Cylinder.fireCooldown[playerEid]).toBeCloseTo(0.5 - dt)
     })
   })
 })
