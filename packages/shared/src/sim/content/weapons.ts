@@ -1,8 +1,35 @@
 /**
  * Weapon Content Definitions
  *
- * Contains weapon balance values and bullet parameters.
+ * Contains weapon balance values, bullet parameters, and visual data.
  */
+
+// ============================================================================
+// Weapon Sprite Data — visual definitions read by the client renderer
+// ============================================================================
+
+/** Per-weapon visual tuning data. Lives in shared so weapon defs pair gameplay + visuals. */
+export interface WeaponSpriteData {
+  /** Texture key in AssetLoader (e.g. 'revolver') */
+  sprite: string
+  /** Weapon pivot offset from body center (world-space pixels) */
+  gripOffset: { x: number; y: number }
+  /** Barrel tip offset from grip in weapon-pivot-local space (world-space pixels) */
+  barrelTip: { x: number; y: number }
+  /** Recoil kick distance in pixels */
+  kickDistance: number
+  /** Sprite scale multiplier (applied on top of BODY_SCALE) */
+  scale: number
+}
+
+/** Revolver visual data */
+export const REVOLVER_SPRITE: WeaponSpriteData = {
+  sprite: 'revolver',
+  gripOffset: { x: 0, y: -10 },
+  barrelTip: { x: 30, y: 0 },
+  kickDistance: 3,
+  scale: 1,
+}
 
 // ============================================================================
 // Pistol - Default Starting Weapon
