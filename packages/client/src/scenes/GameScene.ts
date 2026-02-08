@@ -203,7 +203,7 @@ export class GameScene {
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
-    this.playerRenderer = new PlayerRenderer(this.spriteRegistry)
+    this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
@@ -480,7 +480,15 @@ export class GameScene {
         this.camera.addTrauma(0.15)
         this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
         this.sound.play('fire')
-        emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
+        this.playerRenderer.triggerRecoil(playerEid)
+
+        // Emit muzzle flash from barrel tip if available, otherwise from player center
+        const barrelTip = this.playerRenderer.getBarrelTipPosition(playerEid)
+        if (barrelTip) {
+          emitMuzzleFlash(this.particles, barrelTip.x, barrelTip.y, angle)
+        } else {
+          emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
+        }
       }
     }
 
@@ -552,7 +560,7 @@ export class GameScene {
     this.collisionDebugRenderer.clear()
 
     // Render player with interpolation
-    this.playerRenderer.render(this.world, alpha)
+    this.playerRenderer.render(this.world, alpha, realDt)
 
     // Render bullets with interpolation
     this.bulletRenderer.render(this.world, alpha)
@@ -652,6 +660,7 @@ export class GameScene {
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()
+    this.playerRenderer.destroy()
     this.enemyRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()

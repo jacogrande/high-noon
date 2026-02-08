@@ -1,14 +1,21 @@
 /**
  * Player Renderer
  *
- * Renders player entities as directional sprites with interpolation.
+ * Renders player entities using a Container hierarchy per player:
+ *   container (sortableChildren)
+ *     ├── bodySprite (zIndex: 0) — animated character sprite
+ *     └── weaponPivot (zIndex: ±1) — rotates to aimAngle
+ *           └── weaponSprite — weapon texture, anchor at grip
+ *
  * Visual feedback for different states:
  * - Normal: Full opacity
  * - Rolling (i-frames): Semi-transparent
- * - Rolling (recovery): Full opacity
+ * - Hurt: Red damage flash
+ * - Death: One-shot death animation
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
+import { Container, Sprite } from 'pixi.js'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Player,
@@ -19,8 +26,8 @@ import {
   Invincible,
   Health,
   Dead,
+  REVOLVER_SPRITE,
 } from '@high-noon/shared'
-import { SpriteRegistry } from './SpriteRegistry'
 import {
   AssetLoader,
   angleToDirection,
@@ -32,7 +39,25 @@ import {
 
 /** Alpha values */
 const ALPHA_NORMAL = 1.0
-const ALPHA_INVINCIBLE = 0.5 // Semi-transparent during i-frames
+const ALPHA_INVINCIBLE = 0.5
+
+/** Current weapon visual data */
+const WEAPON = REVOLVER_SPRITE
+const KICK_DECAY = 0.85
+const KICK_EPSILON = 0.1
+
+/** Player body sprite scale */
+const BODY_SCALE = 2
+const WEAPON_SCALE = BODY_SCALE * WEAPON.scale
+
+/** Per-player visual state */
+interface PlayerVisuals {
+  container: Container
+  bodySprite: Sprite
+  weaponPivot: Container
+  weaponSprite: Sprite
+  kickOffset: number
+}
 
 // Define query for player entities with rendering components
 const playerRenderQuery = defineQuery([Player, Position, Collider])
@@ -42,58 +67,101 @@ const playerPositionQuery = defineQuery([Player, Position])
  * Player renderer - manages player visual representation
  */
 export class PlayerRenderer {
-  private readonly registry: SpriteRegistry
+  private readonly entityLayer: Container
+  private readonly players = new Map<number, PlayerVisuals>()
   private playerEntity: number | null = null
   private deathStartTime: number | null = null
 
-  constructor(registry: SpriteRegistry) {
-    this.registry = registry
+  constructor(entityLayer: Container) {
+    this.entityLayer = entityLayer
   }
 
   /**
-   * Sync sprites with player entities
-   * Creates sprites for new players, removes for dead ones
+   * Sync sprites with player entities.
+   * Creates Container hierarchy for new players, removes for despawned ones.
    */
   sync(world: GameWorld): void {
-    const players = playerRenderQuery(world)
-
-    // Track which entities we've seen
+    const entities = playerRenderQuery(world)
     const activeEntities = new Set<number>()
 
-    for (const eid of players) {
+    for (const eid of entities) {
       activeEntities.add(eid)
 
-      // Create sprite if doesn't exist
-      if (!this.registry.has(eid)) {
-        const texture = AssetLoader.getPlayerTexture('idle', 'E', 0)
-        const sprite = this.registry.createSprite(eid, texture)
-        sprite.texture.source.scaleMode = 'nearest'
-        sprite.scale.set(2)
+      if (!this.players.has(eid)) {
+        // Build container hierarchy
+        const container = new Container()
+        container.sortableChildren = true
+
+        // Body sprite — character animation
+        const bodyTexture = AssetLoader.getPlayerTexture('idle', 'E', 0)
+        const bodySprite = new Sprite(bodyTexture)
+        bodySprite.anchor.set(0.5, 0.5)
+        bodySprite.scale.set(BODY_SCALE)
+        bodySprite.zIndex = 0
+        container.addChild(bodySprite)
+
+        // Weapon pivot — positioned at grip offset, rotates to aimAngle
+        const weaponPivot = new Container()
+        weaponPivot.position.set(WEAPON.gripOffset.x, WEAPON.gripOffset.y)
+        weaponPivot.zIndex = 1 // in front by default
+
+        // Weapon sprite — anchor at left-center (grip point)
+        const weaponTexture = AssetLoader.getWeaponTexture(WEAPON.sprite)
+        const weaponSprite = new Sprite(weaponTexture)
+        weaponSprite.anchor.set(0, 0.5)
+        weaponSprite.scale.set(WEAPON_SCALE)
+        weaponPivot.addChild(weaponSprite)
+
+        container.addChild(weaponPivot)
+        this.entityLayer.addChild(container)
+
+        this.players.set(eid, {
+          container,
+          bodySprite,
+          weaponPivot,
+          weaponSprite,
+          kickOffset: 0,
+        })
         this.playerEntity = eid
       }
     }
 
-    // Remove sprites for entities that no longer exist
-    for (const eid of this.registry.getEntityIds()) {
-      // Only manage player entities (check if it was a player)
-      if (!activeEntities.has(eid) && eid === this.playerEntity) {
-        this.registry.remove(eid)
-        this.playerEntity = null
+    // Remove visuals for entities that no longer exist
+    for (const [eid, visuals] of this.players) {
+      if (!activeEntities.has(eid)) {
+        this.entityLayer.removeChild(visuals.container)
+        visuals.container.destroy({ children: true })
+        this.players.delete(eid)
+        if (eid === this.playerEntity) {
+          this.playerEntity = null
+        }
       }
     }
   }
 
   /**
-   * Update player sprite positions with interpolation
-   * Also updates visual appearance based on player state
-   *
-   * @param world - The game world
-   * @param alpha - Interpolation factor (0-1) between previous and current state
+   * Trigger weapon recoil for a player entity.
    */
-  render(world: GameWorld, alpha: number): void {
-    const players = playerPositionQuery(world)
+  triggerRecoil(eid: number): void {
+    const visuals = this.players.get(eid)
+    if (visuals) {
+      visuals.kickOffset = -WEAPON.kickDistance
+    }
+  }
 
-    for (const eid of players) {
+  /**
+   * Update player sprite positions with interpolation.
+   * Also updates visual appearance based on player state.
+   */
+  render(world: GameWorld, alpha: number, realDt: number): void {
+    const entities = playerPositionQuery(world)
+
+    for (const eid of entities) {
+      const visuals = this.players.get(eid)
+      if (!visuals) continue
+
+      const { container, bodySprite, weaponPivot, weaponSprite } = visuals
+
       // Interpolate between previous and current position
       const prevX = Position.prevX[eid]!
       const prevY = Position.prevY[eid]!
@@ -103,7 +171,7 @@ export class PlayerRenderer {
       const renderX = prevX + (currX - prevX) * alpha
       const renderY = prevY + (currY - prevY) * alpha
 
-      this.registry.setPosition(eid, renderX, renderY)
+      container.position.set(renderX, renderY)
 
       // Determine animation state and direction
       const playerState = PlayerState.state[eid]!
@@ -111,8 +179,6 @@ export class PlayerRenderer {
       const isInvincible = hasComponent(world, Invincible, eid)
       const isDead = hasComponent(world, Dead, eid)
 
-      // Death takes priority over all other states
-      // Hurt overrides other states when damage i-frames are active
       const isHurt = !isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
       let animState: AnimationState
       if (isDead) {
@@ -129,11 +195,9 @@ export class PlayerRenderer {
 
       // Get 4-way direction from aim angle
       const direction = angleToDirection(aimAngle)
-
-      // W mirrors E sprite with horizontal flip
       const needsMirror = direction === 'W'
 
-      // Get animation frame — death and hurt play from start of event, others use global tick
+      // Get animation frame
       let frame: number
       if (isDead) {
         if (this.deathStartTime === null) {
@@ -157,31 +221,81 @@ export class PlayerRenderer {
         frame = getAnimationFrame(animState, world.tick)
       }
 
-      // Update sprite texture
+      // Update body sprite texture
       const texture = AssetLoader.getPlayerTexture(animState, direction, frame)
-      this.registry.setTexture(eid, texture)
+      bodySprite.texture = texture
 
-      // Flip sprite for west direction
-      const sprite = this.registry.getSprite(eid)
-      if (sprite) {
-        sprite.scale.x = needsMirror ? -Math.abs(sprite.scale.x) : Math.abs(sprite.scale.x)
-      }
+      // Flip body sprite for west direction
+      bodySprite.scale.x = needsMirror ? -BODY_SCALE : BODY_SCALE
 
-      // Set alpha based on invincibility (dead = normal alpha)
-      if (!isDead && isInvincible) {
-        this.registry.setAlpha(eid, ALPHA_INVINCIBLE)
+      // --- Weapon rotation, flip, and depth ---
+      weaponPivot.rotation = aimAngle
+
+      // Flip weapon vertically when aiming left (|angle| > PI/2)
+      const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
+      weaponSprite.scale.y = aimingLeft ? -WEAPON_SCALE : WEAPON_SCALE
+
+      // Depth swap: weapon behind body when aiming up
+      const aimingUp = aimAngle < -Math.PI / 4 && aimAngle > -3 * Math.PI / 4
+      weaponPivot.zIndex = aimingUp ? -1 : 1
+
+      // --- Weapon recoil (framerate-independent via realDt) ---
+      if (Math.abs(visuals.kickOffset) > KICK_EPSILON) {
+        visuals.kickOffset *= Math.pow(KICK_DECAY, realDt * 60)
       } else {
-        this.registry.setAlpha(eid, ALPHA_NORMAL)
+        visuals.kickOffset = 0
+      }
+      weaponSprite.x = visuals.kickOffset
+
+      // Hide weapon during roll and death
+      const hideWeapon = isDead || playerState === PlayerStateType.ROLLING
+      weaponPivot.visible = !hideWeapon
+
+      // --- Container-level visual effects ---
+      // Alpha: invincibility
+      if (!isDead && isInvincible) {
+        container.alpha = ALPHA_INVINCIBLE
+      } else {
+        container.alpha = ALPHA_NORMAL
       }
 
-      // Damage flash: red flicker when damage i-frames active (skip when dead)
+      // Damage flash: red flicker on body + weapon
       if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
         const flash = Math.floor(world.tick / 3) % 2 === 0
-        this.registry.setTint(eid, flash ? 0xFF4444 : 0xFFFFFF)
+        const tint = flash ? 0xFF4444 : 0xFFFFFF
+        bodySprite.tint = tint
+        weaponSprite.tint = tint
       } else {
-        this.registry.setTint(eid, 0xFFFFFF)
+        bodySprite.tint = 0xFFFFFF
+        weaponSprite.tint = 0xFFFFFF
       }
     }
+  }
+
+  /**
+   * Get the world-space barrel tip position for a player entity.
+   * Returns null if the player has no visuals or weapon is hidden.
+   */
+  getBarrelTipPosition(eid: number): { x: number; y: number } | null {
+    const visuals = this.players.get(eid)
+    if (!visuals || !visuals.weaponPivot.visible) return null
+
+    const aimAngle = Player.aimAngle[eid]!
+    const cos = Math.cos(aimAngle)
+    const sin = Math.sin(aimAngle)
+
+    const btx = WEAPON.barrelTip.x
+    const bty = WEAPON.barrelTip.y
+
+    // When aiming left, the weapon flips vertically so Y is negated
+    const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
+    const localY = aimingLeft ? -bty : bty
+
+    // Rotate barrel tip by aimAngle, then translate by player position + grip offset
+    const worldX = visuals.container.x + WEAPON.gripOffset.x + cos * btx - sin * localY
+    const worldY = visuals.container.y + WEAPON.gripOffset.y + sin * btx + cos * localY
+
+    return { x: worldX, y: worldY }
   }
 
   /**
@@ -210,5 +324,18 @@ export class PlayerRenderer {
       x: prevX + (currX - prevX) * alpha,
       y: prevY + (currY - prevY) * alpha,
     }
+  }
+
+  /**
+   * Clean up all player visuals
+   */
+  destroy(): void {
+    for (const visuals of this.players.values()) {
+      this.entityLayer.removeChild(visuals.container)
+      visuals.container.destroy({ children: true })
+    }
+    this.players.clear()
+    this.playerEntity = null
+    this.deathStartTime = null
   }
 }

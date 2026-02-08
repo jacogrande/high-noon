@@ -17,12 +17,9 @@ function randInt(min: number, max: number): number {
   return Math.floor(rand(min, max + 1))
 }
 
-/** Offset muzzle flash past player edge (player radius = 16) */
-const MUZZLE_OFFSET = 14
-
 /**
  * Muzzle flash — yellow spray in fire direction.
- * Spawns offset forward past the player sprite so particles are visible.
+ * Caller provides the barrel-tip (x, y) directly — no internal offset applied.
  */
 export function emitMuzzleFlash(
   pool: ParticlePool,
@@ -32,8 +29,6 @@ export function emitMuzzleFlash(
 ): void {
   const cos = Math.cos(aimAngle)
   const sin = Math.sin(aimAngle)
-  const ox = x + cos * MUZZLE_OFFSET
-  const oy = y + sin * MUZZLE_OFFSET
   // Perpendicular axis for positional spread
   const perpX = -sin
   const perpY = cos
@@ -44,8 +39,8 @@ export function emitMuzzleFlash(
     const speed = rand(80, 160)
     const perpOffset = rand(-5, 5)
     pool.emit({
-      x: ox + perpX * perpOffset + cos * rand(0, 4),
-      y: oy + perpY * perpOffset + sin * rand(0, 4),
+      x: x + perpX * perpOffset + cos * rand(0, 4),
+      y: y + perpY * perpOffset + sin * rand(0, 4),
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       life: rand(0.1, 0.18),
