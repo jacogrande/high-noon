@@ -18,7 +18,8 @@ The client uses React for page routing and UI, with PixiJS embedded for game ren
 
 **Page Structure:**
 - `/` - Home/landing page
-- `/play` - Game page with PixiJS canvas
+- `/play` - Single-player game page with PixiJS canvas
+- `/play-multi` - Multiplayer game page (connects to Colyseus server)
 
 **Game Architecture:**
 The game canvas runs two "simulations":
@@ -43,6 +44,7 @@ bun run typecheck  # Type check without emitting
 - `react-dom` - React DOM rendering
 - `react-router-dom` - Client-side routing
 - `pixi.js` - 2D game rendering
+- `colyseus.js` - Multiplayer client SDK
 - `vite` - Build tooling and dev server
 
 ## Modules
@@ -112,16 +114,19 @@ registry.remove(entityId)
 ```typescript
 import { PlayerRenderer } from './render'
 
-const playerRenderer = new PlayerRenderer(spriteRegistry)
-playerRenderer.sync(world)        // Create/remove sprites
-playerRenderer.render(world, alpha) // Update positions, colors, alpha
+const playerRenderer = new PlayerRenderer(entityLayer)
+playerRenderer.sync(world)                 // Create/remove sprites
+playerRenderer.render(world, alpha, realDt) // Update positions, animation, effects
+playerRenderer.localPlayerEid = eid        // Set for multiplayer (remote players get blue tint)
+playerRenderer.getPlayerEntity()           // Returns localPlayerEid ?? first player
 ```
 
 Visual feedback:
-- Normal: Cyan, opaque
-- Rolling (i-frames): White, semi-transparent (50%)
-- Rolling (recovery): White, opaque
-- Damage flash: Red tint when i-frames active
+- Normal: Full opacity
+- Rolling (i-frames): Semi-transparent (50%)
+- Damage flash: Red tint flicker when i-frames active
+- Remote player (multiplayer): Blue tint (0x88BBFF)
+- Death: Per-entity one-shot death animation
 
 **BulletRenderer** - Bullet entity rendering with interpolation:
 ```typescript
@@ -213,9 +218,33 @@ emitLevelUpSparkle(pool, x, y)                  // 12-16 gold particles, upward 
 
 Uses `Math.random()` for visual randomness (client-only, not deterministic sim).
 
+### `net/` - Networking
+
+**NetworkClient** - Colyseus connection wrapper:
+```typescript
+import { NetworkClient } from './net'
+
+const net = new NetworkClient()
+net.on('game-config', (config) => { /* server assigned player EID */ })
+net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
+net.on('disconnect', () => { /* handle disconnect */ })
+await net.join()
+net.sendInput(inputState)
+net.disconnect()  // clears room and listeners
+```
+
+**SnapshotBuffer** - Interpolation buffer for smooth rendering between 20Hz snapshots:
+```typescript
+import { SnapshotBuffer } from './net'
+
+const buffer = new SnapshotBuffer(100)  // 100ms interpolation delay
+buffer.push(snapshot)
+const interp = buffer.getInterpolationState()  // { from, to, alpha }
+```
+
 ### `scenes/` - Game Scenes
 
-**GameScene** - Owns all game state, systems, and renderers:
+**GameScene** - Single-player scene, owns all game state, systems, and renderers:
 ```typescript
 import { GameScene } from './scenes'
 
@@ -231,6 +260,20 @@ GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all rende
 `Game.tsx` creates GameApp and GameLoop, then delegates all game logic to GameScene.
 Starts a `STAGE_1_ENCOUNTER` on creation (4-wave escalating enemy encounter via Director-Wave spawner).
 
+**MultiplayerGameScene** - Multiplayer "dumb client" scene:
+```typescript
+import { MultiplayerGameScene } from './scenes'
+
+const scene = await MultiplayerGameScene.create(gameApp)
+await scene.connect()           // Join server, receive game-config
+scene.update(dt)                // Capture + send input (no local sim)
+scene.render(alpha, fps)        // Interpolate snapshots + render
+scene.getHUDState()             // HUD data for React overlay
+scene.destroy()                 // Disconnect + cleanup
+```
+
+Uses a shadow ECS world populated from server snapshots — existing renderers work unchanged via ECS queries. Server EID → client EID mapping handles entity lifecycle.
+
 Camera juice:
 - Player damage: 0.15 trauma + 0.05s hit stop + directional kick (magnitude 4, toward damage source)
 - Fodder death: 0.02 trauma
@@ -245,8 +288,9 @@ src/
   App.tsx            # Root component with router
   index.css          # Global styles
   pages/
-    Home.tsx         # Landing page
-    Game.tsx         # Game page — creates GameApp, GameScene, GameLoop
+    Home.tsx              # Landing page
+    Game.tsx              # Single-player game page
+    MultiplayerGame.tsx   # Multiplayer game page (connects to server)
   engine/
     GameApp.ts       # PixiJS application wrapper
     GameLoop.ts      # Fixed timestep game loop
@@ -274,11 +318,14 @@ src/
     TilemapRenderer.ts  # Tilemap and collision debug rendering
     index.ts
   scenes/
-    GameScene.ts     # Game scene — owns all game state, systems, renderers
+    GameScene.ts              # Single-player game scene
+    MultiplayerGameScene.ts   # Multiplayer dumb-client scene
     index.ts
   assets/            # Asset loading and spritesheets
-  net/               # (future) Networking, prediction
-  ui/                # (future) In-game HUD components
+  net/
+    NetworkClient.ts    # Colyseus connection wrapper
+    SnapshotBuffer.ts   # Snapshot interpolation buffer
+  ui/                # In-game HUD components
 ```
 
 ## Controls
@@ -291,4 +338,4 @@ src/
 
 ## Entry Point
 
-`src/main.tsx` renders the React app. The `App.tsx` component sets up routing between pages. The `Game.tsx` page handles asset loading, creates `GameApp` and `GameLoop`, and delegates all game logic to `GameScene`.
+`src/main.tsx` renders the React app. The `App.tsx` component sets up routing between pages. The `Game.tsx` page handles asset loading for single-player, while `MultiplayerGame.tsx` handles asset loading + server connection for multiplayer. Both create `GameApp` and `GameLoop`, delegating to their respective scene classes.

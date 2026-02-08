@@ -12,15 +12,11 @@ Sprite management and visual effects.
 ## Current Files
 
 - `SpriteRegistry.ts` - Entity ID → DisplayObject mapping with shape metadata
-- `PlayerRenderer.ts` - Player entity rendering with interpolation, roll alpha, and damage flash (red tint)
-- `BulletRenderer.ts` - Bullet rendering with interpolation (yellow circles)
+- `PlayerRenderer.ts` - Player entity rendering with interpolation, animation, damage flash, and multiplayer remote tint
+- `BulletRenderer.ts` - Bullet rendering with interpolation
+- `EnemyRenderer.ts` - Enemy entity rendering (colored circles, AI state visuals, threat outlines)
 - `TilemapRenderer.ts` - Tilemap rendering (walls as colored rectangles)
 - `DebugRenderer.ts` - Debug shapes and stats overlay
-
-## Planned Files
-
-- `EnemyRenderer.ts` - Enemy entity rendering
-- `FxSystem.ts` - Particles, screenshake, hit effects
 
 ## Entity-Sprite Lifecycle
 

@@ -79,6 +79,7 @@ export function removePlayer(world: GameWorld, sessionId: string): void {
 
   world.playerInputs.delete(info.eid)
   world.rollDodgedBullets.delete(info.eid)
+  world.lastPlayerHitDir.delete(info.eid)
   removeEntity(world, info.eid)
   world.players.delete(sessionId)
 }

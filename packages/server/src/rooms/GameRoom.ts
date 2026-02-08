@@ -11,6 +11,7 @@ import {
   removePlayer,
   encodeSnapshot,
   createInputState,
+  MAX_PLAYERS,
   STAGE_1_ENCOUNTER,
   TICK_MS,
   type GameWorld,
@@ -75,7 +76,7 @@ function clampInput(input: InputState): InputState {
 }
 
 export class GameRoom extends Room<GameRoomState> {
-  override maxClients = 4
+  override maxClients = MAX_PLAYERS
 
   private world!: GameWorld
   private systems!: SystemRegistry
@@ -127,6 +128,7 @@ export class GameRoom extends Room<GameRoomState> {
     client.send('game-config', {
       seed: this.world.initialSeed,
       sessionId: client.sessionId,
+      playerEid: eid,
     })
 
     console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, players=${this.slots.size})`)
@@ -148,8 +150,10 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   override onDispose() {
+    this.slots.clear()
     console.log('[GameRoom] Disposed')
   }
+
 
   private update(deltaMs: number) {
     if (this.state.phase !== 'playing') return

@@ -12,6 +12,9 @@ export function Home() {
         <Link to="/play" style={styles.button}>
           Play
         </Link>
+        <Link to="/play-multi" style={styles.button}>
+          Multiplayer
+        </Link>
       </div>
 
       <div style={styles.footer}>

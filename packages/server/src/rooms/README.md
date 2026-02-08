@@ -18,10 +18,10 @@ Colyseus room definitions.
 
 ```
 onCreate()    → Create GameWorld, register systems, start sim interval (60Hz)
-onJoin()      → addPlayer to ECS, send game-config, auto-start on first join
+onJoin()      → addPlayer to ECS, send game-config, auto-start on first join (max MAX_PLAYERS)
 onMessage()   → Validate + clamp input, push to per-player queue
 onLeave()     → removePlayer from ECS, cleanup slot
-onDispose()   → Log
+onDispose()   → Clear slots, log
 ```
 
 ## Input Handling

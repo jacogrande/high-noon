@@ -57,6 +57,7 @@ interface PlayerVisuals {
   weaponPivot: Container
   weaponSprite: Sprite
   kickOffset: number
+  deathStartTime: number | null
 }
 
 // Define query for player entities with rendering components
@@ -70,7 +71,9 @@ export class PlayerRenderer {
   private readonly entityLayer: Container
   private readonly players = new Map<number, PlayerVisuals>()
   private playerEntity: number | null = null
-  private deathStartTime: number | null = null
+
+  /** Set to identify the local player for visual differentiation. */
+  localPlayerEid: number | null = null
 
   constructor(entityLayer: Container) {
     this.entityLayer = entityLayer
@@ -121,8 +124,11 @@ export class PlayerRenderer {
           weaponPivot,
           weaponSprite,
           kickOffset: 0,
+          deathStartTime: null,
         })
-        this.playerEntity = eid
+        if (this.playerEntity === null) {
+          this.playerEntity = eid
+        }
       }
     }
 
@@ -200,10 +206,10 @@ export class PlayerRenderer {
       // Get animation frame
       let frame: number
       if (isDead) {
-        if (this.deathStartTime === null) {
-          this.deathStartTime = performance.now()
+        if (visuals.deathStartTime === null) {
+          visuals.deathStartTime = performance.now()
         }
-        const elapsedSec = (performance.now() - this.deathStartTime) / 1000
+        const elapsedSec = (performance.now() - visuals.deathStartTime) / 1000
         const fps = ANIMATION_SPEEDS.death
         frame = Math.min(
           Math.floor(elapsedSec * fps),
@@ -259,15 +265,17 @@ export class PlayerRenderer {
         container.alpha = ALPHA_NORMAL
       }
 
-      // Damage flash: red flicker on body + weapon
+      // Remote player tint (multiplayer) + damage flash
+      const isRemote = this.localPlayerEid !== null && eid !== this.localPlayerEid && !isDead
+      const baseTint = isRemote ? 0x88BBFF : 0xFFFFFF
+
       if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
         const flash = Math.floor(world.tick / 3) % 2 === 0
-        const tint = flash ? 0xFF4444 : 0xFFFFFF
-        bodySprite.tint = tint
-        weaponSprite.tint = tint
+        bodySprite.tint = flash ? 0xFF4444 : baseTint
+        weaponSprite.tint = flash ? 0xFF4444 : baseTint
       } else {
-        bodySprite.tint = 0xFFFFFF
-        weaponSprite.tint = 0xFFFFFF
+        bodySprite.tint = baseTint
+        weaponSprite.tint = baseTint
       }
     }
   }
@@ -299,10 +307,12 @@ export class PlayerRenderer {
   }
 
   /**
-   * Get the current player entity ID
+   * Get the local player entity ID.
+   * Prefers localPlayerEid (set explicitly in multiplayer), falls back to
+   * playerEntity (first entity created, used in single-player).
    */
   getPlayerEntity(): number | null {
-    return this.playerEntity
+    return this.localPlayerEid ?? this.playerEntity
   }
 
   /**
@@ -336,6 +346,5 @@ export class PlayerRenderer {
     }
     this.players.clear()
     this.playerEntity = null
-    this.deathStartTime = null
   }
 }

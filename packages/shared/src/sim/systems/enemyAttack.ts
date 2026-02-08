@@ -26,8 +26,8 @@ const bulletQuery = defineQuery([Bullet])
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
 
-  // Hoist bullet count for fodder projectile cap (avoid per-enemy query)
-  const activeBulletCount = bulletQuery(world).length
+  // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
+  let activeBulletCount = bulletQuery(world).length
 
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
@@ -140,6 +140,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         })
       }
 
+      activeBulletCount += count
       transition(eid, AIState.RECOVERY)
     }
   }

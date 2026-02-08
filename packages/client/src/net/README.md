@@ -1,54 +1,52 @@
 # net/
 
-Client networking: connection, prediction, and interpolation.
+Client networking: connection management and snapshot interpolation.
 
-## Responsibilities
+## Current Files
 
-- WebSocket connection management
-- Send player inputs to server
-- Receive and process server snapshots/events
+- `NetworkClient.ts` - Colyseus connection wrapper (join, sendInput, snapshot/disconnect events)
+- `SnapshotBuffer.ts` - Snapshot interpolation buffer for smooth rendering between 20Hz server updates
+
+## NetworkClient
+
+Wraps `colyseus.js` Client/Room with a typed event interface:
+
+```typescript
+const net = new NetworkClient('ws://localhost:2567')
+net.on('game-config', (config) => { /* { seed, sessionId, playerEid } */ })
+net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
+net.on('disconnect', () => { /* connection lost */ })
+await net.join(options)
+net.sendInput(inputState)
+net.disconnect()  // leaves room, clears listeners
+```
+
+Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared.
+
+## SnapshotBuffer
+
+Stores recent snapshots with receive timestamps and computes interpolation state for rendering:
+
+```typescript
+const buffer = new SnapshotBuffer(100)  // 100ms interpolation delay
+buffer.push(snapshot)                   // Called on each server snapshot
+
+const interp = buffer.getInterpolationState()
+// interp = { from: WorldSnapshot, to: WorldSnapshot, alpha: number }
+```
+
+- Buffer size: 10 snapshots (500ms at 20Hz)
+- Interpolation delay: 100ms (2x snapshot interval for jitter resilience)
+- Alpha is clamped to [0, 1]
+- Returns null until 2+ snapshots are buffered
+
+## Future
+
 - Client-side prediction for local player
-- Interpolation buffer for remote entities
-- Clock synchronization with server
-
-## Key Files
-
-- `NetClient.ts` - WebSocket connection, join/reconnect logic
-- `ClockSync.ts` - Estimate server tick offset via ping samples
-- `Prediction.ts` - Local player prediction and reconciliation
-- `Interpolation.ts` - Remote entity smoothing buffer
-
-## Prediction Flow
-
-```
-1. Collect input
-2. Send InputCmd to server (with sequence number)
-3. Immediately apply input to predicted state
-4. Store input in unacknowledged buffer
-5. On server snapshot:
-   a. Find last acknowledged input
-   b. Reset to server state
-   c. Replay unacknowledged inputs
-```
-
-## Interpolation Flow
-
-```
-1. Receive snapshot, store in buffer
-2. Each render frame:
-   a. Find two snapshots bracketing render time
-   b. Lerp entity positions between them
-   c. Render at interpolated position
-```
-
-## Clock Sync
-
-Estimate `serverTick = clientTick + offset`:
-- Periodically ping server
-- Track RTT samples
-- Compute offset with jitter filtering
+- Server reconciliation (rewind + replay unacknowledged inputs)
+- Clock synchronization for render time estimation
 
 ## Dependencies
 
-- `@high-noon/shared` - Protocol types, serialization
-- `../engine` - Integration with game loop
+- `colyseus.js` - Multiplayer client SDK
+- `@high-noon/shared` - Protocol types, snapshot decoding
