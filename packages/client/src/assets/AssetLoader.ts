@@ -26,6 +26,11 @@ const MANIFEST = {
   bullet: '/assets/sprites/bullet.png',
 } as const
 
+/** Weapon sprite manifest: weaponId → path */
+const WEAPON_SPRITES: Record<string, string> = {
+  revolver: '/assets/sprites/weapons/revolver.png',
+}
+
 /** Tile type to frame name mapping */
 const TILE_FRAME_MAP: Record<number, string> = {
   [TileType.EMPTY]: 'tile_empty',
@@ -46,6 +51,9 @@ export class AssetLoader {
 
   /** Pre-sliced player textures: key = `${state}_${spriteDir}_${frame}` */
   private static playerTextures = new Map<string, Texture>()
+
+  /** Weapon textures: key = weaponId */
+  private static weaponTextures = new Map<string, Texture>()
 
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000
@@ -72,10 +80,16 @@ export class AssetLoader {
       Assets.add({ alias, src: `${CHAR_SPRITE_BASE}/${info.file}` })
     }
 
+    // Add weapon sprites
+    for (const [weaponId, path] of Object.entries(WEAPON_SPRITES)) {
+      Assets.add({ alias: `weapon_${weaponId}`, src: path })
+    }
+
     const allAliases = [
       'tileset',
       'bullet',
       ...ANIMATION_STATES.map((s) => `char_${s}`),
+      ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
     ]
 
     const loadPromise = Assets.load(allAliases, (progress) => {
@@ -107,6 +121,16 @@ export class AssetLoader {
     }
     if (!this.bulletTexture) {
       throw new Error('Bullet texture failed to load')
+    }
+
+    // Store weapon textures with nearest-neighbor scaling
+    for (const weaponId of Object.keys(WEAPON_SPRITES)) {
+      const tex = loaded[`weapon_${weaponId}`] as Texture
+      if (!tex) {
+        throw new Error(`Weapon texture failed to load: ${weaponId}`)
+      }
+      tex.source.scaleMode = 'nearest'
+      this.weaponTextures.set(weaponId, tex)
     }
 
     // Slice character sprite sheets into individual frame textures
@@ -205,6 +229,17 @@ export class AssetLoader {
   }
 
   /**
+   * Get weapon texture by weapon ID
+   */
+  static getWeaponTexture(weaponId: string): Texture {
+    const tex = this.weaponTextures.get(weaponId)
+    if (!tex) {
+      throw new Error(`Weapon texture not found: ${weaponId}. Call AssetLoader.loadAll() first.`)
+    }
+    return tex
+  }
+
+  /**
    * Reset loader state (for testing)
    */
   static reset(): void {
@@ -212,5 +247,6 @@ export class AssetLoader {
     this.tilesetSheet = null
     this.bulletTexture = null
     this.playerTextures.clear()
+    this.weaponTextures.clear()
   }
 }
