@@ -15,7 +15,7 @@
 | 3 | ~~Input Sequencing & Snapshot Protocol v3~~ | shared, client, server | ~~P0~~ DONE | — |
 | 4 | ~~Client-Side Prediction~~ | shared, client | ~~P0~~ DONE | Epic 3 |
 | 5 | ~~Server Reconciliation & Misprediction Smoothing~~ | client | ~~P0~~ DONE | Epic 4 |
-| 6 | Snapshot Interpolation Improvements | client | P1 | Epic 2 |
+| 6 | ~~Snapshot Interpolation Improvements~~ | client | ~~P1~~ DONE | Epic 2 |
 | 7 | Server & Client Optimizations | shared, client, server | P1 | Epic 1 |
 | 8 | Multiplayer UX Polish | client, server | P2 | Epics 4-5 |
 
@@ -649,7 +649,7 @@ if (this.myClientEid >= 0 && (this.errorX !== 0 || this.errorY !== 0)) {
 
 ---
 
-## Epic 6: Snapshot Interpolation Improvements
+## Epic 6: Snapshot Interpolation Improvements — COMPLETE
 
 Upgrade the interpolation system to use server time instead of receive time, and improve the buffer data structure.
 

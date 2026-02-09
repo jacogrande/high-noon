@@ -9,7 +9,8 @@ import type { WorldSnapshot } from '@high-noon/shared'
 
 export interface TimestampedSnapshot {
   snapshot: WorldSnapshot
-  receiveTime: number
+  receiveTime: number   // local performance.now() — fallback
+  serverTime: number    // snapshot.serverTime — used when clock sync converged
 }
 
 export interface InterpolationState {
@@ -19,7 +20,7 @@ export interface InterpolationState {
 }
 
 /** Maximum number of snapshots to retain (5 = 250ms at 20Hz, plenty for 100ms interpolation delay) */
-const MAX_BUFFER_SIZE = 10
+const MAX_BUFFER_SIZE = 5
 
 /** Default interpolation delay in ms (2x snapshot interval for jitter resilience) */
 const DEFAULT_INTERPOLATION_DELAY = 100
@@ -36,6 +37,7 @@ export class SnapshotBuffer {
     const entry: TimestampedSnapshot = {
       snapshot,
       receiveTime: performance.now(),
+      serverTime: snapshot.serverTime,
     }
     this.buffer.push(entry)
 
@@ -57,16 +59,24 @@ export class SnapshotBuffer {
    *
    * Finds two snapshots bracketing `now - interpolationDelay` and returns
    * the pair with a clamped alpha in [0, 1].
+   *
+   * When `serverTimeNow` is provided (from ClockSync), brackets on
+   * server-time timestamps for jitter-resilient interpolation. Otherwise
+   * falls back to local receive-time timestamps.
    */
-  getInterpolationState(): InterpolationState | null {
+  getInterpolationState(serverTimeNow?: number): InterpolationState | null {
     if (this.buffer.length < 2) return null
 
-    const renderTime = performance.now() - this.interpolationDelay
+    const useServerTime = serverTimeNow !== undefined
+    const renderTime = useServerTime
+      ? serverTimeNow - this.interpolationDelay
+      : performance.now() - this.interpolationDelay
 
-    // Find the bracketing pair: last entry where receiveTime <= renderTime
+    // Find the bracketing pair: last entry where timestamp <= renderTime
     let fromIdx = -1
     for (let i = this.buffer.length - 1; i >= 0; i--) {
-      if (this.buffer[i]!.receiveTime <= renderTime) {
+      const t = useServerTime ? this.buffer[i]!.serverTime : this.buffer[i]!.receiveTime
+      if (t <= renderTime) {
         fromIdx = i
         break
       }
@@ -93,9 +103,11 @@ export class SnapshotBuffer {
 
     const from = this.buffer[fromIdx]!
     const to = this.buffer[fromIdx + 1]!
-    const span = to.receiveTime - from.receiveTime
+    const fromT = useServerTime ? from.serverTime : from.receiveTime
+    const toT = useServerTime ? to.serverTime : to.receiveTime
+    const span = toT - fromT
     const alpha = span > 0
-      ? Math.max(0, Math.min(1, (renderTime - from.receiveTime) / span))
+      ? Math.max(0, Math.min(1, (renderTime - fromT) / span))
       : 1
 
     return {

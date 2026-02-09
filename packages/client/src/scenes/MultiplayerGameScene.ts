@@ -500,7 +500,9 @@ export class MultiplayerGameScene {
     this.lastRenderTime = now
 
     // Interpolate snapshot data into ECS arrays
-    const interpState = this.snapshotBuffer.getInterpolationState()
+    const interpState = this.snapshotBuffer.getInterpolationState(
+      this.clockSync.isConverged() ? this.clockSync.getServerTime() : undefined
+    )
     const alpha = interpState ? this.interpolateFromBuffer(interpState) : 0.5
 
     // Decay misprediction error (frame-rate independent)
