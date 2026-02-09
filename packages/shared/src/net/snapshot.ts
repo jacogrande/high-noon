@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v1)
+ * Binary Snapshot Serialization (v3)
  *
  * Encodes/decodes the world state into a compact binary format for
  * server→client broadcast at 20Hz.
@@ -26,11 +26,11 @@ import type { GameWorld } from '../sim/world'
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 1
+export const SNAPSHOT_VERSION = 3
 
-/** Header: version(1) + tick(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
-export const HEADER_SIZE = 10
-export const PLAYER_SIZE = 17
+/** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
+export const HEADER_SIZE = 14
+export const PLAYER_SIZE = 21
 export const BULLET_SIZE = 19
 export const ENEMY_SIZE = 13
 
@@ -46,6 +46,7 @@ export interface PlayerSnapshot {
   state: number
   hp: number
   flags: number
+  lastProcessedSeq: number
 }
 
 export interface BulletSnapshot {
@@ -68,6 +69,7 @@ export interface EnemySnapshot {
 
 export interface WorldSnapshot {
   tick: number
+  serverTime: number
   players: PlayerSnapshot[]
   bullets: BulletSnapshot[]
   enemies: EnemySnapshot[]
@@ -95,7 +97,11 @@ function clampHP(val: number): number {
 // Encoder
 // ============================================================================
 
-export function encodeSnapshot(world: GameWorld): Uint8Array {
+export function encodeSnapshot(
+  world: GameWorld,
+  serverTime: number,
+  playerSeqs?: Map<number, number>,
+): Uint8Array {
   const players = playerQuery(world)
   const bullets = bulletQuery(world)
 
@@ -129,6 +135,8 @@ export function encodeSnapshot(world: GameWorld): Uint8Array {
   // Header
   view.setUint32(offset, world.tick, true)
   offset += 4
+  view.setFloat32(offset, serverTime, true)
+  offset += 4
   view.setUint8(offset, players.length)
   offset += 1
   view.setUint16(offset, bullets.length, true)
@@ -157,6 +165,9 @@ export function encodeSnapshot(world: GameWorld): Uint8Array {
     if (hasComponent(world, Invincible, eid)) flags |= 2
     view.setUint8(offset, flags)
     offset += 1
+
+    view.setUint32(offset, playerSeqs?.get(eid) ?? 0, true)
+    offset += 4
   }
 
   // Bullets
@@ -212,6 +223,8 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
 
   const tick = view.getUint32(offset, true)
   offset += 4
+  const serverTime = view.getFloat32(offset, true)
+  offset += 4
   const playerCount = view.getUint8(offset)
   offset += 1
   const bulletCount = view.getUint16(offset, true)
@@ -235,7 +248,9 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 1
     const flags = view.getUint8(offset)
     offset += 1
-    players[i] = { eid, x, y, aimAngle, state, hp, flags }
+    const lastProcessedSeq = view.getUint32(offset, true)
+    offset += 4
+    players[i] = { eid, x, y, aimAngle, state, hp, flags, lastProcessedSeq }
   }
 
   const bullets: BulletSnapshot[] = new Array(bulletCount)
@@ -272,5 +287,5 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     enemies[i] = { eid, x, y, type, hp, aiState }
   }
 
-  return { tick, players, bullets, enemies }
+  return { tick, serverTime, players, bullets, enemies }
 }

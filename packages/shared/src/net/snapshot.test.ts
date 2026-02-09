@@ -46,10 +46,11 @@ describe('snapshot', () => {
     Health.current[eEid] = 3
     EnemyAI.state[eEid] = AIState.CHASE
 
-    const encoded = encodeSnapshot(world)
+    const encoded = encodeSnapshot(world, 12345.678)
     const snap = decodeSnapshot(encoded)
 
     expect(snap.tick).toBe(1000)
+    expect(snap.serverTime).toBe(Math.fround(12345.678))
 
     // Player
     expect(snap.players).toHaveLength(1)
@@ -61,6 +62,7 @@ describe('snapshot', () => {
     expect(p.state).toBe(PlayerStateType.MOVING)
     expect(p.hp).toBe(80)
     expect(p.flags).toBe(0)
+    expect(p.lastProcessedSeq).toBe(0)
 
     // Bullet
     expect(snap.bullets).toHaveLength(1)
@@ -85,11 +87,12 @@ describe('snapshot', () => {
 
   it('empty world: version + header = HEADER_SIZE bytes', () => {
     const world = createGameWorld(1)
-    const encoded = encodeSnapshot(world)
+    const encoded = encodeSnapshot(world, 0)
     expect(encoded.byteLength).toBe(HEADER_SIZE)
 
     const snap = decodeSnapshot(encoded)
     expect(snap.tick).toBe(0)
+    expect(snap.serverTime).toBe(0)
     expect(snap.players).toHaveLength(0)
     expect(snap.bullets).toHaveLength(0)
     expect(snap.enemies).toHaveLength(0)
@@ -101,7 +104,7 @@ describe('snapshot', () => {
     addComponent(world, Dead, eid)
     addComponent(world, Invincible, eid)
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     const p = snap.players[0]!
     expect(p.flags & 1).toBe(1)  // Dead
     expect(p.flags & 2).toBe(2)  // Invincible
@@ -114,7 +117,7 @@ describe('snapshot', () => {
     Health.current[p1] = 999
     Health.current[p2] = -50
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.players[0]!.hp).toBe(255)
     expect(snap.players[1]!.hp).toBe(0)
   })
@@ -137,7 +140,7 @@ describe('snapshot', () => {
       spawnSwarmer(world, 100 + i * 50, 200)
     }
 
-    const encoded = encodeSnapshot(world)
+    const encoded = encodeSnapshot(world, 500.5)
     const snap = decodeSnapshot(encoded)
     expect(snap.tick).toBe(42)
     expect(snap.players.length).toBeGreaterThanOrEqual(2)
@@ -161,13 +164,13 @@ describe('snapshot', () => {
     // f32 truncates precision — compare via Math.fround
     const expected = Math.fround(testVal)
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.players[0]!.x).toBe(expected)
   })
 
   it('version mismatch: decoder throws', () => {
     const world = createGameWorld(6)
-    const encoded = encodeSnapshot(world)
+    const encoded = encodeSnapshot(world, 0)
     // Corrupt version byte
     const corrupted = new Uint8Array(encoded)
     corrupted[0] = 99
@@ -181,7 +184,7 @@ describe('snapshot', () => {
     const e2 = spawnGrunt(world, 100, 100)
     addComponent(world, Dead, e1)
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.enemies).toHaveLength(1)
     expect(snap.enemies[0]!.eid).toBe(e2)
   })
@@ -191,7 +194,7 @@ describe('snapshot', () => {
     const eid = spawnPlayer(world, 50, 50, 0)
     addComponent(world, Dead, eid)
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.players).toHaveLength(1)
     expect(snap.players[0]!.flags & 1).toBe(1)
   })
@@ -204,7 +207,7 @@ describe('snapshot', () => {
       layer: CollisionLayer.ENEMY_BULLET,
     })
 
-    const snap = decodeSnapshot(encodeSnapshot(world))
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.bullets[0]!.layer).toBe(CollisionLayer.ENEMY_BULLET)
   })
 
@@ -229,7 +232,7 @@ describe('snapshot', () => {
       spawnSwarmer(world, i * 10, i * 10)
     }
 
-    const encoded = encodeSnapshot(world)
+    const encoded = encodeSnapshot(world, 1000)
     const snap = decodeSnapshot(encoded)
     expect(snap.players.length).toBeGreaterThanOrEqual(2)
     expect(snap.bullets.length).toBeGreaterThanOrEqual(20)
@@ -244,7 +247,38 @@ describe('snapshot', () => {
     expect(encoded.byteLength).toBe(expectedSize)
 
     // Verify the per-entity sizes match spec (2 players + 20 bullets + 30 enemies)
-    // 10 + 34 + 380 + 390 = 814
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(814)
+    // 14 + 42 + 380 + 390 = 826
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(826)
+  })
+
+  it('lastProcessedSeq round-trip with playerSeqs map', () => {
+    const world = createGameWorld(12)
+    const eid = spawnPlayer(world, 0, 0, 0)
+
+    const playerSeqs = new Map<number, number>([[eid, 12345]])
+    const encoded = encodeSnapshot(world, 0, playerSeqs)
+    const snap = decodeSnapshot(encoded)
+
+    expect(snap.players).toHaveLength(1)
+    expect(snap.players[0]!.lastProcessedSeq).toBe(12345)
+  })
+
+  it('lastProcessedSeq defaults to 0 without playerSeqs', () => {
+    const world = createGameWorld(13)
+    spawnPlayer(world, 0, 0, 0)
+
+    const encoded = encodeSnapshot(world, 0)
+    const snap = decodeSnapshot(encoded)
+
+    expect(snap.players[0]!.lastProcessedSeq).toBe(0)
+  })
+
+  it('serverTime survives float32 round-trip', () => {
+    const world = createGameWorld(11)
+    const serverTime = 9876543.21
+
+    const encoded = encodeSnapshot(world, serverTime)
+    const snap = decodeSnapshot(encoded)
+    expect(snap.serverTime).toBe(Math.fround(serverTime))
   })
 })
