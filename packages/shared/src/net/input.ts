@@ -67,3 +67,14 @@ export function setButton(buttons: number, flag: ButtonFlag): number {
 export function clearButton(buttons: number, flag: ButtonFlag): number {
   return buttons & ~flag
 }
+
+/**
+ * Input state with a monotonic sequence number for network transmission.
+ * Used for client→server input messages. The seq field enables the server
+ * to acknowledge processed inputs and the client to replay unacknowledged
+ * ones during reconciliation.
+ */
+export interface NetworkInput extends InputState {
+  /** Monotonically increasing sequence number, starts at 1 */
+  seq: number
+}
