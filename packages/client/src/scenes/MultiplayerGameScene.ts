@@ -37,6 +37,7 @@ import {
   Cylinder,
   Showdown,
   NO_TARGET,
+  NO_OWNER,
   hasButton,
   Button,
   TICK_S,
@@ -58,6 +59,7 @@ import {
   createSystemRegistry,
   registerPredictionSystems,
   registerReplaySystems,
+  spatialHashSystem,
   stepWorld,
   type SystemRegistry,
   type GameWorld,
@@ -116,6 +118,7 @@ const predictedBulletQuery = defineQuery([Bullet, Position, Velocity])
 /** Predicted bullet constants */
 const PREDICTED_BULLET_TIMEOUT = 30  // ticks (~500ms)
 const BULLET_MATCH_TOLERANCE = 40    // pixels
+const BULLET_MATCH_FALLBACK_TOLERANCE = 180 // pixels (high-latency safety net)
 
 export class MultiplayerGameScene {
   private readonly gameApp: GameApp
@@ -141,6 +144,7 @@ export class MultiplayerGameScene {
   /** Predicted bullet tracking */
   private readonly predictedBullets = new Set<number>()
   private readonly predictedBulletSpawnTick = new Map<number, number>()
+  private readonly localTimelineBullets = new Set<number>()
 
   /** Input sequence counter for network messages */
   private inputSeq = 0
@@ -161,6 +165,9 @@ export class MultiplayerGameScene {
 
   /** HUD data from server */
   private latestHud: HudData | null = null
+
+  /** Latest authoritative snapshot pending application on the fixed update tick */
+  private pendingSnapshot: WorldSnapshot | null = null
 
   /** Previous HP for damage shake detection */
   private prevHP = -1
@@ -254,6 +261,7 @@ export class MultiplayerGameScene {
       this.connected = false
       this.disconnected = true
       this.latestHud = null
+      this.pendingSnapshot = null
       console.log('[MP] Disconnected from server')
     })
 
@@ -273,19 +281,50 @@ export class MultiplayerGameScene {
     })
 
     this.net.on('snapshot', (snapshot: WorldSnapshot) => {
-      this.world.tick = snapshot.tick
-      this.applyEntityLifecycle(snapshot)
-
-      // Reconcile local player prediction against server authority
-      if (this.myClientEid >= 0) {
-        this.reconcileLocalPlayer(snapshot)
-      }
-
-      this.snapshotBuffer.push(snapshot)
+      // Defer heavy decode/apply/reconcile work to fixed update, so socket
+      // callbacks stay lightweight and don't preempt rendering.
+      this.pendingSnapshot = snapshot
     })
 
     // join() resolves after game-config is received (with timeout)
     await this.net.join(options)
+  }
+
+  // ===========================================================================
+  // Network Snapshot Processing
+  // ===========================================================================
+
+  private processPendingSnapshot(): void {
+    const snapshot = this.pendingSnapshot
+    if (!snapshot) return
+    this.pendingSnapshot = null
+
+    this.world.tick = snapshot.tick
+    this.applyEntityLifecycle(snapshot)
+
+    // Rebuild broadphase once per authoritative snapshot, then reuse during
+    // prediction/replay ticks (local-player scope skips per-tick rebuilds).
+    spatialHashSystem(this.world, TICK_S)
+
+    // Reconcile local player prediction against server authority
+    if (this.myClientEid >= 0) {
+      this.reconcileLocalPlayer(snapshot)
+    }
+
+    this.snapshotBuffer.push(snapshot)
+  }
+
+  private withLocalPredictionScope(run: () => void): void {
+    const prevScope = this.world.simulationScope
+    const prevLocalEid = this.world.localPlayerEid
+    this.world.simulationScope = 'local-player'
+    this.world.localPlayerEid = this.myClientEid
+    try {
+      run()
+    } finally {
+      this.world.simulationScope = prevScope
+      this.world.localPlayerEid = prevLocalEid
+    }
   }
 
   // ===========================================================================
@@ -296,6 +335,30 @@ export class MultiplayerGameScene {
     this.applyPlayers(snapshot.players)
     this.applyBullets(snapshot.bullets)
     this.applyEnemies(snapshot.enemies)
+  }
+
+  /** Map a server-side owner EID to the local shadow-world owner EID. */
+  private resolveOwnerClientEid(ownerServerEid: number): number {
+    if (ownerServerEid === NO_OWNER) return NO_OWNER
+    if (ownerServerEid === this.myServerEid && this.myClientEid >= 0) return this.myClientEid
+    const playerOwner = this.playerEntities.get(ownerServerEid)
+    if (playerOwner !== undefined) return playerOwner
+    const enemyOwner = this.enemyEntities.get(ownerServerEid)
+    if (enemyOwner !== undefined) return enemyOwner
+    return NO_OWNER
+  }
+
+  /** Explicit bullet render timeline classification (local predicted vs delayed interpolated). */
+  private setBulletLocalTimeline(clientEid: number, localTimeline: boolean): void {
+    if (localTimeline) {
+      this.localTimelineBullets.add(clientEid)
+    } else {
+      this.localTimelineBullets.delete(clientEid)
+    }
+  }
+
+  private isLocalTimelineOwner(ownerClientEid: number): boolean {
+    return this.myClientEid >= 0 && ownerClientEid === this.myClientEid
   }
 
   private applyPlayers(players: PlayerSnapshot[]): void {
@@ -389,6 +452,7 @@ export class MultiplayerGameScene {
         if (serverEid === this.myServerEid) {
           this.myClientEid = -1
           this.playerRenderer.localPlayerEid = null
+          this.localTimelineBullets.clear()
         }
       }
     }
@@ -399,24 +463,25 @@ export class MultiplayerGameScene {
 
     for (const b of bullets) {
       seen.add(b.eid)
+      const ownerClientEid = this.resolveOwnerClientEid(b.ownerEid)
+      const ownerResolved = b.ownerEid === NO_OWNER || ownerClientEid !== NO_OWNER
       let clientEid = this.bulletEntities.get(b.eid)
 
       if (clientEid === undefined) {
-        // Try to match against a predicted bullet (player bullets only)
+        // Try to match against a predicted bullet (player bullets only).
+        // Predicted set already contains only local-owned bullets.
         const matched = b.layer === CollisionLayer.PLAYER_BULLET
           ? this.findMatchingPredictedBullet(b)
           : -1
 
         if (matched >= 0) {
-          // Reuse predicted entity — snap to server position
+          // Reuse predicted entity and attach server ID without snapping.
+          // Snapping here can pull local shots backward relative to the
+          // locally-smoothed player presentation.
           clientEid = matched
           this.predictedBullets.delete(matched)
           this.predictedBulletSpawnTick.delete(matched)
-
-          Position.x[clientEid] = b.x
-          Position.y[clientEid] = b.y
-          Position.prevX[clientEid] = b.x
-          Position.prevY[clientEid] = b.y
+          this.setBulletLocalTimeline(clientEid, true)
         } else {
           // New bullet entity
           clientEid = addEntity(this.world)
@@ -427,7 +492,8 @@ export class MultiplayerGameScene {
 
           Collider.radius[clientEid] = BULLET_RADIUS
           Collider.layer[clientEid] = b.layer
-          Bullet.ownerId[clientEid] = 0
+          Bullet.ownerId[clientEid] = ownerResolved ? ownerClientEid : NO_OWNER
+          this.setBulletLocalTimeline(clientEid, ownerResolved && this.isLocalTimelineOwner(ownerClientEid))
 
           Position.x[clientEid] = b.x
           Position.y[clientEid] = b.y
@@ -436,6 +502,12 @@ export class MultiplayerGameScene {
         }
 
         this.bulletEntities.set(b.eid, clientEid)
+      }
+
+      Collider.layer[clientEid] = b.layer
+      if (ownerResolved) {
+        Bullet.ownerId[clientEid] = ownerClientEid
+        this.setBulletLocalTimeline(clientEid, this.isLocalTimelineOwner(ownerClientEid))
       }
 
       // Write velocity (used for rotation in BulletRenderer)
@@ -449,6 +521,7 @@ export class MultiplayerGameScene {
         if (!this.predictedBullets.has(clientEid)) {
           removeEntity(this.world, clientEid)
         }
+        this.localTimelineBullets.delete(clientEid)
         this.bulletEntities.delete(serverEid)
       }
     }
@@ -537,19 +610,47 @@ export class MultiplayerGameScene {
     // when Roll component is removed but PlayerState.state wasn't reset
     PlayerState.state[this.myClientEid] = serverPlayer.state
 
-    // Handle Roll component based on server state
-    if (hasComponent(this.world, Roll, this.myClientEid)) {
-      if (serverPlayer.state !== PlayerStateType.ROLLING) {
-        // Server says not rolling — strip client's Roll component
+    // Handle Roll component based on server state.
+    // Snapshot carries authoritative roll timing + direction to avoid roll-end
+    // divergence (visible as post-roll teleport and weapon flicker).
+    const serverRolling = serverPlayer.state === PlayerStateType.ROLLING
+    const hasLocalRoll = hasComponent(this.world, Roll, this.myClientEid)
+    if (!serverRolling) {
+      if (hasLocalRoll) {
         removeComponent(this.world, Roll, this.myClientEid)
       }
-      // If server says ROLLING, preserve client's Roll component for replay continuity
+      this.world.rollDodgedBullets.delete(this.myClientEid)
+    } else {
+      if (!hasLocalRoll) {
+        addComponent(this.world, Roll, this.myClientEid)
+      }
+
+      const durationS = Math.max(0, serverPlayer.rollDurationMs / 1000)
+      const elapsedS = Math.max(0, Math.min(durationS, serverPlayer.rollElapsedMs / 1000))
+      let dirX = serverPlayer.rollDirX
+      let dirY = serverPlayer.rollDirY
+      const len = Math.hypot(dirX, dirY)
+      if (len > 1e-6) {
+        dirX /= len
+        dirY /= len
+      } else {
+        const a = Player.aimAngle[this.myClientEid]!
+        dirX = Math.cos(a)
+        dirY = Math.sin(a)
+      }
+
+      Roll.duration[this.myClientEid] = durationS
+      Roll.elapsed[this.myClientEid] = elapsedS
+      Roll.iframeRatio[this.myClientEid] = this.world.upgradeState.rollIframeRatio
+      Roll.speedMultiplier[this.myClientEid] = this.world.upgradeState.rollSpeedMultiplier
+      Roll.directionX[this.myClientEid] = dirX
+      Roll.directionY[this.myClientEid] = dirY
       this.world.rollDodgedBullets.delete(this.myClientEid)
     }
 
-    // Set rollButtonWasDown based on server state to prevent false edge detection
-    // during input replay (otherwise re-triggers the roll from server position)
-    Player.rollButtonWasDown[this.myClientEid] = serverPlayer.state === PlayerStateType.ROLLING ? 1 : 0
+    // Use authoritative roll edge-state from snapshot flags.
+    // Deriving from PlayerState is insufficient (IDLE can still have roll held).
+    Player.rollButtonWasDown[this.myClientEid] = (serverPlayer.flags & 4) !== 0 ? 1 : 0
 
     // Save weapon timing state — replaySystems exclude weapon/cylinder, so these
     // must be preserved across reconciliation to avoid false fire-rate resets
@@ -570,15 +671,19 @@ export class MultiplayerGameScene {
     // 5. Replay unacknowledged inputs (movement-only — no cylinder/weapon to prevent
     // double-spawning bullets during reconciliation replay)
     const pending = this.inputBuffer.getPending()
-    for (const input of pending) {
-      Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
-      Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
-      this.world.playerInputs.set(this.myClientEid, input)
-      for (const system of this.replaySystems.getSystems()) {
-        system(this.world, TICK_S)
+
+    this.withLocalPredictionScope(() => {
+      for (let i = 0; i < pending.length; i++) {
+        const input = pending[i]!
+        Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
+        Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
+        this.world.playerInputs.set(this.myClientEid, input)
+        for (const system of this.replaySystems.getSystems()) {
+          system(this.world, TICK_S)
+        }
+        this.world.playerInputs.clear()
       }
-      this.world.playerInputs.clear()
-    }
+    })
 
     // Restore weapon timing state after replay
     Cylinder.fireCooldown[this.myClientEid] = savedFireCooldown
@@ -621,6 +726,10 @@ export class MultiplayerGameScene {
 
   update(_dt: number): void {
     if (!this.connected) return
+
+    // Apply at most one pending authoritative snapshot on the fixed tick.
+    this.processPendingSnapshot()
+
     if (this.myClientEid < 0) return
 
     // Set input reference position from predicted position (immediate)
@@ -652,7 +761,9 @@ export class MultiplayerGameScene {
     // stepWorld runs systems, clears inputs, increments world.tick (drift is harmless —
     // interpolateFromBuffer overwrites world.tick each render for remote entity animation).
     this.world.playerInputs.set(this.myClientEid, inputState)
-    stepWorld(this.world, this.predictionSystems)
+    this.withLocalPredictionScope(() => {
+      stepWorld(this.world, this.predictionSystems)
+    })
 
     // Cylinder-based fire detection (mirrors single-player pattern)
     const newRounds = Cylinder.rounds[this.myClientEid]!
@@ -667,7 +778,12 @@ export class MultiplayerGameScene {
       this.sound.play('fire')
       this.playerRenderer.triggerRecoil(this.myClientEid)
 
-      const barrelTip = this.playerRenderer.getBarrelTipPosition(this.myClientEid)
+      const barrelTip = this.playerRenderer.getBarrelTipFromState(
+        this.world,
+        this.myClientEid,
+        Position.x[this.myClientEid]! + this.errorX,
+        Position.y[this.myClientEid]! + this.errorY,
+      )
       if (barrelTip) {
         emitMuzzleFlash(this.particles, barrelTip.x, barrelTip.y, angle)
       } else {
@@ -775,40 +891,36 @@ export class MultiplayerGameScene {
     // Clear debug
     this.debugRenderer.clear()
 
-    // Local player: compute render position using game loop alpha for sub-frame
-    // smoothness (same pattern as single-player). prevX/prevY are set in update()
-    // before each prediction step, so interpolating with _loopAlpha gives smooth
-    // movement at display refresh rate, not just at the 60Hz prediction rate.
-    // Error offset is added on top for misprediction correction.
-    let savedPrevX = 0, savedPrevY = 0, savedX = 0, savedY = 0
+    // Local player presentation is decoupled from simulation ECS state:
+    // provide a render-only override instead of mutating Position arrays.
     if (this.myClientEid >= 0) {
-      savedPrevX = Position.prevX[this.myClientEid]!
-      savedPrevY = Position.prevY[this.myClientEid]!
-      savedX = Position.x[this.myClientEid]!
-      savedY = Position.y[this.myClientEid]!
-
-      const renderX = savedPrevX + (savedX - savedPrevX) * _loopAlpha + this.errorX
-      const renderY = savedPrevY + (savedY - savedPrevY) * _loopAlpha + this.errorY
-
-      // Set both prev and curr to render position so snapshot alpha is irrelevant
-      Position.prevX[this.myClientEid] = renderX
-      Position.x[this.myClientEid] = renderX
-      Position.prevY[this.myClientEid] = renderY
-      Position.y[this.myClientEid] = renderY
+      const prevX = Position.prevX[this.myClientEid]!
+      const prevY = Position.prevY[this.myClientEid]!
+      const currX = Position.x[this.myClientEid]!
+      const currY = Position.y[this.myClientEid]!
+      const renderX = prevX + (currX - prevX) * _loopAlpha + this.errorX
+      const renderY = prevY + (currY - prevY) * _loopAlpha + this.errorY
+      this.playerRenderer.setRenderPositionOverride(this.myClientEid, renderX, renderY)
     }
 
     // Render entities
     this.playerRenderer.render(this.world, alpha, realDt)
 
-    // Restore logical state after rendering
     if (this.myClientEid >= 0) {
-      Position.prevX[this.myClientEid] = savedPrevX
-      Position.prevY[this.myClientEid] = savedPrevY
-      Position.x[this.myClientEid] = savedX
-      Position.y[this.myClientEid] = savedY
+      this.playerRenderer.clearRenderPositionOverride(this.myClientEid)
     }
 
-    this.bulletRenderer.render(this.world, alpha)
+    if (this.myClientEid >= 0 && (this.errorX !== 0 || this.errorY !== 0)) {
+      this.bulletRenderer.renderWithLocalOffset(
+        this.world,
+        alpha,
+        this.localTimelineBullets,
+        this.errorX,
+        this.errorY,
+      )
+    } else {
+      this.bulletRenderer.render(this.world, alpha)
+    }
     this.enemyRenderer.render(this.world, alpha, realDt)
 
     // Update particles
@@ -894,6 +1006,10 @@ export class MultiplayerGameScene {
     for (const b of to.bullets) {
       const clientEid = this.bulletEntities.get(b.eid)
       if (clientEid === undefined) continue
+
+      // Local-timeline bullets are predicted/rendered in present time.
+      // Do not overwrite their positions with delayed snapshot interpolation.
+      if (this.localTimelineBullets.has(clientEid)) continue
 
       const prev = this.fromBulletIndex.get(b.eid)
       const fromX = prev?.x ?? b.x
@@ -986,9 +1102,11 @@ export class MultiplayerGameScene {
 
       // Only track player bullets owned by local player
       if (Collider.layer[eid] !== CollisionLayer.PLAYER_BULLET) continue
+      if (this.myClientEid < 0 || Bullet.ownerId[eid] !== this.myClientEid) continue
 
       this.predictedBullets.add(eid)
       this.predictedBulletSpawnTick.set(eid, this.predictionTick)
+      this.localTimelineBullets.add(eid)
     }
   }
 
@@ -1002,8 +1120,13 @@ export class MultiplayerGameScene {
 
   /** Find the closest predicted bullet matching a server bullet snapshot */
   private findMatchingPredictedBullet(b: BulletSnapshot): number {
+    // Primary tolerance compensates for one-way network delay.
+    const rttMs = this.clockSync.isConverged() ? this.clockSync.getRTT() : 0
+    const latencyComp = Math.min(120, (Math.max(0, rttMs) * 0.5 * PISTOL_BULLET_SPEED) / 1000)
+    const primaryTolerance = BULLET_MATCH_TOLERANCE + latencyComp
+
     let bestEid = -1
-    let bestDist = BULLET_MATCH_TOLERANCE
+    let bestDist = Number.POSITIVE_INFINITY
 
     for (const eid of this.predictedBullets) {
       const dx = Position.x[eid]! - b.x
@@ -1015,7 +1138,10 @@ export class MultiplayerGameScene {
       }
     }
 
-    return bestEid
+    if (bestEid < 0) return -1
+    if (bestDist <= primaryTolerance) return bestEid
+    if (bestDist <= BULLET_MATCH_FALLBACK_TOLERANCE) return bestEid
+    return -1
   }
 
   /** Remove predicted bullets that have timed out without being matched */
@@ -1031,6 +1157,7 @@ export class MultiplayerGameScene {
       removeEntity(this.world, eid)
       this.predictedBullets.delete(eid)
       this.predictedBulletSpawnTick.delete(eid)
+      this.localTimelineBullets.delete(eid)
     }
   }
 
@@ -1045,7 +1172,9 @@ export class MultiplayerGameScene {
     }
     this.predictedBullets.clear()
     this.predictedBulletSpawnTick.clear()
+    this.localTimelineBullets.clear()
 
+    this.pendingSnapshot = null
     this.inputBuffer.clear()
     this.clockSync.stop()
     this.net.disconnect()

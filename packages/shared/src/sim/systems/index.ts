@@ -51,12 +51,12 @@ export {
 
 /**
  * Register prediction systems for client-side forward ticks.
- * Includes cylinder + weapon (for bullet prediction) and spatialHash
- * (for entity-entity collision), in addition to movement.
+ * Includes weapon/bullet systems for local shot prediction in addition to
+ * movement + collision for local movement correction.
  *
- * spatialHash runs before movement (unlike canonical order) because
- * prediction needs the hash rebuilt from snapshot positions BEFORE
- * collisionSystem resolves player-vs-entity pushout.
+ * Note: spatial hash rebuild is intentionally excluded here. Multiplayer
+ * client prediction runs in local-player scope, and the hash is rebuilt
+ * on snapshot ingestion instead of every prediction tick.
  */
 export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
@@ -64,8 +64,9 @@ export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(showdownSystem)
   systems.register(cylinderSystem)
   systems.register(weaponSystem)
-  systems.register(spatialHashSystem)
+  systems.register(bulletSystem)
   systems.register(movementSystem)
+  systems.register(bulletCollisionSystem)
   systems.register(collisionSystem)
 }
 
@@ -77,7 +78,6 @@ export function registerPredictionSystems(systems: SystemRegistry): void {
 export function registerReplaySystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
-  systems.register(spatialHashSystem)
   systems.register(movementSystem)
   systems.register(collisionSystem)
 }

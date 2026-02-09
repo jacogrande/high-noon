@@ -40,8 +40,36 @@ const MAX_INPUT_QUEUE = 30
 /** If queue exceeds this depth, skip to latest input to reduce latency */
 const INPUT_QUEUE_TRIM_THRESHOLD = 6
 
+/** When queue is briefly empty, reuse last input for a few ticks to avoid edge glitches */
+const INPUT_HOLD_TICKS = 3
+
 /** Neutral input (all zeros) used when a player's queue is empty. Frozen to prevent accidental mutation. */
 const neutralInput: InputState = Object.freeze(createInputState())
+
+/**
+ * Action buttons that should survive queue trimming.
+ * These are edge-sensitive gameplay actions where dropping a short tap
+ * causes visible client/server divergence (e.g., dash not starting server-side).
+ */
+const TRANSIENT_ACTION_BUTTONS =
+  Button.ROLL | Button.RELOAD | Button.ABILITY | Button.SHOOT
+
+/**
+ * Merge a trimmed backlog into one input:
+ * - Keep latest analog state (movement/aim/cursor)
+ * - Preserve any transient action taps observed in dropped inputs
+ */
+function mergeTrimmedInputs(queue: NetworkInput[]): NetworkInput {
+  const latest = queue[queue.length - 1]!
+  let mergedButtons = latest.buttons
+  for (let i = 0; i < queue.length - 1; i++) {
+    mergedButtons |= queue[i]!.buttons & TRANSIENT_ACTION_BUTTONS
+  }
+  return {
+    ...latest,
+    buttons: mergedButtons,
+  }
+}
 
 /** Per-player server state */
 interface PlayerSlot {
@@ -49,6 +77,8 @@ interface PlayerSlot {
   eid: number
   inputQueue: NetworkInput[]
   lastProcessedSeq: number
+  lastInput: InputState
+  heldInputTicks: number
 }
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
@@ -117,8 +147,19 @@ export class GameRoom extends Room<GameRoomState> {
       const slot = this.slots.get(client.sessionId)
       if (!slot) return
       if (!isValidInput(data)) return
-      if (slot.inputQueue.length >= MAX_INPUT_QUEUE) return
-      slot.inputQueue.push(clampInput(data))
+      const input = clampInput(data)
+
+      // Drop stale or duplicate sequence numbers.
+      if (input.seq <= slot.lastProcessedSeq) return
+      const lastQueued = slot.inputQueue[slot.inputQueue.length - 1]
+      if (lastQueued && input.seq <= lastQueued.seq) return
+
+      // Keep the freshest input under pressure: drop oldest, keep newest.
+      if (slot.inputQueue.length >= MAX_INPUT_QUEUE) {
+        slot.inputQueue.shift()
+      }
+
+      slot.inputQueue.push(input)
     })
 
     // Clock sync ping/pong handler
@@ -149,6 +190,8 @@ export class GameRoom extends Room<GameRoomState> {
       eid,
       inputQueue: [],
       lastProcessedSeq: 0,
+      lastInput: neutralInput,
+      heldInputTicks: 0,
     })
 
     // Send game config to the joining client
@@ -178,6 +221,8 @@ export class GameRoom extends Room<GameRoomState> {
         const slot = this.slots.get(client.sessionId)
         if (slot) {
           slot.inputQueue = []  // Clear stale inputs from before disconnect
+          slot.lastInput = neutralInput
+          slot.heldInputTicks = 0
           client.send('game-config', {
             seed: this.world.initialSeed,
             sessionId: client.sessionId,
@@ -227,18 +272,28 @@ export class GameRoom extends Room<GameRoomState> {
     //    the latest input to prevent snowballing latency under jitter.
     for (const [, slot] of this.slots) {
       if (slot.inputQueue.length > INPUT_QUEUE_TRIM_THRESHOLD) {
-        // Skip to latest — acknowledge all intermediate inputs
-        const latest = slot.inputQueue[slot.inputQueue.length - 1]!
+        // Skip to latest analog state but preserve action-button taps from
+        // dropped inputs to avoid losing edge-triggered actions.
+        const merged = mergeTrimmedInputs(slot.inputQueue)
         slot.inputQueue.length = 0
-        slot.lastProcessedSeq = latest.seq
-        this.world.playerInputs.set(slot.eid, latest)
+        slot.lastProcessedSeq = merged.seq
+        slot.lastInput = merged
+        slot.heldInputTicks = 0
+        this.world.playerInputs.set(slot.eid, merged)
       } else {
         const input = slot.inputQueue.shift()
         if (input) {
           slot.lastProcessedSeq = input.seq
+          slot.lastInput = input
+          slot.heldInputTicks = 0
           this.world.playerInputs.set(slot.eid, input)
         } else {
-          this.world.playerInputs.set(slot.eid, neutralInput)
+          if (slot.heldInputTicks < INPUT_HOLD_TICKS) {
+            slot.heldInputTicks++
+            this.world.playerInputs.set(slot.eid, slot.lastInput)
+          } else {
+            this.world.playerInputs.set(slot.eid, neutralInput)
+          }
         }
       }
     }

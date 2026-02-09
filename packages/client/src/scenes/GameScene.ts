@@ -446,7 +446,7 @@ export class GameScene {
         this.playerRenderer.triggerRecoil(playerEid)
 
         // Emit muzzle flash from barrel tip if available, otherwise from player center
-        const barrelTip = this.playerRenderer.getBarrelTipPosition(playerEid)
+        const barrelTip = this.playerRenderer.getBarrelTipFromState(this.world, playerEid)
         if (barrelTip) {
           emitMuzzleFlash(this.particles, barrelTip.x, barrelTip.y, angle)
         } else {

@@ -23,6 +23,7 @@ import {
   Collider,
   PlayerState,
   PlayerStateType,
+  Roll,
   Invincible,
   Health,
   Dead,
@@ -70,6 +71,8 @@ const playerPositionQuery = defineQuery([Player, Position])
 export class PlayerRenderer {
   private readonly entityLayer: Container
   private readonly players = new Map<number, PlayerVisuals>()
+  private readonly activeEntities = new Set<number>()
+  private readonly renderPositionOverrides = new Map<number, { x: number; y: number }>()
   private playerEntity: number | null = null
 
   /** Set to identify the local player for visual differentiation. */
@@ -88,7 +91,8 @@ export class PlayerRenderer {
    */
   sync(world: GameWorld): void {
     const entities = playerRenderQuery(world)
-    const activeEntities = new Set<number>()
+    const activeEntities = this.activeEntities
+    activeEntities.clear()
 
     for (const eid of entities) {
       activeEntities.add(eid)
@@ -159,6 +163,24 @@ export class PlayerRenderer {
   }
 
   /**
+   * Override the render position for an entity for the current frame only.
+   * Multiplayer uses this for local-player presentation without mutating ECS state.
+   */
+  setRenderPositionOverride(eid: number, x: number, y: number): void {
+    const existing = this.renderPositionOverrides.get(eid)
+    if (existing) {
+      existing.x = x
+      existing.y = y
+    } else {
+      this.renderPositionOverrides.set(eid, { x, y })
+    }
+  }
+
+  clearRenderPositionOverride(eid: number): void {
+    this.renderPositionOverrides.delete(eid)
+  }
+
+  /**
    * Update player sprite positions with interpolation.
    * Also updates visual appearance based on player state.
    */
@@ -172,19 +194,20 @@ export class PlayerRenderer {
       const { container, bodySprite, weaponPivot, weaponSprite } = visuals
 
       // Interpolate between previous and current position
-      const prevX = Position.prevX[eid]!
-      const prevY = Position.prevY[eid]!
-      const currX = Position.x[eid]!
-      const currY = Position.y[eid]!
-
-      const renderX = prevX + (currX - prevX) * alpha
-      const renderY = prevY + (currY - prevY) * alpha
+      const override = this.renderPositionOverrides.get(eid)
+      const renderX = override
+        ? override.x
+        : Position.prevX[eid]! + (Position.x[eid]! - Position.prevX[eid]!) * alpha
+      const renderY = override
+        ? override.y
+        : Position.prevY[eid]! + (Position.y[eid]! - Position.prevY[eid]!) * alpha
 
       container.position.set(renderX, renderY)
 
       // Determine animation state and direction
       const playerState = PlayerState.state[eid]!
       const aimAngle = Player.aimAngle[eid]!
+      const isRolling = hasComponent(world, Roll, eid) || playerState === PlayerStateType.ROLLING
       const isInvincible = hasComponent(world, Invincible, eid)
       const isDead = hasComponent(world, Dead, eid)
 
@@ -194,7 +217,7 @@ export class PlayerRenderer {
         animState = 'death'
       } else if (isHurt) {
         animState = 'hurt'
-      } else if (playerState === PlayerStateType.ROLLING) {
+      } else if (isRolling) {
         animState = 'roll'
       } else if (playerState === PlayerStateType.MOVING) {
         animState = 'walk'
@@ -260,7 +283,7 @@ export class PlayerRenderer {
       weaponSprite.x = visuals.kickOffset
 
       // Hide weapon during roll and death
-      const hideWeapon = isDead || playerState === PlayerStateType.ROLLING
+      const hideWeapon = isDead || isRolling
       weaponPivot.visible = !hideWeapon
 
       // --- Container-level visual effects ---
@@ -316,6 +339,37 @@ export class PlayerRenderer {
   }
 
   /**
+   * Get barrel tip from current ECS state instead of render container state.
+   * Useful for effects emitted during fixed update (e.g., muzzle flash), where
+   * render container positions may be one frame behind.
+   */
+  getBarrelTipFromState(
+    world: GameWorld,
+    eid: number,
+    baseX?: number,
+    baseY?: number,
+  ): { x: number; y: number } | null {
+    const isDead = hasComponent(world, Dead, eid)
+    const isRolling = hasComponent(world, Roll, eid) || PlayerState.state[eid] === PlayerStateType.ROLLING
+    if (isDead || isRolling) return null
+
+    const x = baseX ?? Position.x[eid]!
+    const y = baseY ?? Position.y[eid]!
+    const aimAngle = Player.aimAngle[eid]!
+    const cos = Math.cos(aimAngle)
+    const sin = Math.sin(aimAngle)
+    const btx = WEAPON.barrelTip.x
+    const bty = WEAPON.barrelTip.y
+    const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
+    const localY = aimingLeft ? -bty : bty
+
+    return {
+      x: x + WEAPON.gripOffset.x + cos * btx - sin * localY,
+      y: y + WEAPON.gripOffset.y + sin * btx + cos * localY,
+    }
+  }
+
+  /**
    * Get the local player entity ID.
    * Prefers localPlayerEid (set explicitly in multiplayer), falls back to
    * playerEntity (first entity created, used in single-player).
@@ -354,6 +408,8 @@ export class PlayerRenderer {
       visuals.container.destroy({ children: true })
     }
     this.players.clear()
+    this.activeEntities.clear()
+    this.renderPositionOverrides.clear()
     this.playerEntity = null
   }
 }

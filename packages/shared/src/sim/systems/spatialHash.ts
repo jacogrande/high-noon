@@ -14,6 +14,8 @@ import { createSpatialHash, rebuildSpatialHash } from '../SpatialHash'
 const hashQuery = defineQuery([Position, Collider])
 
 export function spatialHashSystem(world: GameWorld, _dt: number): void {
+  if (world.simulationScope === 'local-player') return
+
   const tilemap = world.tilemap
   if (!tilemap) return
 

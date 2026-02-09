@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v3)
+ * Binary Snapshot Serialization (v5)
  *
  * Encodes/decodes the world state into a compact binary format for
  * server→client broadcast at 20Hz.
@@ -11,6 +11,7 @@ import {
   Velocity,
   Player,
   PlayerState,
+  Roll,
   Health,
   Dead,
   Invincible,
@@ -21,17 +22,18 @@ import {
 } from '../sim/components'
 import { playerQuery } from '../sim/queries'
 import type { GameWorld } from '../sim/world'
+import { NO_OWNER } from '../sim/prefabs'
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 3
+export const SNAPSHOT_VERSION = 5
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
 export const HEADER_SIZE = 14
-export const PLAYER_SIZE = 21
-export const BULLET_SIZE = 19
+export const PLAYER_SIZE = 27
+export const BULLET_SIZE = 21
 export const ENEMY_SIZE = 13
 
 // ============================================================================
@@ -47,6 +49,10 @@ export interface PlayerSnapshot {
   hp: number
   flags: number
   lastProcessedSeq: number
+  rollElapsedMs: number
+  rollDurationMs: number
+  rollDirX: number
+  rollDirY: number
 }
 
 export interface BulletSnapshot {
@@ -56,6 +62,7 @@ export interface BulletSnapshot {
   vx: number
   vy: number
   layer: number
+  ownerEid: number
 }
 
 export interface EnemySnapshot {
@@ -91,6 +98,19 @@ let sharedBuffer = new ArrayBuffer(INITIAL_BUFFER_SIZE)
 
 function clampHP(val: number): number {
   return Math.max(0, Math.min(255, val)) | 0
+}
+
+function clampU16(val: number): number {
+  return Math.max(0, Math.min(0xffff, val | 0))
+}
+
+function quantizeUnit(v: number): number {
+  const clamped = Math.max(-1, Math.min(1, v))
+  return Math.round(clamped * 127)
+}
+
+function dequantizeUnit(v: number): number {
+  return v / 127
 }
 
 // ============================================================================
@@ -163,11 +183,26 @@ export function encodeSnapshot(
     let flags = 0
     if (hasComponent(world, Dead, eid)) flags |= 1
     if (hasComponent(world, Invincible, eid)) flags |= 2
+    if (Player.rollButtonWasDown[eid] === 1) flags |= 4
     view.setUint8(offset, flags)
     offset += 1
 
     view.setUint32(offset, playerSeqs?.get(eid) ?? 0, true)
     offset += 4
+
+    const isRolling = hasComponent(world, Roll, eid)
+    const rollElapsedMs = isRolling ? clampU16(Math.round(Roll.elapsed[eid]! * 1000)) : 0
+    const rollDurationMs = isRolling ? clampU16(Math.round(Roll.duration[eid]! * 1000)) : 0
+    const rollDirX = isRolling ? quantizeUnit(Roll.directionX[eid]!) : 0
+    const rollDirY = isRolling ? quantizeUnit(Roll.directionY[eid]!) : 0
+    view.setUint16(offset, rollElapsedMs, true)
+    offset += 2
+    view.setUint16(offset, rollDurationMs, true)
+    offset += 2
+    view.setInt8(offset, rollDirX)
+    offset += 1
+    view.setInt8(offset, rollDirY)
+    offset += 1
   }
 
   // Bullets
@@ -185,6 +220,10 @@ export function encodeSnapshot(
     offset += 4
     view.setUint8(offset, Collider.layer[eid]!)
     offset += 1
+    const owner = Bullet.ownerId[eid]!
+    const encodedOwner = owner === 0xffff || owner === NO_OWNER ? 0xffff : clampU16(owner)
+    view.setUint16(offset, encodedOwner, true)
+    offset += 2
   }
 
   // Enemies
@@ -250,7 +289,28 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 1
     const lastProcessedSeq = view.getUint32(offset, true)
     offset += 4
-    players[i] = { eid, x, y, aimAngle, state, hp, flags, lastProcessedSeq }
+    const rollElapsedMs = view.getUint16(offset, true)
+    offset += 2
+    const rollDurationMs = view.getUint16(offset, true)
+    offset += 2
+    const rollDirX = dequantizeUnit(view.getInt8(offset))
+    offset += 1
+    const rollDirY = dequantizeUnit(view.getInt8(offset))
+    offset += 1
+    players[i] = {
+      eid,
+      x,
+      y,
+      aimAngle,
+      state,
+      hp,
+      flags,
+      lastProcessedSeq,
+      rollElapsedMs,
+      rollDurationMs,
+      rollDirX,
+      rollDirY,
+    }
   }
 
   const bullets: BulletSnapshot[] = new Array(bulletCount)
@@ -267,7 +327,10 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 4
     const layer = view.getUint8(offset)
     offset += 1
-    bullets[i] = { eid, x, y, vx, vy, layer }
+    const rawOwnerEid = view.getUint16(offset, true)
+    offset += 2
+    const ownerEid = rawOwnerEid === 0xffff ? NO_OWNER : rawOwnerEid
+    bullets[i] = { eid, x, y, vx, vy, layer, ownerEid }
   }
 
   const enemies: EnemySnapshot[] = new Array(enemyCount)

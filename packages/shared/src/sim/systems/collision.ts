@@ -199,6 +199,77 @@ function circleCircleCollision(
  * @param _dt - Delta time (unused)
  */
 export function collisionSystem(world: GameWorld, _dt: number): void {
+  const localOnly = world.simulationScope === 'local-player' && world.localPlayerEid >= 0
+
+  if (localOnly) {
+    const eid1 = world.localPlayerEid
+    if (!hasComponent(world, Position, eid1) ||
+        !hasComponent(world, Velocity, eid1) ||
+        !hasComponent(world, Collider, eid1)) {
+      return
+    }
+
+    // Tilemap collision only for local player in prediction/replay scope
+    const tilemap = world.tilemap
+    if (tilemap) {
+      const x = Position.x[eid1]!
+      const y = Position.y[eid1]!
+      const radius = Collider.radius[eid1]!
+      const { resolvedX, resolvedY } = resolveCircleTilemapCollision(tilemap, x, y, radius)
+      if (resolvedX !== x || resolvedY !== y) {
+        Position.x[eid1] = resolvedX
+        Position.y[eid1] = resolvedY
+      }
+    }
+
+    // Entity pushout for local player against nearby collidables.
+    const x1 = Position.x[eid1]!
+    const y1 = Position.y[eid1]!
+    const r1 = Collider.radius[eid1]!
+    const layer1 = Collider.layer[eid1]!
+
+    if (world.spatialHash) {
+      const queryRadius = r1 + MAX_COLLIDER_RADIUS
+      forEachInRadius(world.spatialHash, x1, y1, queryRadius, (eid2) => {
+        if (eid1 === eid2) return
+
+        const layer2 = Collider.layer[eid2]!
+        if (layer1 === layer2) return
+        if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
+
+        const x2 = Position.x[eid2]!
+        const y2 = Position.y[eid2]!
+        const r2 = Collider.radius[eid2]!
+        const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
+        if (collision) {
+          Position.x[eid1] = x1 + collision.overlapX
+          Position.y[eid1] = y1 + collision.overlapY
+        }
+      })
+      return
+    }
+
+    // Fallback if spatial hash is unavailable.
+    const movingEntities = movingCollidableQuery(world)
+    for (const eid2 of movingEntities) {
+      if (eid1 === eid2) continue
+
+      const layer2 = Collider.layer[eid2]!
+      if (layer1 === layer2) continue
+      if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) continue
+
+      const x2 = Position.x[eid2]!
+      const y2 = Position.y[eid2]!
+      const r2 = Collider.radius[eid2]!
+      const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
+      if (collision) {
+        Position.x[eid1] = x1 + collision.overlapX
+        Position.y[eid1] = y1 + collision.overlapY
+      }
+    }
+    return
+  }
+
   // Get all moving collidable entities
   const movingEntities = movingCollidableQuery(world)
 

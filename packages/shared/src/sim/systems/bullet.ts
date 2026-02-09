@@ -21,8 +21,12 @@ const bulletQuery = defineQuery([Bullet, Position, Velocity])
  */
 export function bulletSystem(world: GameWorld, dt: number): void {
   const bullets = bulletQuery(world)
+  const localOnly = world.simulationScope === 'local-player' && world.localPlayerEid >= 0
+  const localOwner = world.localPlayerEid
 
   for (const eid of bullets) {
+    if (localOnly && Bullet.ownerId[eid] !== localOwner) continue
+
     // Calculate distance traveled this tick
     const vx = Velocity.x[eid]!
     const vy = Velocity.y[eid]!

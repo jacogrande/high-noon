@@ -43,10 +43,15 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
   const tilemap = world.tilemap
   if (!tilemap) return
 
+  const localOnly = world.simulationScope === 'local-player' && world.localPlayerEid >= 0
+  const localOwner = world.localPlayerEid
+
   const bullets = bulletQuery(world)
   const bulletsToRemove: number[] = []
 
   for (const eid of bullets) {
+    if (localOnly && Bullet.ownerId[eid] !== localOwner) continue
+
     const x = Position.x[eid]!
     const y = Position.y[eid]!
     const radius = Collider.radius[eid]!
@@ -87,6 +92,14 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         const distSq = dx * dx + dy * dy
         const minDist = radius + Collider.radius[targetEid]!
         if (distSq >= minDist * minDist) return
+
+        if (localOnly) {
+          // Client prediction path: despawn local bullet for immediate visual impact.
+          // Authoritative damage and gameplay effects remain server-only.
+          bulletsToRemove.push(eid)
+          hitEntity = true
+          return
+        }
 
         // Determine damage and pierce behavior
         let damage = Bullet.damage[eid]!

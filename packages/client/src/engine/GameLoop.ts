@@ -12,6 +12,9 @@ import { TICK_MS, TICK_S } from '@high-noon/shared'
 export type UpdateCallback = (dt: number) => void
 export type RenderCallback = (alpha: number) => void
 
+/** Maximum fixed updates per RAF frame to prevent render starvation */
+const MAX_CATCHUP_STEPS = 4
+
 /**
  * Fixed timestep game loop with interpolation
  */
@@ -88,11 +91,18 @@ export class GameLoop {
 
     this.accumulator += cappedDelta
 
-    // Run fixed timestep updates
-    while (this.accumulator >= TICK_MS) {
+    // Run fixed timestep updates (capped to protect render cadence)
+    let catchupSteps = 0
+    while (this.accumulator >= TICK_MS && catchupSteps < MAX_CATCHUP_STEPS) {
       this.onUpdate(TICK_S)
       this.accumulator -= TICK_MS
       this._tick++
+      catchupSteps++
+    }
+
+    // If we hit the cap, drop the excess backlog to avoid long update bursts
+    if (catchupSteps >= MAX_CATCHUP_STEPS && this.accumulator >= TICK_MS) {
+      this.accumulator %= TICK_MS
     }
 
     // Calculate interpolation alpha (0 to 1)

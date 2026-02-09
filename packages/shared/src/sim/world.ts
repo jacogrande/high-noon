@@ -134,6 +134,14 @@ export interface GameWorld extends IWorld {
   playerInputs: Map<number, InputState>
   /** Player registry: session ID → PlayerInfo (for multiplayer) */
   players: Map<string, PlayerInfo>
+  /**
+   * Simulation scope hint for systems.
+   * - 'all': full-world simulation (server and canonical single-player)
+   * - 'local-player': local-only prediction/replay path (client multiplayer)
+   */
+  simulationScope: 'all' | 'local-player'
+  /** Local player entity used when simulationScope is 'local-player' */
+  localPlayerEid: number
 }
 
 /**
@@ -168,6 +176,8 @@ export function createGameWorld(seed?: number): GameWorld {
     hooks: new HookRegistry(),
     playerInputs: new Map(),
     players: new Map(),
+    simulationScope: 'all',
+    localPlayerEid: -1,
   }
 }
 
@@ -203,6 +213,8 @@ export function resetWorld(world: GameWorld): void {
   world.hooks.clear()
   world.playerInputs.clear()
   world.players.clear()
+  world.simulationScope = 'all'
+  world.localPlayerEid = -1
   world.rng.reset(world.initialSeed)
   // Note: bitECS entities persist - call removeEntity for each if needed
 }

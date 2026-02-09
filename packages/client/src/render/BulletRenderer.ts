@@ -21,6 +21,7 @@ export class BulletRenderer {
   private readonly registry: SpriteRegistry
   private readonly bulletEntities = new Set<number>()
   private readonly playerBullets = new Set<number>()
+  private readonly currentEntities = new Set<number>()
   readonly removedPositions: Array<{ x: number; y: number }> = []
 
   constructor(registry: SpriteRegistry) {
@@ -37,7 +38,8 @@ export class BulletRenderer {
     const bullets = bulletRenderQuery(world)
 
     // Track which entities exist this frame
-    const currentEntities = new Set<number>()
+    const currentEntities = this.currentEntities
+    currentEntities.clear()
 
     for (const eid of bullets) {
       currentEntities.add(eid)
@@ -111,6 +113,38 @@ export class BulletRenderer {
   }
 
   /**
+   * Render bullets with optional local-player visual correction offset.
+   * Used by multiplayer so local predicted bullets stay aligned with the
+   * locally-smoothed player presentation during reconciliation.
+   */
+  renderWithLocalOffset(
+    world: GameWorld,
+    alpha: number,
+    localTimelineBullets: ReadonlySet<number>,
+    offsetX: number,
+    offsetY: number,
+  ): void {
+    for (const eid of this.bulletEntities) {
+      if (!hasComponent(world, Bullet, eid)) continue
+
+      const prevX = Position.prevX[eid]!
+      const prevY = Position.prevY[eid]!
+      const currX = Position.x[eid]!
+      const currY = Position.y[eid]!
+
+      let renderX = prevX + (currX - prevX) * alpha
+      let renderY = prevY + (currY - prevY) * alpha
+
+      if (localTimelineBullets.has(eid)) {
+        renderX += offsetX
+        renderY += offsetY
+      }
+
+      this.registry.setPosition(eid, renderX, renderY)
+    }
+  }
+
+  /**
    * Get current bullet count
    */
   get count(): number {
@@ -126,6 +160,7 @@ export class BulletRenderer {
     }
     this.bulletEntities.clear()
     this.playerBullets.clear()
+    this.currentEntities.clear()
     this.removedPositions.length = 0
   }
 }

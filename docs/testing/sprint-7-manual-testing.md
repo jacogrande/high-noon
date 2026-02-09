@@ -211,7 +211,7 @@ The server now allows 30 seconds for a disconnected client to reconnect before c
 - After 30 seconds without reconnection, server logs: `[GameRoom] <sessionId> left`
 - Tab B's player disappears from Tab A after the timeout
 
-**Note:** The client does not yet auto-reconnect. The reconnection token is stored for future use. This test verifies the server-side window only.
+**Note:** The client now attempts auto-reconnect with exponential backoff. This test still validates the server-side 30s reconnection window, but you should also see reconnect attempts from the client before the error screen appears.
 
 ---
 
@@ -277,8 +277,8 @@ These are expected in sprint 7:
 | Item | Status |
 |------|--------|
 | XP, wave number, level show 0 in multiplayer HUD | Expected — upgrade/encounter state not synced yet |
-| No auto-reconnect on disconnect | Expected — reconnection token stored, logic deferred |
-| Camera kick fires on click, not on bullet spawn | Expected — weapon prediction not implemented yet |
+| Auto-reconnect may still fail after max attempts | Expected — client retries are best-effort, then shows error overlay |
+| Camera kick may occur slightly before server-confirmed bullet on packet loss | Expected — local prediction prioritizes immediate feedback |
 | Debug overlay not wired in multiplayer | Expected — only available in single-player GameScene |
 | No lobby / ready-up flow | Expected — auto-starts on first join |
 | pendingPoints always 0 in multiplayer | Expected — upgrade system not synced |

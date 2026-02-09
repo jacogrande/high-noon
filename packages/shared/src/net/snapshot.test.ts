@@ -8,6 +8,7 @@ import {
   PlayerState,
   PlayerStateType,
   Player,
+  Roll,
   Dead,
   Invincible,
   EnemyAI,
@@ -16,7 +17,7 @@ import {
   Enemy,
   Collider,
 } from '../sim/components'
-import { spawnPlayer, spawnBullet, spawnSwarmer, spawnGrunt, CollisionLayer } from '../sim/prefabs'
+import { spawnPlayer, spawnBullet, spawnSwarmer, spawnGrunt, CollisionLayer, NO_OWNER } from '../sim/prefabs'
 import {
   encodeSnapshot,
   decodeSnapshot,
@@ -63,6 +64,10 @@ describe('snapshot', () => {
     expect(p.hp).toBe(80)
     expect(p.flags).toBe(0)
     expect(p.lastProcessedSeq).toBe(0)
+    expect(p.rollElapsedMs).toBe(0)
+    expect(p.rollDurationMs).toBe(0)
+    expect(p.rollDirX).toBe(0)
+    expect(p.rollDirY).toBe(0)
 
     // Bullet
     expect(snap.bullets).toHaveLength(1)
@@ -73,6 +78,7 @@ describe('snapshot', () => {
     expect(b.vx).toBe(300)
     expect(b.vy).toBe(-150)
     expect(b.layer).toBe(CollisionLayer.PLAYER_BULLET)
+    expect(b.ownerEid).toBe(pEid)
 
     // Enemy
     expect(snap.enemies).toHaveLength(1)
@@ -108,6 +114,34 @@ describe('snapshot', () => {
     const p = snap.players[0]!
     expect(p.flags & 1).toBe(1)  // Dead
     expect(p.flags & 2).toBe(2)  // Invincible
+  })
+
+  it('player flags: rollButtonWasDown encodes correctly', () => {
+    const world = createGameWorld(2)
+    const eid = spawnPlayer(world, 0, 0, 0)
+    Player.rollButtonWasDown[eid] = 1
+
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
+    const p = snap.players[0]!
+    expect(p.flags & 4).toBe(4)
+  })
+
+  it('roll payload: elapsed/duration/direction round-trip for rolling players', () => {
+    const world = createGameWorld(7)
+    const eid = spawnPlayer(world, 0, 0, 0)
+    addComponent(world, Roll, eid)
+    PlayerState.state[eid] = PlayerStateType.ROLLING
+    Roll.elapsed[eid] = 0.23
+    Roll.duration[eid] = 0.6
+    Roll.directionX[eid] = 0.8
+    Roll.directionY[eid] = -0.6
+
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
+    const p = snap.players[0]!
+    expect(p.rollElapsedMs).toBe(230)
+    expect(p.rollDurationMs).toBe(600)
+    expect(p.rollDirX).toBeCloseTo(0.8, 1)
+    expect(p.rollDirY).toBeCloseTo(-0.6, 1)
   })
 
   it('HP clamping: values > 255 clamp to 255, < 0 clamp to 0', () => {
@@ -203,12 +237,13 @@ describe('snapshot', () => {
     const world = createGameWorld(9)
     spawnBullet(world, {
       x: 0, y: 0, vx: 100, vy: 0,
-      damage: 5, range: 300, ownerId: 0,
+      damage: 5, range: 300, ownerId: NO_OWNER,
       layer: CollisionLayer.ENEMY_BULLET,
     })
 
     const snap = decodeSnapshot(encodeSnapshot(world, 0))
     expect(snap.bullets[0]!.layer).toBe(CollisionLayer.ENEMY_BULLET)
+    expect(snap.bullets[0]!.ownerEid).toBe(NO_OWNER)
   })
 
   it('snapshot byte size matches spec for typical game', () => {
@@ -247,8 +282,8 @@ describe('snapshot', () => {
     expect(encoded.byteLength).toBe(expectedSize)
 
     // Verify the per-entity sizes match spec (2 players + 20 bullets + 30 enemies)
-    // 14 + 42 + 380 + 390 = 826
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(826)
+    // 14 + 54 + 420 + 390 = 878
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(878)
   })
 
   it('lastProcessedSeq round-trip with playerSeqs map', () => {

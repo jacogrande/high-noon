@@ -19,18 +19,32 @@ export interface InterpolationState {
   alpha: number
 }
 
-/** Maximum number of snapshots to retain (5 = 250ms at 20Hz, plenty for 100ms interpolation delay) */
+/** Maximum number of snapshots to retain (5 = 250ms at 20Hz, ample for adaptive 75-200ms delay) */
 const MAX_BUFFER_SIZE = 5
 
-/** Default interpolation delay in ms (2x snapshot interval for jitter resilience) */
-const DEFAULT_INTERPOLATION_DELAY = 100
+/** Snapshot send cadence: 20Hz */
+const SNAPSHOT_INTERVAL_MS = 50
+/** Default interpolation delay in ms (1.5x snapshot interval) */
+const DEFAULT_INTERPOLATION_DELAY = 75
+/** Upper bound to keep remote presentation responsive */
+const MAX_INTERPOLATION_DELAY = 200
+/** Convert observed interval jitter into delay headroom */
+const DELAY_JITTER_MULTIPLIER = 2
+/** EWMA smoothing for interval jitter estimation */
+const JITTER_SMOOTHING = 0.1
+/** Decrease delay slowly to avoid oscillation */
+const DELAY_DECAY = 0.1
 
 export class SnapshotBuffer {
   private buffer: TimestampedSnapshot[] = []
-  private interpolationDelay: number
+  private readonly baseInterpolationDelay: number
+  private dynamicInterpolationDelay: number
+  private lastServerTime: number | null = null
+  private intervalJitter = 0
 
   constructor(interpolationDelay = DEFAULT_INTERPOLATION_DELAY) {
-    this.interpolationDelay = interpolationDelay
+    this.baseInterpolationDelay = interpolationDelay
+    this.dynamicInterpolationDelay = interpolationDelay
   }
 
   push(snapshot: WorldSnapshot): void {
@@ -40,10 +54,43 @@ export class SnapshotBuffer {
       serverTime: snapshot.serverTime,
     }
     this.buffer.push(entry)
+    this.updateAdaptiveDelay(snapshot.serverTime)
 
     // Evict old snapshots
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift()
+    }
+  }
+
+  private updateAdaptiveDelay(serverTime: number): void {
+    if (this.lastServerTime === null) {
+      this.lastServerTime = serverTime
+      return
+    }
+
+    const interval = serverTime - this.lastServerTime
+    this.lastServerTime = serverTime
+
+    // Guard against invalid or stale timestamps.
+    if (!Number.isFinite(interval) || interval <= 0 || interval > 1000) return
+
+    // Estimate irregularity in snapshot spacing.
+    const deviation = Math.abs(interval - SNAPSHOT_INTERVAL_MS)
+    this.intervalJitter += (deviation - this.intervalJitter) * JITTER_SMOOTHING
+
+    const target = Math.max(
+      this.baseInterpolationDelay,
+      Math.min(
+        MAX_INTERPOLATION_DELAY,
+        this.baseInterpolationDelay + this.intervalJitter * DELAY_JITTER_MULTIPLIER
+      )
+    )
+
+    // Increase quickly for resilience; decrease slowly for stability.
+    if (target > this.dynamicInterpolationDelay) {
+      this.dynamicInterpolationDelay = target
+    } else {
+      this.dynamicInterpolationDelay += (target - this.dynamicInterpolationDelay) * DELAY_DECAY
     }
   }
 
@@ -69,8 +116,8 @@ export class SnapshotBuffer {
 
     const useServerTime = serverTimeNow !== undefined
     const renderTime = useServerTime
-      ? serverTimeNow - this.interpolationDelay
-      : performance.now() - this.interpolationDelay
+      ? serverTimeNow - this.dynamicInterpolationDelay
+      : performance.now() - this.dynamicInterpolationDelay
 
     // Find the bracketing pair: last entry where timestamp <= renderTime
     let fromIdx = -1
@@ -119,5 +166,8 @@ export class SnapshotBuffer {
 
   clear(): void {
     this.buffer.length = 0
+    this.dynamicInterpolationDelay = this.baseInterpolationDelay
+    this.lastServerTime = null
+    this.intervalJitter = 0
   }
 }
