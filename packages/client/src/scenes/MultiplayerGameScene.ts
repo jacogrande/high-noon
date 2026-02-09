@@ -9,7 +9,7 @@
  * (Epic 5) handles corrections when server state disagrees with prediction.
  */
 
-import { addEntity, addComponent, removeEntity, removeComponent, hasComponent } from 'bitecs'
+import { addEntity, addComponent, removeEntity, removeComponent, hasComponent, defineQuery } from 'bitecs'
 import {
   createGameWorld,
   createTestArena,
@@ -20,6 +20,7 @@ import {
   Velocity,
   Player,
   PlayerState,
+  PlayerStateType,
   Collider,
   Health,
   Dead,
@@ -32,6 +33,10 @@ import {
   CollisionLayer,
   Speed,
   Roll,
+  Weapon,
+  Cylinder,
+  Showdown,
+  NO_TARGET,
   hasButton,
   Button,
   TICK_S,
@@ -43,8 +48,16 @@ import {
   GRUNT_RADIUS,
   SHOOTER_RADIUS,
   CHARGER_RADIUS,
+  PISTOL_BULLET_SPEED,
+  PISTOL_BULLET_DAMAGE,
+  PISTOL_RANGE,
+  PISTOL_FIRE_RATE,
+  PISTOL_CYLINDER_SIZE,
+  PISTOL_RELOAD_TIME,
+  PISTOL_MIN_FIRE_INTERVAL,
   createSystemRegistry,
   registerPredictionSystems,
+  registerReplaySystems,
   stepWorld,
   type SystemRegistry,
   type GameWorld,
@@ -56,6 +69,8 @@ import {
   type EnemySnapshot,
   type HudData,
 } from '@high-noon/shared'
+import { SoundManager } from '../audio/SoundManager'
+import { SOUND_DEFS } from '../audio/sounds'
 import type { GameApp } from '../engine/GameApp'
 import { Input } from '../engine/Input'
 import { Camera } from '../engine/Camera'
@@ -65,7 +80,7 @@ import { PlayerRenderer } from '../render/PlayerRenderer'
 import { BulletRenderer } from '../render/BulletRenderer'
 import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer } from '../render/TilemapRenderer'
-import { ParticlePool, FloatingTextPool } from '../fx'
+import { ParticlePool, FloatingTextPool, emitMuzzleFlash } from '../fx'
 import { ClockSync } from '../net/ClockSync'
 import { InputBuffer } from '../net/InputBuffer'
 import { NetworkClient, type GameConfig } from '../net/NetworkClient'
@@ -95,6 +110,13 @@ const ENEMY_TIER: Record<number, number> = {
   [EnemyType.CHARGER]: EnemyTier.THREAT,
 }
 
+/** Query for predicted bullet tracking */
+const predictedBulletQuery = defineQuery([Bullet, Position, Velocity])
+
+/** Predicted bullet constants */
+const PREDICTED_BULLET_TIMEOUT = 30  // ticks (~500ms)
+const BULLET_MATCH_TOLERANCE = 40    // pixels
+
 export class MultiplayerGameScene {
   private readonly gameApp: GameApp
   private readonly input: Input
@@ -108,11 +130,17 @@ export class MultiplayerGameScene {
   private readonly tilemapRenderer: TilemapRenderer
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
+  private readonly sound: SoundManager
   private readonly net: NetworkClient
   private readonly clockSync: ClockSync
   private readonly snapshotBuffer: SnapshotBuffer
   private readonly inputBuffer: InputBuffer
   private readonly predictionSystems: SystemRegistry
+  private readonly replaySystems: SystemRegistry
+
+  /** Predicted bullet tracking */
+  private readonly predictedBullets = new Set<number>()
+  private readonly predictedBulletSpawnTick = new Map<number, number>()
 
   /** Input sequence counter for network messages */
   private inputSeq = 0
@@ -137,11 +165,17 @@ export class MultiplayerGameScene {
   /** Previous HP for damage shake detection */
   private prevHP = -1
 
+  /** Reload state tracking for transition detection */
+  private prevReloading = 0
+
+  /** Dry fire debounce cooldown (seconds) */
+  private dryFireCooldown = 0
+
   /** Disconnect flag for UX overlay */
   private disconnected = false
 
-  /** Previous SHOOT button state for rising-edge kick detection */
-  private prevShootDown = false
+  /** Monotonic tick for local player animation (decoupled from snapshot tick) */
+  private predictionTick = 0
 
   private lastRenderTime: number
 
@@ -187,15 +221,23 @@ export class MultiplayerGameScene {
     this.particles = new ParticlePool(this.gameApp.layers.fx)
     this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
 
+    // Sound
+    this.sound = new SoundManager()
+    this.sound.loadAll(SOUND_DEFS)
+
     // Network
     this.net = new NetworkClient()
     this.clockSync = new ClockSync()
     this.snapshotBuffer = new SnapshotBuffer()
     this.inputBuffer = new InputBuffer()
 
-    // Prediction systems (movement subset of shared simulation)
+    // Prediction systems (full pipeline for forward ticks)
     this.predictionSystems = createSystemRegistry()
     registerPredictionSystems(this.predictionSystems)
+
+    // Replay systems (movement-only for reconciliation — no cylinder/weapon)
+    this.replaySystems = createSystemRegistry()
+    registerReplaySystems(this.replaySystems)
 
     this.lastRenderTime = performance.now()
   }
@@ -206,46 +248,44 @@ export class MultiplayerGameScene {
 
   get isDisconnected(): boolean { return this.disconnected }
 
-  /** Returns a promise that resolves once game-config is received */
+  /** Connect to server — resolves once game-config is received */
   async connect(options?: Record<string, unknown>): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.net.on('disconnect', () => {
-        this.connected = false
-        this.disconnected = true
-        this.latestHud = null
-        console.log('[MP] Disconnected from server')
-      })
-
-      this.net.on('hud', (data: HudData) => {
-        this.latestHud = data
-      })
-
-      this.net.on('pong', (clientTime, serverTime) => {
-        this.clockSync.onPong(clientTime, serverTime)
-      })
-
-      this.net.on('game-config', (config: GameConfig) => {
-        this.myServerEid = config.playerEid
-        this.connected = true
-        console.log(`[MP] Connected — server playerEid=${config.playerEid}`)
-        this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
-        resolve()
-      })
-
-      this.net.on('snapshot', (snapshot: WorldSnapshot) => {
-        this.world.tick = snapshot.tick
-        this.applyEntityLifecycle(snapshot)
-
-        // Reconcile local player prediction against server authority
-        if (this.myClientEid >= 0) {
-          this.reconcileLocalPlayer(snapshot)
-        }
-
-        this.snapshotBuffer.push(snapshot)
-      })
-
-      this.net.join(options).catch(reject)
+    this.net.on('disconnect', () => {
+      this.connected = false
+      this.disconnected = true
+      this.latestHud = null
+      console.log('[MP] Disconnected from server')
     })
+
+    this.net.on('hud', (data: HudData) => {
+      this.latestHud = data
+    })
+
+    this.net.on('pong', (clientTime, serverTime) => {
+      this.clockSync.onPong(clientTime, serverTime)
+    })
+
+    this.net.on('game-config', (config: GameConfig) => {
+      this.myServerEid = config.playerEid
+      this.connected = true
+      console.log(`[MP] Connected — server playerEid=${config.playerEid}`)
+      this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
+    })
+
+    this.net.on('snapshot', (snapshot: WorldSnapshot) => {
+      this.world.tick = snapshot.tick
+      this.applyEntityLifecycle(snapshot)
+
+      // Reconcile local player prediction against server authority
+      if (this.myClientEid >= 0) {
+        this.reconcileLocalPlayer(snapshot)
+      }
+
+      this.snapshotBuffer.push(snapshot)
+    })
+
+    // join() resolves after game-config is received (with timeout)
+    await this.net.join(options)
   }
 
   // ===========================================================================
@@ -294,12 +334,35 @@ export class MultiplayerGameScene {
           addComponent(this.world, Speed, clientEid)
           Speed.current[clientEid] = PLAYER_SPEED
           Speed.max[clientEid] = PLAYER_SPEED
+          // Weapon + Cylinder for bullet prediction
+          addComponent(this.world, Weapon, clientEid)
+          Weapon.bulletSpeed[clientEid] = PISTOL_BULLET_SPEED
+          Weapon.bulletDamage[clientEid] = PISTOL_BULLET_DAMAGE
+          Weapon.range[clientEid] = PISTOL_RANGE
+          Weapon.fireRate[clientEid] = PISTOL_FIRE_RATE
+          Weapon.cooldown[clientEid] = 0
+          addComponent(this.world, Cylinder, clientEid)
+          Cylinder.rounds[clientEid] = PISTOL_CYLINDER_SIZE
+          Cylinder.maxRounds[clientEid] = PISTOL_CYLINDER_SIZE
+          Cylinder.reloadTime[clientEid] = PISTOL_RELOAD_TIME
+          Cylinder.reloading[clientEid] = 0
+          Cylinder.reloadTimer[clientEid] = 0
+          Cylinder.fireCooldown[clientEid] = PISTOL_MIN_FIRE_INTERVAL
+          Cylinder.firstShotAfterReload[clientEid] = 0
+          // Showdown ability for prediction
+          addComponent(this.world, Showdown, clientEid)
+          Showdown.active[clientEid] = 0
+          Showdown.targetEid[clientEid] = NO_TARGET
+          Showdown.duration[clientEid] = 0
+          Showdown.cooldown[clientEid] = 0
         }
       }
 
-      // Write snapshot data
-      Player.aimAngle[clientEid] = p.aimAngle
-      PlayerState.state[clientEid] = p.state
+      // Write snapshot data (skip aim/state for local player — driven by prediction)
+      if (clientEid !== this.myClientEid) {
+        Player.aimAngle[clientEid] = p.aimAngle
+        PlayerState.state[clientEid] = p.state
+      }
       Health.current[clientEid] = p.hp
 
       // Tag components: Dead, Invincible
@@ -339,21 +402,38 @@ export class MultiplayerGameScene {
       let clientEid = this.bulletEntities.get(b.eid)
 
       if (clientEid === undefined) {
-        // New bullet entity
-        clientEid = addEntity(this.world)
-        addComponent(this.world, Position, clientEid)
-        addComponent(this.world, Velocity, clientEid)
-        addComponent(this.world, Bullet, clientEid)
-        addComponent(this.world, Collider, clientEid)
+        // Try to match against a predicted bullet (player bullets only)
+        const matched = b.layer === CollisionLayer.PLAYER_BULLET
+          ? this.findMatchingPredictedBullet(b)
+          : -1
 
-        Collider.radius[clientEid] = BULLET_RADIUS
-        Collider.layer[clientEid] = b.layer
-        Bullet.ownerId[clientEid] = 0 // benign default for v1
+        if (matched >= 0) {
+          // Reuse predicted entity — snap to server position
+          clientEid = matched
+          this.predictedBullets.delete(matched)
+          this.predictedBulletSpawnTick.delete(matched)
 
-        Position.x[clientEid] = b.x
-        Position.y[clientEid] = b.y
-        Position.prevX[clientEid] = b.x
-        Position.prevY[clientEid] = b.y
+          Position.x[clientEid] = b.x
+          Position.y[clientEid] = b.y
+          Position.prevX[clientEid] = b.x
+          Position.prevY[clientEid] = b.y
+        } else {
+          // New bullet entity
+          clientEid = addEntity(this.world)
+          addComponent(this.world, Position, clientEid)
+          addComponent(this.world, Velocity, clientEid)
+          addComponent(this.world, Bullet, clientEid)
+          addComponent(this.world, Collider, clientEid)
+
+          Collider.radius[clientEid] = BULLET_RADIUS
+          Collider.layer[clientEid] = b.layer
+          Bullet.ownerId[clientEid] = 0
+
+          Position.x[clientEid] = b.x
+          Position.y[clientEid] = b.y
+          Position.prevX[clientEid] = b.x
+          Position.prevY[clientEid] = b.y
+        }
 
         this.bulletEntities.set(b.eid, clientEid)
       }
@@ -363,13 +443,18 @@ export class MultiplayerGameScene {
       Velocity.y[clientEid] = b.vy
     }
 
-    // Remove departed bullets
+    // Remove departed bullets (skip predicted bullets — they have their own cleanup)
     for (const [serverEid, clientEid] of this.bulletEntities) {
       if (!seen.has(serverEid)) {
-        removeEntity(this.world, clientEid)
+        if (!this.predictedBullets.has(clientEid)) {
+          removeEntity(this.world, clientEid)
+        }
         this.bulletEntities.delete(serverEid)
       }
     }
+
+    // Clean up stale predicted bullets
+    this.cleanupPredictedBullets()
   }
 
   private applyEnemies(enemies: EnemySnapshot[]): void {
@@ -429,9 +514,10 @@ export class MultiplayerGameScene {
     const serverPlayer = snapshot.players.find(p => p.eid === this.myServerEid)
     if (!serverPlayer) return
 
-    // Detect damage for camera shake
+    // Detect damage for camera shake + sound
     if (this.prevHP >= 0 && serverPlayer.hp < this.prevHP) {
       this.camera.addTrauma(0.15)
+      this.sound.play('player_hit')
     }
     this.prevHP = serverPlayer.hp
 
@@ -447,29 +533,63 @@ export class MultiplayerGameScene {
     Velocity.x[this.myClientEid] = 0
     Velocity.y[this.myClientEid] = 0
 
-    // Strip Roll component — not in snapshot, will be re-derived from input replay
+    // Rewind PlayerState to server authority — prevents state getting stuck at ROLLING
+    // when Roll component is removed but PlayerState.state wasn't reset
+    PlayerState.state[this.myClientEid] = serverPlayer.state
+
+    // Handle Roll component based on server state
     if (hasComponent(this.world, Roll, this.myClientEid)) {
-      removeComponent(this.world, Roll, this.myClientEid)
+      if (serverPlayer.state !== PlayerStateType.ROLLING) {
+        // Server says not rolling — strip client's Roll component
+        removeComponent(this.world, Roll, this.myClientEid)
+      }
+      // If server says ROLLING, preserve client's Roll component for replay continuity
       this.world.rollDodgedBullets.delete(this.myClientEid)
     }
 
-    // Reset rollButtonWasDown — replay will re-derive edge detection
-    Player.rollButtonWasDown[this.myClientEid] = 0
+    // Set rollButtonWasDown based on server state to prevent false edge detection
+    // during input replay (otherwise re-triggers the roll from server position)
+    Player.rollButtonWasDown[this.myClientEid] = serverPlayer.state === PlayerStateType.ROLLING ? 1 : 0
+
+    // Save weapon timing state — replaySystems exclude weapon/cylinder, so these
+    // must be preserved across reconciliation to avoid false fire-rate resets
+    const savedFireCooldown = Cylinder.fireCooldown[this.myClientEid]!
+    const savedShootWasDown = Player.shootWasDown[this.myClientEid]!
+
+    // Save showdown timing state — replay doesn't include showdown to prevent
+    // double-triggering the rising-edge activation
+    const savedShowdownActive = Showdown.active[this.myClientEid]!
+    const savedShowdownTargetEid = Showdown.targetEid[this.myClientEid]!
+    const savedShowdownDuration = Showdown.duration[this.myClientEid]!
+    const savedShowdownCooldown = Showdown.cooldown[this.myClientEid]!
+    const savedAbilityWasDown = Player.abilityWasDown[this.myClientEid]!
 
     // 4. Discard acknowledged inputs
     this.inputBuffer.acknowledgeUpTo(serverPlayer.lastProcessedSeq)
 
-    // 5. Replay unacknowledged inputs
+    // 5. Replay unacknowledged inputs (movement-only — no cylinder/weapon to prevent
+    // double-spawning bullets during reconciliation replay)
     const pending = this.inputBuffer.getPending()
     for (const input of pending) {
       Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
       Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
       this.world.playerInputs.set(this.myClientEid, input)
-      for (const system of this.predictionSystems.getSystems()) {
+      for (const system of this.replaySystems.getSystems()) {
         system(this.world, TICK_S)
       }
       this.world.playerInputs.clear()
     }
+
+    // Restore weapon timing state after replay
+    Cylinder.fireCooldown[this.myClientEid] = savedFireCooldown
+    Player.shootWasDown[this.myClientEid] = savedShootWasDown
+
+    // Restore showdown timing state after replay
+    Showdown.active[this.myClientEid] = savedShowdownActive
+    Showdown.targetEid[this.myClientEid] = savedShowdownTargetEid
+    Showdown.duration[this.myClientEid] = savedShowdownDuration
+    Showdown.cooldown[this.myClientEid] = savedShowdownCooldown
+    Player.abilityWasDown[this.myClientEid] = savedAbilityWasDown
 
     // 6. Compute misprediction error
     const newPredX = Position.x[this.myClientEid]!
@@ -520,20 +640,83 @@ export class MultiplayerGameScene {
     this.inputBuffer.push(networkInput)
     this.net.sendInput(networkInput)
 
-    // Camera kick on fire (rising edge only — one kick per press)
-    const shootDown = hasButton(inputState, Button.SHOOT)
-    if (shootDown && !this.prevShootDown) {
-      const angle = Player.aimAngle[this.myClientEid]!
-      this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
-    }
-    this.prevShootDown = shootDown
-
     // --- PREDICTION ---
+    // Snapshot cylinder state before stepping (for fire + reload detection)
+    const prevRounds = Cylinder.rounds[this.myClientEid]!
+    const prevReloading = Cylinder.reloading[this.myClientEid]!
+
+    // Save pre-step position so prevX/prevY stay meaningful between snapshots
+    Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
+    Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
     // Apply input to local player and step prediction systems.
-    // stepWorld sets playerInputs, runs systems, clears inputs, increments tick.
-    // The tick drift is harmless — interpolateFromBuffer overwrites world.tick each render.
+    // stepWorld runs systems, clears inputs, increments world.tick (drift is harmless —
+    // interpolateFromBuffer overwrites world.tick each render for remote entity animation).
     this.world.playerInputs.set(this.myClientEid, inputState)
     stepWorld(this.world, this.predictionSystems)
+
+    // Cylinder-based fire detection (mirrors single-player pattern)
+    const newRounds = Cylinder.rounds[this.myClientEid]!
+    if (newRounds < prevRounds) {
+      // Detect new predicted bullets
+      this.detectNewPredictedBullets()
+
+      // Visual feedback — camera kick, shake, recoil, muzzle flash
+      const angle = Player.aimAngle[this.myClientEid]!
+      this.camera.addTrauma(0.15)
+      this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
+      this.sound.play('fire')
+      this.playerRenderer.triggerRecoil(this.myClientEid)
+
+      const barrelTip = this.playerRenderer.getBarrelTipPosition(this.myClientEid)
+      if (barrelTip) {
+        emitMuzzleFlash(this.particles, barrelTip.x, barrelTip.y, angle)
+      } else {
+        emitMuzzleFlash(this.particles, Position.x[this.myClientEid]!, Position.y[this.myClientEid]!, angle)
+      }
+    }
+
+    // Reload state transitions
+    const nowReloading = Cylinder.reloading[this.myClientEid]!
+    if (prevReloading === 0 && nowReloading === 1) {
+      this.sound.play('reload_start')
+    } else if (prevReloading === 1 && nowReloading === 0) {
+      this.sound.play('reload_complete')
+    }
+
+    // Dry fire: shoot pressed, empty cylinder, not reloading, cooldown expired
+    this.dryFireCooldown = Math.max(0, this.dryFireCooldown - TICK_S)
+    if (Cylinder.rounds[this.myClientEid]! === 0
+        && hasButton(inputState, Button.SHOOT)
+        && Cylinder.reloading[this.myClientEid]! === 0
+        && this.dryFireCooldown <= 0) {
+      this.sound.play('dry_fire')
+      this.dryFireCooldown = 0.3
+    }
+
+    // Showdown audio cues
+    if (this.world.showdownActivatedThisTick) this.sound.play('showdown_activate')
+    if (this.world.showdownKillThisTick) this.sound.play('showdown_kill')
+    if (this.world.showdownExpiredThisTick) this.sound.play('showdown_expire')
+
+    // Showdown target tinting for enemies
+    this.enemyRenderer.showdownTargetEid =
+      hasComponent(this.world, Showdown, this.myClientEid) && Showdown.active[this.myClientEid]! === 1
+        ? Showdown.targetEid[this.myClientEid]!
+        : NO_TARGET
+
+    // Advance local animation tick (monotonic, decoupled from snapshot tick)
+    this.predictionTick++
+
+    // Update camera at 60Hz (matches single-player pattern — sub-frame interpolation
+    // via game loop alpha in getRenderState gives smooth camera at display refresh rate)
+    const worldMouse = this.input.getWorldMousePosition()
+    this.camera.update(
+      Position.x[this.myClientEid]! + this.errorX,
+      Position.y[this.myClientEid]! + this.errorY,
+      worldMouse.x,
+      worldMouse.y,
+      TICK_S,
+    )
   }
 
   // ===========================================================================
@@ -564,28 +747,23 @@ export class MultiplayerGameScene {
       if (Math.abs(this.errorY) < 0.1) this.errorY = 0
     }
 
+    // Feed monotonic prediction tick to player renderer for local player animation
+    this.playerRenderer.localPlayerTick = this.predictionTick
+
     // Sync renderers (create/remove sprites from ECS queries)
     this.playerRenderer.sync(this.world)
-    this.enemyRenderer.sync(this.world)
-    this.bulletRenderer.sync(this.world)
-
-    // Camera follow local player (offset by error for smooth visual tracking)
-    if (this.myClientEid >= 0) {
-      const worldMouse = this.input.getWorldMousePosition()
-      this.camera.update(
-        Position.x[this.myClientEid]! + this.errorX,
-        Position.y[this.myClientEid]! + this.errorY,
-        worldMouse.x,
-        worldMouse.y,
-        realDt,
-      )
+    const enemySync = this.enemyRenderer.sync(this.world)
+    if (enemySync.deathTrauma > 0) {
+      this.sound.play('enemy_die')
     }
+    this.bulletRenderer.sync(this.world)
 
     // Update camera viewport (handles resize)
     this.camera.setViewport(this.gameApp.width / GAME_ZOOM, this.gameApp.height / GAME_ZOOM)
 
-    // Get camera render state
-    const camState = this.camera.getRenderState(alpha, realDt)
+    // Get camera render state using game loop alpha (matches single-player pattern —
+    // camera.update() runs at 60Hz in update(), getRenderState interpolates for sub-frame smoothness)
+    const camState = this.camera.getRenderState(_loopAlpha, realDt)
 
     // Apply camera transform to world container
     const halfW = this.gameApp.width / 2
@@ -597,20 +775,37 @@ export class MultiplayerGameScene {
     // Clear debug
     this.debugRenderer.clear()
 
-    // Apply visual error offset for local player sprite
-    const hasError = this.myClientEid >= 0 && (this.errorX !== 0 || this.errorY !== 0)
-    if (hasError) {
-      Position.x[this.myClientEid] = Position.x[this.myClientEid]! + this.errorX
-      Position.y[this.myClientEid] = Position.y[this.myClientEid]! + this.errorY
+    // Local player: compute render position using game loop alpha for sub-frame
+    // smoothness (same pattern as single-player). prevX/prevY are set in update()
+    // before each prediction step, so interpolating with _loopAlpha gives smooth
+    // movement at display refresh rate, not just at the 60Hz prediction rate.
+    // Error offset is added on top for misprediction correction.
+    let savedPrevX = 0, savedPrevY = 0, savedX = 0, savedY = 0
+    if (this.myClientEid >= 0) {
+      savedPrevX = Position.prevX[this.myClientEid]!
+      savedPrevY = Position.prevY[this.myClientEid]!
+      savedX = Position.x[this.myClientEid]!
+      savedY = Position.y[this.myClientEid]!
+
+      const renderX = savedPrevX + (savedX - savedPrevX) * _loopAlpha + this.errorX
+      const renderY = savedPrevY + (savedY - savedPrevY) * _loopAlpha + this.errorY
+
+      // Set both prev and curr to render position so snapshot alpha is irrelevant
+      Position.prevX[this.myClientEid] = renderX
+      Position.x[this.myClientEid] = renderX
+      Position.prevY[this.myClientEid] = renderY
+      Position.y[this.myClientEid] = renderY
     }
 
     // Render entities
     this.playerRenderer.render(this.world, alpha, realDt)
 
-    // Restore logical position after rendering
-    if (hasError) {
-      Position.x[this.myClientEid] = Position.x[this.myClientEid]! - this.errorX
-      Position.y[this.myClientEid] = Position.y[this.myClientEid]! - this.errorY
+    // Restore logical state after rendering
+    if (this.myClientEid >= 0) {
+      Position.prevX[this.myClientEid] = savedPrevX
+      Position.prevY[this.myClientEid] = savedPrevY
+      Position.x[this.myClientEid] = savedX
+      Position.y[this.myClientEid] = savedY
     }
 
     this.bulletRenderer.render(this.world, alpha)
@@ -734,6 +929,25 @@ export class MultiplayerGameScene {
 
   getHUDState(): HUDState {
     const hud = this.latestHud
+
+    // Prefer local cylinder data for instant feedback (prediction), fall back to server HUD
+    const hasCylinder = this.myClientEid >= 0 && hasComponent(this.world, Cylinder, this.myClientEid)
+    const cylinderRounds = hasCylinder
+      ? Cylinder.rounds[this.myClientEid]!
+      : (hud?.cylinderRounds ?? 0)
+    const cylinderMax = hasCylinder
+      ? Cylinder.maxRounds[this.myClientEid]!
+      : (hud?.cylinderMax ?? 0)
+    const isReloading = hasCylinder
+      ? Cylinder.reloading[this.myClientEid]! !== 0
+      : (hud?.isReloading ?? false)
+    const reloadProgress = hasCylinder && Cylinder.reloadTime[this.myClientEid]! > 0
+      ? Cylinder.reloadTimer[this.myClientEid]! / Cylinder.reloadTime[this.myClientEid]!
+      : (hud?.reloadProgress ?? 0)
+
+    // Prefer local showdown data for instant feedback (prediction), fall back to server HUD
+    const hasShowdown = this.myClientEid >= 0 && hasComponent(this.world, Showdown, this.myClientEid)
+
     return {
       hp: hud?.hp ?? (this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0),
       maxHP: hud?.maxHp ?? (this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP),
@@ -744,17 +958,79 @@ export class MultiplayerGameScene {
       waveNumber: 0,
       totalWaves: 0,
       waveStatus: 'none',
-      cylinderRounds: hud?.cylinderRounds ?? 0,
-      cylinderMax: hud?.cylinderMax ?? 0,
-      isReloading: hud?.isReloading ?? false,
-      reloadProgress: hud?.reloadProgress ?? 0,
-      showdownActive: hud?.showdownActive ?? false,
-      showdownCooldown: hud?.showdownCooldown ?? 0,
+      cylinderRounds,
+      cylinderMax,
+      isReloading,
+      reloadProgress,
+      showdownActive: hasShowdown ? Showdown.active[this.myClientEid]! === 1 : (hud?.showdownActive ?? false),
+      showdownCooldown: hasShowdown ? Showdown.cooldown[this.myClientEid]! : (hud?.showdownCooldown ?? 0),
       showdownCooldownMax: hud?.showdownCooldownMax ?? 0,
-      showdownTimeLeft: hud?.showdownTimeLeft ?? 0,
+      showdownTimeLeft: hasShowdown ? Showdown.duration[this.myClientEid]! : (hud?.showdownTimeLeft ?? 0),
       showdownDurationMax: hud?.showdownDurationMax ?? 0,
       pendingPoints: 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
+    }
+  }
+
+  // ===========================================================================
+  // Predicted Bullet Tracking
+  // ===========================================================================
+
+  /** Scan for new bullet entities spawned by prediction and track them */
+  private detectNewPredictedBullets(): void {
+    const allBullets = predictedBulletQuery(this.world)
+    for (const eid of allBullets) {
+      // Skip bullets already tracked (either server-mapped or predicted)
+      if (this.predictedBullets.has(eid)) continue
+      if (this.isServerBullet(eid)) continue
+
+      // Only track player bullets owned by local player
+      if (Collider.layer[eid] !== CollisionLayer.PLAYER_BULLET) continue
+
+      this.predictedBullets.add(eid)
+      this.predictedBulletSpawnTick.set(eid, this.predictionTick)
+    }
+  }
+
+  /** Check if a client EID is currently mapped to a server bullet */
+  private isServerBullet(clientEid: number): boolean {
+    for (const mapped of this.bulletEntities.values()) {
+      if (mapped === clientEid) return true
+    }
+    return false
+  }
+
+  /** Find the closest predicted bullet matching a server bullet snapshot */
+  private findMatchingPredictedBullet(b: BulletSnapshot): number {
+    let bestEid = -1
+    let bestDist = BULLET_MATCH_TOLERANCE
+
+    for (const eid of this.predictedBullets) {
+      const dx = Position.x[eid]! - b.x
+      const dy = Position.y[eid]! - b.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestEid = eid
+      }
+    }
+
+    return bestEid
+  }
+
+  /** Remove predicted bullets that have timed out without being matched */
+  private cleanupPredictedBullets(): void {
+    const toRemove: number[] = []
+    for (const eid of this.predictedBullets) {
+      const spawnTick = this.predictedBulletSpawnTick.get(eid)!
+      if (this.predictionTick - spawnTick > PREDICTED_BULLET_TIMEOUT) {
+        toRemove.push(eid)
+      }
+    }
+    for (const eid of toRemove) {
+      removeEntity(this.world, eid)
+      this.predictedBullets.delete(eid)
+      this.predictedBulletSpawnTick.delete(eid)
     }
   }
 
@@ -763,9 +1039,17 @@ export class MultiplayerGameScene {
   // ===========================================================================
 
   destroy(): void {
+    // Clean up predicted bullets
+    for (const eid of this.predictedBullets) {
+      removeEntity(this.world, eid)
+    }
+    this.predictedBullets.clear()
+    this.predictedBulletSpawnTick.clear()
+
     this.inputBuffer.clear()
     this.clockSync.stop()
     this.net.disconnect()
+    this.sound.destroy()
     this.particles.destroy()
     this.floatingText.destroy()
     this.input.destroy()

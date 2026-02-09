@@ -11,6 +11,7 @@ import {
   removePlayer,
   encodeSnapshot,
   createInputState,
+  Button,
   Cylinder,
   Showdown,
   Health,
@@ -33,8 +34,11 @@ const MAX_CATCHUP_TICKS = 4
 /** Snapshot broadcast interval (every N ticks). 60Hz / 3 = 20Hz */
 const SNAPSHOT_INTERVAL = 3
 
-/** Maximum queued inputs per player before dropping */
+/** Maximum queued inputs per player before dropping oldest */
 const MAX_INPUT_QUEUE = 30
+
+/** If queue exceeds this depth, skip to latest input to reduce latency */
+const INPUT_QUEUE_TRIM_THRESHOLD = 6
 
 /** Neutral input (all zeros) used when a player's queue is empty. Frozen to prevent accidental mutation. */
 const neutralInput: InputState = Object.freeze(createInputState())
@@ -72,11 +76,14 @@ function isValidInput(data: unknown): data is NetworkInput {
   )
 }
 
+/** Bits that are not allowed from client input (server-side only / debug) */
+const STRIPPED_BUTTONS = Button.DEBUG_SPAWN
+
 /** Clamp validated input values to safe ranges */
 function clampInput(input: NetworkInput): NetworkInput {
   return {
     seq: Math.max(1, input.seq | 0),
-    buttons: input.buttons | 0, // truncate to integer
+    buttons: (input.buttons | 0) & ~STRIPPED_BUTTONS,
     aimAngle: Math.max(-Math.PI, Math.min(Math.PI, input.aimAngle)),
     moveX: Math.max(-1, Math.min(1, input.moveX)),
     moveY: Math.max(-1, Math.min(1, input.moveY)),
@@ -166,6 +173,17 @@ export class GameRoom extends Room<GameRoomState> {
       try {
         await this.allowReconnection(client, 30)
         console.log(`[GameRoom] ${client.sessionId} reconnected`)
+
+        // Send game-config to the reconnected client (new page load needs config)
+        const slot = this.slots.get(client.sessionId)
+        if (slot) {
+          slot.inputQueue = []  // Clear stale inputs from before disconnect
+          client.send('game-config', {
+            seed: this.world.initialSeed,
+            sessionId: client.sessionId,
+            playerEid: slot.eid,
+          })
+        }
         return // Slot preserved
       } catch {
         // Timed out — fall through to cleanup
@@ -204,14 +222,24 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private serverTick() {
-    // 1. Pop one input per player into world.playerInputs (neutral if empty)
+    // 1. Pop one input per player into world.playerInputs (neutral if empty).
+    //    Trim backlog aggressively: if queue depth exceeds threshold, skip to
+    //    the latest input to prevent snowballing latency under jitter.
     for (const [, slot] of this.slots) {
-      const input = slot.inputQueue.shift()
-      if (input) {
-        slot.lastProcessedSeq = input.seq
-        this.world.playerInputs.set(slot.eid, input)
+      if (slot.inputQueue.length > INPUT_QUEUE_TRIM_THRESHOLD) {
+        // Skip to latest — acknowledge all intermediate inputs
+        const latest = slot.inputQueue[slot.inputQueue.length - 1]!
+        slot.inputQueue.length = 0
+        slot.lastProcessedSeq = latest.seq
+        this.world.playerInputs.set(slot.eid, latest)
       } else {
-        this.world.playerInputs.set(slot.eid, neutralInput)
+        const input = slot.inputQueue.shift()
+        if (input) {
+          slot.lastProcessedSeq = input.seq
+          this.world.playerInputs.set(slot.eid, input)
+        } else {
+          this.world.playerInputs.set(slot.eid, neutralInput)
+        }
       }
     }
 

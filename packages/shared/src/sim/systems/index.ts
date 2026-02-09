@@ -50,14 +50,34 @@ export {
 }
 
 /**
- * Register only the systems needed for client-side movement prediction.
- * playerInputSystem reads input and sets velocity/roll; rollSystem manages
- * the roll state machine; movementSystem applies velocity to position;
- * collisionSystem resolves tilemap push-out.
+ * Register prediction systems for client-side forward ticks.
+ * Includes cylinder + weapon (for bullet prediction) and spatialHash
+ * (for entity-entity collision), in addition to movement.
+ *
+ * spatialHash runs before movement (unlike canonical order) because
+ * prediction needs the hash rebuilt from snapshot positions BEFORE
+ * collisionSystem resolves player-vs-entity pushout.
  */
 export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
+  systems.register(showdownSystem)
+  systems.register(cylinderSystem)
+  systems.register(weaponSystem)
+  systems.register(spatialHashSystem)
+  systems.register(movementSystem)
+  systems.register(collisionSystem)
+}
+
+/**
+ * Register replay systems for server reconciliation.
+ * Movement-only — excludes cylinder + weapon to prevent double-spawning
+ * bullets during input replay.
+ */
+export function registerReplaySystems(systems: SystemRegistry): void {
+  systems.register(playerInputSystem)
+  systems.register(rollSystem)
+  systems.register(spatialHashSystem)
   systems.register(movementSystem)
   systems.register(collisionSystem)
 }
