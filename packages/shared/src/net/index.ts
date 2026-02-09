@@ -3,5 +3,6 @@
  */
 
 export * from './clock'
+export * from './hud'
 export * from './input'
 export * from './snapshot'

@@ -11,6 +11,9 @@ import {
   removePlayer,
   encodeSnapshot,
   createInputState,
+  Cylinder,
+  Showdown,
+  Health,
   MAX_PLAYERS,
   STAGE_1_ENCOUNTER,
   TICK_MS,
@@ -20,6 +23,7 @@ import {
   type NetworkInput,
   type PingMessage,
   type PongMessage,
+  type HudData,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 
@@ -157,7 +161,17 @@ export class GameRoom extends Room<GameRoomState> {
     }
   }
 
-  override onLeave(client: Client) {
+  override async onLeave(client: Client, consented?: boolean) {
+    if (!consented) {
+      try {
+        await this.allowReconnection(client, 30)
+        console.log(`[GameRoom] ${client.sessionId} reconnected`)
+        return // Slot preserved
+      } catch {
+        // Timed out — fall through to cleanup
+      }
+    }
+
     removePlayer(this.world, client.sessionId)
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
@@ -210,6 +224,33 @@ export class GameRoom extends Room<GameRoomState> {
     // 4. Broadcast snapshot every SNAPSHOT_INTERVAL ticks (20Hz)
     if (this.world.tick % SNAPSHOT_INTERVAL === 0) {
       this.broadcastSnapshot()
+    }
+
+    // 5. Send per-client HUD data at 10Hz (every 6 ticks)
+    if (this.world.tick % 6 === 0) {
+      this.sendHudUpdates()
+    }
+  }
+
+  private sendHudUpdates() {
+    for (const [, slot] of this.slots) {
+      const eid = slot.eid
+      const hud: HudData = {
+        hp: Health.current[eid]!,
+        maxHp: Health.max[eid]!,
+        cylinderRounds: Cylinder.rounds[eid]!,
+        cylinderMax: Cylinder.maxRounds[eid]!,
+        isReloading: Cylinder.reloading[eid]! === 1,
+        reloadProgress: Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
+          ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
+          : 0,
+        showdownActive: Showdown.active[eid]! === 1,
+        showdownCooldown: Showdown.cooldown[eid]!,
+        showdownCooldownMax: this.world.upgradeState.showdownCooldown,
+        showdownTimeLeft: Showdown.duration[eid]!,
+        showdownDurationMax: this.world.upgradeState.showdownDuration,
+      }
+      slot.client.send('hud', hud)
     }
   }
 

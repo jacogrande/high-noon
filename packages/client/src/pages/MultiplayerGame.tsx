@@ -88,6 +88,10 @@ export function MultiplayerGame() {
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
             setHudState(scene.getHUDState())
+            if (scene.isDisconnected) {
+              setPhase('error')
+              setError('Connection lost')
+            }
           }
         },
       )

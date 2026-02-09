@@ -32,6 +32,8 @@ import {
   CollisionLayer,
   Speed,
   Roll,
+  hasButton,
+  Button,
   TICK_S,
   PLAYER_RADIUS,
   PLAYER_HP,
@@ -52,6 +54,7 @@ import {
   type PlayerSnapshot,
   type BulletSnapshot,
   type EnemySnapshot,
+  type HudData,
 } from '@high-noon/shared'
 import type { GameApp } from '../engine/GameApp'
 import { Input } from '../engine/Input'
@@ -128,6 +131,18 @@ export class MultiplayerGameScene {
   private errorX = 0
   private errorY = 0
 
+  /** HUD data from server */
+  private latestHud: HudData | null = null
+
+  /** Previous HP for damage shake detection */
+  private prevHP = -1
+
+  /** Disconnect flag for UX overlay */
+  private disconnected = false
+
+  /** Previous SHOOT button state for rising-edge kick detection */
+  private prevShootDown = false
+
   private lastRenderTime: number
 
   /** Reusable maps for interpolation (avoid per-frame allocation) */
@@ -189,12 +204,20 @@ export class MultiplayerGameScene {
     return new MultiplayerGameScene(gameApp)
   }
 
+  get isDisconnected(): boolean { return this.disconnected }
+
   /** Returns a promise that resolves once game-config is received */
   async connect(options?: Record<string, unknown>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.net.on('disconnect', () => {
         this.connected = false
+        this.disconnected = true
+        this.latestHud = null
         console.log('[MP] Disconnected from server')
+      })
+
+      this.net.on('hud', (data: HudData) => {
+        this.latestHud = data
       })
 
       this.net.on('pong', (clientTime, serverTime) => {
@@ -406,6 +429,12 @@ export class MultiplayerGameScene {
     const serverPlayer = snapshot.players.find(p => p.eid === this.myServerEid)
     if (!serverPlayer) return
 
+    // Detect damage for camera shake
+    if (this.prevHP >= 0 && serverPlayer.hp < this.prevHP) {
+      this.camera.addTrauma(0.15)
+    }
+    this.prevHP = serverPlayer.hp
+
     // 2. Save current predicted position
     const oldPredX = Position.x[this.myClientEid]!
     const oldPredY = Position.y[this.myClientEid]!
@@ -490,6 +519,14 @@ export class MultiplayerGameScene {
     const networkInput: NetworkInput = { ...inputState, seq: this.inputSeq }
     this.inputBuffer.push(networkInput)
     this.net.sendInput(networkInput)
+
+    // Camera kick on fire (rising edge only — one kick per press)
+    const shootDown = hasButton(inputState, Button.SHOOT)
+    if (shootDown && !this.prevShootDown) {
+      const angle = Player.aimAngle[this.myClientEid]!
+      this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
+    }
+    this.prevShootDown = shootDown
 
     // --- PREDICTION ---
     // Apply input to local player and step prediction systems.
@@ -696,9 +733,10 @@ export class MultiplayerGameScene {
   // ===========================================================================
 
   getHUDState(): HUDState {
+    const hud = this.latestHud
     return {
-      hp: this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0,
-      maxHP: this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP,
+      hp: hud?.hp ?? (this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0),
+      maxHP: hud?.maxHp ?? (this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP),
       xp: 0,
       xpForCurrentLevel: 0,
       xpForNextLevel: 0,
@@ -706,15 +744,15 @@ export class MultiplayerGameScene {
       waveNumber: 0,
       totalWaves: 0,
       waveStatus: 'none',
-      cylinderRounds: 0,
-      cylinderMax: 0,
-      isReloading: false,
-      reloadProgress: 0,
-      showdownActive: false,
-      showdownCooldown: 0,
-      showdownCooldownMax: 0,
-      showdownTimeLeft: 0,
-      showdownDurationMax: 0,
+      cylinderRounds: hud?.cylinderRounds ?? 0,
+      cylinderMax: hud?.cylinderMax ?? 0,
+      isReloading: hud?.isReloading ?? false,
+      reloadProgress: hud?.reloadProgress ?? 0,
+      showdownActive: hud?.showdownActive ?? false,
+      showdownCooldown: hud?.showdownCooldown ?? 0,
+      showdownCooldownMax: hud?.showdownCooldownMax ?? 0,
+      showdownTimeLeft: hud?.showdownTimeLeft ?? 0,
+      showdownDurationMax: hud?.showdownDurationMax ?? 0,
       pendingPoints: 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
     }

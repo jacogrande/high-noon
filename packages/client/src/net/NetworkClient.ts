@@ -6,7 +6,7 @@
  */
 
 import { Client, type Room } from 'colyseus.js'
-import { decodeSnapshot, type WorldSnapshot, type NetworkInput, type PingMessage, type PongMessage } from '@high-noon/shared'
+import { decodeSnapshot, type WorldSnapshot, type NetworkInput, type PingMessage, type PongMessage, type HudData } from '@high-noon/shared'
 
 export interface GameConfig {
   seed: number
@@ -17,6 +17,7 @@ export interface GameConfig {
 export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
   snapshot: (snapshot: WorldSnapshot) => void
+  hud: (data: HudData) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
 }
@@ -24,6 +25,8 @@ export type NetworkEventMap = {
 export class NetworkClient {
   private client: Client
   private room: Room | null = null
+  // TODO: use for auto-reconnect in future sprint
+  private reconnectionToken: string | null = null
   private listeners: { [K in keyof NetworkEventMap]?: NetworkEventMap[K] } = {}
 
   constructor(endpoint = `ws://${window.location.hostname}:2567`) {
@@ -35,7 +38,13 @@ export class NetworkClient {
   }
 
   async join(options?: Record<string, unknown>): Promise<void> {
-    this.room = await this.client.joinOrCreate('game', options)
+    try {
+      this.room = await this.client.joinOrCreate('game', options)
+    } catch (err) {
+      throw new Error(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+
+    this.reconnectionToken = this.room.reconnectionToken
 
     this.room.onMessage('game-config', (data: GameConfig) => {
       this.listeners['game-config']?.(data)
@@ -43,6 +52,10 @@ export class NetworkClient {
 
     this.room.onMessage('pong', (data: PongMessage) => {
       this.listeners.pong?.(data.clientTime, data.serverTime)
+    })
+
+    this.room.onMessage('hud', (data: HudData) => {
+      this.listeners.hud?.(data)
     })
 
     this.room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
