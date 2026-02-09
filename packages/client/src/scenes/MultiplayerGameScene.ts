@@ -31,6 +31,8 @@ import {
   EnemyTier,
   CollisionLayer,
   Speed,
+  Roll,
+  TICK_S,
   PLAYER_RADIUS,
   PLAYER_HP,
   PLAYER_SPEED,
@@ -68,6 +70,11 @@ import { SnapshotBuffer, type InterpolationState } from '../net/SnapshotBuffer'
 import type { HUDState } from './GameScene'
 
 const GAME_ZOOM = 2
+
+/** Misprediction smoothing constants */
+const SNAP_THRESHOLD = 96    // pixels — teleport if error exceeds this
+const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
+const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
 
 /** Enemy radius lookup by EnemyType value */
 const ENEMY_RADIUS: Record<number, number> = {
@@ -116,6 +123,10 @@ export class MultiplayerGameScene {
   private myServerEid = -1
   private myClientEid = -1
   private connected = false
+
+  /** Misprediction visual smoothing offset */
+  private errorX = 0
+  private errorY = 0
 
   private lastRenderTime: number
 
@@ -201,6 +212,12 @@ export class MultiplayerGameScene {
       this.net.on('snapshot', (snapshot: WorldSnapshot) => {
         this.world.tick = snapshot.tick
         this.applyEntityLifecycle(snapshot)
+
+        // Reconcile local player prediction against server authority
+        if (this.myClientEid >= 0) {
+          this.reconcileLocalPlayer(snapshot)
+        }
+
         this.snapshotBuffer.push(snapshot)
       })
 
@@ -377,6 +394,70 @@ export class MultiplayerGameScene {
   }
 
   // ===========================================================================
+  // Server Reconciliation
+  // ===========================================================================
+
+  /**
+   * Rewind local player to server authority, replay unacknowledged inputs,
+   * and compute visual error offset for smooth misprediction correction.
+   */
+  private reconcileLocalPlayer(snapshot: WorldSnapshot): void {
+    // 1. Find local player in snapshot
+    const serverPlayer = snapshot.players.find(p => p.eid === this.myServerEid)
+    if (!serverPlayer) return
+
+    // 2. Save current predicted position
+    const oldPredX = Position.x[this.myClientEid]!
+    const oldPredY = Position.y[this.myClientEid]!
+
+    // 3. Rewind — accept server's authoritative state
+    Position.x[this.myClientEid] = serverPlayer.x
+    Position.y[this.myClientEid] = serverPlayer.y
+    Position.prevX[this.myClientEid] = serverPlayer.x
+    Position.prevY[this.myClientEid] = serverPlayer.y
+    Velocity.x[this.myClientEid] = 0
+    Velocity.y[this.myClientEid] = 0
+
+    // Strip Roll component — not in snapshot, will be re-derived from input replay
+    if (hasComponent(this.world, Roll, this.myClientEid)) {
+      removeComponent(this.world, Roll, this.myClientEid)
+    }
+
+    // Reset rollButtonWasDown — replay will re-derive edge detection
+    Player.rollButtonWasDown[this.myClientEid] = 0
+
+    // 4. Discard acknowledged inputs
+    this.inputBuffer.acknowledgeUpTo(serverPlayer.lastProcessedSeq)
+
+    // 5. Replay unacknowledged inputs
+    const pending = this.inputBuffer.getPending()
+    for (const input of pending) {
+      this.world.playerInputs.set(this.myClientEid, input)
+      for (const system of this.predictionSystems.getSystems()) {
+        system(this.world, TICK_S)
+      }
+      this.world.playerInputs.clear()
+    }
+
+    // 6. Compute misprediction error
+    const newPredX = Position.x[this.myClientEid]!
+    const newPredY = Position.y[this.myClientEid]!
+    const dx = oldPredX - newPredX
+    const dy = oldPredY - newPredY
+    const errorMag = Math.sqrt(dx * dx + dy * dy)
+
+    if (errorMag > SNAP_THRESHOLD) {
+      // Teleport — error too large to smooth
+      this.errorX = 0
+      this.errorY = 0
+    } else if (errorMag > EPSILON) {
+      // Accumulate visual offset for smooth correction
+      this.errorX += dx
+      this.errorY += dy
+    }
+  }
+
+  // ===========================================================================
   // Update (60Hz) — capture + send input
   // ===========================================================================
 
@@ -422,17 +503,27 @@ export class MultiplayerGameScene {
     const interpState = this.snapshotBuffer.getInterpolationState()
     const alpha = interpState ? this.interpolateFromBuffer(interpState) : 0.5
 
+    // Decay misprediction error (frame-rate independent)
+    if (this.errorX !== 0 || this.errorY !== 0) {
+      const factor = 1 - Math.exp(-CORRECTION_SPEED * realDt)
+      this.errorX *= (1 - factor)
+      this.errorY *= (1 - factor)
+      // Kill tiny residuals
+      if (Math.abs(this.errorX) < 0.1) this.errorX = 0
+      if (Math.abs(this.errorY) < 0.1) this.errorY = 0
+    }
+
     // Sync renderers (create/remove sprites from ECS queries)
     this.playerRenderer.sync(this.world)
     this.enemyRenderer.sync(this.world)
     this.bulletRenderer.sync(this.world)
 
-    // Camera follow local player
+    // Camera follow local player (offset by error for smooth visual tracking)
     if (this.myClientEid >= 0) {
       const worldMouse = this.input.getWorldMousePosition()
       this.camera.update(
-        Position.x[this.myClientEid]!,
-        Position.y[this.myClientEid]!,
+        Position.x[this.myClientEid]! + this.errorX,
+        Position.y[this.myClientEid]! + this.errorY,
         worldMouse.x,
         worldMouse.y,
         realDt,
@@ -455,8 +546,22 @@ export class MultiplayerGameScene {
     // Clear debug
     this.debugRenderer.clear()
 
+    // Apply visual error offset for local player sprite
+    const hasError = this.myClientEid >= 0 && (this.errorX !== 0 || this.errorY !== 0)
+    if (hasError) {
+      Position.x[this.myClientEid] = Position.x[this.myClientEid]! + this.errorX
+      Position.y[this.myClientEid] = Position.y[this.myClientEid]! + this.errorY
+    }
+
     // Render entities
     this.playerRenderer.render(this.world, alpha, realDt)
+
+    // Restore logical position after rendering
+    if (hasError) {
+      Position.x[this.myClientEid] = Position.x[this.myClientEid]! - this.errorX
+      Position.y[this.myClientEid] = Position.y[this.myClientEid]! - this.errorY
+    }
+
     this.bulletRenderer.render(this.world, alpha)
     this.enemyRenderer.render(this.world, alpha, realDt)
 

@@ -14,7 +14,7 @@
 | 2 | ~~Clock Synchronization~~ | shared, client, server | ~~P0~~ DONE | — |
 | 3 | ~~Input Sequencing & Snapshot Protocol v3~~ | shared, client, server | ~~P0~~ DONE | — |
 | 4 | ~~Client-Side Prediction~~ | shared, client | ~~P0~~ DONE | Epic 3 |
-| 5 | Server Reconciliation & Misprediction Smoothing | client | P0 | Epic 4 |
+| 5 | ~~Server Reconciliation & Misprediction Smoothing~~ | client | ~~P0~~ DONE | Epic 4 |
 | 6 | Snapshot Interpolation Improvements | client | P1 | Epic 2 |
 | 7 | Server & Client Optimizations | shared, client, server | P1 | Epic 1 |
 | 8 | Multiplayer UX Polish | client, server | P2 | Epics 4-5 |
@@ -476,7 +476,7 @@ The local player's position is now driven exclusively by prediction. Reconciliat
 
 ---
 
-## Epic 5: Server Reconciliation & Misprediction Smoothing
+## Epic 5: Server Reconciliation & Misprediction Smoothing — COMPLETE
 
 When a server snapshot arrives, reconcile the predicted local player state with the authoritative server state. If they differ, smoothly correct the visual position.
 
