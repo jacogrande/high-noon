@@ -5,7 +5,7 @@ Game scene classes that own game state, systems, and renderers.
 ## Current Files
 
 - `GameScene.ts` - Single-player gameplay scene (runs local simulation)
-- `MultiplayerGameScene.ts` - Multiplayer "dumb client" scene (server-authoritative, no local sim)
+- `MultiplayerGameScene.ts` - Multiplayer scene with client-side prediction and server reconciliation
 
 ## GameScene
 
@@ -50,21 +50,25 @@ The debug overlay shows FPS, tick, entity count, player state/HP/position/veloci
 
 ## MultiplayerGameScene
 
-Multiplayer "dumb client" scene. Connects to a Colyseus server, sends input, and renders snapshots without running the local simulation.
+Multiplayer scene with **client-side prediction** and **server reconciliation**. The server is authoritative; the client predicts locally for responsiveness and corrects on mismatch.
 
 ```typescript
 const scene = await MultiplayerGameScene.create(gameApp)
-await scene.connect()           // Join server, receive game-config
-scene.update(dt)                // Capture + send input to server
-scene.render(alpha, fps)        // Interpolate snapshots + render
+await scene.connect()           // Join server, receive game-config (with timeout)
+scene.update(dt)                // Predict locally + send input to server
+scene.render(alpha, fps)        // Interpolate remote entities + render
 scene.destroy()                 // Disconnect + cleanup
 ```
 
 ### How It Works
 
-1. A **shadow ECS world** holds entity data populated from server snapshots
-2. **Server EID → client EID maps** track entity lifecycle (players, bullets, enemies)
-3. Existing renderers (PlayerRenderer, BulletRenderer, EnemyRenderer) query the shadow world unchanged
-4. **SnapshotBuffer** handles interpolation between 20Hz server updates for smooth rendering
-5. **Camera** follows the local player identified by server-assigned EID
-6. **PlayerRenderer.localPlayerEid** is set so remote players render with a blue tint
+1. A **shadow ECS world** holds entity data — local player is predicted, remote entities populated from snapshots
+2. **Prediction systems** (playerInput, roll, cylinder, weapon, spatialHash, movement, collision) run locally for the player entity at 60Hz
+3. **Replay systems** (movement-only, no weapon/cylinder) are used during reconciliation to prevent double-spawning bullets
+4. On each server **snapshot** (~20Hz), the local player is rewound to server state and unacknowledged inputs are replayed
+5. **Misprediction smoothing** applies an exponential-decay visual offset instead of snapping
+6. **Predicted bullets** are tracked and matched to server-confirmed bullets by proximity
+7. **Cylinder/weapon state** is managed purely by prediction — not reconciled from server HUD
+8. **Visual feedback** (camera shake, kick, weapon recoil, muzzle flash) fires immediately on predicted fire via cylinder round counting
+9. **SnapshotBuffer** handles interpolation of remote entities between 20Hz server updates
+10. **Camera** follows the local player with sub-frame interpolation via game loop alpha

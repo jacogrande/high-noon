@@ -89,8 +89,15 @@ export function MultiplayerGame() {
             lastHudUpdateRef.current = now
             setHudState(scene.getHUDState())
             if (scene.isDisconnected) {
-              setPhase('error')
+              // Stop game before phase change to prevent stale loop
+              if (gameRef.current) {
+                gameRef.current.gameLoop.stop()
+                gameRef.current.scene.destroy()
+                gameRef.current.gameApp.destroy()
+                gameRef.current = null
+              }
               setError('Connection lost')
+              setPhase('error')
             }
           }
         },
@@ -104,6 +111,11 @@ export function MultiplayerGame() {
 
     return () => {
       cancelled = true
+      // Only cancel in-flight async work here. Do NOT destroy game resources —
+      // setPhase('playing') at line 100 changes [phase], which re-runs this
+      // cleanup. Destroying here would kill the game we just created.
+      // Actual resource cleanup: unmount effect (below), handleRetry, and
+      // disconnect detection (stopAndCleanup above).
     }
   }, [phase])
 
@@ -120,6 +132,13 @@ export function MultiplayerGame() {
   }, [])
 
   const handleRetry = () => {
+    // Safety net: destroy any lingering game resources before retry
+    if (gameRef.current) {
+      gameRef.current.gameLoop.stop()
+      gameRef.current.scene.destroy()
+      gameRef.current.gameApp.destroy()
+      gameRef.current = null
+    }
     setError(null)
     setLoadProgress(0)
     AssetLoader.reset()

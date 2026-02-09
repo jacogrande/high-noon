@@ -75,6 +75,9 @@ export class PlayerRenderer {
   /** Set to identify the local player for visual differentiation. */
   localPlayerEid: number | null = null
 
+  /** Monotonic tick for local player animation (avoids snapshot tick jitter). */
+  localPlayerTick = 0
+
   constructor(entityLayer: Container) {
     this.entityLayer = entityLayer
   }
@@ -224,7 +227,10 @@ export class PlayerRenderer {
           ANIMATION_FRAME_COUNTS.hurt - 1
         )
       } else {
-        frame = getAnimationFrame(animState, world.tick)
+        const tick = this.localPlayerEid !== null && eid === this.localPlayerEid
+          ? this.localPlayerTick
+          : world.tick
+        frame = getAnimationFrame(animState, tick)
       }
 
       // Update body sprite texture
@@ -270,7 +276,10 @@ export class PlayerRenderer {
       const baseTint = isRemote ? 0x88BBFF : 0xFFFFFF
 
       if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
-        const flash = Math.floor(world.tick / 3) % 2 === 0
+        const flashTick = this.localPlayerEid !== null && eid === this.localPlayerEid
+          ? this.localPlayerTick
+          : world.tick
+        const flash = Math.floor(flashTick / 3) % 2 === 0
         bodySprite.tint = flash ? 0xFF4444 : baseTint
         weaponSprite.tint = flash ? 0xFF4444 : baseTint
       } else {
