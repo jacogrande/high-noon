@@ -17,6 +17,11 @@ export function MultiplayerGame() {
   const [retryCount, setRetryCount] = useState(0)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const lastHudUpdateRef = useRef(0)
+  const gameRef = useRef<{
+    gameApp: GameApp
+    gameLoop: GameLoop
+    scene: MultiplayerGameScene
+  } | null>(null)
 
   // Phase 1: Load assets
   useEffect(() => {
@@ -44,61 +49,71 @@ export function MultiplayerGame() {
   }, [retryCount])
 
   // Phase 2: Initialize game + connect
+  // NOTE: setPhase('playing') inside this effect changes the [phase] dep, which
+  // triggers cleanup. We must NOT destroy game resources in that cleanup — only
+  // cancel in-flight async work. Actual resource cleanup happens in a separate
+  // unmount-only effect below.
   useEffect(() => {
     if (phase !== 'connecting') return
     const container = containerRef.current
     if (!container) return
 
-    let gameApp: GameApp | null = null
-    let gameLoop: GameLoop | null = null
-    let scene: MultiplayerGameScene | null = null
-    let mounted = true
+    let cancelled = false
 
     async function init(gameContainer: HTMLDivElement) {
-      gameApp = await GameApp.create(gameContainer)
-      if (!mounted) { gameApp.destroy(); return }
+      const gameApp = await GameApp.create(gameContainer)
+      if (cancelled) { gameApp.destroy(); return }
 
-      scene = await MultiplayerGameScene.create(gameApp)
-      if (!mounted) { scene.destroy(); gameApp.destroy(); return }
+      const scene = await MultiplayerGameScene.create(gameApp)
+      if (cancelled) { scene.destroy(); gameApp.destroy(); return }
 
       try {
         await scene.connect()
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect'
-        if (mounted) { setError(message); setPhase('error') }
+        if (!cancelled) { setError(message); setPhase('error') }
         scene.destroy()
         gameApp.destroy()
         return
       }
 
-      if (!mounted) { scene.destroy(); gameApp.destroy(); return }
+      if (cancelled) { scene.destroy(); gameApp.destroy(); return }
 
-      setPhase('playing')
-
-      gameLoop = new GameLoop(
-        (dt) => scene!.update(dt),
+      const gameLoop = new GameLoop(
+        (dt) => scene.update(dt),
         (alpha) => {
-          scene!.render(alpha, gameLoop!.fps)
+          scene.render(alpha, gameLoop.fps)
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
-            setHudState(scene!.getHUDState())
+            setHudState(scene.getHUDState())
           }
         },
       )
       gameLoop.start()
+      gameRef.current = { gameApp, gameLoop, scene }
+      setPhase('playing')
     }
 
     init(container)
 
     return () => {
-      mounted = false
-      gameLoop?.stop()
-      scene?.destroy()
-      gameApp?.destroy()
+      cancelled = true
     }
   }, [phase])
+
+  // Unmount-only cleanup: destroy game resources when navigating away
+  useEffect(() => {
+    return () => {
+      if (gameRef.current) {
+        gameRef.current.gameLoop.stop()
+        gameRef.current.scene.destroy()
+        gameRef.current.gameApp.destroy()
+        gameRef.current = null
+      }
+    }
+  }, [])
 
   const handleRetry = () => {
     setError(null)
