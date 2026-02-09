@@ -421,6 +421,7 @@ export class MultiplayerGameScene {
     // Strip Roll component — not in snapshot, will be re-derived from input replay
     if (hasComponent(this.world, Roll, this.myClientEid)) {
       removeComponent(this.world, Roll, this.myClientEid)
+      this.world.rollDodgedBullets.delete(this.myClientEid)
     }
 
     // Reset rollButtonWasDown — replay will re-derive edge detection
@@ -432,6 +433,8 @@ export class MultiplayerGameScene {
     // 5. Replay unacknowledged inputs
     const pending = this.inputBuffer.getPending()
     for (const input of pending) {
+      Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
+      Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
       this.world.playerInputs.set(this.myClientEid, input)
       for (const system of this.predictionSystems.getSystems()) {
         system(this.world, TICK_S)
@@ -446,14 +449,20 @@ export class MultiplayerGameScene {
     const dy = oldPredY - newPredY
     const errorMag = Math.sqrt(dx * dx + dy * dy)
 
-    if (errorMag > SNAP_THRESHOLD) {
-      // Teleport — error too large to smooth
-      this.errorX = 0
-      this.errorY = 0
-    } else if (errorMag > EPSILON) {
+    if (errorMag > EPSILON) {
       // Accumulate visual offset for smooth correction
-      this.errorX += dx
-      this.errorY += dy
+      const newErrorX = this.errorX + dx
+      const newErrorY = this.errorY + dy
+      const totalMag = Math.sqrt(newErrorX * newErrorX + newErrorY * newErrorY)
+
+      if (totalMag > SNAP_THRESHOLD) {
+        // Teleport — accumulated error too large to smooth
+        this.errorX = 0
+        this.errorY = 0
+      } else {
+        this.errorX = newErrorX
+        this.errorY = newErrorY
+      }
     }
   }
 
@@ -496,7 +505,8 @@ export class MultiplayerGameScene {
 
   render(_loopAlpha: number, fps: number): void {
     const now = performance.now()
-    const realDt = Math.min((now - this.lastRenderTime) / 1000, 0.25)
+    const rawDt = (now - this.lastRenderTime) / 1000
+    const realDt = Math.min(rawDt, 0.25)
     this.lastRenderTime = now
 
     // Interpolate snapshot data into ECS arrays
@@ -505,9 +515,11 @@ export class MultiplayerGameScene {
     )
     const alpha = interpState ? this.interpolateFromBuffer(interpState) : 0.5
 
-    // Decay misprediction error (frame-rate independent)
+    // Decay misprediction error (frame-rate independent, tighter clamp to prevent
+    // near-instant snap when tab is backgrounded and rawDt spikes)
     if (this.errorX !== 0 || this.errorY !== 0) {
-      const factor = 1 - Math.exp(-CORRECTION_SPEED * realDt)
+      const smoothDt = Math.min(rawDt, 0.1)
+      const factor = 1 - Math.exp(-CORRECTION_SPEED * smoothDt)
       this.errorX *= (1 - factor)
       this.errorY *= (1 - factor)
       // Kill tiny residuals
