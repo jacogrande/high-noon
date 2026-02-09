@@ -228,9 +228,23 @@ const net = new NetworkClient()
 net.on('game-config', (config) => { /* server assigned player EID */ })
 net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
 net.on('disconnect', () => { /* handle disconnect */ })
+net.on('pong', (clientTime, serverTime) => { /* clock sync */ })
 await net.join()
-net.sendInput(inputState)
-net.disconnect()  // clears room and listeners
+net.sendInput(networkInput)  // NetworkInput (InputState + seq)
+net.sendPing(clientTime)     // Clock sync ping
+net.disconnect()             // clears room and listeners
+```
+
+**ClockSync** - Client-server time synchronization (Cristian's algorithm):
+```typescript
+import { ClockSync } from './net'
+
+const clockSync = new ClockSync()
+clockSync.start((clientTime) => net.sendPing(clientTime))
+clockSync.onPong(clientTime, serverTime)
+clockSync.getServerTime()  // performance.now() + offset
+clockSync.getRTT()         // Latest RTT estimate
+clockSync.stop()
 ```
 
 **SnapshotBuffer** - Interpolation buffer for smooth rendering between 20Hz snapshots:
@@ -240,6 +254,17 @@ import { SnapshotBuffer } from './net'
 const buffer = new SnapshotBuffer(100)  // 100ms interpolation delay
 buffer.push(snapshot)
 const interp = buffer.getInterpolationState()  // { from, to, alpha }
+```
+
+**InputBuffer** - Pending input buffer for client-side prediction/reconciliation:
+```typescript
+import { InputBuffer } from './net'
+
+const buffer = new InputBuffer(128)     // 128 entries (~2s at 60Hz)
+buffer.push(networkInput)               // Store input for replay
+buffer.acknowledgeUpTo(lastProcessedSeq) // Remove acknowledged inputs
+buffer.getPending()                     // Unacknowledged inputs for replay
+buffer.clear()
 ```
 
 ### `scenes/` - Game Scenes
@@ -260,19 +285,19 @@ GameScene encapsulates Input, Camera, HitStop, ECS world, systems, and all rende
 `Game.tsx` creates GameApp and GameLoop, then delegates all game logic to GameScene.
 Starts a `STAGE_1_ENCOUNTER` on creation (4-wave escalating enemy encounter via Director-Wave spawner).
 
-**MultiplayerGameScene** - Multiplayer "dumb client" scene:
+**MultiplayerGameScene** - Multiplayer scene with client-side prediction:
 ```typescript
 import { MultiplayerGameScene } from './scenes'
 
 const scene = await MultiplayerGameScene.create(gameApp)
 await scene.connect()           // Join server, receive game-config
-scene.update(dt)                // Capture + send input (no local sim)
-scene.render(alpha, fps)        // Interpolate snapshots + render
+scene.update(dt)                // Capture input, send to server, step prediction
+scene.render(alpha, fps)        // Interpolate remote snapshots + render
 scene.getHUDState()             // HUD data for React overlay
 scene.destroy()                 // Disconnect + cleanup
 ```
 
-Uses a shadow ECS world populated from server snapshots — existing renderers work unchanged via ECS queries. Server EID → client EID mapping handles entity lifecycle.
+Uses a shadow ECS world with hybrid prediction/interpolation. The local player is driven by client-side prediction (movement, roll, collision systems) for immediate responsiveness. Remote entities are populated from server snapshots via interpolation. Server EID → client EID mapping handles entity lifecycle.
 
 Camera juice:
 - Player damage: 0.15 trauma + 0.05s hit stop + directional kick (magnitude 4, toward damage source)
@@ -319,10 +344,12 @@ src/
     index.ts
   scenes/
     GameScene.ts              # Single-player game scene
-    MultiplayerGameScene.ts   # Multiplayer dumb-client scene
+    MultiplayerGameScene.ts   # Multiplayer scene with client-side prediction
     index.ts
   assets/            # Asset loading and spritesheets
   net/
+    ClockSync.ts        # Client-server time synchronization
+    InputBuffer.ts      # Pending input buffer for reconciliation
     NetworkClient.ts    # Colyseus connection wrapper
     SnapshotBuffer.ts   # Snapshot interpolation buffer
   ui/                # In-game HUD components

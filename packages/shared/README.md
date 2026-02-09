@@ -78,9 +78,11 @@ import {
 const world = createGameWorld(42)  // Optional seed for deterministic RNG
 const systems = createSystemRegistry()
 registerAllSystems(systems)        // Register all 19 systems in canonical order
+// Or for client-side prediction (movement subset only):
+// registerPredictionSystems(systems)  // 4 systems: playerInput, roll, movement, collision
 
 stepWorld(world, systems, input)   // Advance by one tick (single-player)
-stepWorld(world, systems)          // Advance by one tick (server — reads world.playerInputs)
+stepWorld(world, systems)          // Advance by one tick (server/prediction — reads world.playerInputs)
 ```
 
 **Components:**
@@ -278,12 +280,35 @@ if (hasButton(input, Button.SHOOT)) {
 
 **Button flags:** `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `SHOOT`, `ROLL`
 
-**Binary Snapshots:**
+**NetworkInput** — extends `InputState` with a monotonic sequence number for client→server messages:
+```typescript
+import type { NetworkInput } from '@high-noon/shared'
+
+const networkInput: NetworkInput = { ...inputState, seq: 42 }
+```
+
+Used by the server to track acknowledged inputs (`lastProcessedSeq`) and by the client to replay unacknowledged inputs during reconciliation.
+
+**Binary Snapshots (v3):**
 ```typescript
 import { encodeSnapshot, decodeSnapshot } from '@high-noon/shared'
 
-const bytes = encodeSnapshot(world)        // Uint8Array view (shared buffer, zero-alloc)
-const state = decodeSnapshot(bytes)        // Decoded entity state
+// Single-player / tests (no seq tracking)
+const snapshot = encodeSnapshot(world, serverTime)
+
+// Server with per-player seq acknowledgment
+const playerSeqs = new Map<number, number>([[eid, lastProcessedSeq]])
+const serverSnapshot = encodeSnapshot(world, serverTime, playerSeqs)
+
+const state = decodeSnapshot(serverSnapshot) // Decoded entity state
+state.players[0].lastProcessedSeq           // Server's last processed input seq for this player
+```
+
+**Snapshot format:** HEADER_SIZE=14, PLAYER_SIZE=21 (includes 4-byte `lastProcessedSeq`), BULLET_SIZE=19, ENEMY_SIZE=13
+
+**Clock sync types:**
+```typescript
+import type { PingMessage, PongMessage } from '@high-noon/shared'
 ```
 
 ## Directory Structure
@@ -339,8 +364,9 @@ src/
       index.ts
     index.ts
   net/
-    input.ts         # Input state types
-    snapshot.ts      # Binary snapshot encode/decode
+    clock.ts         # PingMessage/PongMessage types for clock sync
+    input.ts         # Input state types (InputState, NetworkInput)
+    snapshot.ts      # Binary snapshot encode/decode (v3)
     snapshot.test.ts # Unit tests
     index.ts
 ```

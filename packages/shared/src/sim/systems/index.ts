@@ -50,6 +50,19 @@ export {
 }
 
 /**
+ * Register only the systems needed for client-side movement prediction.
+ * playerInputSystem reads input and sets velocity/roll; rollSystem manages
+ * the roll state machine; movementSystem applies velocity to position;
+ * collisionSystem resolves tilemap push-out.
+ */
+export function registerPredictionSystems(systems: SystemRegistry): void {
+  systems.register(playerInputSystem)
+  systems.register(rollSystem)
+  systems.register(movementSystem)
+  systems.register(collisionSystem)
+}
+
+/**
  * Register all 19 simulation systems in the canonical execution order.
  * Both client and server call this to prevent order divergence.
  */

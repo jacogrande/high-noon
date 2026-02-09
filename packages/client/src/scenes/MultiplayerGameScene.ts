@@ -1,12 +1,12 @@
 /**
  * MultiplayerGameScene
  *
- * A "dumb" rendering client that connects to a server, sends input,
- * receives snapshots, and renders the game state without running
- * the local simulation (no stepWorld).
+ * Multiplayer game scene with client-side prediction.
  *
- * Uses a shadow GameWorld populated from server snapshots so existing
- * renderers (PlayerRenderer, BulletRenderer, EnemyRenderer) work unchanged.
+ * Runs a subset of the shared simulation (movement, roll, collision) on the
+ * local player for immediate responsiveness. Remote entities are rendered via
+ * snapshot interpolation. The server remains authoritative — reconciliation
+ * (Epic 5) handles corrections when server state disagrees with prediction.
  */
 
 import { addEntity, addComponent, removeEntity, removeComponent, hasComponent } from 'bitecs'
@@ -30,15 +30,22 @@ import {
   EnemyType,
   EnemyTier,
   CollisionLayer,
+  Speed,
   PLAYER_RADIUS,
   PLAYER_HP,
+  PLAYER_SPEED,
   BULLET_RADIUS,
   SWARMER_RADIUS,
   GRUNT_RADIUS,
   SHOOTER_RADIUS,
   CHARGER_RADIUS,
+  createSystemRegistry,
+  registerPredictionSystems,
+  stepWorld,
+  type SystemRegistry,
   type GameWorld,
   type InputState,
+  type NetworkInput,
   type WorldSnapshot,
   type PlayerSnapshot,
   type BulletSnapshot,
@@ -54,6 +61,8 @@ import { BulletRenderer } from '../render/BulletRenderer'
 import { EnemyRenderer } from '../render/EnemyRenderer'
 import { TilemapRenderer } from '../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool } from '../fx'
+import { ClockSync } from '../net/ClockSync'
+import { InputBuffer } from '../net/InputBuffer'
 import { NetworkClient, type GameConfig } from '../net/NetworkClient'
 import { SnapshotBuffer, type InterpolationState } from '../net/SnapshotBuffer'
 import type { HUDState } from './GameScene'
@@ -90,7 +99,13 @@ export class MultiplayerGameScene {
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
   private readonly net: NetworkClient
+  private readonly clockSync: ClockSync
   private readonly snapshotBuffer: SnapshotBuffer
+  private readonly inputBuffer: InputBuffer
+  private readonly predictionSystems: SystemRegistry
+
+  /** Input sequence counter for network messages */
+  private inputSeq = 0
 
   /** Server EID → client EID maps */
   private readonly playerEntities = new Map<number, number>()
@@ -113,7 +128,7 @@ export class MultiplayerGameScene {
     this.gameApp = gameApp
     this.input = new Input()
 
-    // Shadow world — never stepped, just holds ECS data for renderers
+    // Shadow world — local player is predicted, remote entities populated from snapshots
     this.world = createGameWorld(0)
     const tilemap = createTestArena()
     setWorldTilemap(this.world, tilemap)
@@ -148,7 +163,13 @@ export class MultiplayerGameScene {
 
     // Network
     this.net = new NetworkClient()
+    this.clockSync = new ClockSync()
     this.snapshotBuffer = new SnapshotBuffer()
+    this.inputBuffer = new InputBuffer()
+
+    // Prediction systems (movement subset of shared simulation)
+    this.predictionSystems = createSystemRegistry()
+    registerPredictionSystems(this.predictionSystems)
 
     this.lastRenderTime = performance.now()
   }
@@ -165,10 +186,15 @@ export class MultiplayerGameScene {
         console.log('[MP] Disconnected from server')
       })
 
+      this.net.on('pong', (clientTime, serverTime) => {
+        this.clockSync.onPong(clientTime, serverTime)
+      })
+
       this.net.on('game-config', (config: GameConfig) => {
         this.myServerEid = config.playerEid
         this.connected = true
         console.log(`[MP] Connected — server playerEid=${config.playerEid}`)
+        this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
         resolve()
       })
 
@@ -224,6 +250,10 @@ export class MultiplayerGameScene {
         if (p.eid === this.myServerEid) {
           this.myClientEid = clientEid
           this.playerRenderer.localPlayerEid = clientEid
+          // Prediction requires Speed component
+          addComponent(this.world, Speed, clientEid)
+          Speed.current[clientEid] = PLAYER_SPEED
+          Speed.max[clientEid] = PLAYER_SPEED
         }
       }
 
@@ -352,22 +382,31 @@ export class MultiplayerGameScene {
 
   update(_dt: number): void {
     if (!this.connected) return
+    if (this.myClientEid < 0) return
 
-    // Set input reference position from local player
-    if (this.myClientEid >= 0) {
-      this.input.setReferencePosition(
-        Position.x[this.myClientEid]!,
-        Position.y[this.myClientEid]!,
-      )
-    }
+    // Set input reference position from predicted position (immediate)
+    this.input.setReferencePosition(
+      Position.x[this.myClientEid]!,
+      Position.y[this.myClientEid]!,
+    )
 
     // Set camera for screen→world conversion
     const camPos = this.camera.getPosition()
     this.input.setCamera(camPos.x, camPos.y, this.gameApp.width, this.gameApp.height, GAME_ZOOM)
 
-    // Send input to server
+    // Collect and tag input
     const inputState: InputState = this.input.getInputState()
-    this.net.sendInput(inputState)
+    this.inputSeq++
+    const networkInput: NetworkInput = { ...inputState, seq: this.inputSeq }
+    this.inputBuffer.push(networkInput)
+    this.net.sendInput(networkInput)
+
+    // --- PREDICTION ---
+    // Apply input to local player and step prediction systems.
+    // stepWorld sets playerInputs, runs systems, clears inputs, increments tick.
+    // The tick drift is harmless — interpolateFromBuffer overwrites world.tick each render.
+    this.world.playerInputs.set(this.myClientEid, inputState)
+    stepWorld(this.world, this.predictionSystems)
   }
 
   // ===========================================================================
@@ -487,6 +526,9 @@ export class MultiplayerGameScene {
       const clientEid = this.playerEntities.get(p.eid)
       if (clientEid === undefined) continue
 
+      // Skip local player — driven by prediction, not interpolation
+      if (clientEid === this.myClientEid) continue
+
       const prev = this.fromPlayerIndex.get(p.eid)
       const fromX = prev?.x ?? p.x
       const fromY = prev?.y ?? p.y
@@ -564,6 +606,8 @@ export class MultiplayerGameScene {
   // ===========================================================================
 
   destroy(): void {
+    this.inputBuffer.clear()
+    this.clockSync.stop()
     this.net.disconnect()
     this.particles.destroy()
     this.floatingText.destroy()
