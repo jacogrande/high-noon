@@ -6,7 +6,7 @@
  */
 
 import { Client, type Room } from 'colyseus.js'
-import { decodeSnapshot, type WorldSnapshot, type InputState } from '@high-noon/shared'
+import { decodeSnapshot, type WorldSnapshot, type NetworkInput, type PingMessage, type PongMessage } from '@high-noon/shared'
 
 export interface GameConfig {
   seed: number
@@ -18,6 +18,7 @@ export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
   snapshot: (snapshot: WorldSnapshot) => void
   disconnect: () => void
+  pong: (clientTime: number, serverTime: number) => void
 }
 
 export class NetworkClient {
@@ -40,6 +41,10 @@ export class NetworkClient {
       this.listeners['game-config']?.(data)
     })
 
+    this.room.onMessage('pong', (data: PongMessage) => {
+      this.listeners.pong?.(data.clientTime, data.serverTime)
+    })
+
     this.room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
       // Colyseus sendBytes delivers ArrayBuffer on the client
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
@@ -52,8 +57,12 @@ export class NetworkClient {
     })
   }
 
-  sendInput(input: InputState): void {
+  sendInput(input: NetworkInput): void {
     this.room?.send('input', input)
+  }
+
+  sendPing(clientTime: number): void {
+    this.room?.send('ping', { clientTime } satisfies PingMessage)
   }
 
   disconnect(): void {
