@@ -17,6 +17,9 @@ import {
   type GameWorld,
   type SystemRegistry,
   type InputState,
+  type NetworkInput,
+  type PingMessage,
+  type PongMessage,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 
@@ -36,7 +39,8 @@ const neutralInput: InputState = Object.freeze(createInputState())
 interface PlayerSlot {
   client: Client
   eid: number
-  inputQueue: InputState[]
+  inputQueue: NetworkInput[]
+  lastProcessedSeq: number
 }
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
@@ -47,13 +51,14 @@ function isFiniteNumber(v: unknown): v is number {
 }
 
 /**
- * Validate that incoming data has the correct shape for InputState.
+ * Validate that incoming data has the correct shape for NetworkInput.
  * Rejects NaN, Infinity, and non-number fields.
  */
-function isValidInput(data: unknown): data is InputState {
+function isValidInput(data: unknown): data is NetworkInput {
   if (typeof data !== 'object' || data === null) return false
   const d = data as Record<string, unknown>
   return (
+    isFiniteNumber(d.seq) &&
     isFiniteNumber(d.buttons) &&
     isFiniteNumber(d.aimAngle) &&
     isFiniteNumber(d.moveX) &&
@@ -64,8 +69,9 @@ function isValidInput(data: unknown): data is InputState {
 }
 
 /** Clamp validated input values to safe ranges */
-function clampInput(input: InputState): InputState {
+function clampInput(input: NetworkInput): NetworkInput {
   return {
+    seq: Math.max(1, input.seq | 0),
     buttons: input.buttons | 0, // truncate to integer
     aimAngle: Math.max(-Math.PI, Math.min(Math.PI, input.aimAngle)),
     moveX: Math.max(-1, Math.min(1, input.moveX)),
@@ -82,6 +88,7 @@ export class GameRoom extends Room<GameRoomState> {
   private systems!: SystemRegistry
   private slots = new Map<string, PlayerSlot>()
   private accumulator = 0
+  private readonly playerSeqs = new Map<number, number>()
 
   override onCreate() {
     const seed = Date.now()
@@ -103,6 +110,14 @@ export class GameRoom extends Room<GameRoomState> {
       slot.inputQueue.push(clampInput(data))
     })
 
+    // Clock sync ping/pong handler
+    this.onMessage('ping', (client, data: PingMessage) => {
+      client.send('pong', {
+        clientTime: data.clientTime,
+        serverTime: performance.now(),
+      } satisfies PongMessage)
+    })
+
     // Fixed-timestep simulation loop
     this.setSimulationInterval((deltaMs) => this.update(deltaMs), TICK_MS)
 
@@ -122,6 +137,7 @@ export class GameRoom extends Room<GameRoomState> {
       client,
       eid,
       inputQueue: [],
+      lastProcessedSeq: 0,
     })
 
     // Send game config to the joining client
@@ -176,7 +192,13 @@ export class GameRoom extends Room<GameRoomState> {
   private serverTick() {
     // 1. Pop one input per player into world.playerInputs (neutral if empty)
     for (const [, slot] of this.slots) {
-      this.world.playerInputs.set(slot.eid, slot.inputQueue.shift() ?? neutralInput)
+      const input = slot.inputQueue.shift()
+      if (input) {
+        slot.lastProcessedSeq = input.seq
+        this.world.playerInputs.set(slot.eid, input)
+      } else {
+        this.world.playerInputs.set(slot.eid, neutralInput)
+      }
     }
 
     // 2. Step simulation — DO NOT pass input param (that's the single-player bridge)
@@ -192,11 +214,17 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private broadcastSnapshot() {
+    // Repopulate reusable seq acknowledgment map
+    this.playerSeqs.clear()
+    for (const [, slot] of this.slots) {
+      this.playerSeqs.set(slot.eid, slot.lastProcessedSeq)
+    }
+
     // encodeSnapshot returns a Uint8Array view into a shared buffer.
     // sendBytes copies data into the WebSocket send queue synchronously,
     // so broadcasting the same view to multiple clients is safe. The next
     // encodeSnapshot call only happens on the next serverTick.
-    const snapshot = encodeSnapshot(this.world)
+    const snapshot = encodeSnapshot(this.world, performance.now(), this.playerSeqs)
     for (const [, slot] of this.slots) {
       slot.client.sendBytes('snapshot', snapshot)
     }
