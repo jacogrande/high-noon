@@ -5,10 +5,12 @@
  * Health check → Dead check → distance check → callback.
  */
 
-import { hasComponent } from 'bitecs'
+import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Enemy, Health, Dead, Position } from '../components'
 import { forEachInRadius } from '../SpatialHash'
+
+const enemyQuery = defineQuery([Enemy, Health, Position])
 
 /**
  * Call `callback` for every alive enemy entity within `radius` of (`cx`, `cy`).
@@ -23,11 +25,9 @@ export function forEachAliveEnemyInRadius(
   radius: number,
   callback: (enemyEid: number, dx: number, dy: number, distSq: number) => void,
 ): void {
-  if (!world.spatialHash) return
-
   const rSq = radius * radius
 
-  forEachInRadius(world.spatialHash, cx, cy, radius, (eid) => {
+  const visitEnemy = (eid: number): void => {
     if (!hasComponent(world, Enemy, eid)) return
     if (!hasComponent(world, Health, eid)) return
     if (hasComponent(world, Dead, eid)) return
@@ -37,7 +37,18 @@ export function forEachAliveEnemyInRadius(
     const dy = Position.y[eid]! - cy
     const distSq = dx * dx + dy * dy
     if (distSq > rSq) return
-
     callback(eid, dx, dy, distSq)
-  })
+  }
+
+  // In local-player prediction/replay, entity positions can advance for several
+  // ticks between authoritative hash rebuilds. Prefer direct ECS scan there.
+  if (world.spatialHash && world.simulationScope !== 'local-player') {
+    forEachInRadius(world.spatialHash, cx, cy, radius, visitEnemy)
+    return
+  }
+
+  // Fallback for startup/prediction frames before a spatial hash exists.
+  for (const eid of enemyQuery(world)) {
+    visitEnemy(eid)
+  }
 }

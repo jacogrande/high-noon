@@ -3,6 +3,7 @@ import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer, spawnSwarmer } from '../prefabs'
 import { meleeSystem, isInArc } from './melee'
+import { weaponSystem } from './weapon'
 import { buffSystem } from './buffSystem'
 import { PROSPECTOR } from '../content/characters/prospector'
 import { Button, createInputState, setButton, type InputState } from '../../net/input'
@@ -55,12 +56,12 @@ function doQuickSwing(world: GameWorld, eid: number, aimAngle = 0): void {
   Player.aimAngle[eid] = aimAngle
 
   // Tick 1: press shoot (starts charging)
-  Player.shootWasDown[eid] = 0
+  MeleeWeapon.shootWasDown[eid] = 0
   world.playerInputs.set(eid, createShootInput(aimAngle))
   meleeSystem(world, 1 / 60)
 
   // Tick 2: release shoot (fires the swing)
-  Player.shootWasDown[eid] = 1
+  MeleeWeapon.shootWasDown[eid] = 1
   const releaseInput = createInputState()
   releaseInput.aimAngle = aimAngle
   world.playerInputs.set(eid, releaseInput)
@@ -123,7 +124,7 @@ describe('meleeSystem', () => {
     test('cannot swing while on cooldown', () => {
       MeleeWeapon.swingCooldown[playerEid] = 0.5
 
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput())
       meleeSystem(world, 1 / 60)
 
@@ -131,7 +132,7 @@ describe('meleeSystem', () => {
     })
 
     test('first press starts charging', () => {
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput())
       meleeSystem(world, 1 / 60)
 
@@ -139,8 +140,60 @@ describe('meleeSystem', () => {
       expect(MeleeWeapon.chargeTimer[playerEid]).toBe(0)
     })
 
+    test('weapon system and melee system can both run without consuming melee edges', () => {
+      const enemyEid = placeEnemy(world, 130, 100)
+      const startHP = Health.current[enemyEid]!
+
+      // Tick 1: press
+      MeleeWeapon.shootWasDown[playerEid] = 0
+      world.playerInputs.set(playerEid, createShootInput(0))
+      weaponSystem(world, 1 / 60)
+      meleeSystem(world, 1 / 60)
+
+      // Tick 2: release
+      MeleeWeapon.shootWasDown[playerEid] = 1
+      const releaseInput = createInputState()
+      releaseInput.aimAngle = 0
+      world.playerInputs.set(playerEid, releaseInput)
+      weaponSystem(world, 1 / 60)
+      meleeSystem(world, 1 / 60)
+
+      expect(MeleeWeapon.swungThisTick[playerEid]).toBe(1)
+      expect(Health.current[enemyEid]).toBe(startHP - PICKAXE_SWING_DAMAGE)
+    })
+
     test('swing damages enemies in arc', () => {
       const enemyEid = placeEnemy(world, 130, 100)
+      const startHP = Health.current[enemyEid]!
+
+      doQuickSwing(world, playerEid, 0)
+
+      expect(Health.current[enemyEid]).toBe(startHP - PICKAXE_SWING_DAMAGE)
+    })
+
+    test('swing still damages when spatial hash is unavailable', () => {
+      const enemyEid = spawnSwarmer(world, 130, 100)
+      const startHP = Health.current[enemyEid]!
+      world.spatialHash = null
+
+      doQuickSwing(world, playerEid, 0)
+
+      expect(Health.current[enemyEid]).toBe(startHP - PICKAXE_SWING_DAMAGE)
+    })
+
+    test('local-player prediction ignores stale spatial hash and still damages', () => {
+      const enemyEid = spawnSwarmer(world, 130, 100)
+      world.simulationScope = 'local-player'
+      world.localPlayerEid = playerEid
+
+      // Build hash with enemy far away.
+      Position.x[enemyEid] = 600
+      Position.y[enemyEid] = 600
+      rebuildHash(world)
+
+      // Move enemy into range without rebuilding hash (stale broadphase).
+      Position.x[enemyEid] = 130
+      Position.y[enemyEid] = 100
       const startHP = Health.current[enemyEid]!
 
       doQuickSwing(world, playerEid, 0)
@@ -188,7 +241,7 @@ describe('meleeSystem', () => {
       Player.aimAngle[playerEid] = 0
 
       // Start charging
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput(0))
       meleeSystem(world, 1 / 60)
 
@@ -196,7 +249,7 @@ describe('meleeSystem', () => {
       MeleeWeapon.chargeTimer[playerEid] = PICKAXE_CHARGE_TIME + 0.01
 
       // Release
-      Player.shootWasDown[playerEid] = 1
+      MeleeWeapon.shootWasDown[playerEid] = 1
       const releaseInput = createInputState()
       releaseInput.aimAngle = 0
       world.playerInputs.set(playerEid, releaseInput)
@@ -216,7 +269,7 @@ describe('meleeSystem', () => {
       Roll.duration[playerEid] = 0.3
       Roll.elapsed[playerEid] = 0.1
 
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput())
       meleeSystem(world, 1 / 60)
 
@@ -226,7 +279,7 @@ describe('meleeSystem', () => {
     test('cannot swing while in ROLLING state', () => {
       PlayerState.state[playerEid] = PlayerStateType.ROLLING
 
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput())
       meleeSystem(world, 1 / 60)
 
@@ -319,7 +372,7 @@ describe('meleeSystem', () => {
       Player.aimAngle[playerEid] = 0
 
       // Start charging
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput(0))
       meleeSystem(world, 1 / 60)
 
@@ -327,7 +380,7 @@ describe('meleeSystem', () => {
       MeleeWeapon.chargeTimer[playerEid] = PICKAXE_CHARGE_TIME + 0.01
 
       // Release
-      Player.shootWasDown[playerEid] = 1
+      MeleeWeapon.shootWasDown[playerEid] = 1
       const releaseInput = createInputState()
       releaseInput.aimAngle = 0
       world.playerInputs.set(playerEid, releaseInput)
@@ -348,7 +401,7 @@ describe('meleeSystem', () => {
       Player.aimAngle[playerEid] = 0
 
       // Start charging
-      Player.shootWasDown[playerEid] = 0
+      MeleeWeapon.shootWasDown[playerEid] = 0
       world.playerInputs.set(playerEid, createShootInput(0))
       meleeSystem(world, 1 / 60)
 
@@ -356,7 +409,7 @@ describe('meleeSystem', () => {
       MeleeWeapon.chargeTimer[playerEid] = PICKAXE_CHARGE_TIME + 0.01
 
       // Release — charged swing kills the enemy
-      Player.shootWasDown[playerEid] = 1
+      MeleeWeapon.shootWasDown[playerEid] = 1
       const releaseInput = createInputState()
       releaseInput.aimAngle = 0
       world.playerInputs.set(playerEid, releaseInput)

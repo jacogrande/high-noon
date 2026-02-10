@@ -16,6 +16,8 @@ export class Input {
   private mouseY = 0
   private mouseDown = false
   private mouseRightDown = false
+  /** One-tick edge buffer for action inputs that may be tapped between fixed ticks. */
+  private transientButtons = 0
 
   /** Reference position for aim calculation (usually player position) */
   private refX = 0
@@ -49,6 +51,23 @@ export class Input {
     // Ignore repeat events
     if (e.repeat) return
     this.keys.add(e.code)
+
+    // Preserve short taps between fixed-tick polls.
+    switch (e.code) {
+      case 'ShiftLeft':
+      case 'ShiftRight':
+        this.transientButtons |= Button.ROLL
+        break
+      case 'Space':
+        this.transientButtons |= Button.JUMP
+        break
+      case 'KeyR':
+        this.transientButtons |= Button.RELOAD
+        break
+      case 'KeyQ':
+        this.transientButtons |= Button.ABILITY
+        break
+    }
   }
 
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -63,8 +82,10 @@ export class Input {
   private onMouseDown = (e: MouseEvent): void => {
     if (e.button === 0) {
       this.mouseDown = true
+      this.transientButtons |= Button.SHOOT
     } else if (e.button === 2) {
       this.mouseRightDown = true
+      this.transientButtons |= Button.ABILITY
     }
   }
 
@@ -140,6 +161,7 @@ export class Input {
    */
   getInputState(): InputState {
     const input = createInputState()
+    const transientButtons = this.transientButtons
 
     // Movement buttons
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) {
@@ -156,13 +178,13 @@ export class Input {
     }
 
     // Action buttons
-    if (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) {
+    if ((transientButtons & Button.ROLL) !== 0 || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) {
       input.buttons |= Button.ROLL
     }
-    if (this.keys.has('Space')) {
+    if ((transientButtons & Button.JUMP) !== 0 || this.keys.has('Space')) {
       input.buttons |= Button.JUMP
     }
-    if (this.mouseDown) {
+    if ((transientButtons & Button.SHOOT) !== 0 || this.mouseDown) {
       input.buttons |= Button.SHOOT
     }
 
@@ -172,12 +194,12 @@ export class Input {
     }
 
     // Reload
-    if (this.keys.has('KeyR')) {
+    if ((transientButtons & Button.RELOAD) !== 0 || this.keys.has('KeyR')) {
       input.buttons |= Button.RELOAD
     }
 
     // Ability (Showdown)
-    if (this.mouseRightDown || this.keys.has('KeyQ')) {
+    if ((transientButtons & Button.ABILITY) !== 0 || this.mouseRightDown || this.keys.has('KeyQ')) {
       input.buttons |= Button.ABILITY
     }
 
@@ -208,6 +230,9 @@ export class Input {
     // Cursor world position (for Showdown targeting)
     input.cursorWorldX = this.screenToWorldX(this.mouseX)
     input.cursorWorldY = this.screenToWorldY(this.mouseY)
+
+    // One-shot consumption: hold-state is still sourced from keys/mouse booleans.
+    this.transientButtons = 0
 
     return input
   }

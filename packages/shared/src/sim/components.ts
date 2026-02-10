@@ -241,6 +241,8 @@ export const MeleeWeapon = {
   chargeTimer: new Float32Array(MAX_ENTITIES),
   /** Whether currently charging (0/1) */
   charging: new Uint8Array(MAX_ENTITIES),
+  /** Whether shoot button was held last tick for melee edge detection */
+  shootWasDown: new Uint8Array(MAX_ENTITIES),
   /** Whether a swing happened this tick (0/1, for VFX trigger) */
   swungThisTick: new Uint8Array(MAX_ENTITIES),
   /** Whether swing was charged (0/1, for VFX) */

@@ -83,13 +83,13 @@ export function meleeSystem(world: GameWorld, dt: number): void {
 
     const input = world.playerInputs.get(eid)
     if (!input) {
-      Player.shootWasDown[eid] = 0
+      MeleeWeapon.shootWasDown[eid] = 0
       continue
     }
 
     const wantsShoot = hasButton(input, Button.SHOOT)
-    const wasShootDown = Player.shootWasDown[eid] === 1
-    Player.shootWasDown[eid] = wantsShoot ? 1 : 0
+    const wasShootDown = MeleeWeapon.shootWasDown[eid] === 1
+    MeleeWeapon.shootWasDown[eid] = wantsShoot ? 1 : 0
 
     // Can't swing while rolling
     const isRolling =

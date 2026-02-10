@@ -167,6 +167,7 @@ export function spawnPlayer(
     MeleeWeapon.swingCooldown[eid] = 0
     MeleeWeapon.chargeTimer[eid] = 0
     MeleeWeapon.charging[eid] = 0
+    MeleeWeapon.shootWasDown[eid] = 0
     MeleeWeapon.swungThisTick[eid] = 0
     MeleeWeapon.wasChargedSwing[eid] = 0
     MeleeWeapon.swingAngle[eid] = 0
