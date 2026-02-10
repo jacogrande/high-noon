@@ -15,6 +15,9 @@ Sprite management and visual effects.
 - `PlayerRenderer.ts` - Player entity rendering with interpolation, animation, damage flash, and multiplayer remote tint
 - `BulletRenderer.ts` - Bullet rendering with interpolation
 - `EnemyRenderer.ts` - Enemy entity rendering (colored circles, AI state visuals, threat outlines)
+- `ShowdownRenderer.ts` - Sheriff showdown mark/line rendering
+- `LastRitesRenderer.ts` - Undertaker Last Rites zone ring/fill rendering
+- `DynamiteRenderer.ts` - Prospector dynamite throw/fuse telegraph rendering
 - `TilemapRenderer.ts` - Tilemap rendering (walls as colored rectangles)
 - `DebugRenderer.ts` - Debug shapes and stats overlay
 

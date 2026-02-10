@@ -47,6 +47,11 @@ export type GameplayEvent =
   | { type: 'showdown-activate' }
   | { type: 'showdown-kill' }
   | { type: 'showdown-expire' }
+  | { type: 'last-rites-activate' }
+  | { type: 'last-rites-pulse'; x: number; y: number; radius: number }
+  | { type: 'last-rites-expire' }
+  | { type: 'dynamite-detonation'; x: number; y: number; radius: number }
+  | { type: 'dynamite-fuse-sparks'; x: number; y: number; intensity: number }
   | { type: 'level-up'; x: number; y: number }
 
 export class GameplayEventBuffer {

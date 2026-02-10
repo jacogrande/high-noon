@@ -29,7 +29,8 @@ import {
   Dead,
   ZPosition,
   JUMP_HEIGHT,
-  REVOLVER_SPRITE,
+  getWeaponSpriteForCharacter,
+  type WeaponSpriteData,
 } from '@high-noon/shared'
 import {
   AssetLoader,
@@ -44,16 +45,31 @@ import {
 const ALPHA_NORMAL = 1.0
 const ALPHA_INVINCIBLE = 0.5
 
-/** Current weapon visual data */
-const WEAPON = REVOLVER_SPRITE
 const KICK_DECAY = 0.85
 const KICK_EPSILON = 0.1
 
+/** Lerp between two 0xRRGGBB colors. */
+function lerpColor(from: number, to: number, t: number): number {
+  const fr = (from >> 16) & 0xff
+  const fg = (from >> 8) & 0xff
+  const fb = from & 0xff
+  const tr = (to >> 16) & 0xff
+  const tg = (to >> 8) & 0xff
+  const tb = to & 0xff
+  const r = Math.round(fr + (tr - fr) * t)
+  const g = Math.round(fg + (tg - fg) * t)
+  const b = Math.round(fb + (tb - fb) * t)
+  return (r << 16) | (g << 8) | b
+}
+
 /** Player body sprite scale */
 const BODY_SCALE = 2
-const WEAPON_SCALE = BODY_SCALE * WEAPON.scale
 const SHADOW_BASE_ALPHA = 0.24
 const SHADOW_MIN_SCALE = 0.6
+
+function getWeaponScale(weapon: WeaponSpriteData): number {
+  return BODY_SCALE * weapon.scale
+}
 
 /** Per-player visual state */
 interface PlayerVisuals {
@@ -62,6 +78,7 @@ interface PlayerVisuals {
   bodySprite: Sprite
   weaponPivot: Container
   weaponSprite: Sprite
+  weapon: WeaponSpriteData
   kickOffset: number
   deathStartTime: number | null
 }
@@ -90,6 +107,34 @@ export class PlayerRenderer {
     this.entityLayer = entityLayer
   }
 
+  private resolveWeaponData(world: GameWorld, eid: number): WeaponSpriteData {
+    const characterId = world.playerCharacters.get(eid) ?? world.characterId
+    return getWeaponSpriteForCharacter(characterId)
+  }
+
+  private syncWeaponVisual(world: GameWorld, eid: number, visuals: PlayerVisuals): WeaponSpriteData {
+    const nextWeapon = this.resolveWeaponData(world, eid)
+    const current = visuals.weapon
+
+    if (
+      nextWeapon.sprite !== current.sprite ||
+      nextWeapon.scale !== current.scale ||
+      nextWeapon.gripOffset.x !== current.gripOffset.x ||
+      nextWeapon.gripOffset.y !== current.gripOffset.y ||
+      nextWeapon.barrelTip.x !== current.barrelTip.x ||
+      nextWeapon.barrelTip.y !== current.barrelTip.y
+    ) {
+      visuals.weapon = nextWeapon
+      visuals.weaponSprite.texture = AssetLoader.getWeaponTexture(nextWeapon.sprite)
+      const weaponScale = getWeaponScale(nextWeapon)
+      const aimedLeft = visuals.weaponSprite.scale.y < 0
+      visuals.weaponSprite.scale.set(weaponScale, aimedLeft ? -weaponScale : weaponScale)
+      visuals.kickOffset = 0
+    }
+
+    return visuals.weapon
+  }
+
   /**
    * Sync sprites with player entities.
    * Creates Container hierarchy for new players, removes for despawned ones.
@@ -103,6 +148,8 @@ export class PlayerRenderer {
       activeEntities.add(eid)
 
       if (!this.players.has(eid)) {
+        const weapon = this.resolveWeaponData(world, eid)
+
         // Build container hierarchy
         const container = new Container()
         container.sortableChildren = true
@@ -123,14 +170,14 @@ export class PlayerRenderer {
 
         // Weapon pivot — positioned at grip offset, rotates to aimAngle
         const weaponPivot = new Container()
-        weaponPivot.position.set(WEAPON.gripOffset.x, WEAPON.gripOffset.y)
+        weaponPivot.position.set(weapon.gripOffset.x, weapon.gripOffset.y)
         weaponPivot.zIndex = 1 // in front by default
 
         // Weapon sprite — anchor at left-center (grip point)
-        const weaponTexture = AssetLoader.getWeaponTexture(WEAPON.sprite)
+        const weaponTexture = AssetLoader.getWeaponTexture(weapon.sprite)
         const weaponSprite = new Sprite(weaponTexture)
         weaponSprite.anchor.set(0, 0.5)
-        weaponSprite.scale.set(WEAPON_SCALE)
+        weaponSprite.scale.set(getWeaponScale(weapon))
         weaponPivot.addChild(weaponSprite)
 
         container.addChild(weaponPivot)
@@ -142,6 +189,7 @@ export class PlayerRenderer {
           bodySprite,
           weaponPivot,
           weaponSprite,
+          weapon,
           kickOffset: 0,
           deathStartTime: null,
         })
@@ -170,7 +218,7 @@ export class PlayerRenderer {
   triggerRecoil(eid: number): void {
     const visuals = this.players.get(eid)
     if (visuals) {
-      visuals.kickOffset = -WEAPON.kickDistance
+      visuals.kickOffset = -visuals.weapon.kickDistance
     }
   }
 
@@ -203,6 +251,8 @@ export class PlayerRenderer {
       const visuals = this.players.get(eid)
       if (!visuals) continue
 
+      const weapon = this.syncWeaponVisual(world, eid, visuals)
+      const weaponScale = getWeaponScale(weapon)
       const { container, shadow, bodySprite, weaponPivot, weaponSprite } = visuals
 
       // Interpolate between previous and current position
@@ -223,7 +273,7 @@ export class PlayerRenderer {
       )
       shadow.alpha = SHADOW_BASE_ALPHA * (1 - jumpRatio * 0.7)
       bodySprite.y = -z
-      weaponPivot.position.set(WEAPON.gripOffset.x, WEAPON.gripOffset.y - z)
+      weaponPivot.position.set(weapon.gripOffset.x, weapon.gripOffset.y - z)
 
       // Determine animation state and direction
       const playerState = PlayerState.state[eid]!
@@ -289,7 +339,7 @@ export class PlayerRenderer {
 
       // Flip weapon vertically when aiming left (|angle| > PI/2)
       const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
-      weaponSprite.scale.y = aimingLeft ? -WEAPON_SCALE : WEAPON_SCALE
+      weaponSprite.scale.y = aimingLeft ? -weaponScale : weaponScale
 
       // Depth swap: weapon behind body when aiming up
       const aimingUp = aimAngle < -Math.PI / 4 && aimAngle > -3 * Math.PI / 4
@@ -326,6 +376,24 @@ export class PlayerRenderer {
         const flash = Math.floor(flashTick / 3) % 2 === 0
         bodySprite.tint = flash ? 0xFF4444 : baseTint
         weaponSprite.tint = flash ? 0xFF4444 : baseTint
+      } else if (!isDead) {
+        const upgradeState = world.playerUpgradeStates.get(eid)
+        if (upgradeState?.dynamiteCooking) {
+          const maxFuse = Math.max(upgradeState.dynamiteFuse, 0.0001)
+          const cookProgress = Math.min(upgradeState.dynamiteCookTimer / maxFuse, 1)
+          let cookTint: number
+          if (cookProgress >= 0.75) {
+            const pulse = Math.sin(performance.now() * 0.016) * 0.5 + 0.5
+            cookTint = lerpColor(0xFF6622, 0xFF2200, pulse)
+          } else {
+            cookTint = lerpColor(0xFFFFFF, 0xFF6622, cookProgress / 0.75)
+          }
+          bodySprite.tint = cookTint
+          weaponSprite.tint = cookTint
+        } else {
+          bodySprite.tint = baseTint
+          weaponSprite.tint = baseTint
+        }
       } else {
         bodySprite.tint = baseTint
         weaponSprite.tint = baseTint
@@ -345,8 +413,8 @@ export class PlayerRenderer {
     const cos = Math.cos(aimAngle)
     const sin = Math.sin(aimAngle)
 
-    const btx = WEAPON.barrelTip.x
-    const bty = WEAPON.barrelTip.y
+    const btx = visuals.weapon.barrelTip.x
+    const bty = visuals.weapon.barrelTip.y
 
     // When aiming left, the weapon flips vertically so Y is negated
     const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
@@ -374,20 +442,21 @@ export class PlayerRenderer {
     const isRolling = hasComponent(world, Roll, eid) || PlayerState.state[eid] === PlayerStateType.ROLLING
     if (isDead || isRolling) return null
 
+    const weapon = this.players.get(eid)?.weapon ?? this.resolveWeaponData(world, eid)
     const x = baseX ?? Position.x[eid]!
     const y = baseY ?? Position.y[eid]!
     const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
     const aimAngle = Player.aimAngle[eid]!
     const cos = Math.cos(aimAngle)
     const sin = Math.sin(aimAngle)
-    const btx = WEAPON.barrelTip.x
-    const bty = WEAPON.barrelTip.y
+    const btx = weapon.barrelTip.x
+    const bty = weapon.barrelTip.y
     const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
     const localY = aimingLeft ? -bty : bty
 
     return {
-      x: x + WEAPON.gripOffset.x + cos * btx - sin * localY,
-      y: y + WEAPON.gripOffset.y - z + sin * btx + cos * localY,
+      x: x + weapon.gripOffset.x + cos * btx - sin * localY,
+      y: y + weapon.gripOffset.y - z + sin * btx + cos * localY,
     }
   }
 

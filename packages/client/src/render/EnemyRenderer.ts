@@ -71,6 +71,8 @@ export class EnemyRenderer {
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
   /** Entity ID of the Showdown-marked target (set by GameScene each tick) */
   showdownTargetEid: number = NO_TARGET
+  /** Active Last Rites zone for enemy tinting (set by scene controller each tick). */
+  lastRitesZone: { x: number; y: number; radius: number } | null = null
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -181,6 +183,15 @@ export class EnemyRenderer {
 
       let color = normalColor
       let a = 1.0
+
+      // Last Rites zone tint (enemies inside zone get purple tint).
+      if (this.lastRitesZone) {
+        const zdx = currX - this.lastRitesZone.x
+        const zdy = currY - this.lastRitesZone.y
+        if (zdx * zdx + zdy * zdy <= this.lastRitesZone.radius * this.lastRitesZone.radius) {
+          color = 0x9944cc
+        }
+      }
 
       // Showdown target tint (persistent, overridden by damage flash / telegraph)
       if (eid === this.showdownTargetEid) {

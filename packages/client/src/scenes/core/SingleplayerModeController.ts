@@ -53,6 +53,8 @@ import { PlayerRenderer } from '../../render/PlayerRenderer'
 import { BulletRenderer } from '../../render/BulletRenderer'
 import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
+import { LastRitesRenderer } from '../../render/LastRitesRenderer'
+import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
@@ -70,6 +72,8 @@ import { SINGLEPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
 import {
   emitCylinderPresentationEvents,
+  emitDynamiteCueEvents,
+  emitLastRitesCueEvents,
   emitPlayerHitEvent,
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
@@ -102,6 +106,8 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
   private readonly showdownRenderer: ShowdownRenderer
+  private readonly lastRitesRenderer: LastRitesRenderer
+  private readonly dynamiteRenderer: DynamiteRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly sound: SoundManager
@@ -139,6 +145,8 @@ export class SingleplayerModeController implements SceneModeController {
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
+    this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
+    this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -368,12 +376,15 @@ export class SingleplayerModeController implements SceneModeController {
     this.simulationDriver.step(inputState)
 
     emitShowdownCueEvents(this.gameplayEvents, this.world)
+    emitLastRitesCueEvents(this.gameplayEvents, this.world)
+    emitDynamiteCueEvents(this.gameplayEvents, this.world, playerEid)
 
     // Set showdown target for enemy tinting
     this.enemyRenderer.showdownTargetEid =
       playerEid !== null && hasComponent(this.world, Showdown, playerEid) && Showdown.active[playerEid]! === 1
         ? Showdown.targetEid[playerEid]!
         : NO_TARGET
+    this.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
 
     // Detect player damage (i-frames went from 0 to >0)
     if (playerEid !== null) {
@@ -482,9 +493,13 @@ export class SingleplayerModeController implements SceneModeController {
     // Render enemies with interpolation
     this.enemyRenderer.render(this.world, alpha, realDt)
 
+    // Render dynamite pixel-fuse telegraphs + throw arcs.
+    this.dynamiteRenderer.render(this.world, realDt, this.particles)
+
     // Render showdown mark + line
     const playerEid = this.playerRenderer.getPlayerEntity()
     this.showdownRenderer.render(this.world, playerEid, alpha, realDt)
+    this.lastRitesRenderer.render(this.world, alpha, realDt)
 
     // Update particles (visual-only, uses real frame dt)
     this.particles.update(realDt)
@@ -554,6 +569,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.tilemapRenderer.destroy()
     this.playerRenderer.destroy()
     this.enemyRenderer.destroy()
+    this.lastRitesRenderer.destroy()
+    this.dynamiteRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()

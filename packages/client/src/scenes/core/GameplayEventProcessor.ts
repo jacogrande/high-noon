@@ -1,4 +1,15 @@
-import { emitDeathBurst, emitEntityImpact, emitLevelUpSparkle, emitMuzzleFlash, emitWallImpact, FloatingTextPool, ParticlePool } from '../../fx'
+import {
+  emitDeathBurst,
+  emitDeathPulse,
+  emitEntityImpact,
+  emitExplosion,
+  emitFuseSparks,
+  emitLevelUpSparkle,
+  emitMuzzleFlash,
+  emitWallImpact,
+  FloatingTextPool,
+  ParticlePool,
+} from '../../fx'
 import { SoundManager } from '../../audio/SoundManager'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
@@ -105,6 +116,29 @@ export class GameplayEventProcessor {
 
         case 'showdown-expire':
           this.sound.play('showdown_expire')
+          break
+
+        case 'last-rites-activate':
+          this.sound.play('showdown_activate')
+          break
+
+        case 'last-rites-pulse':
+          this.sound.play('enemy_die')
+          emitDeathPulse(this.particles, event.x, event.y, event.radius)
+          break
+
+        case 'last-rites-expire':
+          this.sound.play('showdown_expire')
+          break
+
+        case 'dynamite-detonation':
+          this.camera.addTrauma(0.3)
+          this.sound.play('enemy_die')
+          emitExplosion(this.particles, event.x, event.y, event.radius)
+          break
+
+        case 'dynamite-fuse-sparks':
+          emitFuseSparks(this.particles, event.x, event.y, event.intensity)
           break
 
         case 'level-up':

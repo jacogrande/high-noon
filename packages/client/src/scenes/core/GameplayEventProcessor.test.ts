@@ -43,4 +43,43 @@ describe('GameplayEventProcessor', () => {
     expect(simHitStop.isFrozen).toBe(true)
     expect(renderPause.isFrozen).toBe(true)
   })
+
+  test('last rites and dynamite cues trigger shared particles/sounds', () => {
+    const traumas: number[] = []
+    const sounds: string[] = []
+    const emissions: number[] = []
+
+    const processor = new GameplayEventProcessor({
+      camera: {
+        addTrauma: (v: number) => { traumas.push(v) },
+        applyKick: () => {},
+      } as never,
+      sound: {
+        play: (id: string) => { sounds.push(id) },
+      } as never,
+      particles: {
+        emit: () => { emissions.push(1) },
+      } as never,
+      floatingText: {} as never,
+      playerRenderer: {} as never,
+    })
+
+    const events: GameplayEvent[] = [
+      { type: 'last-rites-activate' },
+      { type: 'last-rites-pulse', x: 0, y: 0, radius: 60 },
+      { type: 'last-rites-expire' },
+      { type: 'dynamite-fuse-sparks', x: 20, y: 30, intensity: 0.8 },
+      { type: 'dynamite-detonation', x: 100, y: 200, radius: 48 },
+    ]
+    processor.processAll(events)
+
+    expect(sounds).toEqual([
+      'showdown_activate',
+      'enemy_die',
+      'showdown_expire',
+      'enemy_die',
+    ])
+    expect(traumas).toEqual([0.3])
+    expect(emissions.length).toBeGreaterThan(0)
+  })
 })

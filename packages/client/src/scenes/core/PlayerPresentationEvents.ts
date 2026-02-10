@@ -1,4 +1,4 @@
-import type { InputState } from '@high-noon/shared'
+import { Position, type GameWorld, type InputState } from '@high-noon/shared'
 import type { GameplayEventBuffer } from './GameplayEvents'
 import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
 import {
@@ -85,4 +85,50 @@ export function emitShowdownCueEvents(events: GameplayEventBuffer, flags: EmitSh
   if (flags.showdownActivatedThisTick) events.push({ type: 'showdown-activate' })
   if (flags.showdownKillThisTick) events.push({ type: 'showdown-kill' })
   if (flags.showdownExpiredThisTick) events.push({ type: 'showdown-expire' })
+}
+
+/**
+ * Emit Last Rites ability cues (Undertaker) from per-tick world flags.
+ */
+export function emitLastRitesCueEvents(events: GameplayEventBuffer, world: GameWorld): void {
+  if (world.lastRitesActivatedThisTick) {
+    events.push({ type: 'last-rites-activate' })
+  }
+  if (world.lastRitesPulseThisTick && world.lastRites?.active) {
+    events.push({
+      type: 'last-rites-pulse',
+      x: world.lastRites.x,
+      y: world.lastRites.y,
+      radius: world.lastRites.radius,
+    })
+  }
+  if (world.lastRitesExpiredThisTick) {
+    events.push({ type: 'last-rites-expire' })
+  }
+}
+
+/**
+ * Emit Prospector dynamite presentation cues from world state.
+ */
+export function emitDynamiteCueEvents(
+  events: GameplayEventBuffer,
+  world: GameWorld,
+  playerEid: number | null,
+): void {
+  if (world.dynamiteDetonatedThisTick) {
+    for (const det of world.dynamiteDetonations) {
+      events.push({ type: 'dynamite-detonation', x: det.x, y: det.y, radius: det.radius })
+    }
+  }
+
+  if (playerEid === null) return
+  const state = world.playerUpgradeStates.get(playerEid) ?? world.upgradeState
+  if (!state.dynamiteCooking || state.dynamiteFuse <= 0) return
+
+  events.push({
+    type: 'dynamite-fuse-sparks',
+    x: Position.x[playerEid]!,
+    y: Position.y[playerEid]!,
+    intensity: Math.min(state.dynamiteCookTimer / state.dynamiteFuse, 1),
+  })
 }

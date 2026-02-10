@@ -141,6 +141,136 @@ export function emitEntityImpact(
 }
 
 /**
+ * Death pulse — expanding ring of purple particles from Last Rites zone.
+ */
+export function emitDeathPulse(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  radius: number,
+): void {
+  const count = randInt(16, 24)
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + rand(-0.1, 0.1)
+    const speed = rand(40, 80)
+    const r = radius * rand(0.8, 1.0)
+    pool.emit({
+      x: x + Math.cos(angle) * r,
+      y: y + Math.sin(angle) * r,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.3, 0.5),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 0.8,
+      endAlpha: 0,
+      tint: 0x8833cc,
+    })
+  }
+}
+
+/**
+ * Explosion — ring burst expanding outward from detonation point.
+ */
+export function emitExplosion(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  radius: number,
+): void {
+  const outerCount = randInt(16, 24)
+  for (let i = 0; i < outerCount; i++) {
+    const angle = (i / outerCount) * Math.PI * 2 + rand(-0.15, 0.15)
+    const speed = (radius / 0.4) * rand(0.6, 1.0)
+    pool.emit({
+      x: x + Math.cos(angle) * rand(0, 6),
+      y: y + Math.sin(angle) * rand(0, 6),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.3, 0.5),
+      startScale: rand(3, 6),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: 0xff6622,
+    })
+  }
+
+  const coreCount = randInt(4, 6)
+  for (let i = 0; i < coreCount; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(20, 50)
+    pool.emit({
+      x: x + rand(-3, 3),
+      y: y + rand(-3, 3),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.15, 0.3),
+      startScale: rand(4, 7),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: 0xffee88,
+    })
+  }
+}
+
+/**
+ * Fuse sparks from a cooking dynamite state.
+ * Intensity is expected in [0, 1].
+ */
+export function emitFuseSparks(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  intensity: number,
+): void {
+  const clamped = Math.max(0, Math.min(1, intensity))
+  const count = clamped < 0.4 ? randInt(1, 2) : randInt(3, 5)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(-Math.PI, 0)
+    const speed = rand(40, 100) + clamped * 60
+    pool.emit({
+      x: x + rand(-6, 6),
+      y: y - 8,
+      vx: Math.cos(angle) * speed * rand(0.5, 1),
+      vy: Math.sin(angle) * speed,
+      life: rand(0.2, 0.4),
+      startScale: rand(3, 5 + clamped * 3),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: clamped >= 0.75 ? 0xff2200 : 0xffaa22,
+    })
+  }
+}
+
+/**
+ * Dynamite trail — 1-2 small sparks emitted while in flight.
+ */
+export function emitDynamiteTrail(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(1, 2)
+  for (let i = 0; i < count; i++) {
+    pool.emit({
+      x: x + rand(-2, 2),
+      y: y + rand(-2, 2),
+      vx: rand(-15, 15),
+      vy: rand(5, 20),
+      life: rand(0.1, 0.2),
+      startScale: rand(1.5, 2.5),
+      endScale: 0,
+      startAlpha: 0.8,
+      endAlpha: 0,
+      tint: 0xff8822,
+    })
+  }
+}
+
+/**
  * Level-up sparkle — gold particles with upward bias from player position.
  */
 export function emitLevelUpSparkle(

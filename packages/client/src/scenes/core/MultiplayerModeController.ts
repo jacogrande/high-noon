@@ -36,6 +36,7 @@ import {
   type WorldSnapshot,
   type HudData,
   type CharacterId,
+  type PlayerRosterEntry,
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
@@ -49,6 +50,8 @@ import { PlayerRenderer } from '../../render/PlayerRenderer'
 import { BulletRenderer } from '../../render/BulletRenderer'
 import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
+import { LastRitesRenderer } from '../../render/LastRitesRenderer'
+import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool } from '../../fx'
 import { ClockSync } from '../../net/ClockSync'
@@ -69,7 +72,12 @@ import type { SceneModeController } from './SceneModeController'
 import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { MULTIPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
-import { emitCylinderPresentationEvents, emitShowdownCueEvents } from './PlayerPresentationEvents'
+import {
+  emitCylinderPresentationEvents,
+  emitDynamiteCueEvents,
+  emitLastRitesCueEvents,
+  emitShowdownCueEvents,
+} from './PlayerPresentationEvents'
 
 const GAME_ZOOM = 2
 
@@ -90,6 +98,8 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
   private readonly showdownRenderer: ShowdownRenderer
+  private readonly lastRitesRenderer: LastRitesRenderer
+  private readonly dynamiteRenderer: DynamiteRenderer
   private readonly tilemapRenderer: TilemapRenderer
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
@@ -119,6 +129,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly playerEntities = new Map<number, number>()
   private readonly bulletEntities = new Map<number, number>()
   private readonly enemyEntities = new Map<number, number>()
+  private readonly serverCharacterIds = new Map<number, CharacterId>()
 
   /** Local player identification */
   private myServerEid = -1
@@ -161,6 +172,8 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
+    this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
+    this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -260,6 +273,10 @@ export class MultiplayerModeController implements SceneModeController {
     this.net.on('game-config', (config: GameConfig) => {
       this.myServerEid = config.playerEid
       this.authoritativeCharacterId = config.characterId
+      this.serverCharacterIds.set(config.playerEid, config.characterId)
+      if (config.roster) {
+        this.applyPlayerRoster(config.roster)
+      }
       const charDef = getCharacterDef(config.characterId)
       this.world.characterId = config.characterId
       this.world.upgradeState = initUpgradeState(charDef)
@@ -267,9 +284,15 @@ export class MultiplayerModeController implements SceneModeController {
         this.world.playerUpgradeStates.set(this.myClientEid, this.world.upgradeState)
         this.world.playerCharacters.set(this.myClientEid, config.characterId)
       }
+      this.syncPlayerCharacterMapToWorld()
       this.connected = true
       console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
       this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
+    })
+
+    this.net.on('player-roster', (roster: PlayerRosterEntry[]) => {
+      this.applyPlayerRoster(roster)
+      this.syncPlayerCharacterMapToWorld()
     })
 
     this.net.on('snapshot', (snapshot: WorldSnapshot) => {
@@ -327,6 +350,7 @@ export class MultiplayerModeController implements SceneModeController {
         myServerEid: this.myServerEid,
         myClientEid: this.myClientEid,
         localCharacterId: this.authoritativeCharacterId,
+        resolveCharacterIdForServerEid: (serverEid) => this.serverCharacterIds.get(serverEid),
         setMyClientEid: (eid) => { this.myClientEid = eid },
         setLocalPlayerRenderEid: (eid) => { this.playerRenderer.localPlayerEid = eid },
         resolveRttMs: () => this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
@@ -335,6 +359,22 @@ export class MultiplayerModeController implements SceneModeController {
     )
     this.telemetry.onPredictedBulletsMatched(ingestStats.matchedPredictedBullets)
     this.telemetry.onPredictedBulletsTimedOut(ingestStats.timedOutPredictedBullets)
+  }
+
+  private applyPlayerRoster(entries: PlayerRosterEntry[]): void {
+    this.serverCharacterIds.clear()
+    for (const entry of entries) {
+      this.serverCharacterIds.set(entry.eid, entry.characterId)
+    }
+  }
+
+  private syncPlayerCharacterMapToWorld(): void {
+    for (const [serverEid, clientEid] of this.playerEntities) {
+      const characterId = this.serverCharacterIds.get(serverEid)
+      if (characterId) {
+        this.world.playerCharacters.set(clientEid, characterId)
+      }
+    }
   }
 
   private tickPlayerHitIframes(dt: number): void {
@@ -457,12 +497,15 @@ export class MultiplayerModeController implements SceneModeController {
     }
 
     emitShowdownCueEvents(this.gameplayEvents, this.world)
+    emitLastRitesCueEvents(this.gameplayEvents, this.world)
+    emitDynamiteCueEvents(this.gameplayEvents, this.world, this.myClientEid >= 0 ? this.myClientEid : null)
 
     // Showdown target tinting for enemies
     this.enemyRenderer.showdownTargetEid =
       hasComponent(this.world, Showdown, this.myClientEid) && Showdown.active[this.myClientEid]! === 1
         ? Showdown.targetEid[this.myClientEid]!
         : NO_TARGET
+    this.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
 
     // Advance local animation tick (monotonic, decoupled from snapshot tick)
     this.predictionTick++
@@ -562,7 +605,9 @@ export class MultiplayerModeController implements SceneModeController {
       this.bulletRenderer.render(this.world, alpha)
     }
     this.enemyRenderer.render(this.world, alpha, realDt)
+    this.dynamiteRenderer.render(this.world, realDt, this.particles)
     this.showdownRenderer.render(this.world, this.myClientEid >= 0 ? this.myClientEid : null, alpha, realDt)
+    this.lastRitesRenderer.render(this.world, alpha, realDt)
 
     // Update particles
     this.particles.update(realDt)
@@ -736,6 +781,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.tilemapRenderer.destroy()
     this.playerRenderer.destroy()
     this.enemyRenderer.destroy()
+    this.lastRitesRenderer.destroy()
+    this.dynamiteRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
