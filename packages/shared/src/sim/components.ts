@@ -284,7 +284,7 @@ export const AIState = {
 
 /** Enemy type identifiers */
 export const EnemyType = {
-  SWARMER: 0, GRUNT: 1, SHOOTER: 2, CHARGER: 3,
+  SWARMER: 0, GRUNT: 1, SHOOTER: 2, CHARGER: 3, GOBLIN_BARBARIAN: 4, GOBLIN_ROGUE: 5,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */

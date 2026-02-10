@@ -83,3 +83,50 @@ export const CHARGER_CHARGE_DURATION = 0.4
 export const CHARGER_SEPARATION_RADIUS = 28
 export const CHARGER_BUDGET_COST = 3
 export const CHARGER_TIER = EnemyTier.THREAT
+
+// ============================================================================
+// Goblin Barbarian — heavy melee fodder
+// ============================================================================
+
+export const GOBLIN_BARBARIAN_SPEED = 70
+export const GOBLIN_BARBARIAN_RADIUS = 10
+export const GOBLIN_BARBARIAN_HP = 4
+export const GOBLIN_BARBARIAN_AGGRO_RANGE = 250
+export const GOBLIN_BARBARIAN_ATTACK_RANGE = 35
+export const GOBLIN_BARBARIAN_TELEGRAPH = 0.5
+export const GOBLIN_BARBARIAN_RECOVERY = 0.6
+export const GOBLIN_BARBARIAN_COOLDOWN = 2.0
+export const GOBLIN_BARBARIAN_DAMAGE = 2
+export const GOBLIN_BARBARIAN_MELEE_REACH = 12
+export const GOBLIN_BARBARIAN_ATTACK_DURATION = 0.25
+export const GOBLIN_BARBARIAN_SEPARATION_RADIUS = 24
+export const GOBLIN_BARBARIAN_BUDGET_COST = 2
+export const GOBLIN_BARBARIAN_TIER = EnemyTier.FODDER
+
+// ============================================================================
+// Goblin Rogue — fast agile melee fodder
+// ============================================================================
+
+export const GOBLIN_ROGUE_SPEED = 110
+export const GOBLIN_ROGUE_RADIUS = 8
+export const GOBLIN_ROGUE_HP = 2
+export const GOBLIN_ROGUE_AGGRO_RANGE = 300
+export const GOBLIN_ROGUE_ATTACK_RANGE = 30
+export const GOBLIN_ROGUE_TELEGRAPH = 0.2
+export const GOBLIN_ROGUE_RECOVERY = 0.3
+export const GOBLIN_ROGUE_COOLDOWN = 1.5
+export const GOBLIN_ROGUE_DAMAGE = 1
+export const GOBLIN_ROGUE_MELEE_REACH = 10
+export const GOBLIN_ROGUE_ATTACK_DURATION = 0.25
+export const GOBLIN_ROGUE_SEPARATION_RADIUS = 18
+export const GOBLIN_ROGUE_BUDGET_COST = 1
+export const GOBLIN_ROGUE_TIER = EnemyTier.FODDER
+
+// ============================================================================
+// Goblin shared melee constants
+// ============================================================================
+
+/** Knockback speed applied to player on goblin melee hit (px/s) */
+export const GOBLIN_MELEE_KB_SPEED = 200
+/** Knockback duration for goblin melee hit (seconds) */
+export const GOBLIN_MELEE_KB_DURATION = 0.12
