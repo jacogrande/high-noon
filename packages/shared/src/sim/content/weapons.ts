@@ -4,6 +4,8 @@
  * Contains weapon balance values, bullet parameters, and visual data.
  */
 
+import type { CharacterId } from './characters'
+
 // ============================================================================
 // Weapon Sprite Data — visual definitions read by the client renderer
 // ============================================================================
@@ -187,6 +189,17 @@ export const PICKAXE_SPRITE: WeaponSpriteData = {
   barrelTip: { x: 24, y: 0 },
   kickDistance: 2,
   scale: 1.1,
+}
+
+/** Character -> primary weapon visual mapping. */
+export const CHARACTER_WEAPON_SPRITES: Record<CharacterId, WeaponSpriteData> = {
+  sheriff: REVOLVER_SPRITE,
+  undertaker: SAWED_OFF_SPRITE,
+  prospector: PICKAXE_SPRITE,
+}
+
+export function getWeaponSpriteForCharacter(characterId: CharacterId): WeaponSpriteData {
+  return CHARACTER_WEAPON_SPRITES[characterId] ?? REVOLVER_SPRITE
 }
 
 // ============================================================================

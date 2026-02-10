@@ -29,6 +29,8 @@ const MANIFEST = {
 /** Weapon sprite manifest: weaponId → path */
 const WEAPON_SPRITES: Record<string, string> = {
   revolver: '/assets/sprites/weapons/revolver.png',
+  sawed_off: '/assets/sprites/weapons/SawedOffShotgun.png',
+  pickaxe: '/assets/sprites/weapons/pickaxe.png',
 }
 
 /** Tile type to frame name mapping */
