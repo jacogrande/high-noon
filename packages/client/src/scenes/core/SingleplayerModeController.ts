@@ -75,6 +75,7 @@ import {
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
   emitLastRitesCueEvents,
+  emitMeleeSwingEvents,
   emitPlayerHitEvent,
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
@@ -437,6 +438,7 @@ export class SingleplayerModeController implements SceneModeController {
         fireKickStrength: 5,
       })
     }
+    emitMeleeSwingEvents(this.gameplayEvents, this.world, playerEid)
 
     // Level-up detection
     if (this.world.upgradeState.level > this.lastProcessedLevel) {

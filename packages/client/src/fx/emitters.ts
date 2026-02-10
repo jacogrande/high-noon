@@ -271,6 +271,43 @@ export function emitDynamiteTrail(
 }
 
 /**
+ * Swing arc — fan of particles along melee swing direction.
+ * Charged swings are larger and brighter.
+ */
+export function emitSwingArc(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  angle: number,
+  arcHalf: number,
+  reach: number,
+  isCharged: boolean,
+): void {
+  const count = isCharged ? randInt(10, 14) : randInt(6, 8)
+  const life = isCharged ? 0.3 : 0.2
+  const tint = isCharged ? 0xff8822 : 0xcc8844
+  const scale = isCharged ? rand(3, 5) : rand(2, 3.5)
+  for (let i = 0; i < count; i++) {
+    const t = (i / (count - 1)) * 2 - 1 // -1..1
+    const a = angle + t * arcHalf + rand(-0.1, 0.1)
+    const dist = reach * rand(0.4, 1.0)
+    const speed = rand(30, 70)
+    pool.emit({
+      x: x + Math.cos(a) * dist * 0.3,
+      y: y + Math.sin(a) * dist * 0.3,
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      life: rand(life * 0.7, life),
+      startScale: scale,
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint,
+    })
+  }
+}
+
+/**
  * Level-up sparkle — gold particles with upward bias from player position.
  */
 export function emitLevelUpSparkle(

@@ -6,6 +6,7 @@ import {
   emitFuseSparks,
   emitLevelUpSparkle,
   emitMuzzleFlash,
+  emitSwingArc,
   emitWallImpact,
   FloatingTextPool,
   ParticlePool,
@@ -95,6 +96,23 @@ export class GameplayEventProcessor {
           this.playerRenderer.triggerRecoil(event.eid)
           emitMuzzleFlash(this.particles, event.muzzleX, event.muzzleY, event.angle)
           this.spawnMuzzleLight?.(event.muzzleX, event.muzzleY)
+          break
+        }
+
+        case 'player-melee-swing': {
+          this.camera.addTrauma(event.trauma)
+          this.camera.applyKick(Math.cos(event.angle), Math.sin(event.angle), event.kickStrength)
+          this.sound.play('fire')
+          this.playerRenderer.triggerRecoil(event.eid)
+          emitSwingArc(
+            this.particles,
+            event.x,
+            event.y,
+            event.angle,
+            event.arcHalf,
+            event.reach,
+            event.charged,
+          )
           break
         }
 

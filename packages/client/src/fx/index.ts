@@ -9,5 +9,6 @@ export {
   emitExplosion,
   emitFuseSparks,
   emitDynamiteTrail,
+  emitSwingArc,
   emitLevelUpSparkle,
 } from './emitters'

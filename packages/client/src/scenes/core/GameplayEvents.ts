@@ -41,6 +41,18 @@ export type GameplayEvent =
       trauma: number
       kickStrength: number
     }
+  | {
+      type: 'player-melee-swing'
+      eid: number
+      x: number
+      y: number
+      angle: number
+      arcHalf: number
+      reach: number
+      charged: boolean
+      trauma: number
+      kickStrength: number
+    }
   | { type: 'reload-start' }
   | { type: 'reload-complete' }
   | { type: 'dry-fire' }

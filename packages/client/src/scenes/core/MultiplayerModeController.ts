@@ -77,6 +77,7 @@ import {
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
   emitLastRitesCueEvents,
+  emitMeleeSwingEvents,
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
 import { seedLavaLights } from './SceneLighting'
@@ -503,6 +504,7 @@ export class MultiplayerModeController implements SceneModeController {
         fireKickStrength: 5,
       })
     }
+    emitMeleeSwingEvents(this.gameplayEvents, this.world, this.myClientEid)
 
     emitShowdownCueEvents(this.gameplayEvents, this.world)
     emitLastRitesCueEvents(this.gameplayEvents, this.world)

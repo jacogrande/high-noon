@@ -1,4 +1,10 @@
-import { Position, type GameWorld, type InputState } from '@high-noon/shared'
+import {
+  MeleeWeapon,
+  PICKAXE_CHARGE_ARC,
+  Position,
+  type GameWorld,
+  type InputState,
+} from '@high-noon/shared'
 import type { GameplayEventBuffer } from './GameplayEvents'
 import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
 import {
@@ -130,5 +136,33 @@ export function emitDynamiteCueEvents(
     x: Position.x[playerEid]!,
     y: Position.y[playerEid]!,
     intensity: Math.min(state.dynamiteCookTimer / state.dynamiteFuse, 1),
+  })
+}
+
+/**
+ * Emit Prospector melee swing presentation cues.
+ */
+export function emitMeleeSwingEvents(
+  events: GameplayEventBuffer,
+  world: GameWorld,
+  playerEid: number | null,
+): void {
+  if (playerEid === null || MeleeWeapon.swungThisTick[playerEid] !== 1) return
+
+  const state = world.playerUpgradeStates.get(playerEid) ?? world.upgradeState
+  const charged = MeleeWeapon.wasChargedSwing[playerEid] === 1
+  const angle = MeleeWeapon.swingAngle[playerEid]!
+
+  events.push({
+    type: 'player-melee-swing',
+    eid: playerEid,
+    x: Position.x[playerEid]!,
+    y: Position.y[playerEid]!,
+    angle,
+    arcHalf: charged ? PICKAXE_CHARGE_ARC / 2 : state.cleaveArc / 2,
+    reach: state.reach,
+    charged,
+    trauma: charged ? 0.2 : 0.1,
+    kickStrength: charged ? 6 : 3,
   })
 }
