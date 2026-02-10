@@ -1,6 +1,7 @@
 import type { CharacterDef, StatName, SkillNodeDef, SkillBranch } from './content/characters'
 import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
+import { hasComponent } from 'bitecs'
 import type { GameWorld } from './world'
 import { applyNodeEffect } from './content/nodeEffects'
 import { clampDamage } from './damage'
@@ -32,6 +33,8 @@ export interface UpgradeState {
   minFireInterval: number
   holdFireRate: number
   lastRoundMultiplier: number
+  pelletCount: number
+  spreadAngle: number
   showdownDuration: number
   showdownCooldown: number
   showdownKillRefund: number
@@ -39,9 +42,54 @@ export interface UpgradeState {
   showdownSpeedBonus: number
   showdownMarkRange: number
 
+  // Zone/pulse stats (Undertaker)
+  zoneRadius: number
+  pulseDamage: number
+  pulseRadius: number
+  chainLimit: number
+
+  // Melee stats (Prospector)
+  swingDamage: number
+  swingRate: number
+  reach: number
+  cleaveArc: number
+  knockback: number
+  chargeTime: number
+  chargeMultiplier: number
+
+  // Dynamite stats (Prospector)
+  dynamiteDamage: number
+  dynamiteRadius: number
+  dynamiteFuse: number
+  dynamiteCooldown: number
+
+  // Gold Rush stats (Prospector)
+  goldFeverBonus: number
+  goldFeverDuration: number
+
+  // Gold Fever buff state (Prospector)
+  goldFeverStacks: number
+  goldFeverTimer: number
+
+  // Dynamite cook state (Prospector)
+  dynamiteCooking: boolean
+  dynamiteCookTimer: number
+
+  // Tremor counter (Prospector)
+  consecutiveSwings: number
+  /** Time since last swing — resets consecutiveSwings after 2s idle */
+  consecutiveSwingTimer: number
+
   // Timed buff state
   lastStandActive: boolean
   lastStandTimer: number
+
+  // Undertaker buff timers
+  deadweightBuffTimer: number
+  corpseHarvestCooldownTimer: number
+  openCasketAvailable: boolean
+  openCasketCooldownTimer: number
+  finalArrangementActive: boolean
 }
 
 export function initUpgradeState(charDef: CharacterDef): UpgradeState {
@@ -67,14 +115,44 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     minFireInterval: b.minFireInterval,
     holdFireRate: b.holdFireRate,
     lastRoundMultiplier: b.lastRoundMultiplier,
+    pelletCount: b.pelletCount,
+    spreadAngle: b.spreadAngle,
     showdownDuration: b.showdownDuration,
     showdownCooldown: b.showdownCooldown,
     showdownKillRefund: b.showdownKillRefund,
     showdownDamageMultiplier: b.showdownDamageMultiplier,
     showdownSpeedBonus: b.showdownSpeedBonus,
     showdownMarkRange: b.showdownMarkRange,
+    zoneRadius: b.zoneRadius,
+    pulseDamage: b.pulseDamage,
+    pulseRadius: b.pulseRadius,
+    chainLimit: b.chainLimit,
+    swingDamage: b.swingDamage,
+    swingRate: b.swingRate,
+    reach: b.reach,
+    cleaveArc: b.cleaveArc,
+    knockback: b.knockback,
+    chargeTime: b.chargeTime,
+    chargeMultiplier: b.chargeMultiplier,
+    dynamiteDamage: b.dynamiteDamage,
+    dynamiteRadius: b.dynamiteRadius,
+    dynamiteFuse: b.dynamiteFuse,
+    dynamiteCooldown: b.dynamiteCooldown,
+    goldFeverBonus: b.goldFeverBonus,
+    goldFeverDuration: b.goldFeverDuration,
+    goldFeverStacks: 0,
+    goldFeverTimer: 0,
+    dynamiteCooking: false,
+    dynamiteCookTimer: 0,
+    consecutiveSwings: 0,
+    consecutiveSwingTimer: 0,
     lastStandActive: false,
     lastStandTimer: 0,
+    deadweightBuffTimer: 0,
+    corpseHarvestCooldownTimer: 0,
+    openCasketAvailable: true,
+    openCasketCooldownTimer: 0,
+    finalArrangementActive: false,
   }
 }
 
@@ -128,12 +206,31 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.minFireInterval = calc('minFireInterval')
   state.holdFireRate = calc('holdFireRate')
   state.lastRoundMultiplier = calc('lastRoundMultiplier')
+  state.pelletCount = calc('pelletCount')
+  state.spreadAngle = calc('spreadAngle')
   state.showdownDuration = calc('showdownDuration')
   state.showdownCooldown = calc('showdownCooldown')
   state.showdownKillRefund = calc('showdownKillRefund')
   state.showdownDamageMultiplier = calc('showdownDamageMultiplier')
   state.showdownSpeedBonus = calc('showdownSpeedBonus')
   state.showdownMarkRange = calc('showdownMarkRange')
+  state.zoneRadius = calc('zoneRadius')
+  state.pulseDamage = calc('pulseDamage')
+  state.pulseRadius = calc('pulseRadius')
+  state.chainLimit = calc('chainLimit')
+  state.swingDamage = calc('swingDamage')
+  state.swingRate = calc('swingRate')
+  state.reach = calc('reach')
+  state.cleaveArc = calc('cleaveArc')
+  state.knockback = calc('knockback')
+  state.chargeTime = calc('chargeTime')
+  state.chargeMultiplier = calc('chargeMultiplier')
+  state.dynamiteDamage = calc('dynamiteDamage')
+  state.dynamiteRadius = calc('dynamiteRadius')
+  state.dynamiteFuse = calc('dynamiteFuse')
+  state.dynamiteCooldown = calc('dynamiteCooldown')
+  state.goldFeverBonus = calc('goldFeverBonus')
+  state.goldFeverDuration = calc('goldFeverDuration')
 }
 
 /**
@@ -238,14 +335,17 @@ export function writeStatsToECS(world: GameWorld, playerEid: number): void {
   Health.iframeDuration[playerEid] = state.iframeDuration
 
   // Cylinder stats — grant extra rounds immediately if capacity increased
-  const newMaxRounds = Math.round(state.cylinderSize)
-  const oldMaxRounds = Cylinder.maxRounds[playerEid]!
-  Cylinder.maxRounds[playerEid] = newMaxRounds
-  if (newMaxRounds > oldMaxRounds && Cylinder.reloading[playerEid] === 0) {
-    Cylinder.rounds[playerEid] = Math.min(
-      Cylinder.rounds[playerEid]! + (newMaxRounds - oldMaxRounds),
-      newMaxRounds,
-    )
+  // Skip for Prospector (no Cylinder component)
+  if (hasComponent(world, Cylinder, playerEid)) {
+    const newMaxRounds = Math.round(state.cylinderSize)
+    const oldMaxRounds = Cylinder.maxRounds[playerEid]!
+    Cylinder.maxRounds[playerEid] = newMaxRounds
+    if (newMaxRounds > oldMaxRounds && Cylinder.reloading[playerEid] === 0) {
+      Cylinder.rounds[playerEid] = Math.min(
+        Cylinder.rounds[playerEid]! + (newMaxRounds - oldMaxRounds),
+        newMaxRounds,
+      )
+    }
+    Cylinder.reloadTime[playerEid] = state.reloadTime
   }
-  Cylinder.reloadTime[playerEid] = state.reloadTime
 }

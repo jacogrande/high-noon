@@ -5,7 +5,8 @@ import { spawnPlayer } from '../prefabs'
 import { weaponSystem } from './weapon'
 import { Button, createInputState, setButton, type InputState } from '../../net/input'
 import { Weapon, Cylinder, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player } from '../components'
-import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL, PISTOL_CYLINDER_SIZE, PISTOL_LAST_ROUND_MULTIPLIER, PISTOL_BULLET_DAMAGE } from '../content/weapons'
+import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL, PISTOL_CYLINDER_SIZE, PISTOL_LAST_ROUND_MULTIPLIER, PISTOL_BULLET_DAMAGE, SAWED_OFF_BULLET_DAMAGE, SAWED_OFF_PELLET_COUNT, SAWED_OFF_SPREAD_ANGLE } from '../content/weapons'
+import { UNDERTAKER } from '../content/characters/undertaker'
 
 const bulletQuery = defineQuery([Bullet])
 
@@ -252,6 +253,97 @@ describe('weaponSystem', () => {
 
       const bullets = countBullets(world)
       expect(bullets).toBe(0)
+    })
+  })
+
+  describe('pellet spread (sheriff - single pellet)', () => {
+    test('sheriff fires exactly 1 bullet per shot', () => {
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
+
+      expect(countBullets(world)).toBe(1)
+    })
+  })
+
+  describe('pellet spread (undertaker - multi-pellet)', () => {
+    let utWorld: GameWorld
+    let utPlayer: number
+
+    beforeEach(() => {
+      utWorld = createGameWorld(42, UNDERTAKER)
+      utPlayer = spawnPlayer(utWorld, 200, 200)
+    })
+
+    function createShootInputUT(aimAngle = 0): InputState {
+      const input = createInputState()
+      input.buttons = setButton(input.buttons, Button.SHOOT)
+      input.aimAngle = aimAngle
+      return input
+    }
+
+    test('fires 5 pellets per shot', () => {
+      utWorld.playerInputs.set(utPlayer, createShootInputUT())
+      weaponSystem(utWorld, 1 / 60)
+
+      expect(countBullets(utWorld)).toBe(SAWED_OFF_PELLET_COUNT)
+    })
+
+    test('pellet damage is total damage divided by pellet count', () => {
+      utWorld.playerInputs.set(utPlayer, createShootInputUT())
+      weaponSystem(utWorld, 1 / 60)
+
+      const bullets = bulletQuery(utWorld)
+      const expectedPerPellet = Math.min(255, Math.round(SAWED_OFF_BULLET_DAMAGE / SAWED_OFF_PELLET_COUNT))
+      for (const beid of bullets) {
+        expect(Bullet.damage[beid]).toBe(expectedPerPellet)
+      }
+    })
+
+    test('pellets fan out symmetrically around aim angle', () => {
+      const aimAngle = 0
+      Player.aimAngle[utPlayer] = aimAngle
+      utWorld.playerInputs.set(utPlayer, createShootInputUT(aimAngle))
+      weaponSystem(utWorld, 1 / 60)
+
+      const bullets = bulletQuery(utWorld)
+      expect(bullets.length).toBe(5)
+
+      // Collect bullet angles from their velocities
+      const angles: number[] = []
+      for (const beid of bullets) {
+        angles.push(Math.atan2(Velocity.y[beid]!, Velocity.x[beid]!))
+      }
+      angles.sort((a, b) => a - b)
+
+      // First and last pellets should be at ±spreadAngle/2 from aim
+      const halfSpread = SAWED_OFF_SPREAD_ANGLE / 2
+      expect(angles[0]).toBeCloseTo(aimAngle - halfSpread, 4)
+      expect(angles[4]).toBeCloseTo(aimAngle + halfSpread, 4)
+
+      // Middle pellet should be at aim angle
+      expect(angles[2]).toBeCloseTo(aimAngle, 4)
+    })
+
+    test('only consumes 1 cylinder round for multi-pellet shot', () => {
+      Cylinder.rounds[utPlayer] = 2
+      utWorld.playerInputs.set(utPlayer, createShootInputUT())
+      weaponSystem(utWorld, 1 / 60)
+
+      expect(Cylinder.rounds[utPlayer]).toBe(1)
+      expect(countBullets(utWorld)).toBe(5)
+    })
+
+    test('last round multiplier applies before pellet split', () => {
+      Cylinder.rounds[utPlayer] = 1
+      utWorld.playerInputs.set(utPlayer, createShootInputUT())
+      weaponSystem(utWorld, 1 / 60)
+
+      const bullets = bulletQuery(utWorld)
+      const totalDamageWithMultiplier = SAWED_OFF_BULLET_DAMAGE * utWorld.upgradeState.lastRoundMultiplier
+      const expectedPerPellet = Math.min(255, Math.round(totalDamageWithMultiplier / SAWED_OFF_PELLET_COUNT))
+      for (const beid of bullets) {
+        expect(Bullet.damage[beid]).toBe(expectedPerPellet)
+      }
     })
   })
 })

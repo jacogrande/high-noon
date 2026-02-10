@@ -6,11 +6,13 @@
  */
 
 import type { SystemRegistry } from '../step'
+import type { CharacterId } from '../content/characters'
 
 import { movementSystem } from './movement'
 import { playerInputSystem } from './playerInput'
 import { rollSystem } from './roll'
 import { showdownSystem } from './showdown'
+import { lastRitesSystem } from './lastRites'
 import { cylinderSystem } from './cylinder'
 import { collisionSystem } from './collision'
 import { weaponSystem } from './weapon'
@@ -26,12 +28,18 @@ import { enemyAttackSystem } from './enemyAttack'
 import { spatialHashSystem } from './spatialHash'
 import { waveSpawnerSystem } from './waveSpawner'
 import { buffSystem } from './buffSystem'
+import { slowDebuffSystem } from './slowDebuff'
+import { meleeSystem } from './melee'
+import { knockbackSystem } from './knockback'
+import { dynamiteSystem } from './dynamite'
+import { goldRushSystem } from './goldRush'
 
 export {
   movementSystem,
   playerInputSystem,
   rollSystem,
   showdownSystem,
+  lastRitesSystem,
   cylinderSystem,
   collisionSystem,
   weaponSystem,
@@ -47,51 +55,50 @@ export {
   spatialHashSystem,
   waveSpawnerSystem,
   buffSystem,
+  slowDebuffSystem,
+  meleeSystem,
+  knockbackSystem,
+  dynamiteSystem,
+  goldRushSystem,
 }
 
 /**
- * Register prediction systems for client-side forward ticks.
- * Includes weapon/bullet systems for local shot prediction in addition to
- * movement + collision for local movement correction.
- *
- * Note: spatial hash rebuild is intentionally excluded here. Multiplayer
- * client prediction runs in local-player scope, and the hash is rebuilt
- * on snapshot ingestion instead of every prediction tick.
- */
-export function registerPredictionSystems(systems: SystemRegistry): void {
-  systems.register(playerInputSystem)
-  systems.register(rollSystem)
-  systems.register(showdownSystem)
-  systems.register(cylinderSystem)
-  systems.register(weaponSystem)
-  systems.register(bulletSystem)
-  systems.register(movementSystem)
-  systems.register(bulletCollisionSystem)
-  systems.register(collisionSystem)
-}
-
-/**
- * Register replay systems for server reconciliation.
- * Movement-only — excludes cylinder + weapon to prevent double-spawning
- * bullets during input replay.
- */
-export function registerReplaySystems(systems: SystemRegistry): void {
-  systems.register(playerInputSystem)
-  systems.register(rollSystem)
-  systems.register(movementSystem)
-  systems.register(collisionSystem)
-}
-
-/**
- * Register all 19 simulation systems in the canonical execution order.
+ * Register all simulation systems in the canonical execution order.
  * Both client and server call this to prevent order divergence.
+ *
+ * **Ordering dependencies:**
+ * - meleeSystem sets `world.lastKillWasMelee` → healthSystem reads it →
+ *   goldRushSystem resets it. This three-system chain MUST run in order.
+ * - healthSystem fires onKill hooks (gold nugget spawning) →
+ *   goldRushSystem handles pickup and Gold Fever stacking.
+ * - buffSystem runs last to tick timers and process one-shot effects
+ *   (rockslide shockwaves, combo timeout, etc.) after all combat resolves.
+ *
+ * @param systems - The system registry to populate
+ * @param characterId - Which character is being played (affects ability system)
  */
-export function registerAllSystems(systems: SystemRegistry): void {
+export function registerAllSystems(systems: SystemRegistry, characterId: CharacterId = 'sheriff'): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
-  systems.register(showdownSystem)
-  systems.register(cylinderSystem)
-  systems.register(weaponSystem)
+
+  // Character-specific ability system
+  if (characterId === 'undertaker') {
+    systems.register(lastRitesSystem)
+  } else if (characterId === 'prospector') {
+    systems.register(dynamiteSystem)
+  } else {
+    systems.register(showdownSystem)
+  }
+
+  // Character-specific weapon system
+  if (characterId === 'prospector') {
+    systems.register(meleeSystem)
+  } else {
+    systems.register(cylinderSystem)
+    systems.register(weaponSystem)
+  }
+
+  systems.register(knockbackSystem)
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
   systems.register(bulletSystem)
@@ -99,11 +106,14 @@ export function registerAllSystems(systems: SystemRegistry): void {
   systems.register(enemyDetectionSystem)
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
+  systems.register(slowDebuffSystem)
   systems.register(enemySteeringSystem)
   systems.register(enemyAttackSystem)
   systems.register(movementSystem)
   systems.register(bulletCollisionSystem)
+  // healthSystem → goldRushSystem → buffSystem must stay in this order (see above)
   systems.register(healthSystem)
+  systems.register(goldRushSystem)
   systems.register(buffSystem)
   systems.register(collisionSystem)
 }

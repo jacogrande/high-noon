@@ -65,6 +65,11 @@ export type OnShowdownActivateHandler = (
   playerEid: number,
 ) => void
 
+export type OnRollEndHandler = (
+  world: GameWorld,
+  playerEid: number,
+) => void
+
 // ============================================================================
 // Hook Map (type-safe handler lookup)
 // ============================================================================
@@ -76,6 +81,7 @@ export interface HookHandlerMap {
   onCylinderEmpty: OnCylinderEmptyHandler
   onHealthChanged: OnHealthChangedHandler
   onShowdownActivate: OnShowdownActivateHandler
+  onRollEnd: OnRollEndHandler
 }
 
 export type HookId = keyof HookHandlerMap
@@ -102,6 +108,7 @@ export class HookRegistry {
     onCylinderEmpty: [],
     onHealthChanged: [],
     onShowdownActivate: [],
+    onRollEnd: [],
   }
 
   /** Register a handler for a hook event */
@@ -127,6 +134,7 @@ export class HookRegistry {
     h.onCylinderEmpty = h.onCylinderEmpty.filter(e => e.id !== id)
     h.onHealthChanged = h.onHealthChanged.filter(e => e.id !== id)
     h.onShowdownActivate = h.onShowdownActivate.filter(e => e.id !== id)
+    h.onRollEnd = h.onRollEnd.filter(e => e.id !== id)
   }
 
   /** Remove all registered handlers */
@@ -188,6 +196,12 @@ export class HookRegistry {
 
   fireShowdownActivate(world: GameWorld, playerEid: number): void {
     for (const entry of this._handlers.onShowdownActivate) {
+      entry.handler(world, playerEid)
+    }
+  }
+
+  fireRollEnd(world: GameWorld, playerEid: number): void {
+    for (const entry of this._handlers.onRollEnd) {
       entry.handler(world, playerEid)
     }
   }

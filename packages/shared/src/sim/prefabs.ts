@@ -27,25 +27,19 @@ import {
   EnemyType,
   AIState,
   Showdown,
+  MeleeWeapon,
 } from './components'
 import {
   PLAYER_SPEED,
   PLAYER_RADIUS,
   PLAYER_START_X,
   PLAYER_START_Y,
-  PLAYER_HP,
-  PLAYER_IFRAME_DURATION,
 } from './content/player'
 import {
-  PISTOL_FIRE_RATE,
-  PISTOL_BULLET_SPEED,
-  PISTOL_BULLET_DAMAGE,
-  PISTOL_RANGE,
-  PISTOL_CYLINDER_SIZE,
-  PISTOL_RELOAD_TIME,
   BULLET_RADIUS,
   BULLET_LIFETIME,
 } from './content/weapons'
+import { clampDamage } from './damage'
 import {
   SWARMER_SPEED, SWARMER_RADIUS, SWARMER_HP, SWARMER_AGGRO_RANGE, SWARMER_ATTACK_RANGE,
   SWARMER_TELEGRAPH, SWARMER_RECOVERY, SWARMER_COOLDOWN, SWARMER_DAMAGE, SWARMER_BULLET_SPEED,
@@ -130,38 +124,54 @@ export function spawnPlayer(
   // Set initial state
   PlayerState.state[eid] = PlayerStateType.IDLE
 
-  // Set speed
-  Speed.current[eid] = PLAYER_SPEED
-  Speed.max[eid] = PLAYER_SPEED
+  // Read upgrade state for character-agnostic stats
+  const us = world.upgradeState
+
+  // Set speed from upgrade state
+  Speed.current[eid] = us.speed
+  Speed.max[eid] = us.speed
 
   // Set collider
   Collider.radius[eid] = PLAYER_RADIUS
   Collider.layer[eid] = CollisionLayer.PLAYER
 
-  // Set health
-  Health.current[eid] = PLAYER_HP
-  Health.max[eid] = PLAYER_HP
+  // Set health from upgrade state
+  Health.current[eid] = us.maxHP
+  Health.max[eid] = us.maxHP
   Health.iframes[eid] = 0
-  Health.iframeDuration[eid] = PLAYER_IFRAME_DURATION
+  Health.iframeDuration[eid] = us.iframeDuration
 
-  // Set weapon (default pistol)
-  Weapon.fireRate[eid] = PISTOL_FIRE_RATE
-  Weapon.bulletSpeed[eid] = PISTOL_BULLET_SPEED
-  Weapon.bulletDamage[eid] = PISTOL_BULLET_DAMAGE
+  // Set weapon from upgrade state
+  Weapon.fireRate[eid] = us.fireRate
+  Weapon.bulletSpeed[eid] = us.bulletSpeed
+  Weapon.bulletDamage[eid] = clampDamage(us.bulletDamage)
   Weapon.cooldown[eid] = 0
-  Weapon.range[eid] = PISTOL_RANGE
+  Weapon.range[eid] = us.range
 
-  // Set cylinder (revolver ammo)
-  addComponent(world, Cylinder, eid)
-  Cylinder.rounds[eid] = PISTOL_CYLINDER_SIZE
-  Cylinder.maxRounds[eid] = PISTOL_CYLINDER_SIZE
-  Cylinder.reloading[eid] = 0
-  Cylinder.reloadTimer[eid] = 0
-  Cylinder.reloadTime[eid] = PISTOL_RELOAD_TIME
-  Cylinder.firstShotAfterReload[eid] = 0
-  Cylinder.fireCooldown[eid] = 0
+  // Character-specific weapon setup
+  if (world.upgradeState.characterDef.id === 'prospector') {
+    // Melee weapon (no cylinder)
+    addComponent(world, MeleeWeapon, eid)
+    MeleeWeapon.swingCooldown[eid] = 0
+    MeleeWeapon.chargeTimer[eid] = 0
+    MeleeWeapon.charging[eid] = 0
+    MeleeWeapon.swungThisTick[eid] = 0
+    MeleeWeapon.wasChargedSwing[eid] = 0
+    MeleeWeapon.swingAngle[eid] = 0
+  } else {
+    // Cylinder (bullet-based characters)
+    addComponent(world, Cylinder, eid)
+    const cylinderSize = Math.round(us.cylinderSize)
+    Cylinder.rounds[eid] = cylinderSize
+    Cylinder.maxRounds[eid] = cylinderSize
+    Cylinder.reloading[eid] = 0
+    Cylinder.reloadTimer[eid] = 0
+    Cylinder.reloadTime[eid] = us.reloadTime
+    Cylinder.firstShotAfterReload[eid] = 0
+    Cylinder.fireCooldown[eid] = 0
+  }
 
-  // Set Showdown ability
+  // Showdown ability (reused for dynamite cooldown on Prospector)
   addComponent(world, Showdown, eid)
   Showdown.active[eid] = 0
   Showdown.targetEid[eid] = NO_TARGET

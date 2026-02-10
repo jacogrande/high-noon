@@ -63,6 +63,11 @@ export function rollSystem(world: GameWorld, dt: number): void {
         removeComponent(world, Invincible, eid)
       }
 
+      // Fire roll end hook (for Grave Dust, Deadweight)
+      if (hasComponent(world, Player, eid)) {
+        world.hooks.fireRollEnd(world, eid)
+      }
+
       // Clean up dodge tracking
       world.rollDodgedBullets.delete(eid)
 

@@ -1,0 +1,240 @@
+import type { CharacterDef } from './types'
+import {
+  PLAYER_SPEED, PLAYER_HP, PLAYER_IFRAME_DURATION,
+  ROLL_DURATION, ROLL_IFRAME_RATIO, ROLL_SPEED_MULTIPLIER,
+} from '../player'
+import {
+  SAWED_OFF_FIRE_RATE, SAWED_OFF_BULLET_SPEED,
+  SAWED_OFF_BULLET_DAMAGE, SAWED_OFF_RANGE,
+  SAWED_OFF_CYLINDER_SIZE, SAWED_OFF_RELOAD_TIME,
+  SAWED_OFF_MIN_FIRE_INTERVAL, SAWED_OFF_HOLD_FIRE_RATE,
+  SAWED_OFF_LAST_ROUND_MULTIPLIER, SAWED_OFF_PELLET_COUNT, SAWED_OFF_SPREAD_ANGLE,
+  LAST_RITES_DURATION, LAST_RITES_COOLDOWN,
+  LAST_RITES_KILL_REFUND, LAST_RITES_PLACEMENT_RANGE,
+  LAST_RITES_ZONE_RADIUS, LAST_RITES_PULSE_DAMAGE,
+  LAST_RITES_PULSE_RADIUS, LAST_RITES_CHAIN_LIMIT,
+} from '../weapons'
+
+export const UNDERTAKER: CharacterDef = {
+  id: 'undertaker',
+  name: 'The Undertaker',
+  description: 'A gaunt gravedigger who profits from death. Close-range area control with chain-reaction kills.',
+  baseStats: {
+    fireRate: SAWED_OFF_FIRE_RATE,
+    bulletDamage: SAWED_OFF_BULLET_DAMAGE,
+    bulletSpeed: SAWED_OFF_BULLET_SPEED,
+    range: SAWED_OFF_RANGE,
+    speed: PLAYER_SPEED,
+    maxHP: PLAYER_HP,
+    iframeDuration: PLAYER_IFRAME_DURATION,
+    rollDuration: ROLL_DURATION,
+    rollIframeRatio: ROLL_IFRAME_RATIO,
+    rollSpeedMultiplier: ROLL_SPEED_MULTIPLIER,
+    cylinderSize: SAWED_OFF_CYLINDER_SIZE,
+    reloadTime: SAWED_OFF_RELOAD_TIME,
+    minFireInterval: SAWED_OFF_MIN_FIRE_INTERVAL,
+    holdFireRate: SAWED_OFF_HOLD_FIRE_RATE,
+    lastRoundMultiplier: SAWED_OFF_LAST_ROUND_MULTIPLIER,
+    pelletCount: SAWED_OFF_PELLET_COUNT,
+    spreadAngle: SAWED_OFF_SPREAD_ANGLE,
+    // Reuse Showdown fields for Last Rites zone lifecycle
+    showdownDuration: LAST_RITES_DURATION,
+    showdownCooldown: LAST_RITES_COOLDOWN,
+    showdownKillRefund: LAST_RITES_KILL_REFUND,
+    showdownDamageMultiplier: 1.0, // not used by Undertaker
+    showdownSpeedBonus: 1.0,       // not used by Undertaker
+    showdownMarkRange: LAST_RITES_PLACEMENT_RANGE,
+    // Zone-specific stats
+    zoneRadius: LAST_RITES_ZONE_RADIUS,
+    pulseDamage: LAST_RITES_PULSE_DAMAGE,
+    pulseRadius: LAST_RITES_PULSE_RADIUS,
+    chainLimit: LAST_RITES_CHAIN_LIMIT,
+    // Melee (unused by Undertaker)
+    swingDamage: 0,
+    swingRate: 0,
+    reach: 0,
+    cleaveArc: 0,
+    knockback: 0,
+    chargeTime: 0,
+    chargeMultiplier: 1,
+    // Dynamite (unused by Undertaker)
+    dynamiteDamage: 0,
+    dynamiteRadius: 0,
+    dynamiteFuse: 0,
+    dynamiteCooldown: 0,
+    // Gold Rush (unused by Undertaker)
+    goldFeverBonus: 0,
+    goldFeverDuration: 0,
+  },
+  branches: [
+    // ── Gravedigger (chain reactions / zone mastery) ──
+    {
+      id: 'gravedigger',
+      name: 'Gravedigger',
+      description: 'Death is a gift that keeps on giving. Chain reactions and zone mastery.',
+      nodes: [
+        {
+          id: 'shallow_graves',
+          name: 'Shallow Graves',
+          description: 'Death pulse radius +40%. Pulses reach further, making chains easier.',
+          tier: 1,
+          implemented: true,
+          mods: [
+            { stat: 'pulseRadius', op: 'mul', value: 1.4 },
+          ],
+        },
+        {
+          id: 'coffin_nails',
+          name: 'Coffin Nails',
+          description: 'Bullets that kill an enemy pierce through to one additional target.',
+          tier: 2,
+          implemented: true,
+          mods: [],
+          effectId: 'coffin_nails',
+        },
+        {
+          id: 'mass_grave',
+          name: 'Mass Grave',
+          description: 'Last Rites zone radius +50%. Duration +1.5s.',
+          tier: 3,
+          implemented: true,
+          mods: [
+            { stat: 'zoneRadius', op: 'mul', value: 1.5 },
+            { stat: 'showdownDuration', op: 'add', value: 1.5 },
+          ],
+        },
+        {
+          id: 'consecrated_ground',
+          name: 'Consecrated Ground',
+          description: 'Enemies inside the Last Rites zone take 3 damage per second.',
+          tier: 4,
+          implemented: true,
+          mods: [],
+          effectId: 'consecrated_ground',
+        },
+        {
+          id: 'undertakers_overtime',
+          name: "Undertaker's Overtime",
+          description: 'Chain limit removed. Each chain kill adds +3 pulse damage. 5+ chains fully refunds cooldown.',
+          tier: 5,
+          implemented: true,
+          mods: [],
+          effectId: 'undertakers_overtime',
+        },
+      ],
+    },
+    // ── Embalmer (weapon mastery / sustain) ──
+    {
+      id: 'embalmer',
+      name: 'Embalmer',
+      description: 'Every body tells a story. Yours will be brief. Weapon power and sustain.',
+      nodes: [
+        {
+          id: 'double_tap',
+          name: 'Double Tap',
+          description: '+3 bullet damage.',
+          tier: 1,
+          implemented: true,
+          mods: [
+            { stat: 'bulletDamage', op: 'add', value: 3 },
+          ],
+        },
+        {
+          id: 'formaldehyde_rounds',
+          name: 'Formaldehyde Rounds',
+          description: 'Bullets slow enemies by 20% for 1.5s on hit.',
+          tier: 2,
+          implemented: true,
+          mods: [],
+          effectId: 'formaldehyde_rounds',
+        },
+        {
+          id: 'morticians_precision',
+          name: "Mortician's Precision",
+          description: 'Last round bonus +0.75x. Killing with the last round instantly reloads.',
+          tier: 3,
+          implemented: true,
+          mods: [
+            { stat: 'lastRoundMultiplier', op: 'add', value: 0.75 },
+          ],
+          effectId: 'morticians_precision',
+        },
+        {
+          id: 'corpse_harvest',
+          name: 'Corpse Harvest',
+          description: 'Killing an enemy heals 1 HP. 2-second internal cooldown.',
+          tier: 4,
+          implemented: true,
+          mods: [],
+          effectId: 'corpse_harvest',
+        },
+        {
+          id: 'overkill',
+          name: 'Overkill',
+          description: 'Excess damage from a killing blow splashes to enemies within 60px.',
+          tier: 5,
+          implemented: true,
+          mods: [],
+          effectId: 'overkill',
+        },
+      ],
+    },
+    // ── Pallbearer (survivability / mobility) ──
+    {
+      id: 'pallbearer',
+      name: 'Pallbearer',
+      description: "They'll need six men to carry you. I only need one shovel. Toughness and rolls.",
+      nodes: [
+        {
+          id: 'iron_constitution',
+          name: 'Iron Constitution',
+          description: '+2 max HP. i-frame duration +0.15s.',
+          tier: 1,
+          implemented: true,
+          mods: [
+            { stat: 'maxHP', op: 'add', value: 2 },
+            { stat: 'iframeDuration', op: 'add', value: 0.15 },
+          ],
+        },
+        {
+          id: 'grave_dust',
+          name: 'Grave Dust',
+          description: 'Rolling leaves a dust cloud that slows enemies by 25% for 2s.',
+          tier: 2,
+          implemented: true,
+          mods: [],
+          effectId: 'grave_dust',
+        },
+        {
+          id: 'deadweight',
+          name: 'Deadweight',
+          description: 'Roll speed +25%. Next shot within 1s of a roll deals +40% damage.',
+          tier: 3,
+          implemented: true,
+          mods: [
+            { stat: 'rollSpeedMultiplier', op: 'mul', value: 1.25 },
+          ],
+          effectId: 'deadweight',
+        },
+        {
+          id: 'final_arrangement',
+          name: 'Final Arrangement',
+          description: 'While below 50% HP, take 25% reduced damage from all sources.',
+          tier: 4,
+          implemented: true,
+          mods: [],
+          effectId: 'final_arrangement',
+        },
+        {
+          id: 'open_casket',
+          name: 'Open Casket',
+          description: 'Survive a killing blow once per encounter. Drop to 1 HP with a death pulse and invulnerability.',
+          tier: 5,
+          implemented: true,
+          mods: [],
+          effectId: 'open_casket',
+        },
+      ],
+    },
+  ],
+}

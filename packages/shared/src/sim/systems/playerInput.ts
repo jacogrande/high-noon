@@ -16,6 +16,7 @@ import {
   Speed,
   Velocity,
   Roll,
+  Position,
 } from '../components'
 
 // Define query for player entities
@@ -97,6 +98,8 @@ export function playerInputSystem(
       Roll.speedMultiplier[eid] = us.rollSpeedMultiplier
       Roll.directionX[eid] = rollDirX
       Roll.directionY[eid] = rollDirY
+      Roll.startX[eid] = Position.x[eid]!
+      Roll.startY[eid] = Position.y[eid]!
 
       // Set state to rolling
       PlayerState.state[eid] = PlayerStateType.ROLLING

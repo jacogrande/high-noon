@@ -1,4 +1,4 @@
-export type CharacterId = 'sheriff'
+export type CharacterId = 'sheriff' | 'undertaker' | 'prospector'
 
 export type StatName =
   | 'fireRate' | 'bulletDamage' | 'bulletSpeed' | 'range'
@@ -7,6 +7,15 @@ export type StatName =
   | 'cylinderSize' | 'reloadTime' | 'minFireInterval' | 'holdFireRate' | 'lastRoundMultiplier'
   | 'showdownDuration' | 'showdownCooldown' | 'showdownKillRefund'
   | 'showdownDamageMultiplier' | 'showdownSpeedBonus' | 'showdownMarkRange'
+  | 'pelletCount' | 'spreadAngle'
+  | 'zoneRadius' | 'pulseDamage' | 'pulseRadius' | 'chainLimit'
+  // Melee (Prospector)
+  | 'swingDamage' | 'swingRate' | 'reach' | 'cleaveArc'
+  | 'knockback' | 'chargeTime' | 'chargeMultiplier'
+  // Dynamite (Prospector)
+  | 'dynamiteDamage' | 'dynamiteRadius' | 'dynamiteFuse' | 'dynamiteCooldown'
+  // Gold Rush (Prospector)
+  | 'goldFeverBonus' | 'goldFeverDuration'
 
 export interface StatMod {
   stat: StatName

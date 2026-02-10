@@ -80,6 +80,10 @@ export const Roll = {
   directionX: new Float32Array(MAX_ENTITIES),
   /** Locked roll direction Y (normalized) */
   directionY: new Float32Array(MAX_ENTITIES),
+  /** World X at roll start (for Rockslide shockwave) */
+  startX: new Float32Array(MAX_ENTITIES),
+  /** World Y at roll start (for Rockslide shockwave) */
+  startY: new Float32Array(MAX_ENTITIES),
 }
 
 // ============================================================================
@@ -204,6 +208,48 @@ export const Showdown = {
 }
 
 // ============================================================================
+// Melee Components (Prospector)
+// ============================================================================
+
+/** Melee weapon state (pickaxe) */
+export const MeleeWeapon = {
+  /** Time until next swing allowed (seconds) */
+  swingCooldown: new Float32Array(MAX_ENTITIES),
+  /** Current charge time elapsed (0 = not charging) */
+  chargeTimer: new Float32Array(MAX_ENTITIES),
+  /** Whether currently charging (0/1) */
+  charging: new Uint8Array(MAX_ENTITIES),
+  /** Whether a swing happened this tick (0/1, for VFX trigger) */
+  swungThisTick: new Uint8Array(MAX_ENTITIES),
+  /** Whether swing was charged (0/1, for VFX) */
+  wasChargedSwing: new Uint8Array(MAX_ENTITIES),
+  /** Aim angle of the swing (for VFX arc direction) */
+  swingAngle: new Float32Array(MAX_ENTITIES),
+}
+
+/** Knockback impulse (applied to enemies on melee hit or explosion) */
+export const Knockback = {
+  /** Knockback velocity X */
+  vx: new Float32Array(MAX_ENTITIES),
+  /** Knockback velocity Y */
+  vy: new Float32Array(MAX_ENTITIES),
+  /** Remaining knockback duration (seconds) */
+  duration: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
+// Debuff Components
+// ============================================================================
+
+/** Movement speed debuff (slow) */
+export const SlowDebuff = {
+  /** Speed multiplier (0.8 = 20% slow) */
+  multiplier: new Float32Array(MAX_ENTITIES),
+  /** Remaining duration in seconds */
+  duration: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Enemy Components
 // ============================================================================
 
@@ -293,6 +339,9 @@ export const AllComponents = [
   Showdown,
   Health,
   Dead,
+  MeleeWeapon,
+  Knockback,
+  SlowDebuff,
   Enemy,
   EnemyAI,
   Detection,

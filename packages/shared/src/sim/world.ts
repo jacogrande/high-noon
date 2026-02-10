@@ -11,8 +11,71 @@ import type { StageEncounter } from './content/waves'
 import type { InputState } from '../net/input'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
-import { SHERIFF } from './content/characters'
+import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
+
+/**
+ * Last Rites zone state (Undertaker ability)
+ */
+export interface LastRitesState {
+  active: boolean
+  x: number
+  y: number
+  radius: number
+  timeRemaining: number
+  chainCount: number
+  chainDamageBonus: number
+  pendingPulses: Array<{ x: number; y: number; damage: number }>
+  /** Consecrated Ground: fractional damage accumulator per enemy */
+  consecratedAccum: Map<number, number>
+}
+
+/**
+ * Dust cloud left behind by Grave Dust node
+ */
+export interface DustCloud {
+  x: number
+  y: number
+  radius: number
+  duration: number
+  slow: number
+}
+
+/**
+ * Active dynamite state (Prospector ability)
+ */
+export interface DynamiteState {
+  x: number
+  y: number
+  fuseRemaining: number
+  damage: number
+  radius: number
+  knockback: number
+  ownerId: number
+}
+
+/**
+ * Gold nugget on the ground
+ */
+export interface GoldNugget {
+  x: number
+  y: number
+  value: number
+  lifetime: number
+}
+
+/**
+ * Rockslide shockwave from roll
+ */
+export interface RockslideShockwave {
+  x: number
+  y: number
+  radius: number
+  damage: number
+  slow: number
+  slowDuration: number
+  processed: boolean
+}
 
 /**
  * Flow field for BFS pathfinding toward the player
@@ -134,22 +197,45 @@ export interface GameWorld extends IWorld {
   playerInputs: Map<number, InputState>
   /** Player registry: session ID → PlayerInfo (for multiplayer) */
   players: Map<string, PlayerInfo>
-  /**
-   * Simulation scope hint for systems.
-   * - 'all': full-world simulation (server and canonical single-player)
-   * - 'local-player': local-only prediction/replay path (client multiplayer)
-   */
-  simulationScope: 'all' | 'local-player'
-  /** Local player entity used when simulationScope is 'local-player' */
-  localPlayerEid: number
+  /** Which character is being played */
+  characterId: CharacterId
+  /** Last Rites zone state (Undertaker only, null for Sheriff) */
+  lastRites: LastRitesState | null
+  /** Set to true when a Last Rites death pulse fires this tick */
+  lastRitesPulseThisTick: boolean
+  /** Set to true when Last Rites is activated this tick */
+  lastRitesActivatedThisTick: boolean
+  /** Set to true when Last Rites zone expires this tick */
+  lastRitesExpiredThisTick: boolean
+  /** Dust clouds from Grave Dust node */
+  dustClouds: DustCloud[]
+  /** Per-tick overkill tracking to prevent self-chaining */
+  overkillProcessed: Set<number>
+  /** Active dynamite entities */
+  dynamites: DynamiteState[]
+  /** Set to true when a dynamite detonates this tick */
+  dynamiteDetonatedThisTick: boolean
+  /** Detonation positions this tick (for client VFX) */
+  dynamiteDetonations: Array<{ x: number; y: number; radius: number }>
+  /** Gold nuggets on the ground */
+  goldNuggets: GoldNugget[]
+  /** Total gold collected this encounter */
+  goldCollected: number
+  /** Set to true when last kill was via melee (for Gold Rush 2x) */
+  lastKillWasMelee: boolean
+  /** Set to true when Tremor ground slam fires this tick */
+  tremorThisTick: boolean
+  /** Rockslide shockwaves from roll */
+  rockslideShockwaves: RockslideShockwave[]
 }
 
 /**
  * Create a new game world
  */
-export function createGameWorld(seed?: number): GameWorld {
+export function createGameWorld(seed?: number, characterDef?: CharacterDef): GameWorld {
   const baseWorld = bitCreateWorld()
   const resolvedSeed = seed ?? Date.now()
+  const charDef = characterDef ?? SHERIFF
 
   return {
     ...baseWorld,
@@ -165,7 +251,7 @@ export function createGameWorld(seed?: number): GameWorld {
     initialSeed: resolvedSeed,
     rng: new SeededRng(resolvedSeed),
     lastPlayerHitDir: new Map(),
-    upgradeState: initUpgradeState(SHERIFF),
+    upgradeState: initUpgradeState(charDef),
     spawnsPaused: false,
     bulletPierceHits: new Map(),
     rollDodgedBullets: new Map(),
@@ -176,8 +262,21 @@ export function createGameWorld(seed?: number): GameWorld {
     hooks: new HookRegistry(),
     playerInputs: new Map(),
     players: new Map(),
-    simulationScope: 'all',
-    localPlayerEid: -1,
+    characterId: charDef.id,
+    lastRites: null,
+    lastRitesPulseThisTick: false,
+    lastRitesActivatedThisTick: false,
+    lastRitesExpiredThisTick: false,
+    dustClouds: [],
+    overkillProcessed: new Set(),
+    dynamites: [],
+    dynamiteDetonatedThisTick: false,
+    dynamiteDetonations: [],
+    goldNuggets: [],
+    goldCollected: 0,
+    lastKillWasMelee: false,
+    tremorThisTick: false,
+    rockslideShockwaves: [],
   }
 }
 
@@ -192,6 +291,7 @@ export function setWorldTilemap(world: GameWorld, tilemap: Tilemap): void {
  * Reset world state (for new game or replay)
  */
 export function resetWorld(world: GameWorld): void {
+  const charDef = world.upgradeState.characterDef
   world.tick = 0
   world.time = 0
   world.tilemap = null
@@ -202,7 +302,7 @@ export function resetWorld(world: GameWorld): void {
   world.encounter = null
   world.maxProjectiles = 80
   world.lastPlayerHitDir.clear()
-  world.upgradeState = initUpgradeState(SHERIFF)
+  world.upgradeState = initUpgradeState(charDef)
   world.spawnsPaused = false
   world.bulletPierceHits.clear()
   world.rollDodgedBullets.clear()
@@ -213,9 +313,21 @@ export function resetWorld(world: GameWorld): void {
   world.hooks.clear()
   world.playerInputs.clear()
   world.players.clear()
-  world.simulationScope = 'all'
-  world.localPlayerEid = -1
   world.rng.reset(world.initialSeed)
+  world.lastRites = null
+  world.lastRitesPulseThisTick = false
+  world.lastRitesActivatedThisTick = false
+  world.lastRitesExpiredThisTick = false
+  world.dustClouds = []
+  world.overkillProcessed.clear()
+  world.dynamites = []
+  world.dynamiteDetonatedThisTick = false
+  world.dynamiteDetonations = []
+  world.goldNuggets = []
+  world.goldCollected = 0
+  world.lastKillWasMelee = false
+  world.tremorThisTick = false
+  world.rockslideShockwaves = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

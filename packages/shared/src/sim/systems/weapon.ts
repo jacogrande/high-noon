@@ -85,26 +85,43 @@ export function weaponSystem(
     let bulletDamage = Weapon.bulletDamage[eid]!
     const bulletRange = Weapon.range[eid]!
 
+    // Deadweight buff: +40% damage on first shot after roll
+    if (world.upgradeState.deadweightBuffTimer > 0) {
+      bulletDamage = clampDamage(bulletDamage * 1.4)
+      world.upgradeState.deadweightBuffTimer = 0
+    }
+
     // Last round bonus: if cylinder has exactly 1 round, apply multiplier
     if (hasCylinder && Cylinder.rounds[eid] === 1) {
       const multiplier = world.upgradeState.lastRoundMultiplier
       bulletDamage = clampDamage(bulletDamage * multiplier)
     }
 
-    // Calculate bullet velocity
-    const vx = Math.cos(aimAngle) * bulletSpeed
-    const vy = Math.sin(aimAngle) * bulletSpeed
+    // Pellet spread: split damage across pellets and fan them out
+    const pelletCount = Math.max(1, Math.round(world.upgradeState.pelletCount))
+    const spreadAngle = world.upgradeState.spreadAngle
+    const perPelletDamage = clampDamage(bulletDamage / pelletCount)
 
-    // Spawn bullet
-    spawnBullet(world, {
-      x,
-      y,
-      vx,
-      vy,
-      damage: bulletDamage,
-      range: bulletRange,
-      ownerId: eid,
-    })
+    for (let i = 0; i < pelletCount; i++) {
+      // Fan formula: evenly distribute pellets across the spread arc
+      const angleOffset = pelletCount > 1
+        ? spreadAngle * (i / (pelletCount - 1) - 0.5)
+        : 0
+      const pelletAngle = aimAngle + angleOffset
+
+      const vx = Math.cos(pelletAngle) * bulletSpeed
+      const vy = Math.sin(pelletAngle) * bulletSpeed
+
+      spawnBullet(world, {
+        x,
+        y,
+        vx,
+        vy,
+        damage: perPelletDamage,
+        range: bulletRange,
+        ownerId: eid,
+      })
+    }
 
     // Consume round and set fire cooldown
     if (hasCylinder) {
