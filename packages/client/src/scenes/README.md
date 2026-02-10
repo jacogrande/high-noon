@@ -16,14 +16,24 @@ Core scene architecture for gameplay runtime.
 `CoreGameScene` is the only exported runtime scene class.
 
 ```typescript
-const scene = await CoreGameScene.create({ gameApp, mode: 'singleplayer' })
+const scene = await CoreGameScene.create({
+  gameApp,
+  mode: 'singleplayer',
+  characterId: 'sheriff',
+})
 // or:
-const scene = await CoreGameScene.create({ gameApp, mode: 'multiplayer' })
+const scene = await CoreGameScene.create({
+  gameApp,
+  mode: 'multiplayer',
+  characterId: 'undertaker',
+})
 
 scene.update(dt)
 scene.render(alpha, fps)
 scene.destroy()
 ```
+
+`characterId` is used directly in singleplayer and sent as a join preference in multiplayer (server returns authoritative `characterId` in `game-config`).
 
 Both modes expose the same API for pages/UI:
 - `getHUDState()`

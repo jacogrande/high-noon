@@ -16,6 +16,10 @@ import { applySlow } from '../systems/slowDebuff'
 import { hasComponent, addComponent } from 'bitecs'
 import { forEachInRadius } from '../SpatialHash'
 
+function stateForPlayer(world: GameWorld, playerEid: number) {
+  return world.playerUpgradeStates.get(playerEid) ?? world.upgradeState
+}
+
 // ============================================================================
 // Effect registration functions (one per behavioral node)
 // ============================================================================
@@ -142,15 +146,16 @@ function registerLastStand(hooks: HookRegistry): void {
     oldHP: number,
     newHP: number,
   ) => {
+    const us = stateForPlayer(world, playerEid)
     // Activate when dropping to 1 HP
     if (newHP === 1 && oldHP > 1) {
-      world.upgradeState.lastStandActive = true
-      world.upgradeState.lastStandTimer = LAST_STAND_DURATION
+      us.lastStandActive = true
+      us.lastStandTimer = LAST_STAND_DURATION
     }
     // Deactivate if healed above 1 HP
-    if (newHP > 1 && world.upgradeState.lastStandActive) {
-      world.upgradeState.lastStandActive = false
-      world.upgradeState.lastStandTimer = 0
+    if (newHP > 1 && us.lastStandActive) {
+      us.lastStandActive = false
+      us.lastStandTimer = 0
     }
   })
 }
@@ -228,7 +233,7 @@ function registerCorpseHarvest(hooks: HookRegistry): void {
     playerEid: number,
     _victimEid: number,
   ) => {
-    const us = world.upgradeState
+    const us = stateForPlayer(world, playerEid)
     if (us.corpseHarvestCooldownTimer <= 0) {
       const current = Health.current[playerEid]!
       const max = Health.max[playerEid]!
@@ -287,6 +292,7 @@ function registerGraveDust(hooks: HookRegistry): void {
     playerEid: number,
   ) => {
     world.dustClouds.push({
+      ownerEid: playerEid,
       x: Position.x[playerEid]!,
       y: Position.y[playerEid]!,
       radius: 80,
@@ -303,9 +309,9 @@ function registerGraveDust(hooks: HookRegistry): void {
 function registerDeadweight(hooks: HookRegistry): void {
   hooks.register('onRollEnd', 'deadweight', (
     world: GameWorld,
-    _playerEid: number,
+    playerEid: number,
   ) => {
-    world.upgradeState.deadweightBuffTimer = 1.0
+    stateForPlayer(world, playerEid).deadweightBuffTimer = 1.0
   })
 }
 
@@ -321,7 +327,7 @@ function registerFinalArrangement(hooks: HookRegistry): void {
     newHP: number,
   ) => {
     const maxHP = Health.max[playerEid]!
-    world.upgradeState.finalArrangementActive = newHP <= maxHP * 0.5 && newHP > 0
+    stateForPlayer(world, playerEid).finalArrangementActive = newHP <= maxHP * 0.5 && newHP > 0
   })
 }
 
@@ -341,15 +347,16 @@ function registerOpenCasket(hooks: HookRegistry): void {
     _oldHP: number,
     newHP: number,
   ) => {
-    const us = world.upgradeState
+    const us = stateForPlayer(world, playerEid)
     if (newHP <= 0 && us.openCasketAvailable) {
       // Survive the killing blow
       Health.current[playerEid] = 1
       Health.iframes[playerEid] = OPEN_CASKET_IFRAME_DURATION
 
       // Queue a death pulse at player position
-      if (world.lastRites) {
-        world.lastRites.pendingPulses.push({
+      const zone = world.lastRitesZones.get(playerEid)
+      if (zone?.active) {
+        zone.pendingPulses.push({
           x: Position.x[playerEid]!,
           y: Position.y[playerEid]!,
           damage: OPEN_CASKET_PULSE_DAMAGE,
@@ -432,6 +439,7 @@ function registerRockslide(hooks: HookRegistry): void {
     playerEid: number,
   ) => {
     world.rockslideShockwaves.push({
+      ownerEid: playerEid,
       x: Roll.startX[playerEid]!,
       y: Roll.startY[playerEid]!,
       radius: 80,
@@ -482,4 +490,3 @@ export function applyNodeEffect(world: GameWorld, nodeId: string): void {
     registrar(world.hooks)
   }
 }
-

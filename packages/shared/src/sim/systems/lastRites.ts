@@ -4,89 +4,94 @@
  * Place a cursed zone at the cursor. Enemies that die inside trigger
  * death pulses that chain to nearby enemies.
  *
- * Runs in the same slot as showdownSystem (ability system).
- *
  * Reuses the Showdown ECS component for active/cooldown/duration lifecycle.
- * Zone-specific spatial data (x, y, radius, chainCount) lives on world.lastRites.
+ * Zone-specific spatial data lives on world.lastRitesZones per owning player.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
-import type { GameWorld } from '../world'
+import type { GameWorld, LastRitesState } from '../world'
 import { hasButton, Button } from '../../net/input'
 import {
   Player,
   Showdown,
   Position,
-  Speed,
   Health,
   Dead,
   Enemy,
-  Roll,
 } from '../components'
 import { forEachInRadius } from '../SpatialHash'
+import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
 
 const lastRitesPlayerQuery = defineQuery([Player, Showdown, Position])
-const aliveEnemyQuery = defineQuery([Enemy, Position, Health])
 
 /** Safety cap on pulse processing iterations */
 const MAX_PULSE_ITERATIONS = 20
 
 export function lastRitesSystem(world: GameWorld, dt: number): void {
-  // Reset per-tick flags
+  const hadLastRitesAlias = world.lastRites !== null
+
+  // Reset per-tick flags.
   world.lastRitesPulseThisTick = false
   world.lastRitesActivatedThisTick = false
   world.lastRitesExpiredThisTick = false
   world.overkillProcessed.clear()
 
-  // Process pending death pulses from previous tick's kills
-  if (world.lastRites?.active && world.lastRites.pendingPulses.length > 0) {
-    // Find the zone owner (active player) for cooldown refund
-    const activePlayers = lastRitesPlayerQuery(world)
-    let zoneOwner = -1
-    for (const pid of activePlayers) {
-      if (Showdown.active[pid] === 1) { zoneOwner = pid; break }
+  // Process queued pulses from prior kills.
+  for (const [ownerEid, zone] of world.lastRitesZones) {
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && ownerEid !== world.localPlayerEid) {
+      continue
     }
-    processDeathPulses(world, zoneOwner)
+    if (zone.active && zone.pendingPulses.length > 0) {
+      processDeathPulses(world, ownerEid, zone)
+    }
   }
 
   const players = lastRitesPlayerQuery(world)
 
   for (const eid of players) {
-    const us = world.upgradeState
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && eid !== world.localPlayerEid) {
+      continue
+    }
+    if (getCharacterIdForPlayer(world, eid) !== 'undertaker') continue
 
-    // Decrement cooldown
+    const us = getUpgradeStateForPlayer(world, eid)
+
+    // Decrement cooldown.
     if (Showdown.cooldown[eid]! > 0) {
       Showdown.cooldown[eid] = Math.max(0, Showdown.cooldown[eid]! - dt)
     }
 
-    // --- Active zone: check expiry ---
-    if (Showdown.active[eid] === 1 && world.lastRites?.active) {
-      world.lastRites.timeRemaining -= dt
+    const zone = world.lastRitesZones.get(eid)
 
-      if (world.lastRites.timeRemaining <= 0) {
-        // Expired
+    // Keep zone lifecycle aligned with Showdown toggle (test/reset compatibility).
+    if (Showdown.active[eid] === 0 && zone?.active) {
+      zone.active = false
+    }
+
+    // Active zone lifecycle.
+    if (Showdown.active[eid] === 1 && zone?.active) {
+      zone.timeRemaining -= dt
+
+      if (zone.timeRemaining <= 0) {
         Showdown.active[eid] = 0
         Showdown.duration[eid] = 0
 
-        // Overtime: 5+ chain kills fully refunds cooldown
         const hasOvertime = us.nodesTaken.has('undertakers_overtime')
-        if (hasOvertime && world.lastRites.chainCount >= 5) {
+        if (hasOvertime && zone.chainCount >= 5) {
           Showdown.cooldown[eid] = 0
         } else {
           Showdown.cooldown[eid] = us.showdownCooldown
         }
 
-        world.lastRites.active = false
+        zone.active = false
+        zone.pendingPulses.length = 0
         world.lastRitesExpiredThisTick = true
       } else {
-        Showdown.duration[eid] = world.lastRites.timeRemaining
+        Showdown.duration[eid] = zone.timeRemaining
       }
 
-      // Consecrated Ground: tick DPS on enemies inside zone
-      // Accumulates fractional damage and only applies whole-number ticks
-      // so the renderer sees clean "1" damage indicators ~3 times/sec.
-      if (world.lastRites.active && us.nodesTaken.has('consecrated_ground') && world.spatialHash) {
-        const zone = world.lastRites
+      // Consecrated Ground DPS in-zone with whole-number accumulation.
+      if (zone.active && us.nodesTaken.has('consecrated_ground') && world.spatialHash) {
         const accum = zone.consecratedAccum
         const dpsIncrement = 3 * dt
         forEachInRadius(world.spatialHash, zone.x, zone.y, zone.radius, (enemyEid) => {
@@ -112,78 +117,87 @@ export function lastRitesSystem(world: GameWorld, dt: number): void {
       }
     }
 
-    // --- Activation (rising edge, not active, off cooldown) ---
+    // Activation (rising-edge ability press).
     const input = world.playerInputs.get(eid)
-    if (input) {
-      const wantsAbility = hasButton(input, Button.ABILITY)
-      const wasDown = Player.abilityWasDown[eid] === 1
+    if (!input) {
+      Player.abilityWasDown[eid] = 0
+      continue
+    }
 
-      if (
-        wantsAbility &&
-        !wasDown &&
-        Showdown.active[eid] === 0 &&
-        Showdown.cooldown[eid]! <= 0
-      ) {
-        // Place zone at cursor, clamped to placement range
-        const px = Position.x[eid]!
-        const py = Position.y[eid]!
-        const cx = input.cursorWorldX
-        const cy = input.cursorWorldY
+    const wantsAbility = hasButton(input, Button.ABILITY)
+    const wasDown = Player.abilityWasDown[eid] === 1
 
-        let zx = cx
-        let zy = cy
-        const dx = cx - px
-        const dy = cy - py
-        const distSq = dx * dx + dy * dy
-        const maxRange = us.showdownMarkRange
-        if (distSq > maxRange * maxRange) {
-          const dist = Math.sqrt(distSq)
-          zx = px + (dx / dist) * maxRange
-          zy = py + (dy / dist) * maxRange
-        }
+    if (
+      wantsAbility &&
+      !wasDown &&
+      Showdown.active[eid] === 0 &&
+      Showdown.cooldown[eid]! <= 0
+    ) {
+      const px = Position.x[eid]!
+      const py = Position.y[eid]!
+      const cx = input.cursorWorldX
+      const cy = input.cursorWorldY
 
-        // Create zone
-        world.lastRites = {
-          active: true,
-          x: zx,
-          y: zy,
-          radius: us.zoneRadius,
-          timeRemaining: us.showdownDuration,
-          chainCount: 0,
-          chainDamageBonus: 0,
-          pendingPulses: [],
-          consecratedAccum: new Map(),
-        }
-
-        Showdown.active[eid] = 1
-        Showdown.duration[eid] = us.showdownDuration
-        world.lastRitesActivatedThisTick = true
+      let zx = cx
+      let zy = cy
+      const dx = cx - px
+      const dy = cy - py
+      const distSq = dx * dx + dy * dy
+      const maxRange = us.showdownMarkRange
+      if (distSq > maxRange * maxRange) {
+        const dist = Math.sqrt(distSq)
+        zx = px + (dx / dist) * maxRange
+        zy = py + (dy / dist) * maxRange
       }
 
-      Player.abilityWasDown[eid] = wantsAbility ? 1 : 0
-    } else {
-      Player.abilityWasDown[eid] = 0
+      const createdZone: LastRitesState = {
+        ownerEid: eid,
+        active: true,
+        x: zx,
+        y: zy,
+        radius: us.zoneRadius,
+        timeRemaining: us.showdownDuration,
+        chainCount: 0,
+        chainDamageBonus: 0,
+        pendingPulses: [],
+        consecratedAccum: new Map(),
+      }
+      world.lastRitesZones.set(eid, createdZone)
+      Showdown.active[eid] = 1
+      Showdown.duration[eid] = us.showdownDuration
+      world.lastRitesActivatedThisTick = true
+    }
+
+    Player.abilityWasDown[eid] = wantsAbility ? 1 : 0
+  }
+
+  // Backwards-compatible alias used by some callers/tests.
+  if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0) {
+    world.lastRites = world.lastRitesZones.get(world.localPlayerEid) ?? null
+  } else {
+    world.lastRites = null
+    for (const zone of world.lastRitesZones.values()) {
+      if (zone.active) {
+        world.lastRites = zone
+        break
+      }
+    }
+    if (world.lastRites === null && hadLastRitesAlias) {
+      for (const zone of world.lastRitesZones.values()) {
+        world.lastRites = zone
+        break
+      }
     }
   }
 }
 
-/**
- * Process pending death pulses (breadth-first, iterative).
- * Called at the start of each tick to process kills from the previous tick.
- *
- * @param zoneOwnerEid - Entity ID of the player who owns the zone (for cooldown refund).
- *                       -1 if no active owner found (pulses still fire, refund skipped).
- */
-function processDeathPulses(world: GameWorld, zoneOwnerEid: number): void {
-  const zone = world.lastRites!
-  const us = world.upgradeState
+function processDeathPulses(world: GameWorld, zoneOwnerEid: number, zone: LastRitesState): void {
+  const us = getUpgradeStateForPlayer(world, zoneOwnerEid)
 
-  // Undertaker's Overtime: infinite chains + escalating damage
   const hasOvertime = us.nodesTaken.has('undertakers_overtime')
   const effectiveChainLimit = hasOvertime ? Infinity : us.chainLimit
 
   let iterations = 0
-
   while (zone.pendingPulses.length > 0 && iterations < MAX_PULSE_ITERATIONS) {
     iterations++
     const currentPulses = zone.pendingPulses.splice(0)
@@ -198,15 +212,12 @@ function processDeathPulses(world: GameWorld, zoneOwnerEid: number): void {
         if (hasComponent(world, Dead, enemyEid)) return
         if (Health.current[enemyEid]! <= 0) return
 
-        // Check within pulse radius
         const dx = Position.x[enemyEid]! - pulse.x
         const dy = Position.y[enemyEid]! - pulse.y
         if (dx * dx + dy * dy > us.pulseRadius * us.pulseRadius) return
 
-        // Apply pulse damage
         Health.current[enemyEid] = Health.current[enemyEid]! - pulse.damage
 
-        // If this kill is inside zone and we haven't exceeded chain limit, queue another pulse
         if (Health.current[enemyEid]! <= 0 && zone.chainCount < effectiveChainLimit) {
           const ex = Position.x[enemyEid]!
           const ey = Position.y[enemyEid]!
@@ -214,11 +225,7 @@ function processDeathPulses(world: GameWorld, zoneOwnerEid: number): void {
           const zdy = ey - zone.y
           if (zdx * zdx + zdy * zdy <= zone.radius * zone.radius) {
             zone.chainCount++
-
-            // Overtime: +3 damage per chain
-            if (hasOvertime) {
-              zone.chainDamageBonus += 3
-            }
+            if (hasOvertime) zone.chainDamageBonus += 3
 
             zone.pendingPulses.push({
               x: ex,
@@ -226,16 +233,13 @@ function processDeathPulses(world: GameWorld, zoneOwnerEid: number): void {
               damage: us.pulseDamage + zone.chainDamageBonus,
             })
 
-            // Refund cooldown per chain kill to the zone owner
-            if (zoneOwnerEid >= 0) {
-              Showdown.cooldown[zoneOwnerEid] = Math.max(0, Showdown.cooldown[zoneOwnerEid]! - us.showdownKillRefund)
-            }
+            Showdown.cooldown[zoneOwnerEid] = Math.max(
+              0,
+              Showdown.cooldown[zoneOwnerEid]! - us.showdownKillRefund,
+            )
           }
         }
       })
     }
   }
-
-  // Overtime: if 5+ chain kills, fully refund cooldown on deactivation
-  // (tracked by zone.chainCount, applied when zone expires — handled in expiry above)
 }

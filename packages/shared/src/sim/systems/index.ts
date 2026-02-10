@@ -63,41 +63,53 @@ export {
 }
 
 /**
- * Register all simulation systems in the canonical execution order.
- * Both client and server call this to prevent order divergence.
+ * Register prediction systems for client-side forward ticks.
  *
- * **Ordering dependencies:**
- * - meleeSystem sets `world.lastKillWasMelee` → healthSystem reads it →
- *   goldRushSystem resets it. This three-system chain MUST run in order.
- * - healthSystem fires onKill hooks (gold nugget spawning) →
- *   goldRushSystem handles pickup and Gold Fever stacking.
- * - buffSystem runs last to tick timers and process one-shot effects
- *   (rockslide shockwaves, combo timeout, etc.) after all combat resolves.
- *
- * @param systems - The system registry to populate
- * @param characterId - Which character is being played (affects ability system)
+ * Includes both legacy Sheriff path and new character systems; systems self-gate
+ * by player character/components.
  */
-export function registerAllSystems(systems: SystemRegistry, characterId: CharacterId = 'sheriff'): void {
+export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
+  systems.register(showdownSystem)
+  systems.register(lastRitesSystem)
+  systems.register(dynamiteSystem)
+  systems.register(cylinderSystem)
+  systems.register(weaponSystem)
+  systems.register(meleeSystem)
+  systems.register(knockbackSystem)
+  systems.register(bulletSystem)
+  systems.register(movementSystem)
+  systems.register(bulletCollisionSystem)
+  systems.register(collisionSystem)
+}
 
-  // Character-specific ability system
-  if (characterId === 'undertaker') {
-    systems.register(lastRitesSystem)
-  } else if (characterId === 'prospector') {
-    systems.register(dynamiteSystem)
-  } else {
-    systems.register(showdownSystem)
-  }
+/**
+ * Register replay systems for server reconciliation.
+ * Movement-only — excludes weapon/ability systems to avoid duplicate spawns.
+ */
+export function registerReplaySystems(systems: SystemRegistry): void {
+  systems.register(playerInputSystem)
+  systems.register(rollSystem)
+  systems.register(movementSystem)
+  systems.register(collisionSystem)
+}
 
-  // Character-specific weapon system
-  if (characterId === 'prospector') {
-    systems.register(meleeSystem)
-  } else {
-    systems.register(cylinderSystem)
-    systems.register(weaponSystem)
-  }
-
+/**
+ * Register all simulation systems in canonical order.
+ *
+ * `characterId` is retained for backwards API compatibility but runtime now
+ * supports mixed-character rooms via per-player character gating inside systems.
+ */
+export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
+  systems.register(playerInputSystem)
+  systems.register(rollSystem)
+  systems.register(showdownSystem)
+  systems.register(lastRitesSystem)
+  systems.register(dynamiteSystem)
+  systems.register(cylinderSystem)
+  systems.register(weaponSystem)
+  systems.register(meleeSystem)
   systems.register(knockbackSystem)
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
@@ -111,7 +123,6 @@ export function registerAllSystems(systems: SystemRegistry, characterId: Charact
   systems.register(enemyAttackSystem)
   systems.register(movementSystem)
   systems.register(bulletCollisionSystem)
-  // healthSystem → goldRushSystem → buffSystem must stay in this order (see above)
   systems.register(healthSystem)
   systems.register(goldRushSystem)
   systems.register(buffSystem)

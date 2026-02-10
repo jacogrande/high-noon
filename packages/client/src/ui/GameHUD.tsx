@@ -6,6 +6,13 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
   const xpRange = state.xpForNextLevel - state.xpForCurrentLevel
   const xpPct = xpRange > 0 ? ((state.xp - state.xpForCurrentLevel) / xpRange) * 100 : 100
   const lowHP = state.hp <= 2 && state.hp > 0
+  const abilityActive = state.abilityActive ?? state.showdownActive
+  const abilityCooldown = state.abilityCooldown ?? state.showdownCooldown
+  const abilityCooldownMax = state.abilityCooldownMax ?? state.showdownCooldownMax
+  const abilityTimeLeft = state.abilityTimeLeft ?? state.showdownTimeLeft
+  const abilityDurationMax = state.abilityDurationMax ?? state.showdownDurationMax
+  const abilityName = state.abilityName ?? 'ABILITY'
+  const showCylinder = state.showCylinder && state.cylinderMax > 0
 
   return (
     <div style={styles.root}>
@@ -18,68 +25,72 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
             : `WAVE ${state.waveNumber} / ${state.totalWaves}`}
       </div>
 
-      {/* Cylinder + Showdown — bottom-left */}
+      {/* Weapon + Ability — bottom-left */}
       <div style={styles.bottomLeft}>
-        {/* Showdown ability indicator */}
+        {/* Character ability indicator */}
         <div style={styles.abilityRow}>
-          {state.showdownActive ? (
+          {abilityActive ? (
             <>
               <div style={{ ...styles.abilityKey, ...styles.abilityActive }}>Q</div>
               <div style={styles.abilityBarOuter}>
                 <div style={{
                   ...styles.abilityBarFill,
                   ...styles.abilityBarActive,
-                  width: `${state.showdownDurationMax > 0 ? (state.showdownTimeLeft / state.showdownDurationMax) * 100 : 0}%`,
+                  width: `${abilityDurationMax > 0 ? (abilityTimeLeft / abilityDurationMax) * 100 : 0}%`,
                 }} />
               </div>
               <div style={{ ...styles.abilityLabel, color: '#ff6633' }}>
-                {state.showdownTimeLeft.toFixed(1)}s
+                {abilityName} {abilityTimeLeft.toFixed(1)}s
               </div>
             </>
-          ) : state.showdownCooldown > 0 ? (
+          ) : abilityCooldown > 0 ? (
             <>
               <div style={{ ...styles.abilityKey, ...styles.abilityOnCooldown }}>Q</div>
               <div style={styles.abilityBarOuter}>
                 <div style={{
                   ...styles.abilityBarFill,
                   ...styles.abilityBarCooldown,
-                  width: `${state.showdownCooldownMax > 0 ? (1 - state.showdownCooldown / state.showdownCooldownMax) * 100 : 0}%`,
+                  width: `${abilityCooldownMax > 0 ? (1 - abilityCooldown / abilityCooldownMax) * 100 : 0}%`,
                 }} />
               </div>
               <div style={{ ...styles.abilityLabel, color: '#666666' }}>
-                {state.showdownCooldown.toFixed(1)}s
+                {abilityName} {abilityCooldown.toFixed(1)}s
               </div>
             </>
           ) : (
             <>
               <div style={{ ...styles.abilityKey, ...styles.abilityReady }}>Q</div>
-              <div style={{ ...styles.abilityLabel, color: '#00ffcc' }}>READY</div>
+              <div style={{ ...styles.abilityLabel, color: '#00ffcc' }}>{abilityName} READY</div>
             </>
           )}
         </div>
-        <div style={styles.chamberRow}>
-          {Array.from({ length: state.cylinderMax }, (_, i) => {
-            const loaded = i < state.cylinderRounds
-            const isLastRound = state.cylinderRounds === 1 && i === 0
-            return (
-              <div key={i} style={{
-                ...styles.chamber,
-                backgroundColor: loaded
-                  ? (isLastRound ? '#ff4444' : '#ffcc00')
-                  : 'rgba(255, 204, 0, 0.2)',
-                boxShadow: loaded
-                  ? (isLastRound ? '0 0 6px rgba(255, 68, 68, 0.6)' : '0 0 4px rgba(255, 204, 0, 0.4)')
-                  : 'none',
-              }} />
-            )
-          })}
-        </div>
-        {state.isReloading && (
+        {showCylinder && (
           <>
-            <div style={styles.reloadBarOuter}>
-              <div style={{ ...styles.reloadFill, width: `${state.reloadProgress * 100}%` }} />
+            <div style={styles.chamberRow}>
+              {Array.from({ length: state.cylinderMax }, (_, i) => {
+                const loaded = i < state.cylinderRounds
+                const isLastRound = state.cylinderRounds === 1 && i === 0
+                return (
+                  <div key={i} style={{
+                    ...styles.chamber,
+                    backgroundColor: loaded
+                      ? (isLastRound ? '#ff4444' : '#ffcc00')
+                      : 'rgba(255, 204, 0, 0.2)',
+                    boxShadow: loaded
+                      ? (isLastRound ? '0 0 6px rgba(255, 68, 68, 0.6)' : '0 0 4px rgba(255, 204, 0, 0.4)')
+                      : 'none',
+                  }} />
+                )
+              })}
             </div>
-            <div style={styles.reloadLabel}>RELOADING</div>
+            {state.isReloading && (
+              <>
+                <div style={styles.reloadBarOuter}>
+                  <div style={{ ...styles.reloadFill, width: `${state.reloadProgress * 100}%` }} />
+                </div>
+                <div style={styles.reloadLabel}>RELOADING</div>
+              </>
+            )}
           </>
         )}
       </div>

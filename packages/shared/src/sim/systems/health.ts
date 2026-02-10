@@ -10,7 +10,7 @@ import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Health, Player, Dead, Enemy, Position } from '../components'
 import { XP_VALUES } from '../content/xp'
-import { awardXP } from '../upgrade'
+import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
 import { GOLD_NUGGET_LIFETIME } from './goldRush'
 
 const healthQuery = defineQuery([Health])
@@ -49,15 +49,17 @@ export function healthSystem(world: GameWorld, dt: number): void {
           })
         }
 
-        // Queue death pulse if inside Last Rites zone
-        if (world.lastRites?.active) {
-          const dx = Position.x[eid]! - world.lastRites.x
-          const dy = Position.y[eid]! - world.lastRites.y
-          if (dx * dx + dy * dy <= world.lastRites.radius * world.lastRites.radius) {
-            world.lastRites.pendingPulses.push({
+        // Queue death pulses for any active Last Rites zones that contain this kill.
+        for (const [ownerEid, zone] of world.lastRitesZones) {
+          if (!zone.active) continue
+          const dx = Position.x[eid]! - zone.x
+          const dy = Position.y[eid]! - zone.y
+          if (dx * dx + dy * dy <= zone.radius * zone.radius) {
+            const ownerState = getUpgradeStateForPlayer(world, ownerEid)
+            zone.pendingPulses.push({
               x: Position.x[eid]!,
               y: Position.y[eid]!,
-              damage: world.upgradeState.pulseDamage + world.lastRites.chainDamageBonus,
+              damage: ownerState.pulseDamage + zone.chainDamageBonus,
             })
           }
         }
@@ -65,7 +67,11 @@ export function healthSystem(world: GameWorld, dt: number): void {
         // Award XP for enemy kills
         const xp = XP_VALUES[Enemy.type[eid]!]
         if (xp !== undefined) {
-          awardXP(world.upgradeState, xp)
+          // Shared encounter progression: all alive players receive encounter XP.
+          const players = playerQuery(world)
+          for (const playerEid of players) {
+            awardXP(getUpgradeStateForPlayer(world, playerEid), xp)
+          }
         }
         // Non-player death — clean up any stale map entries keyed by this eid
         world.bulletCollisionCallbacks.delete(eid)

@@ -12,19 +12,12 @@ import {
   EnemyType,
   Health,
   Invincible,
+  MeleeWeapon,
   NO_OWNER,
   NO_TARGET,
   PLAYER_HP,
   PLAYER_IFRAME_DURATION,
   PLAYER_RADIUS,
-  PLAYER_SPEED,
-  PISTOL_BULLET_DAMAGE,
-  PISTOL_BULLET_SPEED,
-  PISTOL_CYLINDER_SIZE,
-  PISTOL_FIRE_RATE,
-  PISTOL_MIN_FIRE_INTERVAL,
-  PISTOL_RANGE,
-  PISTOL_RELOAD_TIME,
   Position,
   Showdown,
   Speed,
@@ -38,6 +31,7 @@ import {
   Player,
   PlayerState,
   type BulletSnapshot,
+  type CharacterId,
   type EnemySnapshot,
   type GameWorld,
   type PlayerSnapshot,
@@ -67,6 +61,7 @@ export interface SnapshotIngestContext extends ISimStateSource, ILocalIdentitySt
   playerEntities: Map<number, number>
   bulletEntities: Map<number, number>
   enemyEntities: Map<number, number>
+  localCharacterId: CharacterId
   resolveRttMs: () => number
 }
 
@@ -118,35 +113,53 @@ export class SnapshotIngestor {
         if (p.eid === ctx.myServerEid) {
           ctx.setMyClientEid(clientEid)
           ctx.setLocalPlayerRenderEid(clientEid)
+          ctx.world.characterId = ctx.localCharacterId
+
+          const us = ctx.world.upgradeState
+          ctx.world.playerUpgradeStates.set(clientEid, us)
+          ctx.world.playerCharacters.set(clientEid, ctx.localCharacterId)
 
           // Prediction requires Speed component.
           addComponent(ctx.world, Speed, clientEid)
-          Speed.current[clientEid] = PLAYER_SPEED
-          Speed.max[clientEid] = PLAYER_SPEED
+          Speed.current[clientEid] = us.speed
+          Speed.max[clientEid] = us.speed
 
-          // Weapon + Cylinder for bullet prediction.
+          // Base weapon state exists for all characters.
           addComponent(ctx.world, Weapon, clientEid)
-          Weapon.bulletSpeed[clientEid] = PISTOL_BULLET_SPEED
-          Weapon.bulletDamage[clientEid] = PISTOL_BULLET_DAMAGE
-          Weapon.range[clientEid] = PISTOL_RANGE
-          Weapon.fireRate[clientEid] = PISTOL_FIRE_RATE
+          Weapon.bulletSpeed[clientEid] = us.bulletSpeed
+          Weapon.bulletDamage[clientEid] = us.bulletDamage
+          Weapon.range[clientEid] = us.range
+          Weapon.fireRate[clientEid] = us.fireRate
           Weapon.cooldown[clientEid] = 0
 
-          addComponent(ctx.world, Cylinder, clientEid)
-          Cylinder.rounds[clientEid] = PISTOL_CYLINDER_SIZE
-          Cylinder.maxRounds[clientEid] = PISTOL_CYLINDER_SIZE
-          Cylinder.reloadTime[clientEid] = PISTOL_RELOAD_TIME
-          Cylinder.reloading[clientEid] = 0
-          Cylinder.reloadTimer[clientEid] = 0
-          Cylinder.fireCooldown[clientEid] = PISTOL_MIN_FIRE_INTERVAL
-          Cylinder.firstShotAfterReload[clientEid] = 0
+          if (ctx.localCharacterId === 'prospector') {
+            addComponent(ctx.world, MeleeWeapon, clientEid)
+            MeleeWeapon.swingCooldown[clientEid] = 0
+            MeleeWeapon.chargeTimer[clientEid] = 0
+            MeleeWeapon.charging[clientEid] = 0
+            MeleeWeapon.swungThisTick[clientEid] = 0
+            MeleeWeapon.wasChargedSwing[clientEid] = 0
+            MeleeWeapon.swingAngle[clientEid] = 0
+          } else {
+            addComponent(ctx.world, Cylinder, clientEid)
+            const cylinderSize = Math.max(0, Math.round(us.cylinderSize))
+            Cylinder.rounds[clientEid] = cylinderSize
+            Cylinder.maxRounds[clientEid] = cylinderSize
+            Cylinder.reloadTime[clientEid] = us.reloadTime
+            Cylinder.reloading[clientEid] = 0
+            Cylinder.reloadTimer[clientEid] = 0
+            Cylinder.fireCooldown[clientEid] = us.minFireInterval
+            Cylinder.firstShotAfterReload[clientEid] = 0
+          }
 
-          // Showdown ability for prediction.
+          // Shared ability state (Sheriff Showdown / Undertaker Last Rites / Prospector cooldown).
           addComponent(ctx.world, Showdown, clientEid)
           Showdown.active[clientEid] = 0
           Showdown.targetEid[clientEid] = NO_TARGET
           Showdown.duration[clientEid] = 0
           Showdown.cooldown[clientEid] = 0
+
+          Health.max[clientEid] = us.maxHP
         }
       }
 
@@ -181,6 +194,8 @@ export class SnapshotIngestor {
     for (const [serverEid, clientEid] of ctx.playerEntities) {
       if (!seen.has(serverEid)) {
         removeEntity(ctx.world, clientEid)
+        ctx.world.playerUpgradeStates.delete(clientEid)
+        ctx.world.playerCharacters.delete(clientEid)
         ctx.playerEntities.delete(serverEid)
         if (serverEid === ctx.myServerEid) {
           ctx.setMyClientEid(-1)

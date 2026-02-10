@@ -7,6 +7,7 @@
 
 import { addEntity, addComponent, removeEntity } from 'bitecs'
 import type { GameWorld, BulletCollisionCallback } from './world'
+import type { UpgradeState } from './upgrade'
 import {
   Position,
   Velocity,
@@ -30,7 +31,6 @@ import {
   MeleeWeapon,
 } from './components'
 import {
-  PLAYER_SPEED,
   PLAYER_RADIUS,
   PLAYER_START_X,
   PLAYER_START_Y,
@@ -93,7 +93,8 @@ export function spawnPlayer(
   world: GameWorld,
   x = PLAYER_START_X,
   y = PLAYER_START_Y,
-  playerId = 0
+  playerId = 0,
+  upgradeState?: UpgradeState,
 ): number {
   const eid = addEntity(world)
 
@@ -124,8 +125,15 @@ export function spawnPlayer(
   // Set initial state
   PlayerState.state[eid] = PlayerStateType.IDLE
 
-  // Read upgrade state for character-agnostic stats
-  const us = world.upgradeState
+  // Read upgrade state for character-agnostic stats.
+  // In multiplayer, each player can own a distinct state instance.
+  const us = upgradeState ?? world.upgradeState
+  world.playerUpgradeStates.set(eid, us)
+  world.playerCharacters.set(eid, us.characterDef.id)
+  if (world.playerUpgradeStates.size === 1) {
+    world.upgradeState = us
+    world.characterId = us.characterDef.id
+  }
 
   // Set speed from upgrade state
   Speed.current[eid] = us.speed
@@ -149,7 +157,7 @@ export function spawnPlayer(
   Weapon.range[eid] = us.range
 
   // Character-specific weapon setup
-  if (world.upgradeState.characterDef.id === 'prospector') {
+  if (us.characterDef.id === 'prospector') {
     // Melee weapon (no cylinder)
     addComponent(world, MeleeWeapon, eid)
     MeleeWeapon.swingCooldown[eid] = 0

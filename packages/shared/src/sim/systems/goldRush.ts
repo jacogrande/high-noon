@@ -13,6 +13,7 @@ import { defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Player, Position } from '../components'
 import { GOLD_FEVER_MAX_STACKS, GOLD_PICKUP_RADIUS } from '../content/weapons'
+import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
 
 const playerQuery = defineQuery([Player, Position])
 
@@ -20,17 +21,28 @@ const playerQuery = defineQuery([Player, Position])
 export const GOLD_NUGGET_LIFETIME = 10
 
 export function goldRushSystem(world: GameWorld, dt: number): void {
-  const us = world.upgradeState
-
   // Reset per-tick melee kill flag
   world.lastKillWasMelee = false
 
-  // Tick Gold Fever timer
-  if (us.goldFeverTimer > 0) {
-    us.goldFeverTimer -= dt
-    if (us.goldFeverTimer <= 0) {
-      us.goldFeverStacks = 0
-      us.goldFeverTimer = 0
+  // Tick Gold Fever timer per player.
+  if (world.playerUpgradeStates.size > 0) {
+    for (const us of world.playerUpgradeStates.values()) {
+      if (us.goldFeverTimer > 0) {
+        us.goldFeverTimer -= dt
+        if (us.goldFeverTimer <= 0) {
+          us.goldFeverStacks = 0
+          us.goldFeverTimer = 0
+        }
+      }
+    }
+  } else {
+    const us = world.upgradeState
+    if (us.goldFeverTimer > 0) {
+      us.goldFeverTimer -= dt
+      if (us.goldFeverTimer <= 0) {
+        us.goldFeverStacks = 0
+        us.goldFeverTimer = 0
+      }
     }
   }
 
@@ -59,7 +71,8 @@ export function goldRushSystem(world: GameWorld, dt: number): void {
         world.goldNuggets.splice(i, 1)
 
         // Prospector: add Gold Fever stack
-        if (us.characterDef.id === 'prospector') {
+        if (getCharacterIdForPlayer(world, eid) === 'prospector') {
+          const us = getUpgradeStateForPlayer(world, eid)
           us.goldFeverStacks = Math.min(us.goldFeverStacks + 1, GOLD_FEVER_MAX_STACKS)
           us.goldFeverTimer = us.goldFeverDuration
         }

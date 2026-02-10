@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import type { CharacterId } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
@@ -7,6 +8,7 @@ import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
+import { CharacterSelect } from '../ui/CharacterSelect'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -15,6 +17,7 @@ export function Game() {
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [selectedCharacter, setSelectedCharacter] = useState<CharacterId | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
@@ -57,12 +60,13 @@ export function Game() {
 
   // Second effect: Initialize game (needs container and assets)
   useEffect(() => {
-    // Wait for assets to load and container to be available
-    if (loading || error) return
+    // Wait for assets to load, character selection, and container
+    if (loading || error || !selectedCharacter) return
     const container = containerRef.current
     if (!container) return
+    const characterId = selectedCharacter
 
-    console.log('[Game] Assets loaded and container ready, initializing game...')
+    console.log(`[Game] Initializing singleplayer as ${characterId}...`)
 
     let gameApp: GameApp | null = null
     let gameLoop: GameLoop | null = null
@@ -76,7 +80,11 @@ export function Game() {
         return
       }
 
-      scene = await CoreGameScene.create({ gameApp, mode: 'singleplayer' })
+      scene = await CoreGameScene.create({
+        gameApp,
+        mode: 'singleplayer',
+        characterId,
+      })
       sceneRef.current = scene
       if (!mounted) {
         scene.destroy()
@@ -120,7 +128,7 @@ export function Game() {
       sceneRef.current = null
       gameApp?.destroy()
     }
-  }, [loading, error])
+  }, [loading, error, selectedCharacter])
 
   const handleNodeSelect = useCallback((nodeId: string) => {
     const scene = sceneRef.current
@@ -140,6 +148,7 @@ export function Game() {
   const handleRetry = () => {
     setLoading(true)
     setLoadProgress(0)
+    setSelectedCharacter(null)
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -176,6 +185,19 @@ export function Game() {
             />
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (!selectedCharacter) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <Link to="/" style={styles.backButton}>
+            ← Back
+          </Link>
+        </div>
+        <CharacterSelect onSelect={setSelectedCharacter} />
       </div>
     )
   }

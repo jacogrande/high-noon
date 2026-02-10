@@ -42,6 +42,20 @@ Reduce feature drift and jitter-causing divergence by consolidating gameplay pre
 17. Fixed network README snapshot buffer docs to match code (`5` snapshots).
 18. Cleared stale reconnect token after reconnect exhaustion in `NetworkClient.ts`.
 
+### Phase 5 — Character runtime parity (single + multiplayer)
+
+19. Added character selection UI and wired it through both game entry pages.
+20. Extended `CoreGameScene` configuration with `characterId` and threaded it through mode controllers.
+21. Updated singleplayer runtime bootstrap to initialize world state from selected character definition.
+22. Extended room contract with authoritative character negotiation:
+    - validated join `characterId`
+    - per-player upgrade state initialization by character
+    - authoritative `game-config.characterId`
+    - reconnect preserves character per slot
+23. Extended HUD payload/types to character-aware ability/cylinder fields.
+24. Updated multiplayer local snapshot ingest to initialize predicted local components by authoritative character (cylinder vs melee path).
+25. Updated multiplayer controller HUD/presentation composition to avoid Sheriff-only assumptions.
+
 ## Why This Helps
 
 - New presentation behavior can be added once in shared scene-core modules and reused across both modes.

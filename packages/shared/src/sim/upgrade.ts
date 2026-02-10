@@ -1,4 +1,4 @@
-import type { CharacterDef, StatName, SkillNodeDef, SkillBranch } from './content/characters'
+import type { CharacterDef, CharacterId, StatName, SkillNodeDef, SkillBranch } from './content/characters'
 import { getLevelForXP } from './content/xp'
 import { Weapon, Speed, Health, Cylinder } from './components'
 import { hasComponent } from 'bitecs'
@@ -168,6 +168,22 @@ export function awardXP(state: UpgradeState, amount: number): boolean {
 }
 
 /**
+ * Resolve upgrade state for a specific player entity.
+ * Falls back to world.upgradeState for compatibility with single-player flows.
+ */
+export function getUpgradeStateForPlayer(world: GameWorld, playerEid: number): UpgradeState {
+  return world.playerUpgradeStates.get(playerEid) ?? world.upgradeState
+}
+
+/**
+ * Resolve character id for a specific player entity.
+ * Falls back to world.characterId for compatibility with single-player flows.
+ */
+export function getCharacterIdForPlayer(world: GameWorld, playerEid: number): CharacterId {
+  return world.playerCharacters.get(playerEid) ?? world.characterId
+}
+
+/**
  * Recompute all player stats from character base stats + taken skill node mods.
  * Order: all additive mods first, then all multiplicative mods.
  */
@@ -299,8 +315,11 @@ const LAST_STAND_SPEED_BONUS = 1.2
  * Write computed stats from UpgradeState into ECS components on the player entity.
  * Also applies active timed buffs (Last Stand) idempotently.
  */
-export function writeStatsToECS(world: GameWorld, playerEid: number): void {
-  const state = world.upgradeState
+export function writeStatsToECS(
+  world: GameWorld,
+  playerEid: number,
+  state: UpgradeState = getUpgradeStateForPlayer(world, playerEid),
+): void {
 
   // Weapon stats
   let bulletDamage = state.bulletDamage

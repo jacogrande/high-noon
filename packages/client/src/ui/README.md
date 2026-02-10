@@ -12,11 +12,9 @@ User interface components and overlays.
 
 ## Key Files
 
-- `Hud.ts` - In-game HUD overlay
-- `MainMenu.ts` - Title screen and navigation
-- `Lobby.ts` - Multiplayer lobby interface
-- `DamageNumbers.ts` - Floating combat text
-- `UpgradeSelect.ts` - Roguelike upgrade picker
+- `GameHUD.tsx` - In-game HUD overlay
+- `SkillTreePanel.tsx` - Skill tree node selection UI
+- `CharacterSelect.tsx` - Pre-run character selection UI shared by SP/MP entry pages
 
 ## Implementation Options
 

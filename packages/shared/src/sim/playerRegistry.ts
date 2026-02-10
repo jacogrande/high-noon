@@ -8,6 +8,7 @@
 
 import { removeEntity } from 'bitecs'
 import type { GameWorld } from './world'
+import type { UpgradeState } from './upgrade'
 import { spawnPlayer } from './prefabs'
 import { getArenaCenter } from './content/maps/testArena'
 
@@ -48,7 +49,7 @@ function nextSlot(world: GameWorld): number {
  * @returns The entity ID of the newly spawned player
  * @throws If sessionId is already registered or room is full
  */
-export function addPlayer(world: GameWorld, sessionId: string): number {
+export function addPlayer(world: GameWorld, sessionId: string, upgradeState?: UpgradeState): number {
   if (world.players.has(sessionId)) {
     throw new Error(`Player session already registered: ${sessionId}`)
   }
@@ -60,7 +61,7 @@ export function addPlayer(world: GameWorld, sessionId: string): number {
 
   const { x: cx, y: cy } = getArenaCenter()
   const offset = SPAWN_OFFSETS[slot]!
-  const eid = spawnPlayer(world, cx + offset.dx, cy + offset.dy, slot)
+  const eid = spawnPlayer(world, cx + offset.dx, cy + offset.dy, slot, upgradeState)
 
   world.players.set(sessionId, { eid, slot })
   return eid
@@ -80,6 +81,9 @@ export function removePlayer(world: GameWorld, sessionId: string): void {
   world.playerInputs.delete(info.eid)
   world.rollDodgedBullets.delete(info.eid)
   world.lastPlayerHitDir.delete(info.eid)
+  world.playerUpgradeStates.delete(info.eid)
+  world.playerCharacters.delete(info.eid)
+  world.lastRitesZones.delete(info.eid)
   removeEntity(world, info.eid)
   world.players.delete(sessionId)
 }

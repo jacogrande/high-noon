@@ -5,8 +5,8 @@ React page components for the client application.
 ## Current Pages
 
 - `Home.tsx` - Landing page with main menu (links to single-player and multiplayer)
-- `Game.tsx` - Single-player game page — asset loading, creates GameApp/GameLoop, delegates to GameScene
-- `MultiplayerGame.tsx` - Multiplayer game page — asset loading, server connection, delegates to MultiplayerGameScene
+- `Game.tsx` - Single-player game page — asset loading, character select, creates GameApp/GameLoop, delegates to `CoreGameScene` (singleplayer mode)
+- `MultiplayerGame.tsx` - Multiplayer game page — asset loading, character select, server connection, delegates to `CoreGameScene` (multiplayer mode)
 
 ## Future Pages
 

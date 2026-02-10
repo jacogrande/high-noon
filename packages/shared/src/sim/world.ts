@@ -18,6 +18,7 @@ import { HookRegistry } from './hooks'
  * Last Rites zone state (Undertaker ability)
  */
 export interface LastRitesState {
+  ownerEid: number
   active: boolean
   x: number
   y: number
@@ -34,6 +35,7 @@ export interface LastRitesState {
  * Dust cloud left behind by Grave Dust node
  */
 export interface DustCloud {
+  ownerEid: number
   x: number
   y: number
   radius: number
@@ -68,6 +70,7 @@ export interface GoldNugget {
  * Rockslide shockwave from roll
  */
 export interface RockslideShockwave {
+  ownerEid: number
   x: number
   y: number
   radius: number
@@ -197,8 +200,14 @@ export interface GameWorld extends IWorld {
   playerInputs: Map<number, InputState>
   /** Player registry: session ID → PlayerInfo (for multiplayer) */
   players: Map<string, PlayerInfo>
+  /** Per-player upgrade/progression state (player eid -> state) */
+  playerUpgradeStates: Map<number, UpgradeState>
+  /** Per-player character id (player eid -> character) */
+  playerCharacters: Map<number, CharacterId>
   /** Which character is being played */
   characterId: CharacterId
+  /** Active Last Rites zones keyed by owning player eid */
+  lastRitesZones: Map<number, LastRitesState>
   /** Last Rites zone state (Undertaker only, null for Sheriff) */
   lastRites: LastRitesState | null
   /** Set to true when a Last Rites death pulse fires this tick */
@@ -227,6 +236,14 @@ export interface GameWorld extends IWorld {
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
   rockslideShockwaves: RockslideShockwave[]
+  /**
+   * Simulation scope hint for systems.
+   * - 'all': full-world simulation (server and canonical single-player)
+   * - 'local-player': local-only prediction/replay path (client multiplayer)
+   */
+  simulationScope: 'all' | 'local-player'
+  /** Local player entity used when simulationScope is 'local-player' */
+  localPlayerEid: number
 }
 
 /**
@@ -262,7 +279,10 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     hooks: new HookRegistry(),
     playerInputs: new Map(),
     players: new Map(),
+    playerUpgradeStates: new Map(),
+    playerCharacters: new Map(),
     characterId: charDef.id,
+    lastRitesZones: new Map(),
     lastRites: null,
     lastRitesPulseThisTick: false,
     lastRitesActivatedThisTick: false,
@@ -277,6 +297,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lastKillWasMelee: false,
     tremorThisTick: false,
     rockslideShockwaves: [],
+    simulationScope: 'all',
+    localPlayerEid: -1,
   }
 }
 
@@ -313,7 +335,10 @@ export function resetWorld(world: GameWorld): void {
   world.hooks.clear()
   world.playerInputs.clear()
   world.players.clear()
+  world.playerUpgradeStates.clear()
+  world.playerCharacters.clear()
   world.rng.reset(world.initialSeed)
+  world.lastRitesZones.clear()
   world.lastRites = null
   world.lastRitesPulseThisTick = false
   world.lastRitesActivatedThisTick = false
@@ -328,6 +353,8 @@ export function resetWorld(world: GameWorld): void {
   world.lastKillWasMelee = false
   world.tremorThisTick = false
   world.rockslideShockwaves = []
+  world.simulationScope = 'all'
+  world.localPlayerEid = -1
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

@@ -22,6 +22,7 @@ import {
   Roll,
 } from '../components'
 import { NO_TARGET } from '../prefabs'
+import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
 
 const showdownPlayerQuery = defineQuery([Player, Showdown, Position, Velocity])
 const aliveEnemyQuery = defineQuery([Enemy, Position, Health])
@@ -46,7 +47,14 @@ export function showdownSystem(
   const players = showdownPlayerQuery(world)
 
   for (const eid of players) {
-    const us = world.upgradeState
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && eid !== world.localPlayerEid) {
+      continue
+    }
+
+    const us = getUpgradeStateForPlayer(world, eid)
+    if (getCharacterIdForPlayer(world, eid) !== 'sheriff') {
+      continue
+    }
 
     // Decrement cooldown
     if (Showdown.cooldown[eid]! > 0) {

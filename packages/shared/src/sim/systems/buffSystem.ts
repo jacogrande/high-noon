@@ -14,51 +14,55 @@ import { applySlow } from './slowDebuff'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 
 export function buffSystem(world: GameWorld, dt: number): void {
-  const us = world.upgradeState
+  const states = world.playerUpgradeStates.size > 0
+    ? Array.from(world.playerUpgradeStates.values())
+    : [world.upgradeState]
 
   // --- Tremor reset ---
   world.tremorThisTick = false
 
   // --- Consecutive swing combo timeout (Prospector) ---
-  if (us.consecutiveSwingTimer > 0) {
-    us.consecutiveSwingTimer -= dt
-    if (us.consecutiveSwingTimer <= 0) {
-      us.consecutiveSwings = 0
-      us.consecutiveSwingTimer = 0
+  for (const us of states) {
+    if (us.consecutiveSwingTimer > 0) {
+      us.consecutiveSwingTimer -= dt
+      if (us.consecutiveSwingTimer <= 0) {
+        us.consecutiveSwings = 0
+        us.consecutiveSwingTimer = 0
+      }
     }
-  }
 
-  // --- Last Stand timer ---
-  if (us.lastStandActive) {
-    us.lastStandTimer -= dt
-    if (us.lastStandTimer <= 0) {
-      us.lastStandActive = false
-      us.lastStandTimer = 0
+    // --- Last Stand timer ---
+    if (us.lastStandActive) {
+      us.lastStandTimer -= dt
+      if (us.lastStandTimer <= 0) {
+        us.lastStandActive = false
+        us.lastStandTimer = 0
+      }
     }
-  }
 
-  // --- Deadweight buff timer (Undertaker) ---
-  if (us.deadweightBuffTimer > 0) {
-    us.deadweightBuffTimer -= dt
-    if (us.deadweightBuffTimer <= 0) {
-      us.deadweightBuffTimer = 0
+    // --- Deadweight buff timer (Undertaker) ---
+    if (us.deadweightBuffTimer > 0) {
+      us.deadweightBuffTimer -= dt
+      if (us.deadweightBuffTimer <= 0) {
+        us.deadweightBuffTimer = 0
+      }
     }
-  }
 
-  // --- Corpse Harvest cooldown timer (Undertaker) ---
-  if (us.corpseHarvestCooldownTimer > 0) {
-    us.corpseHarvestCooldownTimer -= dt
-    if (us.corpseHarvestCooldownTimer <= 0) {
-      us.corpseHarvestCooldownTimer = 0
+    // --- Corpse Harvest cooldown timer (Undertaker) ---
+    if (us.corpseHarvestCooldownTimer > 0) {
+      us.corpseHarvestCooldownTimer -= dt
+      if (us.corpseHarvestCooldownTimer <= 0) {
+        us.corpseHarvestCooldownTimer = 0
+      }
     }
-  }
 
-  // --- Open Casket cooldown timer (Undertaker) ---
-  if (us.openCasketCooldownTimer > 0) {
-    us.openCasketCooldownTimer -= dt
-    if (us.openCasketCooldownTimer <= 0) {
-      us.openCasketCooldownTimer = 0
-      us.openCasketAvailable = true
+    // --- Open Casket cooldown timer (Undertaker) ---
+    if (us.openCasketCooldownTimer > 0) {
+      us.openCasketCooldownTimer -= dt
+      if (us.openCasketCooldownTimer <= 0) {
+        us.openCasketCooldownTimer = 0
+        us.openCasketAvailable = true
+      }
     }
   }
 

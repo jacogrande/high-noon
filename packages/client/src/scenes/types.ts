@@ -1,4 +1,7 @@
+import type { CharacterId } from '@high-noon/shared'
+
 export interface HUDState {
+  characterId: CharacterId
   hp: number
   maxHP: number
   xp: number
@@ -12,6 +15,15 @@ export interface HUDState {
   cylinderMax: number
   isReloading: boolean
   reloadProgress: number
+  showCylinder: boolean
+  abilityName: string
+  abilityActive: boolean
+  abilityCooldown: number
+  abilityCooldownMax: number
+  abilityTimeLeft: number
+  abilityDurationMax: number
+
+  /** Legacy Sheriff-specific aliases kept for incremental migration */
   showdownActive: boolean
   showdownCooldown: number
   showdownCooldownMax: number

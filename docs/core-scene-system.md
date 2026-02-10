@@ -48,9 +48,17 @@ React Page (/play or /play-multi)
 `CoreGameScene` is the only scene class pages should import.
 
 ```ts
-const scene = await CoreGameScene.create({ gameApp, mode: 'singleplayer' })
+const scene = await CoreGameScene.create({
+  gameApp,
+  mode: 'singleplayer',
+  characterId: 'undertaker',
+})
 // or
-const scene = await CoreGameScene.create({ gameApp, mode: 'multiplayer' })
+const scene = await CoreGameScene.create({
+  gameApp,
+  mode: 'multiplayer',
+  characterId: 'prospector',
+})
 
 scene.update(dt)
 scene.render(alpha, fps)
@@ -61,6 +69,11 @@ scene.selectNode(nodeId)
 scene.isDisconnected()
 scene.destroy()
 ```
+
+`characterId` is now part of the stable API surface:
+
+- In singleplayer it selects which shared character definition initializes world/player runtime.
+- In multiplayer it is sent as a join preference, then replaced by server-authoritative `game-config.characterId`.
 
 ## Controller Contract
 
@@ -100,6 +113,15 @@ This is critical for multiplayer responsiveness:
 6. Generate local feedback events (fire/reload/dry-fire/showdown).
 7. Update camera at tick rate.
 
+### Character authority flow (multiplayer)
+
+1. Page chooses `characterId` via `CharacterSelect`.
+2. `CoreGameScene` passes it to `MultiplayerModeController`.
+3. Controller sends it in `NetworkClient.join({ characterId })`.
+4. `GameRoom` validates the character, initializes per-player upgrade state, and sends `game-config` with authoritative `characterId`.
+5. Client applies authoritative character runtime before local snapshot ingestion/prediction setup.
+6. HUD and prediction setup use authoritative local character (cylinder vs melee ability state).
+
 ### Render frame (presentation)
 
 1. Interpolate remote entities from snapshot buffer.
@@ -130,6 +152,7 @@ When adding visual/audio feedback, prefer these shared modules first.
 - Reconciliation uses render-only smoothing before visible correction.
 - Remote entities are snapshot-interpolated.
 - UI state in multiplayer may combine server HUD data with local predicted state for immediate feedback.
+- Character choice is server-authoritative in multiplayer and persisted across reconnect for the same slot.
 
 ## Adding New Gameplay Features Without Drift
 

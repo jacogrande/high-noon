@@ -20,6 +20,7 @@ import {
 } from '../components'
 import { spawnBullet } from '../prefabs'
 import { clampDamage } from '../damage'
+import { getUpgradeStateForPlayer } from '../upgrade'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
@@ -39,6 +40,7 @@ export function weaponSystem(
   const entities = weaponQuery(world)
 
   for (const eid of entities) {
+    const us = getUpgradeStateForPlayer(world, eid)
     const input = world.playerInputs.get(eid)
     if (!input) {
       Player.shootWasDown[eid] = 0
@@ -62,6 +64,8 @@ export function weaponSystem(
 
     // Check cylinder has rounds
     const hasCylinder = hasComponent(world, Cylinder, eid)
+    // Prospector uses melee; bullet weapon path requires cylinder-based firearms.
+    if (!hasCylinder) continue
     if (hasCylinder && Cylinder.rounds[eid]! <= 0) continue
 
     // Check fire cooldown (cylinder-based for players)
@@ -71,9 +75,9 @@ export function weaponSystem(
         continue
       }
       // Fresh click: can fire if at least minFireInterval has elapsed since last shot
-      const holdCooldown = 1 / world.upgradeState.holdFireRate
+      const holdCooldown = 1 / us.holdFireRate
       const timeSinceLastShot = holdCooldown - Cylinder.fireCooldown[eid]!
-      if (timeSinceLastShot < world.upgradeState.minFireInterval) continue
+      if (timeSinceLastShot < us.minFireInterval) continue
     }
 
     // Fire the weapon
@@ -86,20 +90,20 @@ export function weaponSystem(
     const bulletRange = Weapon.range[eid]!
 
     // Deadweight buff: +40% damage on first shot after roll
-    if (world.upgradeState.deadweightBuffTimer > 0) {
+    if (us.deadweightBuffTimer > 0) {
       bulletDamage = clampDamage(bulletDamage * 1.4)
-      world.upgradeState.deadweightBuffTimer = 0
+      us.deadweightBuffTimer = 0
     }
 
     // Last round bonus: if cylinder has exactly 1 round, apply multiplier
     if (hasCylinder && Cylinder.rounds[eid] === 1) {
-      const multiplier = world.upgradeState.lastRoundMultiplier
+      const multiplier = us.lastRoundMultiplier
       bulletDamage = clampDamage(bulletDamage * multiplier)
     }
 
     // Pellet spread: split damage across pellets and fan them out
-    const pelletCount = Math.max(1, Math.round(world.upgradeState.pelletCount))
-    const spreadAngle = world.upgradeState.spreadAngle
+    const pelletCount = Math.max(1, Math.round(us.pelletCount))
+    const spreadAngle = us.spreadAngle
     const perPelletDamage = clampDamage(bulletDamage / pelletCount)
 
     for (let i = 0; i < pelletCount; i++) {
@@ -135,7 +139,7 @@ export function weaponSystem(
 
       // Always set hold-rate cooldown. Click-to-fire advantage is at the
       // gate (rising edge can fire through remaining cooldown early).
-      Cylinder.fireCooldown[eid] = 1 / world.upgradeState.holdFireRate
+      Cylinder.fireCooldown[eid] = 1 / us.holdFireRate
     }
   }
 }

@@ -29,6 +29,7 @@ import {
   NITRO_DAMAGE,
 } from '../content/weapons'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
+import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
 
 const dynamitePlayerQuery = defineQuery([Player, Showdown, Position, MeleeWeapon])
 
@@ -42,7 +43,11 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
   const players = dynamitePlayerQuery(world)
 
   for (const eid of players) {
-    const us = world.upgradeState
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && eid !== world.localPlayerEid) {
+      continue
+    }
+    if (getCharacterIdForPlayer(world, eid) !== 'prospector') continue
+    const us = getUpgradeStateForPlayer(world, eid)
 
     // Decrement cooldown
     if (Showdown.cooldown[eid]! > 0) {
@@ -134,6 +139,9 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
   // Tick fuses and detonate
   for (let i = world.dynamites.length - 1; i >= 0; i--) {
     const dyn = world.dynamites[i]!
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && dyn.ownerId !== world.localPlayerEid) {
+      continue
+    }
     dyn.fuseRemaining -= dt
 
     if (dyn.fuseRemaining <= 0) {
@@ -148,7 +156,7 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
 
 function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage: number; radius: number; knockback: number; ownerId: number }): void {
   world.dynamiteDetonatedThisTick = true
-  const us = world.upgradeState
+  const us: UpgradeState = getUpgradeStateForPlayer(world, dyn.ownerId)
 
   if (!world.spatialHash) return
 

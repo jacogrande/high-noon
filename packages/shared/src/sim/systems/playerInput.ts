@@ -18,6 +18,7 @@ import {
   Roll,
   Position,
 } from '../components'
+import { getUpgradeStateForPlayer } from '../upgrade'
 
 // Define query for player entities
 const playerQuery = defineQuery([Player, Velocity, Speed, PlayerState])
@@ -90,7 +91,7 @@ export function playerInputSystem(
       }
 
       // Add Roll component (params from upgradeState)
-      const us = world.upgradeState
+      const us = getUpgradeStateForPlayer(world, eid)
       addComponent(world, Roll, eid)
       Roll.duration[eid] = us.rollDuration
       Roll.elapsed[eid] = 0

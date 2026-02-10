@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { CharacterId } from '@high-noon/shared'
 import type { HUDState } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
+import { CharacterSelect } from '../ui/CharacterSelect'
 
-type Phase = 'loading' | 'connecting' | 'playing' | 'error'
+type Phase = 'loading' | 'selecting' | 'connecting' | 'playing' | 'error'
 
 export function MultiplayerGame() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -15,6 +17,7 @@ export function MultiplayerGame() {
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [selectedCharacter, setSelectedCharacter] = useState<CharacterId | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const lastHudUpdateRef = useRef(0)
   const gameRef = useRef<{
@@ -34,7 +37,7 @@ export function MultiplayerGame() {
         await AssetLoader.loadAll((progress) => {
           if (mounted) setLoadProgress(progress)
         })
-        if (mounted) setPhase('connecting')
+        if (mounted) setPhase('selecting')
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error loading assets'
         if (mounted) {
@@ -57,6 +60,8 @@ export function MultiplayerGame() {
     if (phase !== 'connecting') return
     const container = containerRef.current
     if (!container) return
+    if (!selectedCharacter) return
+    const characterId = selectedCharacter
 
     let cancelled = false
 
@@ -66,7 +71,11 @@ export function MultiplayerGame() {
 
       let scene: CoreGameScene
       try {
-        scene = await CoreGameScene.create({ gameApp, mode: 'multiplayer' })
+        scene = await CoreGameScene.create({
+          gameApp,
+          mode: 'multiplayer',
+          characterId,
+        })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect'
         if (!cancelled) { setError(message); setPhase('error') }
@@ -114,7 +123,7 @@ export function MultiplayerGame() {
       // Actual resource cleanup: unmount effect (below), handleRetry, and
       // disconnect detection (stopAndCleanup above).
     }
-  }, [phase])
+  }, [phase, selectedCharacter])
 
   // Unmount-only cleanup: destroy game resources when navigating away
   useEffect(() => {
@@ -138,6 +147,7 @@ export function MultiplayerGame() {
     }
     setError(null)
     setLoadProgress(0)
+    setSelectedCharacter(null)
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -173,6 +183,24 @@ export function MultiplayerGame() {
             />
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (phase === 'selecting') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <Link to="/" style={styles.backButton}>
+            ← Back
+          </Link>
+        </div>
+        <CharacterSelect
+          onSelect={(characterId) => {
+            setSelectedCharacter(characterId)
+            setPhase('connecting')
+          }}
+        />
       </div>
     )
   }

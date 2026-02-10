@@ -24,6 +24,7 @@ import {
 } from '../components'
 import { PICKAXE_CHARGE_ARC, MELEE_KNOCKBACK_DURATION, TREMOR_RADIUS } from '../content/weapons'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
+import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
 
 const meleePlayerQuery = defineQuery([Player, MeleeWeapon, Position])
 
@@ -61,7 +62,15 @@ export function meleeSystem(world: GameWorld, dt: number): void {
   const players = meleePlayerQuery(world)
 
   for (const eid of players) {
-    const us = world.upgradeState
+    if (world.simulationScope === 'local-player' && world.localPlayerEid >= 0 && eid !== world.localPlayerEid) {
+      continue
+    }
+
+    if (getCharacterIdForPlayer(world, eid) !== 'prospector') {
+      continue
+    }
+
+    const us = getUpgradeStateForPlayer(world, eid)
 
     // Reset per-tick flags
     MeleeWeapon.swungThisTick[eid] = 0
@@ -113,7 +122,7 @@ export function meleeSystem(world: GameWorld, dt: number): void {
         const isCharged = chargeTime >= us.chargeTime
 
         if (MeleeWeapon.swingCooldown[eid]! <= 0) {
-          executeSwing(world, eid, px, py, aimAngle, isCharged)
+          executeSwing(world, us, eid, px, py, aimAngle, isCharged)
         }
 
         MeleeWeapon.charging[eid] = 0
@@ -125,14 +134,13 @@ export function meleeSystem(world: GameWorld, dt: number): void {
 
 function executeSwing(
   world: GameWorld,
+  us: UpgradeState,
   eid: number,
   px: number,
   py: number,
   aimAngle: number,
   isCharged: boolean,
 ): void {
-  const us = world.upgradeState
-
   // Determine swing parameters
   const arcAngle = isCharged ? PICKAXE_CHARGE_ARC : us.cleaveArc
   const arcHalf = arcAngle / 2
@@ -202,12 +210,11 @@ function executeSwing(
 
   // Tremor: every 4th swing triggers ground slam
   if (us.nodesTaken.has('tremor') && us.consecutiveSwings % 4 === 0) {
-    executeTremor(world, eid, px, py)
+    executeTremor(world, us, eid, px, py)
   }
 }
 
-function executeTremor(world: GameWorld, eid: number, px: number, py: number): void {
-  const us = world.upgradeState
+function executeTremor(world: GameWorld, us: UpgradeState, eid: number, px: number, py: number): void {
   const tremorDamage = Math.round(us.swingDamage * 0.5)
 
   world.tremorThisTick = true

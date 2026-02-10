@@ -1,4 +1,5 @@
 import type { GameApp } from '../engine/GameApp'
+import type { CharacterId } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from './types'
 import type { SceneModeController } from './core/SceneModeController'
 import { SingleplayerModeController } from './core/SingleplayerModeController'
@@ -9,6 +10,7 @@ export type CoreSceneMode = 'singleplayer' | 'multiplayer'
 export interface CoreGameSceneConfig {
   gameApp: GameApp
   mode: CoreSceneMode
+  characterId?: CharacterId
   networkOptions?: Record<string, unknown>
 }
 
@@ -21,8 +23,8 @@ export class CoreGameScene {
 
   static async create(config: CoreGameSceneConfig): Promise<CoreGameScene> {
     const controller: SceneModeController = config.mode === 'singleplayer'
-      ? new SingleplayerModeController(config.gameApp)
-      : new MultiplayerModeController(config.gameApp)
+      ? new SingleplayerModeController(config.gameApp, config.characterId ?? 'sheriff')
+      : new MultiplayerModeController(config.gameApp, config.characterId ?? 'sheriff')
 
     try {
       await controller.initialize(config.networkOptions)
