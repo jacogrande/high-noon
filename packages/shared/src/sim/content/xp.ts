@@ -6,6 +6,8 @@ export const XP_VALUES: Record<number, number> = {
   [EnemyType.GRUNT]: 2,
   [EnemyType.SHOOTER]: 5,
   [EnemyType.CHARGER]: 5,
+  [EnemyType.GOBLIN_BARBARIAN]: 2,
+  [EnemyType.GOBLIN_ROGUE]: 1,
 }
 
 /** Cumulative XP required to reach each level (index = level) */

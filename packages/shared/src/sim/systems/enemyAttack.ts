@@ -9,16 +9,32 @@
  * and before movementSystem (which applies velocity).
  */
 
-import { defineQuery, hasComponent } from 'bitecs'
+import { addComponent, defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import {
   EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
-  Position, Velocity, Collider, Health, Invincible, Dead, Bullet,
+  Position, Velocity, Collider, Health, Invincible, Dead, Bullet, Knockback,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
-import { CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION } from '../content/enemies'
+import {
+  CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION,
+  GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_ATTACK_DURATION,
+  GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_ATTACK_DURATION,
+  GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
+} from '../content/enemies'
 import { ENEMY_BULLET_RANGE } from '../content/weapons'
+
+function isGoblinMelee(type: number): boolean {
+  return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE
+}
+
+const BARBARIAN_MELEE_CFG = { meleeReach: GOBLIN_BARBARIAN_MELEE_REACH, attackDuration: GOBLIN_BARBARIAN_ATTACK_DURATION }
+const ROGUE_MELEE_CFG = { meleeReach: GOBLIN_ROGUE_MELEE_REACH, attackDuration: GOBLIN_ROGUE_ATTACK_DURATION }
+
+function getGoblinMeleeConfig(type: number) {
+  return type === EnemyType.GOBLIN_BARBARIAN ? BARBARIAN_MELEE_CFG : ROGUE_MELEE_CFG
+}
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
 const bulletQuery = defineQuery([Bullet])
@@ -64,13 +80,15 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const targetX = Position.x[targetEid]!
     const targetY = Position.y[targetEid]!
 
+    const type = Enemy.type[eid]!
+
     // Zero velocity for non-charger attackers (steering delegates ATTACK to this system)
-    if (Enemy.type[eid] !== EnemyType.CHARGER) {
+    if (type !== EnemyType.CHARGER) {
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
     }
 
-    if (Enemy.type[eid] === EnemyType.CHARGER) {
+    if (type === EnemyType.CHARGER) {
       // Charger: set rush velocity once on ATTACK entry (aimX/aimY locked at TELEGRAPH)
       if (EnemyAI.stateTimer[eid]! === 0) {
         Velocity.x[eid] = AttackConfig.aimX[eid]! * CHARGER_CHARGE_SPEED
@@ -102,6 +120,42 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
 
       // Check charge duration
       if (EnemyAI.stateTimer[eid]! >= CHARGER_CHARGE_DURATION) {
+        transition(eid, AIState.RECOVERY)
+      }
+    } else if (isGoblinMelee(type)) {
+      // Goblin melee: proximity check + contact damage
+      const { meleeReach, attackDuration } = getGoblinMeleeConfig(type)
+      const goblinR = Collider.radius[eid]!
+      const targetR = Collider.radius[targetEid]!
+      const mdx = targetX - ex
+      const mdy = targetY - ey
+      const distSq = mdx * mdx + mdy * mdy
+      const hitDist = goblinR + targetR + meleeReach
+
+      if (
+        distSq <= hitDist * hitDist &&
+        Health.iframes[targetEid]! <= 0 &&
+        !hasComponent(world, Invincible, targetEid)
+      ) {
+        // Deal damage
+        Health.current[targetEid] = Health.current[targetEid]! - AttackConfig.damage[eid]!
+        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+
+        // Store hit direction for camera kick
+        const dist = Math.sqrt(distSq)
+        const nx = dist > 0 ? mdx / dist : 0
+        const ny = dist > 0 ? mdy / dist : 1
+        world.lastPlayerHitDir.set(targetEid, { x: nx, y: ny })
+
+        // Apply knockback to player
+        addComponent(world, Knockback, targetEid)
+        Knockback.vx[targetEid] = nx * GOBLIN_MELEE_KB_SPEED
+        Knockback.vy[targetEid] = ny * GOBLIN_MELEE_KB_SPEED
+        Knockback.duration[targetEid] = GOBLIN_MELEE_KB_DURATION
+
+        transition(eid, AIState.RECOVERY)
+      } else if (EnemyAI.stateTimer[eid]! >= attackDuration) {
+        // Whiffed — transition to recovery
         transition(eid, AIState.RECOVERY)
       }
     } else {
