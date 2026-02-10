@@ -3,14 +3,22 @@ import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import {
   spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
+  spawnGoblinBarbarian, spawnGoblinRogue,
 } from '../prefabs'
 import { createTestArena } from '../content/maps/testArena'
 import { enemyAttackSystem } from './enemyAttack'
 import {
   EnemyAI, AIState, AttackConfig, Position, Velocity, Collider,
-  Health, Dead, Bullet, Enemy, EnemyType, EnemyTier,
+  Health, Dead, Bullet, Enemy, EnemyType, EnemyTier, Invincible, Knockback,
 } from '../components'
-import { CHARGER_CHARGE_DURATION, CHARGER_CHARGE_SPEED } from '../content/enemies'
+import {
+  CHARGER_CHARGE_DURATION, CHARGER_CHARGE_SPEED,
+  GOBLIN_BARBARIAN_ATTACK_DURATION, GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_DAMAGE,
+  GOBLIN_ROGUE_ATTACK_DURATION, GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_DAMAGE,
+  GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
+  GOBLIN_BARBARIAN_RADIUS, GOBLIN_ROGUE_RADIUS,
+} from '../content/enemies'
+import { PLAYER_RADIUS } from '../content/player'
 import { transition } from './enemyAI'
 
 describe('enemyAttackSystem', () => {
@@ -171,6 +179,232 @@ describe('enemyAttackSystem', () => {
       enemyAttackSystem(world, 1 / 60)
 
       expect(Health.current[playerEid]!).toBe(prevHP)
+    })
+  })
+
+  describe('goblin melee', () => {
+    function placeInMeleeRange(goblinEid: number, meleeReach: number): void {
+      // Place goblin just within melee reach of the player
+      const goblinR = Collider.radius[goblinEid]!
+      const hitDist = goblinR + PLAYER_RADIUS + meleeReach
+      Position.x[goblinEid] = Position.x[playerEid]! + hitDist - 1
+      Position.y[goblinEid] = Position.y[playerEid]!
+    }
+
+    function placeOutOfRange(goblinEid: number, meleeReach: number): void {
+      // Place goblin well outside melee reach
+      const goblinR = Collider.radius[goblinEid]!
+      const hitDist = goblinR + PLAYER_RADIUS + meleeReach
+      Position.x[goblinEid] = Position.x[playerEid]! + hitDist + 50
+      Position.y[goblinEid] = Position.y[playerEid]!
+    }
+
+    test('barbarian deals damage when within melee reach', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      const prevHP = Health.current[playerEid]!
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.current[playerEid]!).toBe(prevHP - GOBLIN_BARBARIAN_DAMAGE)
+    })
+
+    test('rogue deals damage when within melee reach', () => {
+      const eid = spawnGoblinRogue(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_ROGUE_MELEE_REACH)
+
+      const prevHP = Health.current[playerEid]!
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.current[playerEid]!).toBe(prevHP - GOBLIN_ROGUE_DAMAGE)
+    })
+
+    test('transitions to RECOVERY on hit', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('sets i-frames on player after hit', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.iframes[playerEid]!).toBeGreaterThan(0)
+    })
+
+    test('applies knockback to player on hit', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(hasComponent(world, Knockback, playerEid)).toBe(true)
+      expect(Knockback.vx[playerEid]!).not.toBe(0)
+      expect(Knockback.duration[playerEid]!).toBeCloseTo(GOBLIN_MELEE_KB_DURATION)
+    })
+
+    test('stores hit direction for camera kick', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      // Place goblin to the left of the player
+      Position.x[eid] = Position.x[playerEid]! - 15
+      Position.y[eid] = Position.y[playerEid]!
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const hitDir = world.lastPlayerHitDir.get(playerEid)
+      expect(hitDir).toBeDefined()
+      // Hit direction should point from goblin toward player (positive X)
+      expect(hitDir!.x).toBeGreaterThan(0)
+      expect(hitDir!.y).toBeCloseTo(0)
+    })
+
+    test('does not deal damage when player has i-frames', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      Health.iframes[playerEid] = 1.0
+      const prevHP = Health.current[playerEid]!
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.current[playerEid]!).toBe(prevHP)
+    })
+
+    test('does not deal damage when player is Invincible', () => {
+      const eid = spawnGoblinRogue(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_ROGUE_MELEE_REACH)
+
+      addComponent(world, Invincible, playerEid)
+      const prevHP = Health.current[playerEid]!
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.current[playerEid]!).toBe(prevHP)
+    })
+
+    test('does not deal damage when out of melee reach', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeOutOfRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      const prevHP = Health.current[playerEid]!
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Health.current[playerEid]!).toBe(prevHP)
+      // Should still be in ATTACK (hasn't whiffed yet, timer is 0)
+      expect(EnemyAI.state[eid]!).toBe(AIState.ATTACK)
+    })
+
+    test('whiff: transitions to RECOVERY after attackDuration expires', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeOutOfRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      // Set timer past attack duration
+      EnemyAI.stateTimer[eid] = GOBLIN_BARBARIAN_ATTACK_DURATION
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('rogue whiff uses rogue-specific attack duration', () => {
+      const eid = spawnGoblinRogue(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeOutOfRange(eid, GOBLIN_ROGUE_MELEE_REACH)
+
+      EnemyAI.stateTimer[eid] = GOBLIN_ROGUE_ATTACK_DURATION
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('does not spawn bullets', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeInMeleeRange(eid, GOBLIN_BARBARIAN_MELEE_REACH)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(0)
+    })
+
+    test('zeroes velocity during attack', () => {
+      const eid = spawnGoblinRogue(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+      placeOutOfRange(eid, GOBLIN_ROGUE_MELEE_REACH)
+
+      Velocity.x[eid] = 100
+      Velocity.y[eid] = 50
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(Velocity.x[eid]!).toBe(0)
+      expect(Velocity.y[eid]!).toBe(0)
+    })
+
+    test('zero-distance hit uses fallback direction', () => {
+      const eid = spawnGoblinBarbarian(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      // Place directly on top of player (dist = 0)
+      Position.x[eid] = Position.x[playerEid]!
+      Position.y[eid] = Position.y[playerEid]!
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const hitDir = world.lastPlayerHitDir.get(playerEid)
+      expect(hitDir).toBeDefined()
+      // Fallback direction: nx=0, ny=1
+      expect(hitDir!.x).toBe(0)
+      expect(hitDir!.y).toBe(1)
+      // Knockback should use fallback direction
+      expect(Knockback.vx[playerEid]!).toBe(0)
+      expect(Knockback.vy[playerEid]!).toBe(GOBLIN_MELEE_KB_SPEED)
     })
   })
 
