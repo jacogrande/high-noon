@@ -18,7 +18,7 @@ Colyseus room definitions.
 
 ```
 onCreate()    → Create GameWorld, register systems, start sim interval (60Hz)
-onJoin()      → validate character, addPlayer to ECS with per-player runtime state, send authoritative game-config
+onJoin()      → validate character, addPlayer to ECS with per-player runtime state, initialize lobby metadata, send authoritative game-config
 onMessage()   → Validate + clamp input, push to per-player queue
 onLeave()     → removePlayer from ECS, cleanup slot
 onDispose()   → Clear slots, log
@@ -34,6 +34,12 @@ this.onMessage('input', (client, data) => {
   slot.inputQueue.push(clampInput(data))
 })
 ```
+
+Lobby messages:
+
+- `set-character` updates a player's lobby character (server-authoritative) and clears their ready flag.
+- `set-ready` toggles ready state.
+- Match transitions from `lobby` → `playing` when at least one connected player is ready.
 
 ## State Sync Strategy
 

@@ -6,14 +6,14 @@ React page components for the client application.
 
 - `Home.tsx` - Landing page with main menu (links to single-player and multiplayer)
 - `Game.tsx` - Single-player game page — asset loading, character select, creates GameApp/GameLoop, delegates to `CoreGameScene` (singleplayer mode)
-- `MultiplayerGame.tsx` - Multiplayer game page — asset loading, character select, server connection, delegates to `CoreGameScene` (multiplayer mode)
+- `MultiplayerGame.tsx` - Multiplayer game page — asset loading, room join, lobby (character select + ready), then gameplay scene startup (multiplayer mode)
 
 ## Future Pages
 
 - `Signup.tsx` - User registration
 - `Login.tsx` - User authentication
 - `Profile.tsx` - User profile and settings
-- `Lobby.tsx` - Multiplayer lobby
+- `Lobby.tsx` - Dedicated multiplayer lobby route (not currently used; lobby is embedded in `MultiplayerGame.tsx`)
 - `Payment.tsx` - Subscription/payment handling
 - `Messages.tsx` - In-app messaging
 

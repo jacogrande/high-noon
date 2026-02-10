@@ -89,6 +89,11 @@ const SNAP_THRESHOLD = 96    // pixels — teleport if error exceeds this
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
 const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
 
+interface MultiplayerInitializeOptions extends Record<string, unknown> {
+  net?: NetworkClient
+  preconnected?: boolean
+}
+
 export class MultiplayerModeController implements SceneModeController {
   private readonly gameApp: GameApp
   private readonly input: Input
@@ -108,7 +113,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
   private readonly sound: SoundManager
-  private readonly net: NetworkClient
+  private net: NetworkClient
   private readonly clockSync: ClockSync
   private readonly snapshotBuffer: SnapshotBuffer
   private readonly inputBuffer: InputBuffer
@@ -263,6 +268,11 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** Connect to server — resolves once game-config is received */
   async initialize(options?: Record<string, unknown>): Promise<void> {
+    const initOptions = (options ?? {}) as MultiplayerInitializeOptions
+    if (initOptions.net) {
+      this.net = initOptions.net
+    }
+
     this.net.on('disconnect', () => {
       this.connected = false
       this.disconnected = true
@@ -280,23 +290,7 @@ export class MultiplayerModeController implements SceneModeController {
     })
 
     this.net.on('game-config', (config: GameConfig) => {
-      this.myServerEid = config.playerEid
-      this.authoritativeCharacterId = config.characterId
-      this.serverCharacterIds.set(config.playerEid, config.characterId)
-      if (config.roster) {
-        this.applyPlayerRoster(config.roster)
-      }
-      const charDef = getCharacterDef(config.characterId)
-      this.world.characterId = config.characterId
-      this.world.upgradeState = initUpgradeState(charDef)
-      if (this.myClientEid >= 0) {
-        this.world.playerUpgradeStates.set(this.myClientEid, this.world.upgradeState)
-        this.world.playerCharacters.set(this.myClientEid, config.characterId)
-      }
-      this.syncPlayerCharacterMapToWorld()
-      this.connected = true
-      console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
-      this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
+      this.applyGameConfig(config)
     })
 
     this.net.on('player-roster', (roster: PlayerRosterEntry[]) => {
@@ -311,11 +305,45 @@ export class MultiplayerModeController implements SceneModeController {
       this.pendingSnapshot = snapshot
     })
 
+    if (initOptions.preconnected) {
+      const config = this.net.getLatestGameConfig()
+      if (!config) {
+        throw new Error('Missing game-config for preconnected multiplayer client')
+      }
+      this.applyGameConfig(config)
+      this.net.requestGameConfig()
+      return
+    }
+
+    const { net: _ignoredNet, preconnected: _ignoredPreconnected, ...joinOptions } = initOptions
+
     // join() resolves after game-config is received (with timeout)
     await this.net.join({
-      ...(options ?? {}),
+      ...joinOptions,
       characterId: this.selectedCharacterId,
     })
+  }
+
+  private applyGameConfig(config: GameConfig): void {
+    this.myServerEid = config.playerEid
+    this.authoritativeCharacterId = config.characterId
+    this.serverCharacterIds.set(config.playerEid, config.characterId)
+    if (config.roster) {
+      this.applyPlayerRoster(config.roster)
+    }
+    const charDef = getCharacterDef(config.characterId)
+    this.world.characterId = config.characterId
+    this.world.upgradeState = initUpgradeState(charDef)
+    if (this.myClientEid >= 0) {
+      this.world.playerUpgradeStates.set(this.myClientEid, this.world.upgradeState)
+      this.world.playerCharacters.set(this.myClientEid, config.characterId)
+    }
+    this.syncPlayerCharacterMapToWorld()
+    this.connected = true
+    this.disconnected = false
+    console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
+    this.clockSync.stop()
+    this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
   }
 
   // ===========================================================================

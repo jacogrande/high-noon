@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { CharacterId } from '@high-noon/shared'
+import type { CharacterId, LobbyState } from '@high-noon/shared'
 import type { HUDState } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
-import { CharacterSelect } from '../ui/CharacterSelect'
+import { MultiplayerLobby } from '../ui/MultiplayerLobby'
+import { NetworkClient } from '../net/NetworkClient'
 
-type Phase = 'loading' | 'selecting' | 'connecting' | 'playing' | 'error'
+type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
 export function MultiplayerGame() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -17,14 +18,31 @@ export function MultiplayerGame() {
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  const [selectedCharacter, setSelectedCharacter] = useState<CharacterId | null>(null)
+  const [selectedCharacter, setSelectedCharacter] = useState<CharacterId>('sheriff')
+  const [localSessionId, setLocalSessionId] = useState<string | null>(null)
+  const [lobbyState, setLobbyState] = useState<LobbyState | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const lastHudUpdateRef = useRef(0)
+  const netRef = useRef<NetworkClient | null>(null)
   const gameRef = useRef<{
     gameApp: GameApp
     gameLoop: GameLoop
     scene: CoreGameScene
   } | null>(null)
+
+  const destroyGame = () => {
+    if (!gameRef.current) return
+    gameRef.current.gameLoop.stop()
+    gameRef.current.scene.destroy()
+    gameRef.current.gameApp.destroy()
+    gameRef.current = null
+  }
+
+  const disconnectNetwork = () => {
+    if (!netRef.current) return
+    netRef.current.disconnect()
+    netRef.current = null
+  }
 
   // Phase 1: Load assets
   useEffect(() => {
@@ -37,7 +55,7 @@ export function MultiplayerGame() {
         await AssetLoader.loadAll((progress) => {
           if (mounted) setLoadProgress(progress)
         })
-        if (mounted) setPhase('selecting')
+        if (mounted) setPhase('connecting')
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error loading assets'
         if (mounted) {
@@ -51,19 +69,83 @@ export function MultiplayerGame() {
     return () => { mounted = false }
   }, [retryCount])
 
-  // Phase 2: Initialize game + connect
-  // NOTE: setPhase('playing') inside this effect changes the [phase] dep, which
-  // triggers cleanup. We must NOT destroy game resources in that cleanup — only
-  // cancel in-flight async work. Actual resource cleanup happens in a separate
-  // unmount-only effect below.
+  // Phase 2: Connect to room and wait in lobby
   useEffect(() => {
     if (phase !== 'connecting') return
+    let cancelled = false
+
+    const net = new NetworkClient()
+    netRef.current = net
+
+    net.on('game-config', (config) => {
+      if (netRef.current !== net) return
+      setLocalSessionId(config.sessionId)
+      setSelectedCharacter(config.characterId)
+    })
+
+    net.on('lobby-state', (state) => {
+      if (netRef.current !== net) return
+      setLobbyState(state)
+      if (state.phase === 'playing') {
+        setPhase(current => (current === 'connecting' || current === 'lobby') ? 'starting' : current)
+      }
+    })
+
+    net.on('disconnect', () => {
+      if (netRef.current !== net) return
+      disconnectNetwork()
+      setError('Connection lost')
+      setPhase('error')
+    })
+
+    async function connect() {
+      try {
+        await net.join({ characterId: 'sheriff' })
+        if (cancelled) return
+
+        const config = net.getLatestGameConfig()
+        if (config) {
+          setLocalSessionId(config.sessionId)
+          setSelectedCharacter(config.characterId)
+        }
+        setPhase(current => current === 'connecting' ? 'lobby' : current)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to connect'
+        if (!cancelled) {
+          setError(message)
+          setPhase('error')
+        }
+        if (netRef.current === net) {
+          netRef.current.disconnect()
+          netRef.current = null
+        }
+      }
+    }
+
+    connect()
+    return () => {
+      cancelled = true
+    }
+  }, [phase])
+
+  // Keep local character card selection in sync with authoritative lobby state.
+  useEffect(() => {
+    if (!lobbyState || !localSessionId) return
+    const me = lobbyState.players.find(player => player.sessionId === localSessionId)
+    if (!me) return
+    setSelectedCharacter(me.characterId)
+  }, [lobbyState, localSessionId])
+
+  // Phase 3: Start gameplay scene after lobby phase flips to playing.
+  useEffect(() => {
+    if (phase !== 'starting') return
     const container = containerRef.current
     if (!container) return
-    if (!selectedCharacter) return
-    const characterId = selectedCharacter
+    const net = netRef.current
+    if (!net) return
 
     let cancelled = false
+    const characterId = net.getLatestGameConfig()?.characterId ?? selectedCharacter
 
     async function init(gameContainer: HTMLDivElement) {
       const gameApp = await GameApp.create(gameContainer)
@@ -75,10 +157,18 @@ export function MultiplayerGame() {
           gameApp,
           mode: 'multiplayer',
           characterId,
+          networkOptions: {
+            net,
+            preconnected: true,
+          },
         })
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to connect'
-        if (!cancelled) { setError(message); setPhase('error') }
+        const message = err instanceof Error ? err.message : 'Failed to start multiplayer scene'
+        if (!cancelled) {
+          disconnectNetwork()
+          setError(message)
+          setPhase('error')
+        }
         gameApp.destroy()
         return
       }
@@ -89,19 +179,12 @@ export function MultiplayerGame() {
         (dt) => scene.update(dt),
         (alpha) => {
           scene.render(alpha, gameLoop.fps)
-          // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
             setHudState(scene.getHUDState())
             if (scene.isDisconnected()) {
-              // Stop game before phase change to prevent stale loop
-              if (gameRef.current) {
-                gameRef.current.gameLoop.stop()
-                gameRef.current.scene.destroy()
-                gameRef.current.gameApp.destroy()
-                gameRef.current = null
-              }
+              destroyGame()
               setError('Connection lost')
               setPhase('error')
             }
@@ -117,37 +200,42 @@ export function MultiplayerGame() {
 
     return () => {
       cancelled = true
-      // Only cancel in-flight async work here. Do NOT destroy game resources —
-      // setPhase('playing') at line 100 changes [phase], which re-runs this
-      // cleanup. Destroying here would kill the game we just created.
-      // Actual resource cleanup: unmount effect (below), handleRetry, and
-      // disconnect detection (stopAndCleanup above).
     }
-  }, [phase, selectedCharacter])
+  }, [phase])
 
-  // Unmount-only cleanup: destroy game resources when navigating away
+  // Unmount-only cleanup: destroy game resources and network connection.
   useEffect(() => {
     return () => {
-      if (gameRef.current) {
-        gameRef.current.gameLoop.stop()
-        gameRef.current.scene.destroy()
-        gameRef.current.gameApp.destroy()
-        gameRef.current = null
-      }
+      destroyGame()
+      disconnectNetwork()
     }
   }, [])
 
+  const handleSelectCharacter = (characterId: CharacterId) => {
+    setSelectedCharacter(characterId)
+    netRef.current?.sendCharacter(characterId)
+  }
+
+  const localPlayer = localSessionId
+    ? lobbyState?.players.find(player => player.sessionId === localSessionId) ?? null
+    : null
+  const localReady = localPlayer?.ready === true
+
+  const handleToggleReady = () => {
+    if (!localSessionId) return
+    const nextReady = !localReady
+    netRef.current?.sendReady(nextReady)
+  }
+
   const handleRetry = () => {
-    // Safety net: destroy any lingering game resources before retry
-    if (gameRef.current) {
-      gameRef.current.gameLoop.stop()
-      gameRef.current.scene.destroy()
-      gameRef.current.gameApp.destroy()
-      gameRef.current = null
-    }
+    destroyGame()
+    disconnectNetwork()
     setError(null)
     setLoadProgress(0)
-    setSelectedCharacter(null)
+    setSelectedCharacter('sheriff')
+    setLocalSessionId(null)
+    setLobbyState(null)
+    setHudState(null)
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -187,7 +275,17 @@ export function MultiplayerGame() {
     )
   }
 
-  if (phase === 'selecting') {
+  if (phase === 'connecting') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.centerBox}>
+          <div style={styles.statusText}>Joining lobby...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'lobby') {
     return (
       <div style={styles.container}>
         <div style={styles.header}>
@@ -195,29 +293,29 @@ export function MultiplayerGame() {
             ← Back
           </Link>
         </div>
-        <CharacterSelect
-          onSelect={(characterId) => {
-            setSelectedCharacter(characterId)
-            setPhase('connecting')
-          }}
+        <MultiplayerLobby
+          players={lobbyState?.players ?? []}
+          localSessionId={localSessionId}
+          selectedCharacter={selectedCharacter}
+          localReady={localReady}
+          onSelectCharacter={handleSelectCharacter}
+          onToggleReady={handleToggleReady}
         />
       </div>
     )
   }
 
-  if (phase === 'connecting') {
+  if (phase === 'starting') {
     return (
       <div style={styles.container}>
         <div style={styles.centerBox}>
-          <div style={styles.statusText}>Connecting...</div>
+          <div style={styles.statusText}>Starting match...</div>
         </div>
-        {/* Hidden container so GameApp can attach canvas */}
         <div ref={containerRef} style={styles.hiddenContainer} />
       </div>
     )
   }
 
-  // phase === 'playing'
   return (
     <div style={styles.container}>
       <div style={styles.header}>

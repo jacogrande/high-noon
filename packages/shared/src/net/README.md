@@ -17,6 +17,8 @@ Network protocol definitions and serialization.
 - `input` - `NetworkInput` (seq + buttons + aim/move/cursor)
 - `ping` - clock sync ping payload
 - `request-game-config` - explicit config re-sync after reconnect
+- `set-character` - lobby character selection
+- `set-ready` - lobby ready/unready toggle
 
 ### Server → Client
 
@@ -25,6 +27,8 @@ Network protocol definitions and serialization.
 - `snapshot` - authoritative world snapshot (binary)
 - `hud` - HUD data derived from authoritative local player state
 - `pong` - clock sync pong payload
+
+Lobby metadata (`phase`, `players` with name/character/ready, `serverTick`) is synced through Colyseus room schema state and surfaced client-side as `LobbyState`.
 
 ## Binary Snapshots
 

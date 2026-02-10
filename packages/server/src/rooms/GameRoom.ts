@@ -104,8 +104,36 @@ interface JoinOptions {
   characterId?: unknown
 }
 
+interface ReadyMessage {
+  ready: boolean
+}
+
+interface CharacterMessage {
+  characterId: CharacterId
+}
+
 function isCharacterId(value: unknown): value is CharacterId {
   return value === 'sheriff' || value === 'undertaker' || value === 'prospector'
+}
+
+function parseReadyMessage(value: unknown): ReadyMessage | null {
+  if (typeof value === 'boolean') {
+    return { ready: value }
+  }
+  if (typeof value !== 'object' || value === null) return null
+  const ready = (value as { ready?: unknown }).ready
+  if (typeof ready !== 'boolean') return null
+  return { ready }
+}
+
+function parseCharacterMessage(value: unknown): CharacterMessage | null {
+  if (isCharacterId(value)) {
+    return { characterId: value }
+  }
+  if (typeof value !== 'object' || value === null) return null
+  const characterId = (value as { characterId?: unknown }).characterId
+  if (!isCharacterId(characterId)) return null
+  return { characterId }
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -189,6 +217,7 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Input message handler
     this.onMessage('input', (client, data) => {
+      if (this.state.phase !== 'playing') return
       const slot = this.slots.get(client.sessionId)
       if (!slot) return
       if (!isValidInput(data)) return
@@ -226,6 +255,37 @@ export class GameRoom extends Room<GameRoomState> {
       this.sendGameConfig(client, slot)
     })
 
+    this.onMessage('set-ready', (client, data) => {
+      if (this.state.phase !== 'lobby') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const msg = parseReadyMessage(data)
+      if (!msg) return
+
+      const meta = this.state.players.get(client.sessionId)
+      if (!meta) return
+      meta.ready = msg.ready
+      this.maybeStartMatch()
+    })
+
+    this.onMessage('set-character', (client, data) => {
+      if (this.state.phase !== 'lobby') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const msg = parseCharacterMessage(data)
+      if (!msg) return
+      if (msg.characterId === slot.characterId) return
+
+      const meta = this.state.players.get(client.sessionId)
+      if (!meta) return
+
+      this.replacePlayerCharacter(client.sessionId, slot, msg.characterId)
+      meta.characterId = msg.characterId
+      meta.ready = false
+      this.sendGameConfig(slot.client, slot)
+      this.broadcastPlayerRoster()
+    })
+
     // Fixed-timestep simulation loop
     this.setSimulationInterval((deltaMs) => this.update(deltaMs), TICK_MS)
 
@@ -240,6 +300,7 @@ export class GameRoom extends Room<GameRoomState> {
     // Add to Colyseus Schema (for lobby metadata)
     const meta = new PlayerMeta()
     meta.name = options?.name ?? client.sessionId.slice(0, 8)
+    meta.characterId = characterId
     this.state.players.set(client.sessionId, meta)
 
     // Add to server slot tracking
@@ -262,31 +323,25 @@ export class GameRoom extends Room<GameRoomState> {
     this.broadcastPlayerRoster()
 
     console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, character=${characterId}, players=${this.slots.size})`)
-
-    // Auto-start on first join
-    if (this.state.phase === 'lobby' && this.slots.size >= 1) {
-      this.state.phase = 'playing'
-      setEncounter(this.world, STAGE_1_ENCOUNTER)
-      console.log('[GameRoom] Phase → playing')
-    }
   }
 
   override async onLeave(client: Client, consented?: boolean) {
     if (!consented) {
       try {
-        await this.allowReconnection(client, 30)
+        const reconnectedClient = await this.allowReconnection(client, 30)
         console.log(`[GameRoom] ${client.sessionId} reconnected`)
 
         // Send game-config to the reconnected client (new page load needs config)
         const slot = this.slots.get(client.sessionId)
         if (slot) {
+          slot.client = reconnectedClient
           slot.inputQueue = []  // Clear stale inputs from before disconnect
           slot.lastInput = neutralInput
           slot.heldInputTicks = 0
           slot.inputTokens = INPUT_RATE_BURST_CAPACITY
           slot.inputTokenLastRefillMs = performance.now()
           slot.rateLimitedDrops = 0
-          this.sendGameConfig(client, slot)
+          this.sendGameConfig(reconnectedClient, slot)
         }
         return // Slot preserved
       } catch {
@@ -333,6 +388,47 @@ export class GameRoom extends Room<GameRoomState> {
     for (const slot of this.slots.values()) {
       slot.client.send('player-roster', roster)
     }
+  }
+
+  private replacePlayerCharacter(sessionId: string, slot: PlayerSlot, characterId: CharacterId): void {
+    removePlayer(this.world, sessionId)
+    const upgradeState = initUpgradeState(getCharacterDef(characterId))
+    slot.eid = addPlayer(this.world, sessionId, upgradeState)
+    slot.characterId = characterId
+    slot.inputQueue = []
+    slot.lastProcessedSeq = 0
+    slot.lastInput = neutralInput
+    slot.heldInputTicks = 0
+    slot.inputTokens = INPUT_RATE_BURST_CAPACITY
+    slot.inputTokenLastRefillMs = performance.now()
+    slot.rateLimitedDrops = 0
+  }
+
+  private broadcastGameConfig(): void {
+    for (const slot of this.slots.values()) {
+      this.sendGameConfig(slot.client, slot)
+    }
+  }
+
+  private maybeStartMatch(): void {
+    if (this.state.phase !== 'lobby') return
+    if (this.slots.size === 0) return
+
+    let someoneReady = false
+    for (const meta of this.state.players.values()) {
+      if (meta.ready) {
+        someoneReady = true
+        break
+      }
+    }
+
+    if (!someoneReady) return
+
+    this.state.phase = 'playing'
+    setEncounter(this.world, STAGE_1_ENCOUNTER)
+    this.broadcastPlayerRoster()
+    this.broadcastGameConfig()
+    console.log('[GameRoom] Phase → playing')
   }
 
 

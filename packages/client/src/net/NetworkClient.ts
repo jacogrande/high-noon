@@ -15,6 +15,9 @@ import {
   type PongMessage,
   type HudData,
   type CharacterId,
+  type LobbyState,
+  type LobbyPlayerState,
+  type LobbyPhase,
   type PlayerRosterEntry,
 } from '@high-noon/shared'
 
@@ -34,12 +37,17 @@ export interface JoinOptions {
 
 export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
+  'lobby-state': (state: LobbyState) => void
   'player-roster': (roster: PlayerRosterEntry[]) => void
   snapshot: (snapshot: WorldSnapshot) => void
   hud: (data: HudData) => void
   'incompatible-protocol': (reason: string) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
+}
+
+type NetworkListenerMap = {
+  [K in keyof NetworkEventMap]?: Set<NetworkEventMap[K]>
 }
 
 /** Connection timeout in milliseconds */
@@ -54,7 +62,9 @@ export class NetworkClient {
   private client: Client
   private room: Room | null = null
   private reconnectionToken: string | null = null
-  private listeners: { [K in keyof NetworkEventMap]?: NetworkEventMap[K] } = {}
+  private latestGameConfig: GameConfig | null = null
+  private listeners: NetworkListenerMap = {}
+  private cleanupRoomHandlers: (() => void) | null = null
   private reconnecting = false
   private intentionalLeave = false
 
@@ -62,8 +72,22 @@ export class NetworkClient {
     this.client = new Client(endpoint)
   }
 
-  on<K extends keyof NetworkEventMap>(event: K, cb: NetworkEventMap[K]): void {
-    this.listeners[event] = cb
+  on<K extends keyof NetworkEventMap>(event: K, cb: NetworkEventMap[K]): () => void {
+    let eventListeners = this.listeners[event] as Set<NetworkEventMap[K]> | undefined
+    if (!eventListeners) {
+      eventListeners = new Set<NetworkEventMap[K]>()
+      this.listeners[event] = eventListeners as NetworkListenerMap[K]
+    }
+
+    eventListeners.add(cb)
+    return () => {
+      const current = this.listeners[event] as Set<NetworkEventMap[K]> | undefined
+      if (!current) return
+      current.delete(cb)
+      if (current.size === 0) {
+        delete this.listeners[event]
+      }
+    }
   }
 
   async join(options?: JoinOptions): Promise<void> {
@@ -104,49 +128,189 @@ export class NetworkClient {
     this.room?.send('ping', { clientTime } satisfies PingMessage)
   }
 
+  sendReady(ready: boolean): void {
+    this.room?.send('set-ready', { ready })
+  }
+
+  sendCharacter(characterId: CharacterId): void {
+    this.room?.send('set-character', { characterId })
+  }
+
+  requestGameConfig(): void {
+    if (!this.room) return
+    this.requestGameConfigFromRoom(this.room)
+  }
+
+  getLatestGameConfig(): GameConfig | null {
+    return this.latestGameConfig
+  }
+
   disconnect(): void {
     this.intentionalLeave = true
     sessionStorage.removeItem('hn-reconnect-token')
+    this.clearRoomHandlers()
     this.room?.leave()
     this.room = null
+    this.latestGameConfig = null
     this.listeners = {}
+  }
+
+  private emit<K extends keyof NetworkEventMap>(
+    event: K,
+    ...args: Parameters<NetworkEventMap[K]>
+  ): void {
+    const callbacks = this.listeners[event]
+    if (!callbacks) return
+    for (const callback of [...callbacks]) {
+      ;(callback as (...eventArgs: Parameters<NetworkEventMap[K]>) => void)(...args)
+    }
+  }
+
+  private clearRoomHandlers(): void {
+    this.cleanupRoomHandlers?.()
+    this.cleanupRoomHandlers = null
+  }
+
+  private removeLeaveHandler(room: Room, cb: () => void): void {
+    ;(room.onLeave as { remove?: (handler: () => void) => void }).remove?.(cb)
   }
 
   /** Register message + leave handlers on a room */
   private registerRoomHandlers(room: Room): void {
-    room.onMessage('game-config', (data: GameConfig) => {
-      this.listeners['game-config']?.(data)
-    })
+    this.clearRoomHandlers()
+    const cleanup: Array<() => void> = []
 
-    room.onMessage('pong', (data: PongMessage) => {
-      this.listeners.pong?.(data.clientTime, data.serverTime)
-    })
+    cleanup.push(room.onMessage('game-config', (data: GameConfig) => {
+      this.latestGameConfig = data
+      this.emit('game-config', data)
+    }))
 
-    room.onMessage('hud', (data: HudData) => {
-      this.listeners.hud?.(data)
-    })
+    cleanup.push(room.onMessage('pong', (data: PongMessage) => {
+      this.emit('pong', data.clientTime, data.serverTime)
+    }))
 
-    room.onMessage('player-roster', (roster: PlayerRosterEntry[]) => {
-      this.listeners['player-roster']?.(roster)
-    })
+    cleanup.push(room.onMessage('hud', (data: HudData) => {
+      this.emit('hud', data)
+    }))
 
-    room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
+    cleanup.push(room.onMessage('player-roster', (roster: PlayerRosterEntry[]) => {
+      this.emit('player-roster', roster)
+    }))
+
+    cleanup.push(room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
       try {
         const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
         const snapshot = decodeSnapshot(bytes)
-        this.listeners.snapshot?.(snapshot)
+        this.emit('snapshot', snapshot)
       } catch (err) {
         console.error('[NetworkClient] Failed to decode snapshot:', err)
         if (this.isProtocolMismatchError(err)) {
           this.handleProtocolMismatch(room, err)
         }
       }
-    })
+    }))
 
-    room.onLeave(() => {
+    const onLeave = () => {
       if (this.intentionalLeave) return
       this.attemptReconnect()
-    })
+    }
+    room.onLeave(onLeave)
+    cleanup.push(() => this.removeLeaveHandler(room, onLeave))
+
+    cleanup.push(this.registerLobbyStateHandlers(room))
+
+    this.cleanupRoomHandlers = () => {
+      for (const off of cleanup.splice(0)) {
+        off()
+      }
+    }
+  }
+
+  private registerLobbyStateHandlers(room: Room): () => void {
+    const emitLobbyState = () => {
+      const state = this.normalizeLobbyState((room as { state?: unknown }).state)
+      if (!state) return
+      this.emit('lobby-state', state)
+    }
+
+    const roomWithStateHandler = room as unknown as {
+      onStateChange?: ((cb: (state: unknown) => void) => void) & {
+        remove?: (cb: (state: unknown) => void) => void
+      }
+    }
+    const onStateChange = () => {
+      emitLobbyState()
+    }
+    roomWithStateHandler.onStateChange?.(onStateChange)
+
+    emitLobbyState()
+
+    return () => {
+      roomWithStateHandler.onStateChange?.remove?.(onStateChange)
+    }
+  }
+
+  private normalizeLobbyState(state: unknown): LobbyState | null {
+    if (typeof state !== 'object' || state === null) return null
+    const value = state as {
+      phase?: unknown
+      serverTick?: unknown
+      players?: unknown
+    }
+
+    const phase: LobbyPhase = value.phase === 'playing' ? 'playing' : 'lobby'
+    const serverTick = typeof value.serverTick === 'number' ? value.serverTick : 0
+    const players = this.normalizeLobbyPlayers(value.players)
+    return { phase, serverTick, players }
+  }
+
+  private normalizeLobbyPlayers(players: unknown): LobbyPlayerState[] {
+    if (!players || typeof players !== 'object') return []
+    const result: LobbyPlayerState[] = []
+
+    const pushPlayer = (sessionId: string, meta: unknown) => {
+      if (typeof meta !== 'object' || meta === null) return
+      const value = meta as {
+        name?: unknown
+        characterId?: unknown
+        ready?: unknown
+      }
+      result.push({
+        sessionId,
+        name: typeof value.name === 'string' ? value.name : sessionId.slice(0, 8),
+        characterId: isCharacterId(value.characterId) ? value.characterId : 'sheriff',
+        ready: value.ready === true,
+      })
+    }
+
+    if (players instanceof Map) {
+      for (const [sessionId, meta] of players.entries()) {
+        pushPlayer(String(sessionId), meta)
+      }
+      return result
+    }
+
+    const value = players as {
+      forEach?: (cb: (meta: unknown, sessionId: string) => void) => void
+      entries?: () => Iterable<[string, unknown]>
+    }
+    if (typeof value.forEach === 'function') {
+      value.forEach((meta, sessionId) => {
+        pushPlayer(String(sessionId), meta)
+      })
+      return result
+    }
+    if (typeof value.entries === 'function') {
+      for (const [sessionId, meta] of value.entries()) {
+        pushPlayer(String(sessionId), meta)
+      }
+      return result
+    }
+
+    for (const [sessionId, meta] of Object.entries(players as Record<string, unknown>)) {
+      pushPlayer(sessionId, meta)
+    }
+    return result
   }
 
   private isProtocolMismatchError(err: unknown): boolean {
@@ -159,6 +323,7 @@ export class NetworkClient {
     this.reconnecting = false
     this.reconnectionToken = null
     sessionStorage.removeItem('hn-reconnect-token')
+    this.clearRoomHandlers()
 
     try {
       room.leave()
@@ -167,18 +332,21 @@ export class NetworkClient {
     }
 
     this.room = null
-    this.listeners['incompatible-protocol']?.(reason)
-    this.listeners.disconnect?.()
+    this.latestGameConfig = null
+    this.emit('incompatible-protocol', reason)
+    this.emit('disconnect')
   }
 
   /** Attempt reconnection with exponential backoff */
   private async attemptReconnect(): Promise<void> {
     if (this.reconnecting || !this.reconnectionToken) {
-      this.listeners.disconnect?.()
+      this.emit('disconnect')
       return
     }
 
     this.reconnecting = true
+    this.clearRoomHandlers()
+    this.room = null
     console.log('[NetworkClient] Connection lost, attempting reconnect...')
 
     for (let attempt = 0; attempt < RECONNECT_MAX_ATTEMPTS; attempt++) {
@@ -199,7 +367,7 @@ export class NetworkClient {
         this.reconnectionToken = this.room.reconnectionToken
         sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
         this.registerRoomHandlers(this.room)
-        this.requestGameConfig(this.room)
+        this.requestGameConfigFromRoom(this.room)
         this.reconnecting = false
         console.log(`[NetworkClient] Reconnected on attempt ${attempt + 1}`)
         return
@@ -212,7 +380,8 @@ export class NetworkClient {
     this.reconnecting = false
     this.reconnectionToken = null
     sessionStorage.removeItem('hn-reconnect-token')
-    this.listeners.disconnect?.()
+    this.room = null
+    this.emit('disconnect')
   }
 
   /**
@@ -227,7 +396,7 @@ export class NetworkClient {
       const cleanup = () => {
         clearTimeout(timer)
         offMessage?.()
-        room.onLeave.remove(onLeave)
+        this.removeLeaveHandler(room, onLeave)
       }
 
       const finish = (fn: () => void) => {
@@ -247,7 +416,8 @@ export class NetworkClient {
 
       offMessage = room.onMessage('game-config', (data: GameConfig) => {
         finish(() => {
-          this.listeners['game-config']?.(data)
+          this.latestGameConfig = data
+          this.emit('game-config', data)
           resolve()
         })
       })
@@ -260,11 +430,15 @@ export class NetworkClient {
    * Request authoritative game-config from server.
    * Used after reconnect in case server's automatic config send raced handlers.
    */
-  private requestGameConfig(room: Room): void {
+  private requestGameConfigFromRoom(room: Room): void {
     try {
       room.send('request-game-config')
     } catch (err) {
       console.warn('[NetworkClient] Failed to request game-config:', err)
     }
   }
+}
+
+function isCharacterId(value: unknown): value is CharacterId {
+  return value === 'sheriff' || value === 'undertaker' || value === 'prospector'
 }

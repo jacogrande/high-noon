@@ -18,7 +18,7 @@ Colyseus schema definitions for synchronized state.
 
 **What is synced via schema (10Hz):**
 - Game phase (`lobby` / `playing`)
-- Player metadata (name, ready flag)
+- Player metadata (name, character, ready flag)
 - Server tick counter
 
 **What is synced via binary snapshots (20Hz):**
@@ -32,6 +32,7 @@ import { Schema, type, MapSchema } from '@colyseus/schema'
 
 class PlayerMeta extends Schema {
   @type('string') name: string = ''
+  @type('string') characterId: string = 'sheriff'
   @type('boolean') ready: boolean = false
 }
 

@@ -14,7 +14,8 @@ User interface components and overlays.
 
 - `GameHUD.tsx` - In-game HUD overlay
 - `SkillTreePanel.tsx` - Skill tree node selection UI
-- `CharacterSelect.tsx` - Pre-run character selection UI shared by SP/MP entry pages
+- `CharacterSelect.tsx` - Pre-run character selection UI for single-player
+- `MultiplayerLobby.tsx` - Multiplayer lobby UI (character select + ready state + roster)
 
 ## Implementation Options
 

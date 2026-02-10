@@ -1,7 +1,9 @@
 import { Schema, type, MapSchema } from '@colyseus/schema'
+import type { CharacterId } from '@high-noon/shared'
 
 export class PlayerMeta extends Schema {
   @type('string') name: string = ''
+  @type('string') characterId: CharacterId = 'sheriff'
   @type('boolean') ready: boolean = false
 }
 

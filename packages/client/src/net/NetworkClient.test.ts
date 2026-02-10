@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { NetworkClient, type GameConfig } from './NetworkClient'
-import type { PlayerRosterEntry } from '@high-noon/shared'
+import type { CharacterId, LobbyState, PlayerRosterEntry } from '@high-noon/shared'
 
 class MemorySessionStorage {
   private readonly store = new Map<string, string>()
@@ -22,9 +22,11 @@ class FakeRoom {
   reconnectionToken = 'next-token'
   readonly sendCalls: Array<{ type: string; payload?: unknown }> = []
   leaveCallCount = 0
+  state: unknown = null
 
   private readonly messageHandlers = new Map<string, Array<(payload: unknown) => void>>()
   private readonly leaveHandlers: Array<() => void> = []
+  private readonly stateHandlers: Array<(state: unknown) => void> = []
 
   readonly onLeave = Object.assign(
     (cb: () => void) => {
@@ -35,6 +37,19 @@ class FakeRoom {
       remove: (cb: () => void) => {
         const idx = this.leaveHandlers.indexOf(cb)
         if (idx >= 0) this.leaveHandlers.splice(idx, 1)
+      },
+    },
+  )
+
+  readonly onStateChange = Object.assign(
+    (cb: (state: unknown) => void) => {
+      this.stateHandlers.push(cb)
+      return cb
+    },
+    {
+      remove: (cb: (state: unknown) => void) => {
+        const idx = this.stateHandlers.indexOf(cb)
+        if (idx >= 0) this.stateHandlers.splice(idx, 1)
       },
     },
   )
@@ -64,6 +79,23 @@ class FakeRoom {
   leave(): void {
     this.leaveCallCount++
     for (const handler of this.leaveHandlers) handler()
+  }
+
+  emitStateChange(state: unknown): void {
+    this.state = state
+    for (const handler of this.stateHandlers) handler(state)
+  }
+
+  messageHandlerCount(type: string): number {
+    return this.messageHandlers.get(type)?.length ?? 0
+  }
+
+  leaveHandlerCount(): number {
+    return this.leaveHandlers.length
+  }
+
+  stateHandlerCount(): number {
+    return this.stateHandlers.length
   }
 }
 
@@ -112,6 +144,81 @@ describe('NetworkClient', () => {
 
     expect(received).not.toBeNull()
     expect(received?.characterId).toBe('undertaker')
+    expect(net.getLatestGameConfig()?.characterId).toBe('undertaker')
+  })
+
+  test('on supports multiple listeners and unsubscribing', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const events: string[] = []
+
+    const offA = net.on('disconnect', () => {
+      events.push('a')
+    })
+    const offB = net.on('disconnect', () => {
+      events.push('b')
+    })
+
+    ;(net as any).emit('disconnect')
+    offA()
+    ;(net as any).emit('disconnect')
+    offB()
+    ;(net as any).emit('disconnect')
+
+    expect(events).toEqual(['a', 'b', 'b'])
+  })
+
+  test('registerRoomHandlers replaces previous room listeners', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    room.state = {
+      phase: 'lobby',
+      serverTick: 1,
+      players: {},
+    }
+
+    const lobbyStates: LobbyState[] = []
+    let gameConfigEvents = 0
+    net.on('lobby-state', (state) => {
+      lobbyStates.push(state)
+    })
+    net.on('game-config', () => {
+      gameConfigEvents++
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+    ;(net as any).registerRoomHandlers(room)
+
+    expect(room.messageHandlerCount('game-config')).toBe(1)
+    expect(room.leaveHandlerCount()).toBe(1)
+    expect(room.stateHandlerCount()).toBe(1)
+
+    room.emit('game-config', {
+      seed: 22,
+      sessionId: 'abc',
+      playerEid: 5,
+      characterId: 'sheriff',
+    } satisfies GameConfig)
+    room.emitStateChange({
+      phase: 'playing',
+      serverTick: 3,
+      players: {},
+    })
+
+    expect(gameConfigEvents).toBe(1)
+    expect(lobbyStates.length).toBe(3)
+  })
+
+  test('disconnect clears active room handlers', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    ;(net as any).room = room
+    ;(net as any).registerRoomHandlers(room)
+
+    net.disconnect()
+
+    expect(room.messageHandlerCount('game-config')).toBe(0)
+    expect(room.leaveHandlerCount()).toBe(0)
+    expect(room.stateHandlerCount()).toBe(0)
   })
 
   test('attemptReconnect requests authoritative game-config after reconnect', async () => {
@@ -161,6 +268,65 @@ describe('NetworkClient', () => {
     expect(received).toEqual([
       { eid: 7, characterId: 'undertaker' },
       { eid: 9, characterId: 'prospector' },
+    ])
+  })
+
+  test('registerRoomHandlers emits lobby-state from schema state and updates', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    room.state = {
+      phase: 'lobby',
+      serverTick: 0,
+      players: {
+        sessionA: { name: 'Alice', characterId: 'sheriff', ready: false },
+      },
+    }
+
+    const received: LobbyState[] = []
+    net.on('lobby-state', (state) => {
+      received.push(state)
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    room.emitStateChange({
+      phase: 'playing',
+      serverTick: 12,
+      players: {
+        sessionA: { name: 'Alice', characterId: 'undertaker', ready: true },
+        sessionB: { name: 'Bob', characterId: 'prospector', ready: false },
+      },
+    })
+
+    expect(received.length).toBe(2)
+    expect(received[0]).toEqual({
+      phase: 'lobby',
+      serverTick: 0,
+      players: [
+        { sessionId: 'sessionA', name: 'Alice', characterId: 'sheriff', ready: false },
+      ],
+    } satisfies LobbyState)
+    expect(received[1]).toEqual({
+      phase: 'playing',
+      serverTick: 12,
+      players: [
+        { sessionId: 'sessionA', name: 'Alice', characterId: 'undertaker', ready: true },
+        { sessionId: 'sessionB', name: 'Bob', characterId: 'prospector', ready: false },
+      ],
+    } satisfies LobbyState)
+  })
+
+  test('sendReady and sendCharacter forward to room', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    ;(net as any).room = room
+
+    net.sendReady(true)
+    net.sendCharacter('undertaker' satisfies CharacterId)
+
+    expect(room.sendCalls).toEqual([
+      { type: 'set-ready', payload: { ready: true } },
+      { type: 'set-character', payload: { characterId: 'undertaker' } },
     ])
   })
 
