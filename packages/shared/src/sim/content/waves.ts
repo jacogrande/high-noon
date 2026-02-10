@@ -56,6 +56,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 2 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
       ],
       maxFodderAlive: 8,
       threats: [
@@ -71,6 +72,8 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 3 },
         { type: EnemyType.GRUNT, weight: 2 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
       ],
       maxFodderAlive: 10,
       threats: [
@@ -86,6 +89,8 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 3 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 3 },
       ],
       maxFodderAlive: 12,
       threats: [

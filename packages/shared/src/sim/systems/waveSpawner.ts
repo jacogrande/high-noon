@@ -11,12 +11,13 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
 import { Enemy, EnemyType, EnemyTier, Position, Dead } from '../components'
-import { spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger } from '../prefabs'
+import { spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger, spawnGoblinBarbarian, spawnGoblinRogue } from '../prefabs'
 import { getPlayableBounds } from '../content/maps/testArena'
 import { isSolidAt, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
 import {
   SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
+  GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
 } from '../content/enemies'
 import type { FodderPool } from '../content/waves'
 
@@ -31,12 +32,16 @@ const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => numbe
   [EnemyType.GRUNT]: spawnGrunt,
   [EnemyType.SHOOTER]: spawnShooter,
   [EnemyType.CHARGER]: spawnCharger,
+  [EnemyType.GOBLIN_BARBARIAN]: spawnGoblinBarbarian,
+  [EnemyType.GOBLIN_ROGUE]: spawnGoblinRogue,
 }
 
 /** Budget cost lookup by EnemyType (only fodder types have costs) */
 const BUDGET_COST: Record<number, number> = {
   [EnemyType.SWARMER]: SWARMER_BUDGET_COST,
   [EnemyType.GRUNT]: GRUNT_BUDGET_COST,
+  [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_BUDGET_COST,
+  [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_BUDGET_COST,
 }
 
 /** Cached spawn bounds — computed once from playable bounds with inset */
