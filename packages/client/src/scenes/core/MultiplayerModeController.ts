@@ -700,7 +700,7 @@ export class MultiplayerModeController implements SceneModeController {
     }
     this.enemyRenderer.render(this.world, alpha, realDt)
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
-    this.showdownRenderer.render(this.world, this.myClientEid >= 0 ? this.myClientEid : null, alpha, realDt)
+    this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
 
     // Update particles

@@ -4,7 +4,7 @@ import type { WorldSnapshot } from '@high-noon/shared'
 
 /** Create a minimal snapshot with given tick and serverTime */
 function makeSnapshot(tick: number, serverTime: number): WorldSnapshot {
-  return { tick, serverTime, players: [], bullets: [], enemies: [] }
+  return { tick, serverTime, players: [], bullets: [], enemies: [], lastRitesZones: [], dynamites: [] }
 }
 
 describe('SnapshotBuffer', () => {

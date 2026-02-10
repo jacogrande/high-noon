@@ -23,31 +23,31 @@ export class LastRitesRenderer {
   }
 
   render(world: GameWorld, _alpha: number, realDt: number): void {
-    const zone = world.lastRites
-    if (!zone || !zone.active) {
-      if (this.zoneGraphics.visible) {
-        this.zoneGraphics.clear()
-        this.zoneGraphics.visible = false
-      }
-      return
-    }
+    // Draw all active zones from the per-player map (works for both SP and MP)
+    const zones = world.lastRitesZones
+    let anyActive = false
+
+    this.zoneGraphics.clear()
 
     this.pulseTimer = (this.pulseTimer + realDt) % (Math.PI * 2)
     const pulse = Math.sin(this.pulseTimer * 3) * 0.5 + 0.5
     const fillAlpha = 0.12 + pulse * 0.08
     const borderAlpha = 0.4 + pulse * 0.3
 
-    this.zoneGraphics.clear()
+    for (const zone of zones.values()) {
+      if (!zone.active) continue
+      anyActive = true
 
-    this.zoneGraphics
-      .circle(zone.x, zone.y, zone.radius)
-      .fill({ color: ZONE_COLOR, alpha: fillAlpha })
+      this.zoneGraphics
+        .circle(zone.x, zone.y, zone.radius)
+        .fill({ color: ZONE_COLOR, alpha: fillAlpha })
 
-    this.zoneGraphics
-      .circle(zone.x, zone.y, zone.radius)
-      .stroke({ color: ZONE_BORDER_COLOR, width: 2, alpha: borderAlpha })
+      this.zoneGraphics
+        .circle(zone.x, zone.y, zone.radius)
+        .stroke({ color: ZONE_BORDER_COLOR, width: 2, alpha: borderAlpha })
+    }
 
-    this.zoneGraphics.visible = true
+    this.zoneGraphics.visible = anyActive
   }
 
   destroy(): void {

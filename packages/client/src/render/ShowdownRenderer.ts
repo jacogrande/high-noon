@@ -37,59 +37,62 @@ export class ShowdownRenderer {
     entityLayer.addChild(this.markGraphics)
   }
 
-  render(world: GameWorld, playerEid: number | null, alpha: number, realDt: number): void {
-    if (playerEid === null || !hasComponent(world, Showdown, playerEid) || Showdown.active[playerEid]! !== 1) {
-      this.markGraphics.visible = false
-      this.lineGraphics.visible = false
-      return
-    }
+  render(world: GameWorld, allPlayerEids: Iterable<number>, alpha: number, realDt: number): void {
+    this.markGraphics.clear()
+    this.lineGraphics.clear()
 
-    const targetEid = Showdown.targetEid[playerEid]!
-    if (targetEid === NO_TARGET || !hasComponent(world, Position, targetEid)) {
-      this.markGraphics.visible = false
-      this.lineGraphics.visible = false
-      return
-    }
-
-    // Interpolate positions
-    const px = Position.prevX[playerEid]! + (Position.x[playerEid]! - Position.prevX[playerEid]!) * alpha
-    const py = Position.prevY[playerEid]! + (Position.y[playerEid]! - Position.prevY[playerEid]!) * alpha
-    const tx = Position.prevX[targetEid]! + (Position.x[targetEid]! - Position.prevX[targetEid]!) * alpha
-    const ty = Position.prevY[targetEid]! + (Position.y[targetEid]! - Position.prevY[targetEid]!) * alpha
+    let anyActive = false
 
     this.pulseTimer = (this.pulseTimer + realDt) % (Math.PI / 2)
-
     const pulse = Math.sin(this.pulseTimer * 4)
     const markScale = 0.8 + pulse * 0.2
     const lineAlpha = 0.3 + (pulse * 0.5 + 0.5) * 0.3
 
-    // Draw mark (diamond) above target
-    this.markGraphics.clear()
-    const mx = tx
-    const my = ty + MARK_OFFSET_Y
-    const size = 4 * markScale
-    this.markGraphics
-      .moveTo(mx, my - size)
-      .lineTo(mx + size, my)
-      .lineTo(mx, my + size)
-      .lineTo(mx - size, my)
-      .closePath()
-      .fill({ color: MARK_COLOR, alpha: 0.9 })
-      .stroke({ color: 0xffffff, width: 1, alpha: 0.8 })
-    this.markGraphics.visible = true
+    for (const playerEid of allPlayerEids) {
+      if (!hasComponent(world, Showdown, playerEid) || Showdown.active[playerEid]! !== 1) {
+        continue
+      }
 
-    // Draw glow ring around target
-    this.markGraphics
-      .circle(tx, ty, RING_RADIUS)
-      .stroke({ color: RING_COLOR, width: 1.5, alpha: 0.4 + pulse * 0.2 })
+      const targetEid = Showdown.targetEid[playerEid]!
+      if (targetEid === NO_TARGET || !hasComponent(world, Position, targetEid)) {
+        continue
+      }
 
-    // Draw connection line
-    this.lineGraphics.clear()
-    this.lineGraphics
-      .moveTo(px, py)
-      .lineTo(tx, ty)
-      .stroke({ color: LINE_COLOR, width: 1, alpha: lineAlpha })
-    this.lineGraphics.visible = true
+      anyActive = true
+
+      // Interpolate positions
+      const px = Position.prevX[playerEid]! + (Position.x[playerEid]! - Position.prevX[playerEid]!) * alpha
+      const py = Position.prevY[playerEid]! + (Position.y[playerEid]! - Position.prevY[playerEid]!) * alpha
+      const tx = Position.prevX[targetEid]! + (Position.x[targetEid]! - Position.prevX[targetEid]!) * alpha
+      const ty = Position.prevY[targetEid]! + (Position.y[targetEid]! - Position.prevY[targetEid]!) * alpha
+
+      // Draw mark (diamond) above target
+      const mx = tx
+      const my = ty + MARK_OFFSET_Y
+      const size = 4 * markScale
+      this.markGraphics
+        .moveTo(mx, my - size)
+        .lineTo(mx + size, my)
+        .lineTo(mx, my + size)
+        .lineTo(mx - size, my)
+        .closePath()
+        .fill({ color: MARK_COLOR, alpha: 0.9 })
+        .stroke({ color: 0xffffff, width: 1, alpha: 0.8 })
+
+      // Draw glow ring around target
+      this.markGraphics
+        .circle(tx, ty, RING_RADIUS)
+        .stroke({ color: RING_COLOR, width: 1.5, alpha: 0.4 + pulse * 0.2 })
+
+      // Draw connection line
+      this.lineGraphics
+        .moveTo(px, py)
+        .lineTo(tx, ty)
+        .stroke({ color: LINE_COLOR, width: 1, alpha: lineAlpha })
+    }
+
+    this.markGraphics.visible = anyActive
+    this.lineGraphics.visible = anyActive
   }
 
   destroy(): void {

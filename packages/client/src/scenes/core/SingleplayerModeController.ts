@@ -512,7 +512,7 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Render showdown mark + line
     const playerEid = this.playerRenderer.getPlayerEntity()
-    this.showdownRenderer.render(this.world, playerEid, alpha, realDt)
+    this.showdownRenderer.render(this.world, playerEid !== null ? [playerEid] : [], alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
 
     // Update particles (visual-only, uses real frame dt)

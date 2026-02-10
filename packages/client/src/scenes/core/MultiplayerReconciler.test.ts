@@ -31,9 +31,13 @@ function makeSnapshot(playerEid: number, state: number): WorldSnapshot {
       rollDurationMs: 0,
       rollDirX: 0,
       rollDirY: 0,
+      showdownActive: 0,
+      showdownTargetEid: 0xffff,
     }],
     bullets: [],
     enemies: [],
+    lastRitesZones: [],
+    dynamites: [],
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v6)
+ * Binary Snapshot Serialization (v7)
  *
  * Encodes/decodes the world state into a compact binary format for
  * server→client broadcast at 20Hz.
@@ -20,20 +20,21 @@ import {
   Collider,
   Enemy,
   EnemyAI,
+  Showdown,
 } from '../sim/components'
 import { playerQuery } from '../sim/queries'
 import type { GameWorld } from '../sim/world'
-import { NO_OWNER } from '../sim/prefabs'
+import { NO_OWNER, NO_TARGET } from '../sim/prefabs'
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 6
+export const SNAPSHOT_VERSION = 7
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
 export const HEADER_SIZE = 14
-export const PLAYER_SIZE = 35
+export const PLAYER_SIZE = 38 // v7: +3 bytes (showdownActive:1 + showdownTargetEid:2)
 export const BULLET_SIZE = 21
 export const ENEMY_SIZE = 13
 
@@ -56,6 +57,8 @@ export interface PlayerSnapshot {
   rollDurationMs: number
   rollDirX: number
   rollDirY: number
+  showdownActive: number
+  showdownTargetEid: number
 }
 
 export interface BulletSnapshot {
@@ -77,12 +80,29 @@ export interface EnemySnapshot {
   aiState: number
 }
 
+export interface LastRitesZoneSnapshot {
+  ownerEid: number
+  x: number
+  y: number
+  radius: number
+}
+
+export interface DynamiteSnapshot {
+  x: number
+  y: number
+  fuseRemaining: number
+  radius: number
+  ownerEid: number
+}
+
 export interface WorldSnapshot {
   tick: number
   serverTime: number
   players: PlayerSnapshot[]
   bullets: BulletSnapshot[]
   enemies: EnemySnapshot[]
+  lastRitesZones: LastRitesZoneSnapshot[]
+  dynamites: DynamiteSnapshot[]
 }
 
 // ============================================================================
@@ -137,11 +157,24 @@ export function encodeSnapshot(
     }
   }
 
+  // Collect Last Rites zones
+  const lastRitesZones: Array<{ ownerEid: number; x: number; y: number; radius: number }> = []
+  for (const zone of world.lastRitesZones.values()) {
+    if (zone.active) {
+      lastRitesZones.push({ ownerEid: zone.ownerEid, x: zone.x, y: zone.y, radius: zone.radius })
+    }
+  }
+
+  // Collect dynamites
+  const dynamites = world.dynamites
+
   const totalSize =
     HEADER_SIZE +
     players.length * PLAYER_SIZE +
     bullets.length * BULLET_SIZE +
-    enemies.length * ENEMY_SIZE
+    enemies.length * ENEMY_SIZE +
+    1 + lastRitesZones.length * 14 + // zone count header + 14 bytes/zone
+    1 + dynamites.length * 18         // dynamite count header + 18 bytes/dynamite
 
   // Grow shared buffer if needed
   if (totalSize > sharedBuffer.byteLength) {
@@ -213,6 +246,14 @@ export function encodeSnapshot(
     offset += 1
     view.setInt8(offset, rollDirY)
     offset += 1
+
+    // Showdown state (v7)
+    const showdownActive = hasComponent(world, Showdown, eid) ? Showdown.active[eid]! : 0
+    const showdownTargetEid = hasComponent(world, Showdown, eid) ? Showdown.targetEid[eid]! : NO_TARGET
+    view.setUint8(offset, showdownActive)
+    offset += 1
+    view.setUint16(offset, clampU16(showdownTargetEid), true)
+    offset += 2
   }
 
   // Bullets
@@ -251,6 +292,36 @@ export function encodeSnapshot(
     offset += 1
     view.setUint8(offset, EnemyAI.state[eid]!)
     offset += 1
+  }
+
+  // Last Rites Zones (v7)
+  view.setUint8(offset, lastRitesZones.length)
+  offset += 1
+  for (const zone of lastRitesZones) {
+    view.setUint16(offset, clampU16(zone.ownerEid), true)
+    offset += 2
+    view.setFloat32(offset, zone.x, true)
+    offset += 4
+    view.setFloat32(offset, zone.y, true)
+    offset += 4
+    view.setFloat32(offset, zone.radius, true)
+    offset += 4
+  }
+
+  // Dynamites (v7)
+  view.setUint8(offset, dynamites.length)
+  offset += 1
+  for (const dyn of dynamites) {
+    view.setFloat32(offset, dyn.x, true)
+    offset += 4
+    view.setFloat32(offset, dyn.y, true)
+    offset += 4
+    view.setFloat32(offset, dyn.fuseRemaining, true)
+    offset += 4
+    view.setFloat32(offset, dyn.radius, true)
+    offset += 4
+    view.setUint16(offset, clampU16(dyn.ownerId), true)
+    offset += 2
   }
 
   return new Uint8Array(sharedBuffer, 0, offset)
@@ -311,6 +382,10 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 1
     const rollDirY = dequantizeUnit(view.getInt8(offset))
     offset += 1
+    const showdownActive = view.getUint8(offset)
+    offset += 1
+    const showdownTargetEid = view.getUint16(offset, true)
+    offset += 2
     players[i] = {
       eid,
       x,
@@ -326,6 +401,8 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
       rollDurationMs,
       rollDirX,
       rollDirY,
+      showdownActive,
+      showdownTargetEid,
     }
   }
 
@@ -366,5 +443,39 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     enemies[i] = { eid, x, y, type, hp, aiState }
   }
 
-  return { tick, serverTime, players, bullets, enemies }
+  // Last Rites Zones (v7)
+  const zoneCount = view.getUint8(offset)
+  offset += 1
+  const lastRitesZones: LastRitesZoneSnapshot[] = new Array(zoneCount)
+  for (let i = 0; i < zoneCount; i++) {
+    const ownerEid = view.getUint16(offset, true)
+    offset += 2
+    const zx = view.getFloat32(offset, true)
+    offset += 4
+    const zy = view.getFloat32(offset, true)
+    offset += 4
+    const radius = view.getFloat32(offset, true)
+    offset += 4
+    lastRitesZones[i] = { ownerEid, x: zx, y: zy, radius }
+  }
+
+  // Dynamites (v7)
+  const dynamiteCount = view.getUint8(offset)
+  offset += 1
+  const dynamites: DynamiteSnapshot[] = new Array(dynamiteCount)
+  for (let i = 0; i < dynamiteCount; i++) {
+    const dx = view.getFloat32(offset, true)
+    offset += 4
+    const dy = view.getFloat32(offset, true)
+    offset += 4
+    const fuseRemaining = view.getFloat32(offset, true)
+    offset += 4
+    const radius = view.getFloat32(offset, true)
+    offset += 4
+    const ownerEid = view.getUint16(offset, true)
+    offset += 2
+    dynamites[i] = { x: dx, y: dy, fuseRemaining, radius, ownerEid }
+  }
+
+  return { tick, serverTime, players, bullets, enemies, lastRitesZones, dynamites }
 }

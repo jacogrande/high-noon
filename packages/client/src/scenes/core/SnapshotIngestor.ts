@@ -33,10 +33,14 @@ import {
   GOBLIN_ROGUE_RADIUS,
   Player,
   PlayerState,
+  getCharacterDef,
+  initUpgradeState,
   type BulletSnapshot,
   type CharacterId,
+  type DynamiteSnapshot,
   type EnemySnapshot,
   type GameWorld,
+  type LastRitesZoneSnapshot,
   type PlayerSnapshot,
   type WorldSnapshot,
 } from '@high-noon/shared'
@@ -83,6 +87,8 @@ export class SnapshotIngestor {
     this.applyPlayers(snapshot.players, ctx)
     const matchedPredictedBullets = this.applyBullets(snapshot.bullets, ctx)
     this.applyEnemies(snapshot.enemies, ctx)
+    this.applyLastRitesZones(snapshot.lastRitesZones, ctx)
+    this.applyDynamites(snapshot.dynamites, ctx)
     const timedOutPredictedBullets = ctx.tracker.cleanupPredictedBullets(ctx.world, predictionTick)
     return { matchedPredictedBullets, timedOutPredictedBullets }
   }
@@ -117,6 +123,13 @@ export class SnapshotIngestor {
         Position.prevY[clientEid] = p.y
         ZPosition.z[clientEid] = p.z
         ZPosition.zVelocity[clientEid] = p.zVelocity
+
+        // All players get Showdown component (for remote showdown visibility)
+        addComponent(ctx.world, Showdown, clientEid)
+        Showdown.active[clientEid] = 0
+        Showdown.targetEid[clientEid] = NO_TARGET
+        Showdown.duration[clientEid] = 0
+        Showdown.cooldown[clientEid] = 0
 
         ctx.playerEntities.set(p.eid, clientEid)
 
@@ -164,13 +177,6 @@ export class SnapshotIngestor {
             Cylinder.firstShotAfterReload[clientEid] = 0
           }
 
-          // Shared ability state (Sheriff Showdown / Undertaker Last Rites / Prospector cooldown).
-          addComponent(ctx.world, Showdown, clientEid)
-          Showdown.active[clientEid] = 0
-          Showdown.targetEid[clientEid] = NO_TARGET
-          Showdown.duration[clientEid] = 0
-          Showdown.cooldown[clientEid] = 0
-
           Health.max[clientEid] = us.maxHP
         }
       }
@@ -180,12 +186,27 @@ export class SnapshotIngestor {
         : (ctx.resolveCharacterIdForServerEid(p.eid) ?? ctx.world.playerCharacters.get(clientEid) ?? 'sheriff')
       ctx.world.playerCharacters.set(clientEid, resolvedCharacterId)
 
+      // Ensure remote players have a base upgrade state (used by DynamiteRenderer for fuse timing)
+      if (p.eid !== ctx.myServerEid && !ctx.world.playerUpgradeStates.has(clientEid)) {
+        ctx.world.playerUpgradeStates.set(clientEid, initUpgradeState(getCharacterDef(resolvedCharacterId)))
+      }
+
       // Write snapshot data (skip aim/state for local player — driven by prediction).
       if (clientEid !== ctx.myClientEid) {
         Player.aimAngle[clientEid] = p.aimAngle
         PlayerState.state[clientEid] = p.state
         ZPosition.z[clientEid] = p.z
         ZPosition.zVelocity[clientEid] = p.zVelocity
+
+        // Apply showdown state for remote players
+        Showdown.active[clientEid] = p.showdownActive
+        if (p.showdownActive && p.showdownTargetEid !== NO_TARGET) {
+          // Resolve server enemy EID → client enemy EID
+          const clientTarget = ctx.enemyEntities.get(p.showdownTargetEid)
+          Showdown.targetEid[clientEid] = clientTarget ?? NO_TARGET
+        } else {
+          Showdown.targetEid[clientEid] = NO_TARGET
+        }
       }
       const prevHP = Health.current[clientEid]!
       Health.current[clientEid] = p.hp
@@ -334,6 +355,61 @@ export class SnapshotIngestor {
         ctx.enemyEntities.delete(serverEid)
       }
     }
+  }
+
+  private applyLastRitesZones(zones: LastRitesZoneSnapshot[], ctx: SnapshotIngestContext): void {
+    // Remove remote zones (preserve local player's zone which is driven by prediction)
+    for (const [ownerEid] of ctx.world.lastRitesZones) {
+      if (ownerEid !== ctx.myClientEid) {
+        ctx.world.lastRitesZones.delete(ownerEid)
+      }
+    }
+
+    // Repopulate from snapshot
+    for (const z of zones) {
+      // Skip local player's zone — driven by prediction
+      if (z.ownerEid === ctx.myServerEid) continue
+
+      const clientOwner = ctx.playerEntities.get(z.ownerEid) ?? z.ownerEid
+      ctx.world.lastRitesZones.set(clientOwner, {
+        ownerEid: clientOwner,
+        active: true,
+        x: z.x,
+        y: z.y,
+        radius: z.radius,
+        timeRemaining: 0,
+        chainCount: 0,
+        chainDamageBonus: 0,
+        pendingPulses: [],
+        consecratedAccum: new Map(),
+      })
+    }
+  }
+
+  private applyDynamites(dynamites: DynamiteSnapshot[], ctx: SnapshotIngestContext): void {
+    // Keep local player's dynamites (prediction), replace everything else
+    const localDynamites = ctx.world.dynamites.filter(d =>
+      ctx.myClientEid >= 0 && d.ownerId === ctx.myClientEid,
+    )
+
+    // Add remote dynamites from snapshot
+    for (const d of dynamites) {
+      // Skip local player's dynamites — driven by prediction
+      if (d.ownerEid === ctx.myServerEid) continue
+
+      const clientOwner = ctx.playerEntities.get(d.ownerEid) ?? d.ownerEid
+      localDynamites.push({
+        x: d.x,
+        y: d.y,
+        fuseRemaining: d.fuseRemaining,
+        damage: 0,
+        radius: d.radius,
+        knockback: 0,
+        ownerId: clientOwner,
+      })
+    }
+
+    ctx.world.dynamites = localDynamites
   }
 
   private resolveOwnerClientEid(ownerServerEid: number, ctx: SnapshotIngestContext): number {
