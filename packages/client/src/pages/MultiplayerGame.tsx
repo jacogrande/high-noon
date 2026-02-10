@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { CharacterId, LobbyState } from '@high-noon/shared'
-import type { HUDState } from '../scenes/types'
+import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
@@ -9,6 +9,7 @@ import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
 import { NetworkClient } from '../net/NetworkClient'
+import { SkillTreePanel } from '../ui/SkillTreePanel'
 
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
@@ -22,6 +23,10 @@ export function MultiplayerGame() {
   const [localSessionId, setLocalSessionId] = useState<string | null>(null)
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
+  const [showSkillTree, setShowSkillTree] = useState(false)
+  const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const showingTreeRef = useRef(false)
+  const sceneRef = useRef<CoreGameScene | null>(null)
   const lastHudUpdateRef = useRef(0)
   const netRef = useRef<NetworkClient | null>(null)
   const gameRef = useRef<{
@@ -174,11 +179,25 @@ export function MultiplayerGame() {
       }
 
       if (cancelled) { scene.destroy(); gameApp.destroy(); return }
+      sceneRef.current = scene
 
       const gameLoop = new GameLoop(
         (dt) => scene.update(dt),
         (alpha) => {
           scene.render(alpha, gameLoop.fps)
+          // Poll for skill tree open/close
+          const hasPts = scene.hasPendingPoints()
+          if (hasPts && !showingTreeRef.current) {
+            showingTreeRef.current = true
+            const data = scene.getSkillTreeData()
+            if (data) setSkillTreeData(data)
+            setShowSkillTree(true)
+          } else if (!hasPts && showingTreeRef.current) {
+            showingTreeRef.current = false
+            setShowSkillTree(false)
+            setSkillTreeData(null)
+          }
+          // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
@@ -226,6 +245,20 @@ export function MultiplayerGame() {
     const nextReady = !localReady
     netRef.current?.sendReady(nextReady)
   }
+
+  const handleNodeSelect = useCallback((nodeId: string) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.selectNode(nodeId)
+    if (scene.hasPendingPoints()) {
+      const data = scene.getSkillTreeData()
+      if (data) setSkillTreeData(data)
+    } else {
+      showingTreeRef.current = false
+      setShowSkillTree(false)
+      setSkillTreeData(null)
+    }
+  }, [])
 
   const handleRetry = () => {
     destroyGame()
@@ -324,7 +357,10 @@ export function MultiplayerGame() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {showSkillTree && skillTreeData && (
+        <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
+      )}
     </div>
   )
 }

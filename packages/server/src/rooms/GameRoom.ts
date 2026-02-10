@@ -20,6 +20,10 @@ import {
   getUpgradeStateForPlayer,
   deriveAbilityHudState,
   initUpgradeState,
+  takeNode,
+  writeStatsToECS,
+  LEVEL_THRESHOLDS,
+  MAX_LEVEL,
   MAX_PLAYERS,
   STAGE_1_ENCOUNTER,
   TICK_MS,
@@ -30,6 +34,8 @@ import {
   type PingMessage,
   type PongMessage,
   type HudData,
+  type SelectNodeRequest,
+  type SelectNodeResponse,
   type CharacterId,
   type PlayerRosterEntry,
 } from '@high-noon/shared'
@@ -286,6 +292,19 @@ export class GameRoom extends Room<GameRoomState> {
       this.broadcastPlayerRoster()
     })
 
+    // Skill tree node selection (server-authoritative)
+    this.onMessage('select-node', (client, data: SelectNodeRequest) => {
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      if (typeof data?.nodeId !== 'string' || data.nodeId.length === 0 || data.nodeId.length > 64) return
+      const us = getUpgradeStateForPlayer(this.world, slot.eid)
+      const success = takeNode(us, data.nodeId, this.world)
+      if (success) {
+        writeStatsToECS(this.world, slot.eid, us)
+      }
+      client.send('select-node-result', { success, nodeId: data.nodeId } satisfies SelectNodeResponse)
+    })
+
     // Fixed-timestep simulation loop
     this.setSimulationInterval((deltaMs) => this.update(deltaMs), TICK_MS)
 
@@ -363,12 +382,14 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private sendGameConfig(client: Client, slot: PlayerSlot): void {
+    const us = getUpgradeStateForPlayer(this.world, slot.eid)
     client.send('game-config', {
       seed: this.world.initialSeed,
       sessionId: client.sessionId,
       playerEid: slot.eid,
       characterId: slot.characterId,
       roster: this.getPlayerRoster(),
+      nodesTaken: us.nodesTaken.size > 0 ? Array.from(us.nodesTaken) : undefined,
     })
   }
 
@@ -518,6 +539,14 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private sendHudUpdates() {
+    // Wave status (global, same for all players — compute once)
+    const enc = this.world.encounter
+    const waveNumber = enc ? enc.currentWave + 1 : 0
+    const totalWaves = enc ? enc.definition.waves.length : 0
+    const waveStatus: HudData['waveStatus'] = enc
+      ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
+      : 'none'
+
     for (const [, slot] of this.slots) {
       const eid = slot.eid
       const state = getUpgradeStateForPlayer(this.world, eid)
@@ -542,6 +571,9 @@ export class GameRoom extends Room<GameRoomState> {
           : undefined,
       )
 
+      const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
+      const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
+
       const hud: HudData = {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
@@ -554,6 +586,14 @@ export class GameRoom extends Room<GameRoomState> {
           : 0,
         showCylinder: hasCylinder,
         ...abilityHud,
+        xp: state.xp,
+        level: state.level,
+        pendingPoints: state.pendingPoints,
+        xpForCurrentLevel: xpForCurrent,
+        xpForNextLevel: xpForNext,
+        waveNumber,
+        totalWaves,
+        waveStatus,
       }
       slot.client.send('hud', hud)
     }
