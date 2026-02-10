@@ -1,3 +1,22 @@
+## Current Implementation Status (2026-02-10)
+
+This file contains architecture brainstorming and external references.
+
+For the architecture currently implemented in the client runtime, use:
+
+- `docs/core-scene-system.md` (current system design and data flow)
+- `docs/core-scene-migration.md` (migration summary and API mapping)
+- `packages/client/src/scenes/README.md` (code-adjacent scene overview)
+
+Current runtime direction in short:
+
+- One public gameplay scene API: `CoreGameScene`
+- Mode-specific behavior behind `SceneModeController`
+- Shared scene-core modules for feedback/simulation parity between singleplayer and multiplayer
+- Fixed update + decoupled render pipeline, with multiplayer prediction/reconciliation/interpolation in the multiplayer controller
+
+---
+
 ## 1) The architecture that tends to work best
 
 ### Authoritative server + client prediction for _your_ player
