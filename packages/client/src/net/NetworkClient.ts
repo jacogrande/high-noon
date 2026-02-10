@@ -14,6 +14,8 @@ import {
   type PingMessage,
   type PongMessage,
   type HudData,
+  type SelectNodeRequest,
+  type SelectNodeResponse,
   type CharacterId,
   type PlayerRosterEntry,
 } from '@high-noon/shared'
@@ -24,6 +26,7 @@ export interface GameConfig {
   playerEid: number
   characterId: CharacterId
   roster?: PlayerRosterEntry[]
+  nodesTaken?: string[]
 }
 
 export interface JoinOptions {
@@ -37,6 +40,7 @@ export type NetworkEventMap = {
   'player-roster': (roster: PlayerRosterEntry[]) => void
   snapshot: (snapshot: WorldSnapshot) => void
   hud: (data: HudData) => void
+  'select-node-result': (result: SelectNodeResponse) => void
   'incompatible-protocol': (reason: string) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
@@ -104,6 +108,10 @@ export class NetworkClient {
     this.room?.send('ping', { clientTime } satisfies PingMessage)
   }
 
+  sendSelectNode(nodeId: string): void {
+    this.room?.send('select-node', { nodeId } satisfies SelectNodeRequest)
+  }
+
   disconnect(): void {
     this.intentionalLeave = true
     sessionStorage.removeItem('hn-reconnect-token')
@@ -128,6 +136,10 @@ export class NetworkClient {
 
     room.onMessage('player-roster', (roster: PlayerRosterEntry[]) => {
       this.listeners['player-roster']?.(roster)
+    })
+
+    room.onMessage('select-node-result', (data: SelectNodeResponse) => {
+      this.listeners['select-node-result']?.(data)
     })
 
     room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {

@@ -54,7 +54,22 @@ export interface HudData {
   showdownCooldownMax: number
   showdownTimeLeft: number
   showdownDurationMax: number
+
+  // XP / Level
+  xp: number
+  level: number
+  pendingPoints: number
+  xpForCurrentLevel: number
+  xpForNextLevel: number
+
+  // Wave status
+  waveNumber: number
+  totalWaves: number
+  waveStatus: 'active' | 'delay' | 'completed' | 'none'
 }
+
+export interface SelectNodeRequest { nodeId: string }
+export interface SelectNodeResponse { success: boolean; nodeId: string }
 
 /**
  * Shared ability HUD derivation used by single-player, multiplayer, and server HUD push.

@@ -28,7 +28,10 @@ import {
   spatialHashSystem,
   getCharacterDef,
   initUpgradeState,
+  canTakeNode,
   deriveAbilityHudState,
+  type UpgradeState,
+  type SelectNodeResponse,
   type SystemRegistry,
   type GameWorld,
   type InputState,
@@ -59,7 +62,7 @@ import { ClockSync } from '../../net/ClockSync'
 import { InputBuffer } from '../../net/InputBuffer'
 import { NetworkClient, type GameConfig } from '../../net/NetworkClient'
 import { SnapshotBuffer, type InterpolationState } from '../../net/SnapshotBuffer'
-import type { HUDState, SkillTreeUIData } from '../types'
+import type { HUDState, SkillTreeUIData, SkillNodeState } from '../types'
 import { GameplayEventBuffer } from './GameplayEvents'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { LocalPlayerSimulationDriver } from './SimulationDriver'
@@ -156,6 +159,15 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** Monotonic tick for local player animation (decoupled from snapshot tick) */
   private predictionTick = 0
+
+  /** Local upgrade state cache for skill tree UI */
+  private upgradeStateCache: UpgradeState | null = null
+
+  /** True while a select-node RPC is in-flight (prevents rapid clicks and HUD overwrite) */
+  private pendingNodeSelection = false
+
+  /** Track level for level-up event detection */
+  private lastProcessedLevel = 0
 
   private lastRenderTime: number
 
@@ -273,6 +285,27 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.net.on('hud', (data: HudData) => {
       this.latestHud = data
+      // Sync local upgrade state cache for skill tree UI.
+      // Skip during in-flight node selection to avoid overwriting optimistic update.
+      if (this.upgradeStateCache && !this.pendingNodeSelection) {
+        this.upgradeStateCache.level = data.level
+        this.upgradeStateCache.pendingPoints = data.pendingPoints
+        this.upgradeStateCache.xp = data.xp
+      }
+    })
+
+    this.net.on('select-node-result', (result: SelectNodeResponse) => {
+      this.pendingNodeSelection = false
+      if (this.upgradeStateCache) {
+        if (result.success) {
+          // Confirmed — ensure cache reflects server (optimistic update already applied)
+          this.upgradeStateCache.nodesTaken.add(result.nodeId)
+        } else {
+          // Server rejected — rollback optimistic update
+          this.upgradeStateCache.nodesTaken.delete(result.nodeId)
+          this.upgradeStateCache.pendingPoints++
+        }
+      }
     })
 
     this.net.on('pong', (clientTime, serverTime) => {
@@ -287,6 +320,12 @@ export class MultiplayerModeController implements SceneModeController {
         this.applyPlayerRoster(config.roster)
       }
       const charDef = getCharacterDef(config.characterId)
+      this.upgradeStateCache = initUpgradeState(charDef)
+      if (config.nodesTaken) {
+        for (const id of config.nodesTaken) {
+          this.upgradeStateCache.nodesTaken.add(id)
+        }
+      }
       this.world.characterId = config.characterId
       this.world.upgradeState = initUpgradeState(charDef)
       if (this.myClientEid >= 0) {
@@ -435,6 +474,19 @@ export class MultiplayerModeController implements SceneModeController {
     // Apply at most one pending authoritative snapshot on the fixed tick.
     this.processPendingSnapshot()
     this.tickPlayerHitIframes(TICK_S)
+
+    // Level-up detection from server HUD data (emit one event per level gained)
+    const currentLevel = this.latestHud?.level ?? 0
+    while (currentLevel > this.lastProcessedLevel) {
+      this.lastProcessedLevel++
+      if (this.myClientEid >= 0) {
+        this.gameplayEvents.push({
+          type: 'level-up',
+          x: Position.x[this.myClientEid]!,
+          y: Position.y[this.myClientEid]!,
+        })
+      }
+    }
 
     if (this.myClientEid < 0) return
     const error = this.reconciler.getError()
@@ -649,14 +701,14 @@ export class MultiplayerModeController implements SceneModeController {
       cameraX: camPos.x,
       cameraY: camPos.y,
       cameraTrauma: this.camera.shake.currentTrauma,
-      waveNumber: 0,
-      waveStatus: 'none',
+      waveNumber: this.latestHud?.waveNumber ?? 0,
+      waveStatus: this.latestHud?.waveStatus ?? 'none',
       fodderAlive: 0,
       threatAlive: 0,
       fodderBudgetLeft: 0,
-      xp: 0,
-      level: 0,
-      pendingPts: 0,
+      xp: this.latestHud?.xp ?? 0,
+      level: this.latestHud?.level ?? 0,
+      pendingPts: this.latestHud?.pendingPoints ?? 0,
       netTelemetry: this.telemetry.getOverlayText(),
     }
     this.debugRenderer.updateStats(stats)
@@ -743,34 +795,60 @@ export class MultiplayerModeController implements SceneModeController {
       characterId,
       hp: hud?.hp ?? (this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0),
       maxHP: hud?.maxHp ?? (this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP),
-      xp: 0,
-      xpForCurrentLevel: 0,
-      xpForNextLevel: 0,
-      level: 0,
-      waveNumber: 0,
-      totalWaves: 0,
-      waveStatus: 'none',
+      xp: hud?.xp ?? 0,
+      xpForCurrentLevel: hud?.xpForCurrentLevel ?? 0,
+      xpForNextLevel: hud?.xpForNextLevel ?? 0,
+      level: hud?.level ?? 0,
+      waveNumber: hud?.waveNumber ?? 0,
+      totalWaves: hud?.totalWaves ?? 0,
+      waveStatus: hud?.waveStatus ?? 'none',
       cylinderRounds,
       cylinderMax,
       isReloading,
       reloadProgress,
       showCylinder: hasCylinder || (hud?.showCylinder ?? false),
       ...abilityHud,
-      pendingPoints: 0,
+      pendingPoints: hud?.pendingPoints ?? 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
     }
   }
 
   hasPendingPoints(): boolean {
-    return false
+    return (this.latestHud?.pendingPoints ?? 0) > 0
   }
 
   getSkillTreeData(): SkillTreeUIData | null {
-    return null
+    if (!this.upgradeStateCache) return null
+    const state = this.upgradeStateCache
+    return {
+      branches: state.characterDef.branches.map(branch => ({
+        id: branch.id,
+        name: branch.name,
+        description: branch.description,
+        nodes: branch.nodes.map(node => {
+          let nodeState: SkillNodeState
+          if (state.nodesTaken.has(node.id)) nodeState = 'taken'
+          else if (!node.implemented) nodeState = 'unimplemented'
+          else if (canTakeNode(state, node.id)) nodeState = 'available'
+          else nodeState = 'locked'
+          return { id: node.id, name: node.name, description: node.description, tier: node.tier, state: nodeState }
+        }),
+      })),
+      pendingPoints: state.pendingPoints,
+      level: state.level,
+    }
   }
 
-  selectNode(_nodeId: string): boolean {
-    return false
+  selectNode(nodeId: string): boolean {
+    if (this.pendingNodeSelection) return false
+    if (!this.upgradeStateCache || !canTakeNode(this.upgradeStateCache, nodeId)) return false
+    this.pendingNodeSelection = true
+    this.net.sendSelectNode(nodeId)
+    // Optimistic update for responsive UI (rolled back if server rejects)
+    this.upgradeStateCache.nodesTaken.add(nodeId)
+    this.upgradeStateCache.pendingPoints = Math.max(0, this.upgradeStateCache.pendingPoints - 1)
+    this.sound.play('upgrade_select')
+    return true
   }
 
   // ===========================================================================

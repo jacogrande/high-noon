@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { CharacterId } from '@high-noon/shared'
-import type { HUDState } from '../scenes/types'
+import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
+import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CharacterSelect } from '../ui/CharacterSelect'
 
 type Phase = 'loading' | 'selecting' | 'connecting' | 'playing' | 'error'
@@ -19,6 +20,10 @@ export function MultiplayerGame() {
   const [retryCount, setRetryCount] = useState(0)
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterId | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
+  const [showSkillTree, setShowSkillTree] = useState(false)
+  const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const showingTreeRef = useRef(false)
+  const sceneRef = useRef<CoreGameScene | null>(null)
   const lastHudUpdateRef = useRef(0)
   const gameRef = useRef<{
     gameApp: GameApp
@@ -84,11 +89,24 @@ export function MultiplayerGame() {
       }
 
       if (cancelled) { scene.destroy(); gameApp.destroy(); return }
+      sceneRef.current = scene
 
       const gameLoop = new GameLoop(
         (dt) => scene.update(dt),
         (alpha) => {
           scene.render(alpha, gameLoop.fps)
+          // Poll for skill tree open/close
+          const hasPts = scene.hasPendingPoints()
+          if (hasPts && !showingTreeRef.current) {
+            showingTreeRef.current = true
+            const data = scene.getSkillTreeData()
+            if (data) setSkillTreeData(data)
+            setShowSkillTree(true)
+          } else if (!hasPts && showingTreeRef.current) {
+            showingTreeRef.current = false
+            setShowSkillTree(false)
+            setSkillTreeData(null)
+          }
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
@@ -128,12 +146,27 @@ export function MultiplayerGame() {
   // Unmount-only cleanup: destroy game resources when navigating away
   useEffect(() => {
     return () => {
+      sceneRef.current = null
       if (gameRef.current) {
         gameRef.current.gameLoop.stop()
         gameRef.current.scene.destroy()
         gameRef.current.gameApp.destroy()
         gameRef.current = null
       }
+    }
+  }, [])
+
+  const handleNodeSelect = useCallback((nodeId: string) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.selectNode(nodeId)
+    if (scene.hasPendingPoints()) {
+      const data = scene.getSkillTreeData()
+      if (data) setSkillTreeData(data)
+    } else {
+      showingTreeRef.current = false
+      setShowSkillTree(false)
+      setSkillTreeData(null)
     }
   }, [])
 
@@ -226,7 +259,10 @@ export function MultiplayerGame() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {showSkillTree && skillTreeData && (
+        <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
+      )}
     </div>
   )
 }
