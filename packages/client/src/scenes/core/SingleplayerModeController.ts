@@ -38,6 +38,9 @@ import {
   type Tilemap,
   LEVEL_THRESHOLDS,
   MAX_LEVEL,
+  getCharacterDef,
+  deriveAbilityHudState,
+  type CharacterId,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameApp } from '../../engine/GameApp'
@@ -112,7 +115,7 @@ export class SingleplayerModeController implements SceneModeController {
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
 
-  constructor(gameApp: GameApp) {
+  constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
 
     // Input
@@ -122,7 +125,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.tilemap = createTestArena()
 
     // ECS world + systems
-    this.world = createGameWorld()
+    this.world = createGameWorld(undefined, getCharacterDef(characterId))
     setWorldTilemap(this.world, this.tilemap)
     this.systems = createSystemRegistry()
 
@@ -227,12 +230,36 @@ export class SingleplayerModeController implements SceneModeController {
   getHUDState(): HUDState {
     const playerEid = this.playerRenderer.getPlayerEntity()
     const enc = this.world.encounter
-    const { xp, level } = this.world.upgradeState
+    const state = this.world.upgradeState
+    const { xp, level } = state
+    const characterId = state.characterDef.id
     const xpForCurrentLevel = LEVEL_THRESHOLDS[level] ?? 0
     const xpForNextLevel = level < MAX_LEVEL ? LEVEL_THRESHOLDS[level + 1]! : xpForCurrentLevel
+    const hasCylinder = playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+    const showdownState = playerEid !== null && hasComponent(this.world, Showdown, playerEid)
+      ? {
+          showdownActive: Showdown.active[playerEid]! === 1,
+          showdownCooldown: Showdown.cooldown[playerEid]!,
+          showdownDuration: Showdown.duration[playerEid]!,
+        }
+      : undefined
+    const abilityHud = deriveAbilityHudState(
+      characterId,
+      {
+        showdownCooldown: state.showdownCooldown,
+        showdownDuration: state.showdownDuration,
+        dynamiteCooldown: state.dynamiteCooldown,
+        dynamiteFuse: state.dynamiteFuse,
+        dynamiteCooking: state.dynamiteCooking,
+        dynamiteCookTimer: state.dynamiteCookTimer,
+      },
+      showdownState,
+    )
+
     return {
-      hp: playerEid !== null ? Health.current[playerEid]! : 0,
-      maxHP: playerEid !== null ? Health.max[playerEid]! : 0,
+      characterId,
+      hp: playerEid !== null ? Health.current[playerEid]! : state.maxHP,
+      maxHP: playerEid !== null ? Health.max[playerEid]! : state.maxHP,
       xp,
       xpForCurrentLevel,
       xpForNextLevel,
@@ -240,26 +267,17 @@ export class SingleplayerModeController implements SceneModeController {
       waveNumber: enc ? enc.currentWave + 1 : 0,
       totalWaves: enc ? enc.definition.waves.length : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
-      cylinderRounds: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
-        ? Cylinder.rounds[playerEid]! : 0,
-      cylinderMax: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
-        ? Cylinder.maxRounds[playerEid]! : 0,
-      isReloading: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
-        ? Cylinder.reloading[playerEid]! === 1 : false,
-      reloadProgress: playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
+      cylinderRounds: hasCylinder ? Cylinder.rounds[playerEid!]! : 0,
+      cylinderMax: hasCylinder ? Cylinder.maxRounds[playerEid!]! : 0,
+      isReloading: hasCylinder ? Cylinder.reloading[playerEid!]! === 1 : false,
+      reloadProgress: hasCylinder
         ? (Cylinder.reloading[playerEid]! === 1 && Cylinder.reloadTime[playerEid]! > 0
             ? Math.min(1, Cylinder.reloadTimer[playerEid]! / Cylinder.reloadTime[playerEid]!)
             : 0)
         : 0,
-      showdownActive: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
-        ? Showdown.active[playerEid]! === 1 : false,
-      showdownCooldown: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
-        ? Showdown.cooldown[playerEid]! : 0,
-      showdownCooldownMax: this.world.upgradeState.showdownCooldown,
-      showdownTimeLeft: playerEid !== null && hasComponent(this.world, Showdown, playerEid)
-        ? Showdown.duration[playerEid]! : 0,
-      showdownDurationMax: this.world.upgradeState.showdownDuration,
-      pendingPoints: this.world.upgradeState.pendingPoints,
+      showCylinder: hasCylinder,
+      ...abilityHud,
+      pendingPoints: state.pendingPoints,
       isDead: this.isPlayerDead(),
     }
   }

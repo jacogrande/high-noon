@@ -7,6 +7,7 @@ Network protocol definitions and serialization.
 - Message type definitions (client→server, server→client)
 - Binary serialization/deserialization
 - Event type definitions
+- Shared HUD derivation helpers (`hud.ts`) used by client and server
 - Protocol versioning
 
 ## Message Types
@@ -34,6 +35,10 @@ Events represent things that happened:
 ## Binary Snapshots
 
 `snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer — callers must consume or copy the data before the next encode call.
+
+## HUD Derivation
+
+`hud.ts` defines `HudData` plus `deriveAbilityHudState()`, a shared helper for ability labels/cooldowns/timers. Single-player HUD, multiplayer HUD fallback, and server HUD payload generation all call this helper to keep parity.
 
 ## Serialization
 

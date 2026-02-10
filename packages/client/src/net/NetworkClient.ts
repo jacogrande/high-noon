@@ -7,12 +7,27 @@
  */
 
 import { Client, type Room } from 'colyseus.js'
-import { decodeSnapshot, type WorldSnapshot, type NetworkInput, type PingMessage, type PongMessage, type HudData } from '@high-noon/shared'
+import {
+  decodeSnapshot,
+  type WorldSnapshot,
+  type NetworkInput,
+  type PingMessage,
+  type PongMessage,
+  type HudData,
+  type CharacterId,
+} from '@high-noon/shared'
 
 export interface GameConfig {
   seed: number
   sessionId: string
   playerEid: number
+  characterId: CharacterId
+}
+
+export interface JoinOptions {
+  name?: string
+  characterId?: CharacterId
+  [key: string]: unknown
 }
 
 export type NetworkEventMap = {
@@ -47,7 +62,7 @@ export class NetworkClient {
     this.listeners[event] = cb
   }
 
-  async join(options?: Record<string, unknown>): Promise<void> {
+  async join(options?: JoinOptions): Promise<void> {
     // Try reconnecting with a stored token (survives page refresh)
     const storedToken = sessionStorage.getItem('hn-reconnect-token')
     if (storedToken) {
@@ -71,23 +86,8 @@ export class NetworkClient {
     sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
     this.intentionalLeave = false
 
-    // Wait for game-config with timeout — server sends it on both fresh join and reconnect
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('Timed out waiting for game-config'))
-      }, CONNECT_TIMEOUT_MS)
-
-      this.room!.onMessage('game-config', (data: GameConfig) => {
-        clearTimeout(timer)
-        this.listeners['game-config']?.(data)
-        resolve()
-      })
-
-      this.room!.onLeave(() => {
-        clearTimeout(timer)
-        reject(new Error('Disconnected before game-config received'))
-      })
-    })
+    // Wait for initial game-config before gameplay starts.
+    await this.waitForGameConfig(this.room)
 
     this.registerRoomHandlers(this.room)
   }
@@ -110,6 +110,10 @@ export class NetworkClient {
 
   /** Register message + leave handlers on a room */
   private registerRoomHandlers(room: Room): void {
+    room.onMessage('game-config', (data: GameConfig) => {
+      this.listeners['game-config']?.(data)
+    })
+
     room.onMessage('pong', (data: PongMessage) => {
       this.listeners.pong?.(data.clientTime, data.serverTime)
     })
@@ -162,6 +166,7 @@ export class NetworkClient {
         this.reconnectionToken = this.room.reconnectionToken
         sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
         this.registerRoomHandlers(this.room)
+        this.requestGameConfig(this.room)
         this.reconnecting = false
         console.log(`[NetworkClient] Reconnected on attempt ${attempt + 1}`)
         return
@@ -175,5 +180,58 @@ export class NetworkClient {
     this.reconnectionToken = null
     sessionStorage.removeItem('hn-reconnect-token')
     this.listeners.disconnect?.()
+  }
+
+  /**
+   * Wait for a game-config message on a specific room.
+   * The returned promise rejects on timeout or disconnection.
+   */
+  private waitForGameConfig(room: Room): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false
+      let offMessage: (() => void) | null = null
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        offMessage?.()
+        room.onLeave.remove(onLeave)
+      }
+
+      const finish = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        fn()
+      }
+
+      const onLeave = () => {
+        finish(() => reject(new Error('Disconnected before game-config received')))
+      }
+
+      const timer = setTimeout(() => {
+        finish(() => reject(new Error('Timed out waiting for game-config')))
+      }, CONNECT_TIMEOUT_MS)
+
+      offMessage = room.onMessage('game-config', (data: GameConfig) => {
+        finish(() => {
+          this.listeners['game-config']?.(data)
+          resolve()
+        })
+      })
+
+      room.onLeave(onLeave)
+    })
+  }
+
+  /**
+   * Request authoritative game-config from server.
+   * Used after reconnect in case server's automatic config send raced handlers.
+   */
+  private requestGameConfig(room: Room): void {
+    try {
+      room.send('request-game-config')
+    } catch (err) {
+      console.warn('[NetworkClient] Failed to request game-config:', err)
+    }
   }
 }

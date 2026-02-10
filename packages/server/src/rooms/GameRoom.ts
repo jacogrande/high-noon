@@ -1,4 +1,5 @@
 import { Room, type Client } from 'colyseus'
+import { hasComponent } from 'bitecs'
 import {
   createGameWorld,
   setWorldTilemap,
@@ -15,6 +16,10 @@ import {
   Cylinder,
   Showdown,
   Health,
+  getCharacterDef,
+  getUpgradeStateForPlayer,
+  deriveAbilityHudState,
+  initUpgradeState,
   MAX_PLAYERS,
   STAGE_1_ENCOUNTER,
   TICK_MS,
@@ -25,6 +30,7 @@ import {
   type PingMessage,
   type PongMessage,
   type HudData,
+  type CharacterId,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 
@@ -79,6 +85,7 @@ function mergeTrimmedInputs(queue: NetworkInput[]): NetworkInput {
 interface PlayerSlot {
   client: Client
   eid: number
+  characterId: CharacterId
   inputQueue: NetworkInput[]
   lastProcessedSeq: number
   lastInput: InputState
@@ -90,6 +97,15 @@ interface PlayerSlot {
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
 const WORLD_COORD_MAX = 10_000
+
+interface JoinOptions {
+  name?: string
+  characterId?: unknown
+}
+
+function isCharacterId(value: unknown): value is CharacterId {
+  return value === 'sheriff' || value === 'undertaker' || value === 'prospector'
+}
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
@@ -152,6 +168,13 @@ export class GameRoom extends Room<GameRoomState> {
   private readonly playerSeqs = new Map<number, number>()
   private lastRateLimitLogTick = 0
 
+  override onAuth(_client: Client, options?: JoinOptions): boolean {
+    if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
+      throw new Error(`Invalid characterId: ${String(options.characterId)}`)
+    }
+    return true
+  }
+
   override onCreate() {
     const seed = Date.now()
     this.world = createGameWorld(seed)
@@ -195,14 +218,23 @@ export class GameRoom extends Room<GameRoomState> {
       } satisfies PongMessage)
     })
 
+    // Re-send authoritative game config when requested by clients (used after reconnect).
+    this.onMessage('request-game-config', (client) => {
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      this.sendGameConfig(client, slot)
+    })
+
     // Fixed-timestep simulation loop
     this.setSimulationInterval((deltaMs) => this.update(deltaMs), TICK_MS)
 
     console.log(`[GameRoom] Created with seed ${seed}`)
   }
 
-  override onJoin(client: Client, options?: { name?: string }) {
-    const eid = addPlayer(this.world, client.sessionId)
+  override onJoin(client: Client, options?: JoinOptions) {
+    const characterId: CharacterId = isCharacterId(options?.characterId) ? options.characterId : 'sheriff'
+    const upgradeState = initUpgradeState(getCharacterDef(characterId))
+    const eid = addPlayer(this.world, client.sessionId, upgradeState)
 
     // Add to Colyseus Schema (for lobby metadata)
     const meta = new PlayerMeta()
@@ -210,9 +242,10 @@ export class GameRoom extends Room<GameRoomState> {
     this.state.players.set(client.sessionId, meta)
 
     // Add to server slot tracking
-    this.slots.set(client.sessionId, {
+    const slot: PlayerSlot = {
       client,
       eid,
+      characterId,
       inputQueue: [],
       lastProcessedSeq: 0,
       lastInput: neutralInput,
@@ -220,16 +253,13 @@ export class GameRoom extends Room<GameRoomState> {
       inputTokens: INPUT_RATE_BURST_CAPACITY,
       inputTokenLastRefillMs: performance.now(),
       rateLimitedDrops: 0,
-    })
+    }
+    this.slots.set(client.sessionId, slot)
 
     // Send game config to the joining client
-    client.send('game-config', {
-      seed: this.world.initialSeed,
-      sessionId: client.sessionId,
-      playerEid: eid,
-    })
+    this.sendGameConfig(client, slot)
 
-    console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, players=${this.slots.size})`)
+    console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, character=${characterId}, players=${this.slots.size})`)
 
     // Auto-start on first join
     if (this.state.phase === 'lobby' && this.slots.size >= 1) {
@@ -254,11 +284,7 @@ export class GameRoom extends Room<GameRoomState> {
           slot.inputTokens = INPUT_RATE_BURST_CAPACITY
           slot.inputTokenLastRefillMs = performance.now()
           slot.rateLimitedDrops = 0
-          client.send('game-config', {
-            seed: this.world.initialSeed,
-            sessionId: client.sessionId,
-            playerEid: slot.eid,
-          })
+          this.sendGameConfig(client, slot)
         }
         return // Slot preserved
       } catch {
@@ -276,6 +302,15 @@ export class GameRoom extends Room<GameRoomState> {
   override onDispose() {
     this.slots.clear()
     console.log('[GameRoom] Disposed')
+  }
+
+  private sendGameConfig(client: Client, slot: PlayerSlot): void {
+    client.send('game-config', {
+      seed: this.world.initialSeed,
+      sessionId: client.sessionId,
+      playerEid: slot.eid,
+      characterId: slot.characterId,
+    })
   }
 
 
@@ -367,20 +402,40 @@ export class GameRoom extends Room<GameRoomState> {
   private sendHudUpdates() {
     for (const [, slot] of this.slots) {
       const eid = slot.eid
+      const state = getUpgradeStateForPlayer(this.world, eid)
+      const hasShowdown = hasComponent(this.world, Showdown, eid)
+      const hasCylinder = hasComponent(this.world, Cylinder, eid)
+      const abilityHud = deriveAbilityHudState(
+        slot.characterId,
+        {
+          showdownCooldown: state.showdownCooldown,
+          showdownDuration: state.showdownDuration,
+          dynamiteCooldown: state.dynamiteCooldown,
+          dynamiteFuse: state.dynamiteFuse,
+          dynamiteCooking: state.dynamiteCooking,
+          dynamiteCookTimer: state.dynamiteCookTimer,
+        },
+        hasShowdown
+          ? {
+              showdownActive: Showdown.active[eid]! === 1,
+              showdownCooldown: Showdown.cooldown[eid]!,
+              showdownDuration: Showdown.duration[eid]!,
+            }
+          : undefined,
+      )
+
       const hud: HudData = {
+        characterId: slot.characterId,
         hp: Health.current[eid]!,
         maxHp: Health.max[eid]!,
-        cylinderRounds: Cylinder.rounds[eid]!,
-        cylinderMax: Cylinder.maxRounds[eid]!,
-        isReloading: Cylinder.reloading[eid]! === 1,
-        reloadProgress: Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
+        cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
+        cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
+        isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
+        reloadProgress: hasCylinder && Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
           ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
           : 0,
-        showdownActive: Showdown.active[eid]! === 1,
-        showdownCooldown: Showdown.cooldown[eid]!,
-        showdownCooldownMax: this.world.upgradeState.showdownCooldown,
-        showdownTimeLeft: Showdown.duration[eid]!,
-        showdownDurationMax: this.world.upgradeState.showdownDuration,
+        showCylinder: hasCylinder,
+        ...abilityHud,
       }
       slot.client.send('hud', hud)
     }

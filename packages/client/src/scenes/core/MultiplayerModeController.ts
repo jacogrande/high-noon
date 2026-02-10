@@ -26,12 +26,16 @@ import {
   registerPredictionSystems,
   registerReplaySystems,
   spatialHashSystem,
+  getCharacterDef,
+  initUpgradeState,
+  deriveAbilityHudState,
   type SystemRegistry,
   type GameWorld,
   type InputState,
   type NetworkInput,
   type WorldSnapshot,
   type HudData,
+  type CharacterId,
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
@@ -119,6 +123,8 @@ export class MultiplayerModeController implements SceneModeController {
   /** Local player identification */
   private myServerEid = -1
   private myClientEid = -1
+  private readonly selectedCharacterId: CharacterId
+  private authoritativeCharacterId: CharacterId
   private connected = false
 
   /** HUD data from server */
@@ -138,12 +144,14 @@ export class MultiplayerModeController implements SceneModeController {
 
   private lastRenderTime: number
 
-  constructor(gameApp: GameApp) {
+  constructor(gameApp: GameApp, selectedCharacterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
+    this.selectedCharacterId = selectedCharacterId
+    this.authoritativeCharacterId = selectedCharacterId
     this.input = new Input()
 
     // Shadow world — local player is predicted, remote entities populated from snapshots
-    this.world = createGameWorld(0)
+    this.world = createGameWorld(0, getCharacterDef(selectedCharacterId))
     const tilemap = createTestArena()
     setWorldTilemap(this.world, tilemap)
 
@@ -251,8 +259,16 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.net.on('game-config', (config: GameConfig) => {
       this.myServerEid = config.playerEid
+      this.authoritativeCharacterId = config.characterId
+      const charDef = getCharacterDef(config.characterId)
+      this.world.characterId = config.characterId
+      this.world.upgradeState = initUpgradeState(charDef)
+      if (this.myClientEid >= 0) {
+        this.world.playerUpgradeStates.set(this.myClientEid, this.world.upgradeState)
+        this.world.playerCharacters.set(this.myClientEid, config.characterId)
+      }
       this.connected = true
-      console.log(`[MP] Connected — server playerEid=${config.playerEid}`)
+      console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
       this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
     })
 
@@ -264,7 +280,10 @@ export class MultiplayerModeController implements SceneModeController {
     })
 
     // join() resolves after game-config is received (with timeout)
-    await this.net.join(options)
+    await this.net.join({
+      ...(options ?? {}),
+      characterId: this.selectedCharacterId,
+    })
   }
 
   // ===========================================================================
@@ -307,6 +326,7 @@ export class MultiplayerModeController implements SceneModeController {
         enemyEntities: this.enemyEntities,
         myServerEid: this.myServerEid,
         myClientEid: this.myClientEid,
+        localCharacterId: this.authoritativeCharacterId,
         setMyClientEid: (eid) => { this.myClientEid = eid },
         setLocalPlayerRenderEid: (eid) => { this.playerRenderer.localPlayerEid = eid },
         resolveRttMs: () => this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
@@ -389,16 +409,17 @@ export class MultiplayerModeController implements SceneModeController {
 
     // --- PREDICTION ---
     // Snapshot cylinder state before stepping (for fire + reload detection)
-    const prevRounds = Cylinder.rounds[this.myClientEid]!
-    const prevReloading = Cylinder.reloading[this.myClientEid]!
+    const hasCylinder = hasComponent(this.world, Cylinder, this.myClientEid)
+    const prevRounds = hasCylinder ? Cylinder.rounds[this.myClientEid]! : -1
+    const prevReloading = hasCylinder ? Cylinder.reloading[this.myClientEid]! : 0
 
     // Save pre-step position so prevX/prevY stay meaningful between snapshots
     Position.prevX[this.myClientEid] = Position.x[this.myClientEid]!
     Position.prevY[this.myClientEid] = Position.y[this.myClientEid]!
     this.predictionDriver.step(this.myClientEid, inputState)
 
-    const newRounds = Cylinder.rounds[this.myClientEid]!
-    const nowReloading = Cylinder.reloading[this.myClientEid]!
+    const newRounds = hasCylinder ? Cylinder.rounds[this.myClientEid]! : -1
+    const nowReloading = hasCylinder ? Cylinder.reloading[this.myClientEid]! : 0
 
     const spawnedPredictedBullets = this.predictedEntityTracker.detectNewPredictedBullets(
       this.world,
@@ -416,22 +437,24 @@ export class MultiplayerModeController implements SceneModeController {
     )
 
     this.dryFireCooldown = Math.max(0, this.dryFireCooldown - TICK_S)
-    this.dryFireCooldown = emitCylinderPresentationEvents({
-      events: this.gameplayEvents,
-      actorEid: this.myClientEid,
-      prevRounds,
-      newRounds,
-      prevReloading,
-      nowReloading,
-      inputState,
-      dryFireCooldown: this.dryFireCooldown,
-      dryFireCooldownSeconds: 0.3,
-      aimAngle: angle,
-      muzzleX: barrelTip?.x ?? Position.x[this.myClientEid]!,
-      muzzleY: barrelTip?.y ?? Position.y[this.myClientEid]!,
-      fireTrauma: 0.15,
-      fireKickStrength: 5,
-    })
+    if (hasCylinder) {
+      this.dryFireCooldown = emitCylinderPresentationEvents({
+        events: this.gameplayEvents,
+        actorEid: this.myClientEid,
+        prevRounds,
+        newRounds,
+        prevReloading,
+        nowReloading,
+        inputState,
+        dryFireCooldown: this.dryFireCooldown,
+        dryFireCooldownSeconds: 0.3,
+        aimAngle: angle,
+        muzzleX: barrelTip?.x ?? Position.x[this.myClientEid]!,
+        muzzleY: barrelTip?.y ?? Position.y[this.myClientEid]!,
+        fireTrauma: 0.15,
+        fireKickStrength: 5,
+      })
+    }
 
     emitShowdownCueEvents(this.gameplayEvents, this.world)
 
@@ -602,6 +625,10 @@ export class MultiplayerModeController implements SceneModeController {
 
   getHUDState(): HUDState {
     const hud = this.latestHud
+    const characterId = this.authoritativeCharacterId
+    const localState = this.myClientEid >= 0
+      ? (this.world.playerUpgradeStates.get(this.myClientEid) ?? this.world.upgradeState)
+      : this.world.upgradeState
 
     // Prefer local cylinder data for instant feedback (prediction), fall back to server HUD
     const hasCylinder = this.myClientEid >= 0 && hasComponent(this.world, Cylinder, this.myClientEid)
@@ -618,10 +645,43 @@ export class MultiplayerModeController implements SceneModeController {
       ? Cylinder.reloadTimer[this.myClientEid]! / Cylinder.reloadTime[this.myClientEid]!
       : (hud?.reloadProgress ?? 0)
 
-    // Prefer local showdown data for instant feedback (prediction), fall back to server HUD
     const hasShowdown = this.myClientEid >= 0 && hasComponent(this.world, Showdown, this.myClientEid)
+    const localAbilityHud = deriveAbilityHudState(
+      characterId,
+      {
+        showdownCooldown: localState.showdownCooldown,
+        showdownDuration: localState.showdownDuration,
+        dynamiteCooldown: localState.dynamiteCooldown,
+        dynamiteFuse: localState.dynamiteFuse,
+        dynamiteCooking: localState.dynamiteCooking,
+        dynamiteCookTimer: localState.dynamiteCookTimer,
+      },
+      hasShowdown
+        ? {
+            showdownActive: Showdown.active[this.myClientEid]! === 1,
+            showdownCooldown: Showdown.cooldown[this.myClientEid]!,
+            showdownDuration: Showdown.duration[this.myClientEid]!,
+          }
+        : undefined,
+    )
+    const abilityHud = hud
+      ? {
+          abilityName: hud.abilityName,
+          abilityActive: hud.abilityActive,
+          abilityCooldown: hud.abilityCooldown,
+          abilityCooldownMax: hud.abilityCooldownMax,
+          abilityTimeLeft: hud.abilityTimeLeft,
+          abilityDurationMax: hud.abilityDurationMax,
+          showdownActive: hud.showdownActive,
+          showdownCooldown: hud.showdownCooldown,
+          showdownCooldownMax: hud.showdownCooldownMax,
+          showdownTimeLeft: hud.showdownTimeLeft,
+          showdownDurationMax: hud.showdownDurationMax,
+        }
+      : localAbilityHud
 
     return {
+      characterId,
       hp: hud?.hp ?? (this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0),
       maxHP: hud?.maxHp ?? (this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP),
       xp: 0,
@@ -635,11 +695,8 @@ export class MultiplayerModeController implements SceneModeController {
       cylinderMax,
       isReloading,
       reloadProgress,
-      showdownActive: hasShowdown ? Showdown.active[this.myClientEid]! === 1 : (hud?.showdownActive ?? false),
-      showdownCooldown: hasShowdown ? Showdown.cooldown[this.myClientEid]! : (hud?.showdownCooldown ?? 0),
-      showdownCooldownMax: hud?.showdownCooldownMax ?? 0,
-      showdownTimeLeft: hasShowdown ? Showdown.duration[this.myClientEid]! : (hud?.showdownTimeLeft ?? 0),
-      showdownDurationMax: hud?.showdownDurationMax ?? 0,
+      showCylinder: hasCylinder || (hud?.showCylinder ?? false),
+      ...abilityHud,
       pendingPoints: 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
     }
