@@ -82,3 +82,50 @@ export function getAnimationFrame(state: AnimationState, tick: number): number {
   const frame = Math.floor(tick / ticksPerFrame) % frameCount
   return frame
 }
+
+// ============================================================================
+// Enemy Animation Definitions (goblin sprite sheets)
+// ============================================================================
+
+/** Cell size for enemy sprite sheets (px) */
+export const ENEMY_SPRITE_CELL_SIZE = 32
+
+/** Enemy sprite row order: S=0, E=1, N=2 (different from player's E=0, S=1, N=2) */
+export const ENEMY_SPRITE_ROW: Record<Exclude<Direction, 'W'>, number> = {
+  S: 0,
+  E: 1,
+  N: 2,
+}
+
+/** Enemy animation states */
+export type EnemyAnimationState = 'idle' | 'walk' | 'death' | 'attack'
+
+/**
+ * Per-animation info: row offset in the sheet and frame count.
+ * Rows 6-8 are reserved (unused) in the sprite sheet between walk and death.
+ */
+export const ENEMY_SPRITE_INFO: Record<EnemyAnimationState, { rowOffset: number; frames: number }> = {
+  idle: { rowOffset: 0, frames: 2 },
+  walk: { rowOffset: 3, frames: 4 },
+  death: { rowOffset: 9, frames: 3 },
+  attack: { rowOffset: 12, frames: 4 },
+}
+
+/** Enemy animation speeds (frames per second) */
+export const ENEMY_ANIMATION_SPEEDS: Record<EnemyAnimationState, number> = {
+  idle: 4,
+  walk: 8,
+  death: 8,
+  attack: 12,
+}
+
+/**
+ * Get enemy animation frame based on world tick
+ */
+export function getEnemyAnimationFrame(state: EnemyAnimationState, tick: number): number {
+  const info = ENEMY_SPRITE_INFO[state]
+  const fps = ENEMY_ANIMATION_SPEEDS[state]
+  const ticksPerFrame = 60 / fps
+  const frame = Math.floor(tick / ticksPerFrame) % info.frames
+  return frame
+}

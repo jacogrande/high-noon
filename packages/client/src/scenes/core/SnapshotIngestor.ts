@@ -29,6 +29,8 @@ import {
   GRUNT_RADIUS,
   SHOOTER_RADIUS,
   CHARGER_RADIUS,
+  GOBLIN_BARBARIAN_RADIUS,
+  GOBLIN_ROGUE_RADIUS,
   Player,
   PlayerState,
   type BulletSnapshot,
@@ -47,6 +49,8 @@ const ENEMY_RADIUS: Record<number, number> = {
   [EnemyType.GRUNT]: GRUNT_RADIUS,
   [EnemyType.SHOOTER]: SHOOTER_RADIUS,
   [EnemyType.CHARGER]: CHARGER_RADIUS,
+  [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_RADIUS,
+  [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_RADIUS,
 }
 
 /** Enemy tier lookup by EnemyType value */
@@ -55,6 +59,8 @@ const ENEMY_TIER: Record<number, number> = {
   [EnemyType.GRUNT]: EnemyTier.FODDER,
   [EnemyType.SHOOTER]: EnemyTier.THREAT,
   [EnemyType.CHARGER]: EnemyTier.THREAT,
+  [EnemyType.GOBLIN_BARBARIAN]: EnemyTier.FODDER,
+  [EnemyType.GOBLIN_ROGUE]: EnemyTier.FODDER,
 }
 
 export interface SnapshotIngestContext extends ISimStateSource, ILocalIdentityState, ILocalIdentityBinding {

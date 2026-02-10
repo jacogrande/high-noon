@@ -1,7 +1,7 @@
 /**
  * Enemy Renderer
  *
- * Renders enemy entities as colored circles based on their type.
+ * Renders enemy entities as colored circles or animated sprites based on type.
  * Tracks enemy creation and removal to sync sprites with the ECS world.
  * Shows AI state visuals: telegraph flash, recovery dim, threat outline.
  */
@@ -9,11 +9,18 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import {
-  Enemy, EnemyType, EnemyTier, Position, Collider, EnemyAI, AIState,
+  Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
   AttackConfig, Health, NO_TARGET,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
+import { AssetLoader } from '../assets/AssetLoader'
+import {
+  angleToDirection,
+  getEnemyAnimationFrame,
+  type Direction,
+  type EnemyAnimationState,
+} from '../assets/animations'
 
 /** Flash interval during telegraph state (in sim ticks) */
 const TELEGRAPH_FLASH_TICKS = 3
@@ -21,17 +28,33 @@ const TELEGRAPH_FLASH_TICKS = 3
 const RECOVERY_ALPHA = 0.6
 /** Duration of damage flash in seconds */
 const DAMAGE_FLASH_DURATION = 0.1
-/** Duration of death effect in seconds */
+/** Duration of death effect for circle enemies in seconds */
 const DEATH_EFFECT_DURATION = 0.15
+/** Duration of death animation for sprite enemies (3 frames at 8fps) */
+const SPRITE_DEATH_DURATION = 3 / 8
 /** Duration of spawn effect in seconds */
 const SPAWN_EFFECT_DURATION = 0.5
+/** Sprite scale for goblin enemies */
+const GOBLIN_SPRITE_SCALE = 2
 
 /** Colors per enemy type (rendering data, client-only) */
 const ENEMY_COLORS: Record<number, number> = {
-  [EnemyType.SWARMER]: 0xffaaaa,   // pale pink
-  [EnemyType.GRUNT]: 0xff6633,     // red-orange
-  [EnemyType.SHOOTER]: 0xaa44dd,   // purple
-  [EnemyType.CHARGER]: 0xaa1111,   // dark red
+  [EnemyType.SWARMER]: 0xffaaaa,          // pale pink
+  [EnemyType.GRUNT]: 0xff6633,            // red-orange
+  [EnemyType.SHOOTER]: 0xaa44dd,          // purple
+  [EnemyType.CHARGER]: 0xaa1111,          // dark red
+  [EnemyType.GOBLIN_BARBARIAN]: 0x44aa44, // forest green
+  [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
+}
+
+/** Enemy type → sprite sheet ID (only for sprite-based enemies) */
+const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
+  [EnemyType.GOBLIN_BARBARIAN]: 'goblin_barbarian',
+  [EnemyType.GOBLIN_ROGUE]: 'goblin_rogue',
+}
+
+function isSpriteEnemy(type: number): boolean {
+  return ENEMY_SPRITE_ID[type] !== undefined
 }
 
 /** Death effect data for ephemeral scale-down + fade */
@@ -39,6 +62,9 @@ interface DeathEffect {
   eid: number
   timer: number
   duration: number
+  isSpriteEnemy: boolean
+  spriteId: string
+  direction: Direction
 }
 
 /** Data returned from sync() for particle/camera consumers */
@@ -52,7 +78,7 @@ export interface EnemySyncResult {
 const enemyRenderQuery = defineQuery([Enemy, Position, Collider])
 
 /**
- * Enemy renderer - manages enemy visual representation as colored circles
+ * Enemy renderer - manages enemy visual representation
  */
 export class EnemyRenderer {
   private readonly registry: SpriteRegistry
@@ -66,6 +92,7 @@ export class EnemyRenderer {
   private readonly lastHP = new Map<number, number>()
   private readonly damageFlashTimer = new Map<number, number>()
   private readonly spawnTimer = new Map<number, number>()
+  private readonly lastDirection = new Map<number, Direction>()
   private readonly deathEffects: DeathEffect[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
@@ -81,7 +108,7 @@ export class EnemyRenderer {
 
   /**
    * Sync sprites with enemy entities.
-   * Creates circles for new enemies, removes for dead ones.
+   * Creates circles/sprites for new enemies, removes for dead ones.
    * Returns death trauma and per-death data for particles.
    */
   sync(world: GameWorld): EnemySyncResult {
@@ -103,8 +130,18 @@ export class EnemyRenderer {
         // Create sprite for new enemy
         const type = Enemy.type[eid]!
         const color = ENEMY_COLORS[type] ?? 0xff0000
-        const radius = Collider.radius[eid]!
-        this.registry.createCircle(eid, radius, color)
+
+        if (isSpriteEnemy(type)) {
+          const spriteId = ENEMY_SPRITE_ID[type]!
+          const texture = AssetLoader.getEnemyTexture(spriteId, 'idle', 'S', 0)
+          this.registry.createSprite(eid, texture)
+          this.registry.setScale(eid, GOBLIN_SPRITE_SCALE, GOBLIN_SPRITE_SCALE)
+          this.lastDirection.set(eid, 'S')
+        } else {
+          const radius = Collider.radius[eid]!
+          this.registry.createCircle(eid, radius, color)
+        }
+
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
         this.enemyTypes.set(eid, type)
@@ -143,8 +180,19 @@ export class EnemyRenderer {
           }
         }
 
+        const isSprite = cachedType !== undefined && isSpriteEnemy(cachedType)
+        const spriteId = cachedType !== undefined ? (ENEMY_SPRITE_ID[cachedType] ?? '') : ''
+        const dir = this.lastDirection.get(eid) ?? 'S'
+
         // Start death effect instead of immediate removal
-        this.deathEffects.push({ eid, timer: 0, duration: DEATH_EFFECT_DURATION })
+        this.deathEffects.push({
+          eid,
+          timer: 0,
+          duration: isSprite ? SPRITE_DEATH_DURATION : DEATH_EFFECT_DURATION,
+          isSpriteEnemy: isSprite,
+          spriteId,
+          direction: dir,
+        })
 
         this.enemyEntities.delete(eid)
         this.enemyTiers.delete(eid)
@@ -154,6 +202,7 @@ export class EnemyRenderer {
         this.lastHP.delete(eid)
         this.damageFlashTimer.delete(eid)
         this.spawnTimer.delete(eid)
+        this.lastDirection.delete(eid)
       }
     }
 
@@ -180,8 +229,10 @@ export class EnemyRenderer {
       const type = Enemy.type[eid]!
       const tier = Enemy.tier[eid]!
       const normalColor = ENEMY_COLORS[type] ?? 0xff0000
+      const isSprite = isSpriteEnemy(type)
 
       let color = normalColor
+      let tint = 0xffffff
       let a = 1.0
 
       // Last Rites zone tint (enemies inside zone get purple tint).
@@ -195,22 +246,129 @@ export class EnemyRenderer {
 
       // Showdown target tint (persistent, overridden by damage flash / telegraph)
       if (eid === this.showdownTargetEid) {
-        color = 0xff4444
+        if (isSprite) {
+          tint = 0xff4444
+        } else {
+          color = 0xff4444
+        }
       }
 
       // Damage flash timer (set by sync() on HP decrease)
       const flashTimer = this.damageFlashTimer.get(eid) ?? 0
       if (flashTimer > 0) {
-        color = 0xff0000
+        if (isSprite) {
+          tint = 0xff0000
+        } else {
+          color = 0xff0000
+        }
         this.damageFlashTimer.set(eid, flashTimer - realDt)
       }
 
       // State-based visuals (telegraph flash overrides damage flash)
       if (state === AIState.TELEGRAPH) {
-        color = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0 ? 0xffffff : normalColor
+        const isWhite = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0
+        if (isSprite) {
+          tint = isWhite ? 0xffffff : 0xff4444
+        } else {
+          color = isWhite ? 0xffffff : normalColor
+        }
       } else if (state === AIState.RECOVERY) {
         a = RECOVERY_ALPHA
       }
+
+      // Sprite-based enemy rendering
+      if (isSprite) {
+        const spriteId = ENEMY_SPRITE_ID[type]!
+        const vx = Velocity.x[eid]!
+        const vy = Velocity.y[eid]!
+
+        // Determine facing direction
+        let dir: Direction
+        if (state === AIState.CHASE) {
+          // Use velocity direction while chasing
+          if (vx * vx + vy * vy > 1) {
+            dir = angleToDirection(Math.atan2(vy, vx))
+          } else {
+            dir = this.lastDirection.get(eid) ?? 'S'
+          }
+        } else if (state === AIState.TELEGRAPH || state === AIState.ATTACK) {
+          // Face toward target during telegraph/attack
+          const targetEid = EnemyAI.targetEid[eid]!
+          if (targetEid !== NO_TARGET) {
+            const dx = Position.x[targetEid]! - currX
+            const dy = Position.y[targetEid]! - currY
+            dir = angleToDirection(Math.atan2(dy, dx))
+          } else {
+            dir = this.lastDirection.get(eid) ?? 'S'
+          }
+        } else {
+          // Idle / recovery / stunned: keep last direction
+          dir = this.lastDirection.get(eid) ?? 'S'
+        }
+        this.lastDirection.set(eid, dir)
+
+        // Determine animation state
+        let animState: EnemyAnimationState
+        if (state === AIState.CHASE) {
+          animState = 'walk'
+        } else if (state === AIState.TELEGRAPH) {
+          animState = 'attack' // hold frame 0
+        } else if (state === AIState.ATTACK) {
+          animState = 'attack'
+        } else {
+          animState = 'idle'
+        }
+
+        // Get frame
+        let frame: number
+        if (state === AIState.TELEGRAPH) {
+          frame = 0 // hold first attack frame during telegraph
+        } else {
+          frame = getEnemyAnimationFrame(animState, world.tick)
+        }
+
+        // Update texture
+        const texture = AssetLoader.getEnemyTexture(spriteId, animState, dir, frame)
+        this.registry.setTexture(eid, texture)
+
+        // Handle mirroring and scale
+        let scaleX = GOBLIN_SPRITE_SCALE
+        const scaleY = GOBLIN_SPRITE_SCALE
+        if (dir === 'W') {
+          scaleX = -GOBLIN_SPRITE_SCALE // flip horizontally
+        }
+
+        // Spawn effect: scale up + white flash over 0.5s
+        const spawnRemaining = this.spawnTimer.get(eid) ?? 0
+        if (spawnRemaining > 0) {
+          const t = 1 - spawnRemaining / SPAWN_EFFECT_DURATION
+          const ease = t * t
+          this.registry.setScale(eid, scaleX * ease, scaleY * ease)
+          if (t < 0.5) tint = 0xffffff
+          this.spawnTimer.set(eid, spawnRemaining - realDt)
+        } else {
+          this.registry.setScale(eid, scaleX, scaleY)
+        }
+
+        this.registry.setPosition(eid, renderX, renderY)
+
+        // Spawn ghost alpha during initialDelay
+        const delay = EnemyAI.initialDelay[eid]!
+        if (delay > 0) {
+          a *= Math.max(0.5, 1.0 - delay)
+        }
+
+        // Update tint and alpha
+        this.registry.setTint(eid, tint)
+        if (a !== this.lastAlpha.get(eid)) {
+          this.registry.setAlpha(eid, a)
+          this.lastAlpha.set(eid, a)
+        }
+
+        continue // skip circle rendering path
+      }
+
+      // Circle-based enemy rendering (swarmer, grunt, shooter, charger)
 
       // Charger telegraph vibration
       if (type === EnemyType.CHARGER && state === AIState.TELEGRAPH) {
@@ -281,11 +439,24 @@ export class EnemyRenderer {
       effect.timer += realDt
       const t = Math.min(effect.timer / effect.duration, 1)
 
-      // Scale down and fade
-      const scale = 1 - t
-      const effectAlpha = 1 - t
-      this.registry.setScale(effect.eid, scale, scale)
-      this.registry.setAlpha(effect.eid, effectAlpha)
+      if (effect.isSpriteEnemy && effect.spriteId) {
+        // Sprite death: play death animation frames with fade in last 20%
+        const deathFrameCount = 3
+        const frame = Math.min(Math.floor(t * deathFrameCount), deathFrameCount - 1)
+        const texture = AssetLoader.getEnemyTexture(effect.spriteId, 'death', effect.direction, frame)
+        this.registry.setTexture(effect.eid, texture)
+
+        // Fade in the last 20% of the animation
+        const fadeStart = 0.8
+        const effectAlpha = t > fadeStart ? 1 - (t - fadeStart) / (1 - fadeStart) : 1
+        this.registry.setAlpha(effect.eid, effectAlpha)
+      } else {
+        // Circle death: scale down and fade
+        const scale = 1 - t
+        const effectAlpha = 1 - t
+        this.registry.setScale(effect.eid, scale, scale)
+        this.registry.setAlpha(effect.eid, effectAlpha)
+      }
 
       if (t >= 1) {
         this.registry.remove(effect.eid)
@@ -320,6 +491,7 @@ export class EnemyRenderer {
     this.lastHP.clear()
     this.damageFlashTimer.clear()
     this.spawnTimer.clear()
+    this.lastDirection.clear()
     this.currentEntities.clear()
   }
 }

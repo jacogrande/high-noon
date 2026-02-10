@@ -13,8 +13,12 @@ import {
   PLAYER_SPRITE_INFO,
   SPRITE_CELL_SIZE,
   SPRITE_ROW,
+  ENEMY_SPRITE_CELL_SIZE,
+  ENEMY_SPRITE_ROW,
+  ENEMY_SPRITE_INFO,
   type Direction,
   type AnimationState,
+  type EnemyAnimationState,
 } from './animations'
 
 /** Base path for character sprite sheets */
@@ -32,6 +36,18 @@ const WEAPON_SPRITES: Record<string, string> = {
   sawed_off: '/assets/sprites/weapons/SawedOffShotgun.png',
   pickaxe: '/assets/sprites/weapons/pickaxe.png',
 }
+
+/** Enemy sprite manifest: enemyId → path */
+const ENEMY_SPRITES: Record<string, string> = {
+  goblin_barbarian: '/assets/sprites/enemies/goblin_barbarian.png',
+  goblin_rogue: '/assets/sprites/enemies/goblin_rogue.png',
+}
+
+/** Enemy animation states for slicing */
+const ENEMY_ANIM_STATES: EnemyAnimationState[] = ['idle', 'walk', 'death', 'attack']
+
+/** Enemy sprite directions that exist in the sheet (W mirrors E) */
+const ENEMY_SPRITE_DIRS = ['S', 'E', 'N'] as const
 
 /** Tile type to frame name mapping */
 const TILE_FRAME_MAP: Record<number, string> = {
@@ -58,6 +74,9 @@ export class AssetLoader {
 
   /** Weapon textures: key = weaponId */
   private static weaponTextures = new Map<string, Texture>()
+
+  /** Pre-sliced enemy textures: key = `${enemyId}_${state}_${dir}_${frame}` */
+  private static enemyTextures = new Map<string, Texture>()
 
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000
@@ -89,11 +108,17 @@ export class AssetLoader {
       Assets.add({ alias: `weapon_${weaponId}`, src: path })
     }
 
+    // Add enemy sprites
+    for (const [enemyId, path] of Object.entries(ENEMY_SPRITES)) {
+      Assets.add({ alias: `enemy_${enemyId}`, src: path })
+    }
+
     const allAliases = [
       'tileset',
       'bullet',
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
+      ...Object.keys(ENEMY_SPRITES).map((id) => `enemy_${id}`),
     ]
 
     const loadPromise = Assets.load(allAliases, (progress) => {
@@ -169,6 +194,38 @@ export class AssetLoader {
     }
 
     console.log('[AssetLoader] Player textures sliced:', this.playerTextures.size, 'frames')
+
+    // Slice enemy sprite sheets into individual frame textures
+    for (const enemyId of Object.keys(ENEMY_SPRITES)) {
+      const baseTexture = loaded[`enemy_${enemyId}`] as Texture
+      if (!baseTexture) {
+        throw new Error(`Enemy sprite sheet failed to load: ${enemyId}`)
+      }
+      baseTexture.source.scaleMode = 'nearest'
+
+      for (const animState of ENEMY_ANIM_STATES) {
+        const info = ENEMY_SPRITE_INFO[animState]
+        for (const dir of ENEMY_SPRITE_DIRS) {
+          const row = info.rowOffset + ENEMY_SPRITE_ROW[dir]
+          for (let frame = 0; frame < info.frames; frame++) {
+            const rect = new Rectangle(
+              frame * ENEMY_SPRITE_CELL_SIZE,
+              row * ENEMY_SPRITE_CELL_SIZE,
+              ENEMY_SPRITE_CELL_SIZE,
+              ENEMY_SPRITE_CELL_SIZE,
+            )
+            const subTexture = new Texture({
+              source: baseTexture.source,
+              frame: rect,
+            })
+            const key = `${enemyId}_${animState}_${dir}_${frame}`
+            this.enemyTextures.set(key, subTexture)
+          }
+        }
+      }
+    }
+
+    console.log('[AssetLoader] Enemy textures sliced:', this.enemyTextures.size, 'frames')
     console.log('[AssetLoader] All assets loaded successfully')
 
     this.loaded = true
@@ -244,6 +301,30 @@ export class AssetLoader {
   }
 
   /**
+   * Get enemy texture for a specific animation state and direction.
+   * W direction automatically uses the E sprite (caller handles the flip).
+   */
+  static getEnemyTexture(
+    enemyId: string,
+    state: EnemyAnimationState,
+    direction: Direction,
+    frame: number,
+  ): Texture {
+    const spriteDir = direction === 'W' ? 'E' : direction
+    const key = `${enemyId}_${state}_${spriteDir}_${frame}`
+    const texture = this.enemyTextures.get(key)
+    if (!texture) {
+      // Fall back to idle S frame 0
+      const fallback = this.enemyTextures.get(`${enemyId}_idle_S_0`)
+      if (!fallback) {
+        throw new Error(`Enemy texture not found: ${key}`)
+      }
+      return fallback
+    }
+    return texture
+  }
+
+  /**
    * Reset loader state (for testing)
    */
   static reset(): void {
@@ -252,5 +333,6 @@ export class AssetLoader {
     this.bulletTexture = null
     this.playerTextures.clear()
     this.weaponTextures.clear()
+    this.enemyTextures.clear()
   }
 }
