@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { NetworkClient, type GameConfig } from './NetworkClient'
+import type { PlayerRosterEntry } from '@high-noon/shared'
 
 class MemorySessionStorage {
   private readonly store = new Map<string, string>()
@@ -139,6 +140,28 @@ describe('NetworkClient', () => {
     } satisfies GameConfig)
 
     expect(configEvents).toBe(1)
+  })
+
+  test('registerRoomHandlers forwards player-roster messages', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    let received: PlayerRosterEntry[] | null = null
+
+    net.on('player-roster', (roster) => {
+      received = roster
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    room.emit('player-roster', [
+      { eid: 7, characterId: 'undertaker' },
+      { eid: 9, characterId: 'prospector' },
+    ] satisfies PlayerRosterEntry[])
+
+    expect(received).toEqual([
+      { eid: 7, characterId: 'undertaker' },
+      { eid: 9, characterId: 'prospector' },
+    ])
   })
 
   test('protocol mismatch on snapshot emits incompatible-protocol and disconnects', () => {

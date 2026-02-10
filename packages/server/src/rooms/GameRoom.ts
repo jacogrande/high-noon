@@ -31,6 +31,7 @@ import {
   type PongMessage,
   type HudData,
   type CharacterId,
+  type PlayerRosterEntry,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 
@@ -258,6 +259,7 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Send game config to the joining client
     this.sendGameConfig(client, slot)
+    this.broadcastPlayerRoster()
 
     console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, character=${characterId}, players=${this.slots.size})`)
 
@@ -295,6 +297,7 @@ export class GameRoom extends Room<GameRoomState> {
     removePlayer(this.world, client.sessionId)
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
+    this.broadcastPlayerRoster()
 
     console.log(`[GameRoom] ${client.sessionId} left (players=${this.slots.size})`)
   }
@@ -310,7 +313,26 @@ export class GameRoom extends Room<GameRoomState> {
       sessionId: client.sessionId,
       playerEid: slot.eid,
       characterId: slot.characterId,
+      roster: this.getPlayerRoster(),
     })
+  }
+
+  private getPlayerRoster(): PlayerRosterEntry[] {
+    const roster: PlayerRosterEntry[] = []
+    for (const slot of this.slots.values()) {
+      roster.push({
+        eid: slot.eid,
+        characterId: slot.characterId,
+      })
+    }
+    return roster
+  }
+
+  private broadcastPlayerRoster(): void {
+    const roster = this.getPlayerRoster()
+    for (const slot of this.slots.values()) {
+      slot.client.send('player-roster', roster)
+    }
   }
 
 

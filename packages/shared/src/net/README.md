@@ -20,7 +20,8 @@ Network protocol definitions and serialization.
 
 ### Server → Client
 
-- `game-config` - room seed + authoritative player/character identity
+- `game-config` - room seed + authoritative player/character identity (optionally includes full roster)
+- `player-roster` - authoritative player roster (`eid` + `characterId`) for remote presentation parity
 - `snapshot` - authoritative world snapshot (binary)
 - `hud` - HUD data derived from authoritative local player state
 - `pong` - clock sync pong payload

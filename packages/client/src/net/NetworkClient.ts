@@ -15,6 +15,7 @@ import {
   type PongMessage,
   type HudData,
   type CharacterId,
+  type PlayerRosterEntry,
 } from '@high-noon/shared'
 
 export interface GameConfig {
@@ -22,6 +23,7 @@ export interface GameConfig {
   sessionId: string
   playerEid: number
   characterId: CharacterId
+  roster?: PlayerRosterEntry[]
 }
 
 export interface JoinOptions {
@@ -32,6 +34,7 @@ export interface JoinOptions {
 
 export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
+  'player-roster': (roster: PlayerRosterEntry[]) => void
   snapshot: (snapshot: WorldSnapshot) => void
   hud: (data: HudData) => void
   'incompatible-protocol': (reason: string) => void
@@ -121,6 +124,10 @@ export class NetworkClient {
 
     room.onMessage('hud', (data: HudData) => {
       this.listeners.hud?.(data)
+    })
+
+    room.onMessage('player-roster', (roster: PlayerRosterEntry[]) => {
+      this.listeners['player-roster']?.(roster)
     })
 
     room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {

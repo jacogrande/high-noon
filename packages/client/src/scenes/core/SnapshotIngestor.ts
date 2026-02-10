@@ -63,6 +63,7 @@ export interface SnapshotIngestContext extends ISimStateSource, ILocalIdentitySt
   bulletEntities: Map<number, number>
   enemyEntities: Map<number, number>
   localCharacterId: CharacterId
+  resolveCharacterIdForServerEid: (serverEid: number) => CharacterId | undefined
   resolveRttMs: () => number
 }
 
@@ -141,6 +142,7 @@ export class SnapshotIngestor {
             MeleeWeapon.swingCooldown[clientEid] = 0
             MeleeWeapon.chargeTimer[clientEid] = 0
             MeleeWeapon.charging[clientEid] = 0
+            MeleeWeapon.shootWasDown[clientEid] = 0
             MeleeWeapon.swungThisTick[clientEid] = 0
             MeleeWeapon.wasChargedSwing[clientEid] = 0
             MeleeWeapon.swingAngle[clientEid] = 0
@@ -166,6 +168,11 @@ export class SnapshotIngestor {
           Health.max[clientEid] = us.maxHP
         }
       }
+
+      const resolvedCharacterId = p.eid === ctx.myServerEid
+        ? ctx.localCharacterId
+        : (ctx.resolveCharacterIdForServerEid(p.eid) ?? ctx.world.playerCharacters.get(clientEid) ?? 'sheriff')
+      ctx.world.playerCharacters.set(clientEid, resolvedCharacterId)
 
       // Write snapshot data (skip aim/state for local player — driven by prediction).
       if (clientEid !== ctx.myClientEid) {
