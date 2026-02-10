@@ -19,6 +19,7 @@ import {
   Jump,
   ZPosition,
   Position,
+  Dead,
 } from '../components'
 import { JUMP_VELOCITY } from '../content/jump'
 import { getUpgradeStateForPlayer } from '../upgrade'
@@ -45,6 +46,13 @@ export function playerInputSystem(
   const players = playerQuery(world)
 
   for (const eid of players) {
+    // Dead players cannot act — zero velocity and skip
+    if (hasComponent(world, Dead, eid)) {
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+      continue
+    }
+
     const input = world.playerInputs.get(eid)
     if (!input) {
       Player.rollButtonWasDown[eid] = 0
