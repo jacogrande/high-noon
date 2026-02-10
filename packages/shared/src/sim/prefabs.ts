@@ -55,6 +55,14 @@ import {
   CHARGER_SPEED, CHARGER_RADIUS, CHARGER_HP, CHARGER_AGGRO_RANGE, CHARGER_ATTACK_RANGE,
   CHARGER_TELEGRAPH, CHARGER_RECOVERY, CHARGER_COOLDOWN, CHARGER_DAMAGE,
   CHARGER_SEPARATION_RADIUS, CHARGER_TIER,
+  GOBLIN_BARBARIAN_SPEED, GOBLIN_BARBARIAN_RADIUS, GOBLIN_BARBARIAN_HP,
+  GOBLIN_BARBARIAN_AGGRO_RANGE, GOBLIN_BARBARIAN_ATTACK_RANGE,
+  GOBLIN_BARBARIAN_TELEGRAPH, GOBLIN_BARBARIAN_RECOVERY, GOBLIN_BARBARIAN_COOLDOWN,
+  GOBLIN_BARBARIAN_DAMAGE, GOBLIN_BARBARIAN_SEPARATION_RADIUS, GOBLIN_BARBARIAN_TIER,
+  GOBLIN_ROGUE_SPEED, GOBLIN_ROGUE_RADIUS, GOBLIN_ROGUE_HP,
+  GOBLIN_ROGUE_AGGRO_RANGE, GOBLIN_ROGUE_ATTACK_RANGE,
+  GOBLIN_ROGUE_TELEGRAPH, GOBLIN_ROGUE_RECOVERY, GOBLIN_ROGUE_COOLDOWN,
+  GOBLIN_ROGUE_DAMAGE, GOBLIN_ROGUE_SEPARATION_RADIUS, GOBLIN_ROGUE_TIER,
 } from './content/enemies'
 
 /** Largest collider radius across all entity types (for spatial hash query padding) */
@@ -64,6 +72,8 @@ export const MAX_COLLIDER_RADIUS = Math.max(
   GRUNT_RADIUS,
   SHOOTER_RADIUS,
   CHARGER_RADIUS,
+  GOBLIN_BARBARIAN_RADIUS,
+  GOBLIN_ROGUE_RADIUS,
 )
 
 /** Collision layers */
@@ -439,6 +449,70 @@ export function spawnCharger(world: GameWorld, x: number, y: number): number {
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = CHARGER_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
+
+  return eid
+}
+
+/**
+ * Spawn a Goblin Barbarian enemy — heavy melee fodder
+ */
+export function spawnGoblinBarbarian(world: GameWorld, x: number, y: number): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.GOBLIN_BARBARIAN
+  Enemy.tier[eid] = GOBLIN_BARBARIAN_TIER
+  Speed.current[eid] = GOBLIN_BARBARIAN_SPEED
+  Speed.max[eid] = GOBLIN_BARBARIAN_SPEED
+  Collider.radius[eid] = GOBLIN_BARBARIAN_RADIUS
+  Health.current[eid] = GOBLIN_BARBARIAN_HP
+  Health.max[eid] = GOBLIN_BARBARIAN_HP
+  Detection.aggroRange[eid] = GOBLIN_BARBARIAN_AGGRO_RANGE
+  Detection.attackRange[eid] = GOBLIN_BARBARIAN_ATTACK_RANGE
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = GOBLIN_BARBARIAN_TELEGRAPH
+  AttackConfig.recoveryDuration[eid] = GOBLIN_BARBARIAN_RECOVERY
+  AttackConfig.cooldown[eid] = GOBLIN_BARBARIAN_COOLDOWN
+  AttackConfig.damage[eid] = GOBLIN_BARBARIAN_DAMAGE
+  AttackConfig.projectileSpeed[eid] = 0
+  AttackConfig.projectileCount[eid] = 0
+  AttackConfig.spreadAngle[eid] = 0
+  Steering.preferredRange[eid] = 0
+  Steering.separationRadius[eid] = GOBLIN_BARBARIAN_SEPARATION_RADIUS
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
+
+  return eid
+}
+
+/**
+ * Spawn a Goblin Rogue enemy — fast agile melee fodder
+ */
+export function spawnGoblinRogue(world: GameWorld, x: number, y: number): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.GOBLIN_ROGUE
+  Enemy.tier[eid] = GOBLIN_ROGUE_TIER
+  Speed.current[eid] = GOBLIN_ROGUE_SPEED
+  Speed.max[eid] = GOBLIN_ROGUE_SPEED
+  Collider.radius[eid] = GOBLIN_ROGUE_RADIUS
+  Health.current[eid] = GOBLIN_ROGUE_HP
+  Health.max[eid] = GOBLIN_ROGUE_HP
+  Detection.aggroRange[eid] = GOBLIN_ROGUE_AGGRO_RANGE
+  Detection.attackRange[eid] = GOBLIN_ROGUE_ATTACK_RANGE
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = GOBLIN_ROGUE_TELEGRAPH
+  AttackConfig.recoveryDuration[eid] = GOBLIN_ROGUE_RECOVERY
+  AttackConfig.cooldown[eid] = GOBLIN_ROGUE_COOLDOWN
+  AttackConfig.damage[eid] = GOBLIN_ROGUE_DAMAGE
+  AttackConfig.projectileSpeed[eid] = 0
+  AttackConfig.projectileCount[eid] = 0
+  AttackConfig.spreadAngle[eid] = 0
+  Steering.preferredRange[eid] = 0
+  Steering.separationRadius[eid] = GOBLIN_ROGUE_SEPARATION_RADIUS
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
 
   return eid
 }
