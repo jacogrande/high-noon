@@ -66,5 +66,6 @@ Both controllers share the same feedback/sync helpers:
 - `SceneDebugHotkeys.ts` - Shared debug hotkey handler wiring
 - `syncRenderersAndQueueEvents.ts` - Shared renderer lifecycle + enemy/bullet effect event generation
 - `PlayerPresentationEvents.ts` - Shared weapon/ability event emitters (fire/reload, showdown/last-rites, dynamite cues)
+- `SceneLighting.ts` - Shared lava-light seeding for mode controllers
 - `SimulationDriver.ts` - Shared simulation stepping abstractions
 - `feedbackSignals.ts` - Shared transition detection helpers

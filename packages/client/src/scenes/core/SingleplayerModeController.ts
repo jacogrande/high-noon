@@ -56,6 +56,7 @@ import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
+import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
 import { ParticlePool, FloatingTextPool } from '../../fx'
@@ -78,6 +79,7 @@ import {
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
 import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
+import { seedLavaLights } from './SceneLighting'
 
 const GAME_ZOOM = 2
 
@@ -108,6 +110,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly sound: SoundManager
@@ -142,6 +145,10 @@ export class SingleplayerModeController implements SceneModeController {
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
     this.tilemapRenderer.render(this.tilemap)
+    this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
+    const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
+    this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
+    seedLavaLights(this.lightingSystem, this.tilemap)
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
@@ -193,6 +200,7 @@ export class SingleplayerModeController implements SceneModeController {
       floatingText: this.floatingText,
       playerRenderer: this.playerRenderer,
       hitStop: this.hitStop,
+      spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
     })
 
     this.lastRenderTime = performance.now()
@@ -480,6 +488,10 @@ export class SingleplayerModeController implements SceneModeController {
     this.gameApp.world.position.set(halfW, halfH)
     this.gameApp.world.rotation = camState.angle
 
+    this.lightingSystem.updateLights(realDt)
+    this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
+    this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
+
     // Clear debug graphics
     this.debugRenderer.clear()
     this.collisionDebugRenderer.clear()
@@ -564,6 +576,7 @@ export class SingleplayerModeController implements SceneModeController {
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
     this.deathPresentation.destroy()
+    this.lightingSystem.destroy()
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()

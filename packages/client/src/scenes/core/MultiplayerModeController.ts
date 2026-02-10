@@ -54,6 +54,7 @@ import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool } from '../../fx'
+import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { ClockSync } from '../../net/ClockSync'
 import { InputBuffer } from '../../net/InputBuffer'
 import { NetworkClient, type GameConfig } from '../../net/NetworkClient'
@@ -78,6 +79,7 @@ import {
   emitLastRitesCueEvents,
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
+import { seedLavaLights } from './SceneLighting'
 
 const GAME_ZOOM = 2
 
@@ -100,6 +102,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
@@ -169,6 +172,10 @@ export class MultiplayerModeController implements SceneModeController {
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
     this.tilemapRenderer.render(tilemap)
+    this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
+    const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
+    this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
+    seedLavaLights(this.lightingSystem, tilemap)
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
@@ -231,6 +238,7 @@ export class MultiplayerModeController implements SceneModeController {
       floatingText: this.floatingText,
       playerRenderer: this.playerRenderer,
       renderPause: this.renderPause,
+      spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
     })
 
     this.deathPresentation = new DeathSequencePresentation(
@@ -571,6 +579,10 @@ export class MultiplayerModeController implements SceneModeController {
     this.gameApp.world.position.set(halfW, halfH)
     this.gameApp.world.rotation = camState.angle
 
+    this.lightingSystem.updateLights(realDt)
+    this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
+    this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
+
     // Clear debug
     this.debugRenderer.clear()
 
@@ -775,6 +787,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.particles.destroy()
     this.floatingText.destroy()
     this.deathPresentation.destroy()
+    this.lightingSystem.destroy()
     this.input.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.debugRenderer.destroy()

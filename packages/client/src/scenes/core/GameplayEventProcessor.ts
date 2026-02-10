@@ -24,6 +24,7 @@ export interface GameplayEventProcessorDeps {
   playerRenderer: PlayerRenderer
   hitStop?: HitStop
   renderPause?: HitStop
+  spawnMuzzleLight?: (x: number, y: number) => void
 }
 
 export class GameplayEventProcessor {
@@ -34,6 +35,7 @@ export class GameplayEventProcessor {
   private readonly playerRenderer: PlayerRenderer
   private readonly hitStop: HitStop | undefined
   private readonly renderPause: HitStop | undefined
+  private readonly spawnMuzzleLight: ((x: number, y: number) => void) | undefined
 
   constructor(deps: GameplayEventProcessorDeps) {
     this.camera = deps.camera
@@ -43,6 +45,7 @@ export class GameplayEventProcessor {
     this.playerRenderer = deps.playerRenderer
     this.hitStop = deps.hitStop
     this.renderPause = deps.renderPause
+    this.spawnMuzzleLight = deps.spawnMuzzleLight
   }
 
   processAll(events: readonly GameplayEvent[]): void {
@@ -91,6 +94,7 @@ export class GameplayEventProcessor {
           this.sound.play('fire')
           this.playerRenderer.triggerRecoil(event.eid)
           emitMuzzleFlash(this.particles, event.muzzleX, event.muzzleY, event.angle)
+          this.spawnMuzzleLight?.(event.muzzleX, event.muzzleY)
           break
         }
 
