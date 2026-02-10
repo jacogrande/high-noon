@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { HUDState } from '../scenes/GameScene'
+import type { HUDState } from '../scenes/types'
 
 export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
   const hpPct = state.maxHP > 0 ? (state.hp / state.maxHP) * 100 : 0

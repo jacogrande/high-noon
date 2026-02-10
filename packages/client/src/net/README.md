@@ -39,7 +39,7 @@ const interp = buffer.getInterpolationState(serverTime)
 // interp = { from: WorldSnapshot, to: WorldSnapshot, alpha: number }
 ```
 
-- Buffer size: 10 snapshots (500ms at 20Hz)
+- Buffer size: 5 snapshots (250ms at 20Hz)
 - Interpolation uses server-time-based rendering when clock sync is converged
 - Alpha is clamped to [0, 1]
 - Returns null until 2+ snapshots are buffered

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { SkillTreeUIData, SkillNodeState } from '../scenes/GameScene'
+import type { SkillTreeUIData, SkillNodeState } from '../scenes/types'
 
 interface SkillTreePanelProps {
   data: SkillTreeUIData

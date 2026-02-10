@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import type { HUDState, SkillTreeUIData } from '../scenes/GameScene'
+import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
-import { GameScene } from '../scenes/GameScene'
+import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<GameScene | null>(null)
+  const sceneRef = useRef<CoreGameScene | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadProgress, setLoadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -66,7 +66,7 @@ export function Game() {
 
     let gameApp: GameApp | null = null
     let gameLoop: GameLoop | null = null
-    let scene: GameScene | null = null
+    let scene: CoreGameScene | null = null
     let mounted = true
 
     async function init(gameContainer: HTMLDivElement) {
@@ -76,7 +76,7 @@ export function Game() {
         return
       }
 
-      scene = await GameScene.create({ gameApp })
+      scene = await CoreGameScene.create({ gameApp, mode: 'singleplayer' })
       sceneRef.current = scene
       if (!mounted) {
         scene.destroy()
@@ -92,7 +92,8 @@ export function Game() {
           const hasPts = scene!.hasPendingPoints()
           if (hasPts && !showingTreeRef.current) {
             showingTreeRef.current = true
-            setSkillTreeData(scene!.getSkillTreeData())
+            const data = scene!.getSkillTreeData()
+            if (data) setSkillTreeData(data)
             setShowSkillTree(true)
           } else if (!hasPts && showingTreeRef.current) {
             showingTreeRef.current = false
@@ -127,7 +128,8 @@ export function Game() {
     scene.selectNode(nodeId)
     // Re-check: still have points? Update tree data. Otherwise close.
     if (scene.hasPendingPoints()) {
-      setSkillTreeData(scene.getSkillTreeData())
+      const data = scene.getSkillTreeData()
+      if (data) setSkillTreeData(data)
     } else {
       showingTreeRef.current = false
       setShowSkillTree(false)

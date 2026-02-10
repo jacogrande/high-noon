@@ -114,6 +114,9 @@ Feature feedback parity between modes now depends on shared scene-core modules:
 
 - `GameplayEvents.ts`: typed gameplay events and queue
 - `GameplayEventProcessor.ts`: camera/audio/particles/text processing
+- `PresentationPolicy.ts`: mode-level presentation policy (sim hit-stop vs render pause, death sequence, debug hotkeys)
+- `DeathSequencePresentation.ts`: shared fade/game-over presentation flow
+- `SceneDebugHotkeys.ts`: shared debug hotkey handler
 - `syncRenderersAndQueueEvents.ts`: renderer sync and effect events
 - `feedbackSignals.ts`: transition detection helpers
 - `SimulationDriver.ts`: full-world/local-player simulation drivers

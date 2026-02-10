@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { HUDState } from '../scenes/GameScene'
+import type { HUDState } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
-import { MultiplayerGameScene } from '../scenes/MultiplayerGameScene'
+import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 
@@ -20,7 +20,7 @@ export function MultiplayerGame() {
   const gameRef = useRef<{
     gameApp: GameApp
     gameLoop: GameLoop
-    scene: MultiplayerGameScene
+    scene: CoreGameScene
   } | null>(null)
 
   // Phase 1: Load assets
@@ -64,15 +64,12 @@ export function MultiplayerGame() {
       const gameApp = await GameApp.create(gameContainer)
       if (cancelled) { gameApp.destroy(); return }
 
-      const scene = await MultiplayerGameScene.create(gameApp)
-      if (cancelled) { scene.destroy(); gameApp.destroy(); return }
-
+      let scene: CoreGameScene
       try {
-        await scene.connect()
+        scene = await CoreGameScene.create({ gameApp, mode: 'multiplayer' })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect'
         if (!cancelled) { setError(message); setPhase('error') }
-        scene.destroy()
         gameApp.destroy()
         return
       }
@@ -88,7 +85,7 @@ export function MultiplayerGame() {
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
             setHudState(scene.getHUDState())
-            if (scene.isDisconnected) {
+            if (scene.isDisconnected()) {
               // Stop game before phase change to prevent stale loop
               if (gameRef.current) {
                 gameRef.current.gameLoop.stop()

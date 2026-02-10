@@ -40,6 +40,8 @@ export interface DebugStats {
   xp: number
   level: number
   pendingPts: number
+  // Networking (multiplayer)
+  netTelemetry?: string
 }
 
 /**
@@ -194,6 +196,7 @@ export class DebugRenderer {
       '',
       `Wave: ${stats.waveNumber}  ${stats.waveStatus}  Fodder: ${stats.fodderAlive} (${stats.fodderBudgetLeft} left)  Threats: ${stats.threatAlive}`,
       `XP: ${stats.xp}  Level: ${stats.level}  PendingPts: ${stats.pendingPts}`,
+      stats.netTelemetry ?? '',
     ].join('\n')
   }
 

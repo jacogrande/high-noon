@@ -172,6 +172,8 @@ export class NetworkClient {
 
     // All attempts exhausted
     this.reconnecting = false
+    this.reconnectionToken = null
+    sessionStorage.removeItem('hn-reconnect-token')
     this.listeners.disconnect?.()
   }
 }

@@ -1,14 +1,13 @@
 /**
- * GameScene - Owns all game state, systems, and renderers.
+ * Singleplayer mode controller.
  *
- * Extracted from Game.tsx to separate game logic from React lifecycle.
- * Does NOT own GameApp or GameLoop — those remain in the React component.
+ * Owns single-player simulation, progression, and rendering behavior for
+ * CoreGameScene.
  */
 
 import {
   createGameWorld,
   createSystemRegistry,
-  stepWorld,
   spawnPlayer,
   setWorldTilemap,
   setEncounter,
@@ -39,32 +38,41 @@ import {
   type Tilemap,
   LEVEL_THRESHOLDS,
   MAX_LEVEL,
-  hasButton,
-  Button,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
-import { Text, TextStyle, Graphics } from 'pixi.js'
-import type { GameApp } from '../engine/GameApp'
-import { Input } from '../engine/Input'
-import { Camera } from '../engine/Camera'
-import { HitStop } from '../engine/HitStop'
-import { DebugRenderer, type DebugStats } from '../render/DebugRenderer'
-import { SpriteRegistry } from '../render/SpriteRegistry'
-import { PlayerRenderer } from '../render/PlayerRenderer'
-import { BulletRenderer } from '../render/BulletRenderer'
-import { EnemyRenderer } from '../render/EnemyRenderer'
-import { ShowdownRenderer } from '../render/ShowdownRenderer'
-import { TilemapRenderer, CollisionDebugRenderer } from '../render/TilemapRenderer'
-import { SoundManager } from '../audio/SoundManager'
-import { SOUND_DEFS } from '../audio/sounds'
-import { ParticlePool, FloatingTextPool, emitMuzzleFlash, emitDeathBurst, emitWallImpact, emitEntityImpact, emitLevelUpSparkle } from '../fx'
+import type { GameApp } from '../../engine/GameApp'
+import { Input } from '../../engine/Input'
+import { Camera } from '../../engine/Camera'
+import { HitStop } from '../../engine/HitStop'
+import { DebugRenderer, type DebugStats } from '../../render/DebugRenderer'
+import { SpriteRegistry } from '../../render/SpriteRegistry'
+import { PlayerRenderer } from '../../render/PlayerRenderer'
+import { BulletRenderer } from '../../render/BulletRenderer'
+import { EnemyRenderer } from '../../render/EnemyRenderer'
+import { ShowdownRenderer } from '../../render/ShowdownRenderer'
+import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
+import { SoundManager } from '../../audio/SoundManager'
+import { SOUND_DEFS } from '../../audio/sounds'
+import { ParticlePool, FloatingTextPool } from '../../fx'
+import { GameplayEventBuffer } from './GameplayEvents'
+import { GameplayEventProcessor } from './GameplayEventProcessor'
+import { FullWorldSimulationDriver } from './SimulationDriver'
+import {
+  didTakeDamageFromIframes,
+} from './feedbackSignals'
+import { syncRenderersAndQueueEvents } from './syncRenderersAndQueueEvents'
+import type { SceneModeController } from './SceneModeController'
+import { DeathSequencePresentation } from './DeathSequencePresentation'
+import { SINGLEPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
+import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
+import {
+  emitCylinderPresentationEvents,
+  emitPlayerHitEvent,
+  emitShowdownCueEvents,
+} from './PlayerPresentationEvents'
+import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
 
 const GAME_ZOOM = 2
-
-/** Death sequence timing */
-const DEATH_ANIM_DURATION = 0.75 // 6 frames at 8 FPS (seconds)
-const FADE_DURATION = 1.0         // black fade-in duration (seconds)
-const GAME_OVER_DELAY = DEATH_ANIM_DURATION + FADE_DURATION
 
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
@@ -76,54 +84,14 @@ const PLAYER_STATE_NAMES: Record<number, string> = {
   [PlayerStateType.ROLLING]: 'rolling',
 }
 
-export interface GameSceneConfig {
-  gameApp: GameApp
-}
-
-export interface HUDState {
-  hp: number
-  maxHP: number
-  xp: number
-  xpForCurrentLevel: number
-  xpForNextLevel: number
-  level: number
-  waveNumber: number
-  totalWaves: number
-  waveStatus: 'active' | 'delay' | 'completed' | 'none'
-  cylinderRounds: number
-  cylinderMax: number
-  isReloading: boolean
-  reloadProgress: number
-  showdownActive: boolean
-  showdownCooldown: number
-  showdownCooldownMax: number
-  showdownTimeLeft: number
-  showdownDurationMax: number
-  pendingPoints: number
-  isDead: boolean
-}
-
-export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'
-
-export interface SkillTreeUIData {
-  branches: Array<{
-    id: string; name: string; description: string
-    nodes: Array<{
-      id: string; name: string; description: string; tier: number
-      state: SkillNodeState
-    }>
-  }>
-  pendingPoints: number
-  level: number
-}
-
-export class GameScene {
+export class SingleplayerModeController implements SceneModeController {
   private readonly gameApp: GameApp
   private readonly input: Input
   private readonly camera: Camera
   private readonly hitStop: HitStop
   private readonly world: GameWorld
   private readonly systems: SystemRegistry
+  private readonly simulationDriver: FullWorldSimulationDriver
   private readonly tilemap: Tilemap
   private readonly debugRenderer: DebugRenderer
   private readonly spriteRegistry: SpriteRegistry
@@ -136,16 +104,16 @@ export class GameScene {
   private readonly sound: SoundManager
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
-  private readonly gameOverText: Text
-  private readonly fadeOverlay: Graphics
-  private deathTime: number | null = null
+  private readonly gameplayEvents: GameplayEventBuffer
+  private readonly gameplayEventProcessor: GameplayEventProcessor
+  private readonly deathPresentation: DeathSequencePresentation
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
 
-  private constructor(config: GameSceneConfig) {
-    this.gameApp = config.gameApp
+  constructor(gameApp: GameApp) {
+    this.gameApp = gameApp
 
     // Input
     this.input = new Input()
@@ -160,6 +128,7 @@ export class GameScene {
 
     // Register all 19 simulation systems in canonical order
     registerAllSystems(this.systems)
+    this.simulationDriver = new FullWorldSimulationDriver(this.world, this.systems)
 
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
@@ -205,56 +174,48 @@ export class GameScene {
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
     this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
+    this.gameplayEvents = new GameplayEventBuffer()
+    this.gameplayEventProcessor = new GameplayEventProcessor({
+      camera: this.camera,
+      sound: this.sound,
+      particles: this.particles,
+      floatingText: this.floatingText,
+      playerRenderer: this.playerRenderer,
+      hitStop: this.hitStop,
+    })
 
     this.lastRenderTime = performance.now()
 
-    // Black fade overlay (hidden by default)
-    this.fadeOverlay = new Graphics()
-    this.fadeOverlay.rect(0, 0, 1, 1)
-    this.fadeOverlay.fill(0x000000)
-    this.fadeOverlay.alpha = 0
-    this.fadeOverlay.visible = false
-    this.gameApp.layers.ui.addChild(this.fadeOverlay)
+    this.deathPresentation = new DeathSequencePresentation(
+      this.gameApp.layers.ui,
+      () => ({ width: this.gameApp.width, height: this.gameApp.height }),
+      SINGLEPLAYER_PRESENTATION_POLICY.death,
+    )
 
-    // Game Over text (hidden by default)
-    this.gameOverText = new Text({
-      text: 'GAME OVER',
-      style: new TextStyle({
-        fontFamily: 'monospace',
-        fontSize: 72,
-        fill: '#cc0000',
-        stroke: { color: '#000000', width: 6 },
-      }),
-    })
-    this.gameOverText.anchor.set(0.5)
-    this.gameOverText.visible = false
-    this.gameApp.layers.ui.addChild(this.gameOverText)
-
-    // Debug toggles
-    this.handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Backquote') {
-        this.debugRenderer.toggle()
-        this.collisionDebugRenderer.toggle()
-      }
-      // P = pause spawns + kill all enemies
-      if (e.code === 'KeyP') {
-        this.world.spawnsPaused = !this.world.spawnsPaused
-        if (this.world.spawnsPaused) {
-          const enemies = enemyAIQuery(this.world)
-          for (const eid of enemies) {
-            Health.current[eid] = 0
-          }
-          console.log(`Enemy spawns PAUSED — killed ${enemies.length} enemies`)
-        } else {
-          console.log('Enemy spawns RESUMED')
-        }
-      }
-    }
+    this.handleKeyDown = createSceneDebugHotkeyHandler(
+      SINGLEPLAYER_PRESENTATION_POLICY.debugHotkeys,
+      {
+        toggleDebugOverlay: () => this.debugRenderer.toggle(),
+        toggleCollisionDebugOverlay: () => this.collisionDebugRenderer.toggle(),
+        toggleSpawnPause: () => this.toggleSpawnPause(),
+      },
+    )
     window.addEventListener('keydown', this.handleKeyDown)
   }
 
-  static async create(config: GameSceneConfig): Promise<GameScene> {
-    return new GameScene(config)
+  async initialize(_options?: Record<string, unknown>): Promise<void> {}
+
+  private toggleSpawnPause(): void {
+    this.world.spawnsPaused = !this.world.spawnsPaused
+    if (this.world.spawnsPaused) {
+      const enemies = enemyAIQuery(this.world)
+      for (const eid of enemies) {
+        Health.current[eid] = 0
+      }
+      console.log(`Enemy spawns PAUSED — killed ${enemies.length} enemies`)
+    } else {
+      console.log('Enemy spawns RESUMED')
+    }
   }
 
   private isPlayerDead(): boolean {
@@ -305,6 +266,10 @@ export class GameScene {
 
   hasPendingPoints(): boolean {
     return this.world.upgradeState.pendingPoints > 0
+  }
+
+  isDisconnected(): boolean {
+    return false
   }
 
   getSkillTreeData(): SkillTreeUIData {
@@ -382,12 +347,9 @@ export class GameScene {
       : 0
 
     // Step the simulation
-    stepWorld(this.world, this.systems, inputState)
+    this.simulationDriver.step(inputState)
 
-    // Showdown audio cues
-    if (this.world.showdownActivatedThisTick) this.sound.play('showdown_activate')
-    if (this.world.showdownKillThisTick) this.sound.play('showdown_kill')
-    if (this.world.showdownExpiredThisTick) this.sound.play('showdown_expire')
+    emitShowdownCueEvents(this.gameplayEvents, this.world)
 
     // Set showdown target for enemy tinting
     this.enemyRenderer.showdownTargetEid =
@@ -398,90 +360,61 @@ export class GameScene {
     // Detect player damage (i-frames went from 0 to >0)
     if (playerEid !== null) {
       const newIframes = Health.iframes[playerEid]!
-      if (prevIframes === 0 && newIframes > 0) {
-        this.camera.addTrauma(0.15)
-        this.hitStop.freeze(0.05)
-        this.sound.play('player_hit')
+      if (didTakeDamageFromIframes(prevIframes, newIframes)) {
         // Directional camera kick toward damage source (per-player)
         const hitDir = this.world.lastPlayerHitDir.get(playerEid)
-        if (hitDir && (hitDir.x !== 0 || hitDir.y !== 0)) {
-          this.camera.applyKick(hitDir.x, hitDir.y, 4)
-        }
+        const kickX = hitDir?.x ?? 0
+        const kickY = hitDir?.y ?? 0
+        emitPlayerHitEvent(this.gameplayEvents, SINGLEPLAYER_PRESENTATION_POLICY.playerHit, kickX, kickY)
       }
     }
 
-    // Sync renderers (create/remove sprites)
-    this.playerRenderer.sync(this.world)
+    syncRenderersAndQueueEvents({
+      world: this.world,
+      playerRenderer: this.playerRenderer,
+      enemyRenderer: this.enemyRenderer,
+      bulletRenderer: this.bulletRenderer,
+      events: this.gameplayEvents,
+    })
 
-    // Sync enemy renderer — returns death trauma + per-death data
-    const enemySync = this.enemyRenderer.sync(this.world)
-    if (enemySync.deathTrauma > 0) {
-      this.camera.addTrauma(enemySync.deathTrauma)
-      this.sound.play('enemy_die')
-    }
-    for (const death of enemySync.deaths) {
-      emitDeathBurst(this.particles, death.x, death.y, death.color, death.isThreat)
-    }
-    for (const hit of enemySync.hits) {
-      emitEntityImpact(this.particles, hit.x, hit.y, hit.color)
-      this.floatingText.spawn(hit.x, hit.y, hit.amount, hit.color)
-    }
-
-    // Sync bullet sprites
-    this.bulletRenderer.sync(this.world)
-
-    // Bullet removal particles (player bullets only)
-    for (const pos of this.bulletRenderer.removedPositions) {
-      emitWallImpact(this.particles, pos.x, pos.y)
-    }
-
-    // Detect player fire (cylinder rounds decreased)
+    this.dryFireCooldown = Math.max(0, this.dryFireCooldown - dt)
     if (playerEid !== null && prevRounds >= 0 && hasComponent(this.world, Cylinder, playerEid)) {
       const newRounds = Cylinder.rounds[playerEid]!
-      if (newRounds < prevRounds) {
-        const angle = Player.aimAngle[playerEid]!
-        this.camera.addTrauma(0.15)
-        this.camera.applyKick(Math.cos(angle), Math.sin(angle), 5)
-        this.sound.play('fire')
-        this.playerRenderer.triggerRecoil(playerEid)
-
-        // Emit muzzle flash from barrel tip if available, otherwise from player center
-        const barrelTip = this.playerRenderer.getBarrelTipFromState(this.world, playerEid)
-        if (barrelTip) {
-          emitMuzzleFlash(this.particles, barrelTip.x, barrelTip.y, angle)
-        } else {
-          emitMuzzleFlash(this.particles, Position.x[playerEid]!, Position.y[playerEid]!, angle)
-        }
-      }
-    }
-
-    // Detect reload state transitions
-    if (playerEid !== null && hasComponent(this.world, Cylinder, playerEid)) {
       const nowReloading = Cylinder.reloading[playerEid]!
-      if (prevReloading === 0 && nowReloading === 1) {
-        this.sound.play('reload_start')
-      } else if (prevReloading === 1 && nowReloading === 0) {
-        this.sound.play('reload_complete')
-      }
-    }
-
-    // Dry fire: shoot pressed, empty cylinder, not reloading
-    this.dryFireCooldown = Math.max(0, this.dryFireCooldown - dt)
-    if (playerEid !== null && hasComponent(this.world, Cylinder, playerEid)
-        && Cylinder.rounds[playerEid]! === 0 && hasButton(inputState, Button.SHOOT)
-        && Cylinder.reloading[playerEid]! === 0 && this.dryFireCooldown <= 0) {
-      this.sound.play('dry_fire')
-      this.dryFireCooldown = 0.3
+      const angle = Player.aimAngle[playerEid]!
+      const barrelTip = this.playerRenderer.getBarrelTipFromState(this.world, playerEid)
+      this.dryFireCooldown = emitCylinderPresentationEvents({
+        events: this.gameplayEvents,
+        actorEid: playerEid,
+        prevRounds,
+        newRounds,
+        prevReloading,
+        nowReloading,
+        inputState,
+        dryFireCooldown: this.dryFireCooldown,
+        dryFireCooldownSeconds: 0.3,
+        aimAngle: angle,
+        muzzleX: barrelTip?.x ?? Position.x[playerEid]!,
+        muzzleY: barrelTip?.y ?? Position.y[playerEid]!,
+        fireTrauma: 0.15,
+        fireKickStrength: 5,
+      })
     }
 
     // Level-up detection
     if (this.world.upgradeState.level > this.lastProcessedLevel) {
       this.lastProcessedLevel = this.world.upgradeState.level
-      this.sound.play('level_up')
       if (playerEid !== null) {
-        emitLevelUpSparkle(this.particles, Position.x[playerEid]!, Position.y[playerEid]!)
+        this.gameplayEvents.push({
+          type: 'level-up',
+          x: Position.x[playerEid]!,
+          y: Position.y[playerEid]!,
+        })
       }
     }
+
+    // Apply queued feedback events in one place (shared with multiplayer).
+    this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
 
     // Update camera target
     if (playerEid !== null) {
@@ -539,29 +472,7 @@ export class GameScene {
     this.particles.update(realDt)
     this.floatingText.update(realDt)
 
-    // Death sequence: anim → fade to black → GAME OVER text
-    if (this.isPlayerDead()) {
-      if (this.deathTime === null) {
-        this.deathTime = performance.now()
-      }
-
-      const elapsed = (performance.now() - this.deathTime) / 1000
-
-      // Phase 2: Fade to black after death animation completes
-      if (elapsed > DEATH_ANIM_DURATION) {
-        this.fadeOverlay.visible = true
-        this.fadeOverlay.scale.set(this.gameApp.width, this.gameApp.height)
-        const fadeProgress = Math.min((elapsed - DEATH_ANIM_DURATION) / FADE_DURATION, 1)
-        this.fadeOverlay.alpha = fadeProgress
-      }
-
-      // Phase 3: Show GAME OVER text after fade completes
-      if (elapsed > GAME_OVER_DELAY) {
-        this.gameOverText.x = this.gameApp.width / 2
-        this.gameOverText.y = this.gameApp.height / 2
-        this.gameOverText.visible = true
-      }
-    }
+    this.deathPresentation.update(this.isPlayerDead())
 
     // Build expanded debug stats (playerEid already declared above)
     const camPos = this.camera.getPosition()
@@ -613,13 +524,13 @@ export class GameScene {
   }
 
   destroy(): void {
+    this.gameplayEvents.clear()
     this.particles.destroy()
     this.floatingText.destroy()
     this.sound.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
-    this.fadeOverlay.destroy()
-    this.gameOverText.destroy()
+    this.deathPresentation.destroy()
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()

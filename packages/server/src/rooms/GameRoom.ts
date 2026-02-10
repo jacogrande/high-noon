@@ -37,6 +37,10 @@ const SNAPSHOT_INTERVAL = 3
 /** Maximum queued inputs per player before dropping oldest */
 const MAX_INPUT_QUEUE = 30
 
+/** Per-client input rate limit (token bucket) */
+const INPUT_RATE_LIMIT_PER_SECOND = 120
+const INPUT_RATE_BURST_CAPACITY = 60
+
 /** If queue exceeds this depth, skip to latest input to reduce latency */
 const INPUT_QUEUE_TRIM_THRESHOLD = 6
 
@@ -79,6 +83,9 @@ interface PlayerSlot {
   lastProcessedSeq: number
   lastInput: InputState
   heldInputTicks: number
+  inputTokens: number
+  inputTokenLastRefillMs: number
+  rateLimitedDrops: number
 }
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
@@ -122,6 +129,19 @@ function clampInput(input: NetworkInput): NetworkInput {
   }
 }
 
+function consumeInputToken(slot: PlayerSlot, nowMs: number): boolean {
+  const elapsedMs = Math.max(0, nowMs - slot.inputTokenLastRefillMs)
+  if (elapsedMs > 0) {
+    const refill = (elapsedMs / 1000) * INPUT_RATE_LIMIT_PER_SECOND
+    slot.inputTokens = Math.min(INPUT_RATE_BURST_CAPACITY, slot.inputTokens + refill)
+    slot.inputTokenLastRefillMs = nowMs
+  }
+
+  if (slot.inputTokens < 1) return false
+  slot.inputTokens -= 1
+  return true
+}
+
 export class GameRoom extends Room<GameRoomState> {
   override maxClients = MAX_PLAYERS
 
@@ -130,6 +150,7 @@ export class GameRoom extends Room<GameRoomState> {
   private slots = new Map<string, PlayerSlot>()
   private accumulator = 0
   private readonly playerSeqs = new Map<number, number>()
+  private lastRateLimitLogTick = 0
 
   override onCreate() {
     const seed = Date.now()
@@ -147,6 +168,10 @@ export class GameRoom extends Room<GameRoomState> {
       const slot = this.slots.get(client.sessionId)
       if (!slot) return
       if (!isValidInput(data)) return
+      if (!consumeInputToken(slot, performance.now())) {
+        slot.rateLimitedDrops++
+        return
+      }
       const input = clampInput(data)
 
       // Drop stale or duplicate sequence numbers.
@@ -192,6 +217,9 @@ export class GameRoom extends Room<GameRoomState> {
       lastProcessedSeq: 0,
       lastInput: neutralInput,
       heldInputTicks: 0,
+      inputTokens: INPUT_RATE_BURST_CAPACITY,
+      inputTokenLastRefillMs: performance.now(),
+      rateLimitedDrops: 0,
     })
 
     // Send game config to the joining client
@@ -223,6 +251,9 @@ export class GameRoom extends Room<GameRoomState> {
           slot.inputQueue = []  // Clear stale inputs from before disconnect
           slot.lastInput = neutralInput
           slot.heldInputTicks = 0
+          slot.inputTokens = INPUT_RATE_BURST_CAPACITY
+          slot.inputTokenLastRefillMs = performance.now()
+          slot.rateLimitedDrops = 0
           client.send('game-config', {
             seed: this.world.initialSeed,
             sessionId: client.sessionId,
@@ -312,6 +343,24 @@ export class GameRoom extends Room<GameRoomState> {
     // 5. Send per-client HUD data at 10Hz (every 6 ticks)
     if (this.world.tick % 6 === 0) {
       this.sendHudUpdates()
+    }
+
+    this.maybeLogRateLimitDrops()
+  }
+
+  private maybeLogRateLimitDrops(): void {
+    const LOG_INTERVAL_TICKS = 60 * 5 // 5 seconds at 60Hz
+    if (this.world.tick - this.lastRateLimitLogTick < LOG_INTERVAL_TICKS) return
+    this.lastRateLimitLogTick = this.world.tick
+
+    let dropped = 0
+    for (const slot of this.slots.values()) {
+      dropped += slot.rateLimitedDrops
+      slot.rateLimitedDrops = 0
+    }
+
+    if (dropped > 0) {
+      console.log(`[GameRoom][telemetry] dropped ${dropped} inputs due to rate limit over last 5s`)
     }
   }
 

@@ -26,7 +26,7 @@ onDispose()   → Clear slots, log
 
 ## Input Handling
 
-Inputs are validated (`isValidInput` rejects NaN/Infinity/non-numbers) and clamped (`clampInput` enforces safe ranges) before queuing. Each `serverTick` pops one input per player from their queue (or uses frozen neutral input if empty).
+Inputs are validated (`isValidInput` rejects NaN/Infinity/non-numbers), rate-limited (per-client token bucket), and clamped (`clampInput` enforces safe ranges) before queuing. Each `serverTick` pops one input per player from their queue (or uses frozen neutral input if empty).
 
 ```typescript
 this.onMessage('input', (client, data) => {
