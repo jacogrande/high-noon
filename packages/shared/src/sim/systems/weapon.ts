@@ -61,6 +61,10 @@ export function weaponSystem(
       hasComponent(world, Roll, eid) ||
       PlayerState.state[eid] === PlayerStateType.ROLLING
     if (isRolling) continue
+    const isJumpLocked =
+      PlayerState.state[eid] === PlayerStateType.JUMPING ||
+      PlayerState.state[eid] === PlayerStateType.LANDING
+    if (isJumpLocked) continue
 
     // Check cylinder has rounds
     const hasCylinder = hasComponent(world, Cylinder, eid)

@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v5)
+ * Binary Snapshot Serialization (v6)
  *
  * Encodes/decodes the world state into a compact binary format for
  * server→client broadcast at 20Hz.
@@ -12,6 +12,7 @@ import {
   Player,
   PlayerState,
   Roll,
+  ZPosition,
   Health,
   Dead,
   Invincible,
@@ -28,11 +29,11 @@ import { NO_OWNER } from '../sim/prefabs'
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 5
+export const SNAPSHOT_VERSION = 6
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
 export const HEADER_SIZE = 14
-export const PLAYER_SIZE = 27
+export const PLAYER_SIZE = 35
 export const BULLET_SIZE = 21
 export const ENEMY_SIZE = 13
 
@@ -44,6 +45,8 @@ export interface PlayerSnapshot {
   eid: number
   x: number
   y: number
+  z: number
+  zVelocity: number
   aimAngle: number
   state: number
   hp: number
@@ -173,6 +176,12 @@ export function encodeSnapshot(
     offset += 4
     view.setFloat32(offset, Position.y[eid]!, true)
     offset += 4
+    const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
+    const zVelocity = hasComponent(world, ZPosition, eid) ? ZPosition.zVelocity[eid]! : 0
+    view.setFloat32(offset, z, true)
+    offset += 4
+    view.setFloat32(offset, zVelocity, true)
+    offset += 4
     view.setFloat32(offset, Player.aimAngle[eid]!, true)
     offset += 4
     view.setUint8(offset, PlayerState.state[eid]!)
@@ -184,6 +193,7 @@ export function encodeSnapshot(
     if (hasComponent(world, Dead, eid)) flags |= 1
     if (hasComponent(world, Invincible, eid)) flags |= 2
     if (Player.rollButtonWasDown[eid] === 1) flags |= 4
+    if (Player.jumpButtonWasDown[eid] === 1) flags |= 8
     view.setUint8(offset, flags)
     offset += 1
 
@@ -279,6 +289,10 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 4
     const y = view.getFloat32(offset, true)
     offset += 4
+    const z = view.getFloat32(offset, true)
+    offset += 4
+    const zVelocity = view.getFloat32(offset, true)
+    offset += 4
     const aimAngle = view.getFloat32(offset, true)
     offset += 4
     const state = view.getUint8(offset)
@@ -301,6 +315,8 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
       eid,
       x,
       y,
+      z,
+      zVelocity,
       aimAngle,
       state,
       hp,

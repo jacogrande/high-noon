@@ -44,6 +44,8 @@ export const Player = {
   shootWasDown: new Uint8Array(MAX_ENTITIES),
   /** Whether ability button was held last tick (for re-press detection) */
   abilityWasDown: new Uint8Array(MAX_ENTITIES),
+  /** Whether jump button was held last tick (for re-press detection) */
+  jumpButtonWasDown: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Player state enum values */
@@ -51,6 +53,8 @@ export const PlayerStateType = {
   IDLE: 0,
   MOVING: 1,
   ROLLING: 2,
+  JUMPING: 3,
+  LANDING: 4,
 } as const
 
 /** Current state of the player */
@@ -84,6 +88,24 @@ export const Roll = {
   startX: new Float32Array(MAX_ENTITIES),
   /** World Y at roll start (for Rockslide shockwave) */
   startY: new Float32Array(MAX_ENTITIES),
+}
+
+/** Z-axis jump position for players */
+export const ZPosition = {
+  /** Height above ground in world pixels */
+  z: new Float32Array(MAX_ENTITIES),
+  /** Vertical velocity in world pixels per second */
+  zVelocity: new Float32Array(MAX_ENTITIES),
+}
+
+/** Jump state */
+export const Jump = {
+  /** 0 while airborne, 1 while in landing lockout */
+  landed: new Uint8Array(MAX_ENTITIES),
+  /** Remaining landing lockout time in seconds */
+  landingTimer: new Float32Array(MAX_ENTITIES),
+  /** Buffered jump presses remaining in ticks */
+  bufferTimer: new Uint8Array(MAX_ENTITIES),
 }
 
 // ============================================================================
@@ -330,6 +352,8 @@ export const AllComponents = [
   PlayerState,
   Speed,
   Roll,
+  ZPosition,
+  Jump,
   Collider,
   StaticBody,
   Bullet,

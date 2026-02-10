@@ -19,6 +19,8 @@ export const Button = {
   RELOAD: 1 << 7,
   /** Showdown ability */
   ABILITY: 1 << 8,
+  /** Jump */
+  JUMP: 1 << 9,
 } as const
 
 export type ButtonFlag = (typeof Button)[keyof typeof Button]

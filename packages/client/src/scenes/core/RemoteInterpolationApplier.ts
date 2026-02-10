@@ -1,4 +1,4 @@
-import { Position, type BulletSnapshot, type EnemySnapshot, type PlayerSnapshot, type WorldSnapshot } from '@high-noon/shared'
+import { Position, ZPosition, type BulletSnapshot, type EnemySnapshot, type PlayerSnapshot, type WorldSnapshot } from '@high-noon/shared'
 import type { InterpolationState } from '../../net/SnapshotBuffer'
 
 export interface RemoteInterpolationContext {
@@ -37,14 +37,14 @@ export class RemoteInterpolationApplier {
       this.fromEnemyIndex.set(e.eid, e)
     }
 
-    this.interpolatePlayers(to, ctx)
+    this.interpolatePlayers(to, ctx, alpha)
     this.interpolateBullets(to, ctx)
     this.interpolateEnemies(to, ctx)
 
     return alpha
   }
 
-  private interpolatePlayers(to: WorldSnapshot, ctx: RemoteInterpolationContext): void {
+  private interpolatePlayers(to: WorldSnapshot, ctx: RemoteInterpolationContext, alpha: number): void {
     for (const p of to.players) {
       const clientEid = ctx.playerEntities.get(p.eid)
       if (clientEid === undefined) continue
@@ -55,11 +55,13 @@ export class RemoteInterpolationApplier {
       const prev = this.fromPlayerIndex.get(p.eid)
       const fromX = prev?.x ?? p.x
       const fromY = prev?.y ?? p.y
+      const fromZ = prev?.z ?? p.z
 
       Position.prevX[clientEid] = fromX
       Position.prevY[clientEid] = fromY
       Position.x[clientEid] = p.x
       Position.y[clientEid] = p.y
+      ZPosition.z[clientEid] = fromZ + (p.z - fromZ) * alpha
     }
   }
 

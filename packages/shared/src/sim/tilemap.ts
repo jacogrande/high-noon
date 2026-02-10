@@ -34,6 +34,8 @@ export const TileType = {
   EMPTY: 0,
   WALL: 1,
   FLOOR: 2,
+  LAVA: 3,
+  HALF_WALL: 4,
 } as const
 
 export type TileTypeValue = (typeof TileType)[keyof typeof TileType]
@@ -165,6 +167,57 @@ export function isSolidAt(map: Tilemap, worldX: number, worldY: number): boolean
   }
 
   return false
+}
+
+/**
+ * Get the exact solid tile type at a world position.
+ *
+ * Returns TileType.EMPTY when no solid tile is present.
+ * Out-of-bounds positions are treated as TileType.WALL.
+ */
+export function getSolidTileTypeAt(map: Tilemap, worldX: number, worldY: number): number {
+  const { tileX, tileY } = worldToTile(map, worldX, worldY)
+
+  if (tileX < 0 || tileX >= map.width || tileY < 0 || tileY >= map.height) {
+    return TileType.WALL
+  }
+
+  for (let i = 0; i < map.layers.length; i++) {
+    const layer = map.layers[i]
+    if (!layer || !layer.solid) continue
+
+    const tile = layer.data[tileIndex(map, tileX, tileY)]
+    if (tile !== undefined && tile !== TileType.EMPTY) {
+      return tile
+    }
+  }
+
+  return TileType.EMPTY
+}
+
+/**
+ * Get the floor tile type at a world position.
+ *
+ * Returns the first non-empty tile found in non-solid layers.
+ */
+export function getFloorTileTypeAt(map: Tilemap, worldX: number, worldY: number): number {
+  const { tileX, tileY } = worldToTile(map, worldX, worldY)
+
+  if (tileX < 0 || tileX >= map.width || tileY < 0 || tileY >= map.height) {
+    return TileType.EMPTY
+  }
+
+  for (let i = 0; i < map.layers.length; i++) {
+    const layer = map.layers[i]
+    if (!layer || layer.solid) continue
+
+    const tile = layer.data[tileIndex(map, tileX, tileY)]
+    if (tile !== undefined && tile !== TileType.EMPTY) {
+      return tile
+    }
+  }
+
+  return TileType.EMPTY
 }
 
 /**

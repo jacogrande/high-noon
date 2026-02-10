@@ -11,6 +11,7 @@ import type { CharacterId } from '../content/characters'
 import { movementSystem } from './movement'
 import { playerInputSystem } from './playerInput'
 import { rollSystem } from './roll'
+import { jumpSystem } from './jump'
 import { showdownSystem } from './showdown'
 import { lastRitesSystem } from './lastRites'
 import { cylinderSystem } from './cylinder'
@@ -33,11 +34,13 @@ import { meleeSystem } from './melee'
 import { knockbackSystem } from './knockback'
 import { dynamiteSystem } from './dynamite'
 import { goldRushSystem } from './goldRush'
+import { hazardTileSystem } from './hazardTile'
 
 export {
   movementSystem,
   playerInputSystem,
   rollSystem,
+  jumpSystem,
   showdownSystem,
   lastRitesSystem,
   cylinderSystem,
@@ -60,6 +63,7 @@ export {
   knockbackSystem,
   dynamiteSystem,
   goldRushSystem,
+  hazardTileSystem,
 }
 
 /**
@@ -71,6 +75,7 @@ export {
 export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
+  systems.register(jumpSystem)
   systems.register(showdownSystem)
   systems.register(lastRitesSystem)
   systems.register(dynamiteSystem)
@@ -82,6 +87,7 @@ export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(movementSystem)
   systems.register(bulletCollisionSystem)
   systems.register(collisionSystem)
+  systems.register(hazardTileSystem)
 }
 
 /**
@@ -91,8 +97,10 @@ export function registerPredictionSystems(systems: SystemRegistry): void {
 export function registerReplaySystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
+  systems.register(jumpSystem)
   systems.register(movementSystem)
   systems.register(collisionSystem)
+  systems.register(hazardTileSystem)
 }
 
 /**
@@ -104,6 +112,7 @@ export function registerReplaySystems(systems: SystemRegistry): void {
 export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
   systems.register(playerInputSystem)
   systems.register(rollSystem)
+  systems.register(jumpSystem)
   systems.register(showdownSystem)
   systems.register(lastRitesSystem)
   systems.register(dynamiteSystem)
@@ -123,6 +132,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(enemyAttackSystem)
   systems.register(movementSystem)
   systems.register(bulletCollisionSystem)
+  systems.register(hazardTileSystem)
   systems.register(healthSystem)
   systems.register(goldRushSystem)
   systems.register(buffSystem)

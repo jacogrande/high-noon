@@ -34,6 +34,7 @@ export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
   snapshot: (snapshot: WorldSnapshot) => void
   hud: (data: HudData) => void
+  'incompatible-protocol': (reason: string) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
 }
@@ -129,6 +130,9 @@ export class NetworkClient {
         this.listeners.snapshot?.(snapshot)
       } catch (err) {
         console.error('[NetworkClient] Failed to decode snapshot:', err)
+        if (this.isProtocolMismatchError(err)) {
+          this.handleProtocolMismatch(room, err)
+        }
       }
     })
 
@@ -136,6 +140,28 @@ export class NetworkClient {
       if (this.intentionalLeave) return
       this.attemptReconnect()
     })
+  }
+
+  private isProtocolMismatchError(err: unknown): boolean {
+    return err instanceof Error && err.message.includes('Snapshot version mismatch')
+  }
+
+  private handleProtocolMismatch(room: Room, err: unknown): void {
+    const reason = err instanceof Error ? err.message : 'Snapshot protocol mismatch'
+    this.intentionalLeave = true
+    this.reconnecting = false
+    this.reconnectionToken = null
+    sessionStorage.removeItem('hn-reconnect-token')
+
+    try {
+      room.leave()
+    } catch (leaveErr) {
+      console.warn('[NetworkClient] Failed to leave room after protocol mismatch:', leaveErr)
+    }
+
+    this.room = null
+    this.listeners['incompatible-protocol']?.(reason)
+    this.listeners.disconnect?.()
   }
 
   /** Attempt reconnection with exponential backoff */

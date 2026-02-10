@@ -15,7 +15,7 @@
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
-import { Container, Sprite } from 'pixi.js'
+import { Container, Graphics, Sprite } from 'pixi.js'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Player,
@@ -27,6 +27,8 @@ import {
   Invincible,
   Health,
   Dead,
+  ZPosition,
+  JUMP_HEIGHT,
   REVOLVER_SPRITE,
 } from '@high-noon/shared'
 import {
@@ -50,10 +52,13 @@ const KICK_EPSILON = 0.1
 /** Player body sprite scale */
 const BODY_SCALE = 2
 const WEAPON_SCALE = BODY_SCALE * WEAPON.scale
+const SHADOW_BASE_ALPHA = 0.24
+const SHADOW_MIN_SCALE = 0.6
 
 /** Per-player visual state */
 interface PlayerVisuals {
   container: Container
+  shadow: Graphics
   bodySprite: Sprite
   weaponPivot: Container
   weaponSprite: Sprite
@@ -102,6 +107,12 @@ export class PlayerRenderer {
         const container = new Container()
         container.sortableChildren = true
 
+        // Ground shadow for jump readability.
+        const shadow = new Graphics()
+        shadow.ellipse(0, 0, 8, 4).fill({ color: 0x000000, alpha: 1 })
+        shadow.zIndex = -2
+        container.addChild(shadow)
+
         // Body sprite — character animation
         const bodyTexture = AssetLoader.getPlayerTexture('idle', 'E', 0)
         const bodySprite = new Sprite(bodyTexture)
@@ -127,6 +138,7 @@ export class PlayerRenderer {
 
         this.players.set(eid, {
           container,
+          shadow,
           bodySprite,
           weaponPivot,
           weaponSprite,
@@ -191,7 +203,7 @@ export class PlayerRenderer {
       const visuals = this.players.get(eid)
       if (!visuals) continue
 
-      const { container, bodySprite, weaponPivot, weaponSprite } = visuals
+      const { container, shadow, bodySprite, weaponPivot, weaponSprite } = visuals
 
       // Interpolate between previous and current position
       const override = this.renderPositionOverrides.get(eid)
@@ -203,6 +215,15 @@ export class PlayerRenderer {
         : Position.prevY[eid]! + (Position.y[eid]! - Position.prevY[eid]!) * alpha
 
       container.position.set(renderX, renderY)
+      const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
+      const jumpRatio = Math.min(1, Math.max(0, z / JUMP_HEIGHT))
+      shadow.scale.set(
+        SHADOW_MIN_SCALE + (1 - SHADOW_MIN_SCALE) * (1 - jumpRatio),
+        SHADOW_MIN_SCALE + (1 - SHADOW_MIN_SCALE) * (1 - jumpRatio),
+      )
+      shadow.alpha = SHADOW_BASE_ALPHA * (1 - jumpRatio * 0.7)
+      bodySprite.y = -z
+      weaponPivot.position.set(WEAPON.gripOffset.x, WEAPON.gripOffset.y - z)
 
       // Determine animation state and direction
       const playerState = PlayerState.state[eid]!
@@ -332,8 +353,8 @@ export class PlayerRenderer {
     const localY = aimingLeft ? -bty : bty
 
     // Rotate barrel tip by aimAngle, then translate by player position + grip offset
-    const worldX = visuals.container.x + WEAPON.gripOffset.x + cos * btx - sin * localY
-    const worldY = visuals.container.y + WEAPON.gripOffset.y + sin * btx + cos * localY
+    const worldX = visuals.container.x + visuals.weaponPivot.x + cos * btx - sin * localY
+    const worldY = visuals.container.y + visuals.weaponPivot.y + sin * btx + cos * localY
 
     return { x: worldX, y: worldY }
   }
@@ -355,6 +376,7 @@ export class PlayerRenderer {
 
     const x = baseX ?? Position.x[eid]!
     const y = baseY ?? Position.y[eid]!
+    const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
     const aimAngle = Player.aimAngle[eid]!
     const cos = Math.cos(aimAngle)
     const sin = Math.sin(aimAngle)
@@ -365,7 +387,7 @@ export class PlayerRenderer {
 
     return {
       x: x + WEAPON.gripOffset.x + cos * btx - sin * localY,
-      y: y + WEAPON.gripOffset.y + sin * btx + cos * localY,
+      y: y + WEAPON.gripOffset.y - z + sin * btx + cos * localY,
     }
   }
 

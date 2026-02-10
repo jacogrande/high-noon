@@ -96,6 +96,33 @@ export function createTestArena(): Tilemap {
   setTile(map, 0, 31, 24, TileType.WALL)
   setTile(map, 0, 30, 22, TileType.WALL)
 
+  // Lava patches (layer 1, non-solid floor)
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 3; dx++) {
+      setTile(map, 1, 14 + dx, 17 + dy, TileType.LAVA)
+    }
+  }
+  for (let dy = 0; dy < 3; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      setTile(map, 1, 34 + dx, 16 + dy, TileType.LAVA)
+    }
+  }
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      setTile(map, 1, 24 + dx, 28 + dy, TileType.LAVA)
+    }
+  }
+
+  // Half-wall clusters (layer 0, solid)
+  setTile(map, 0, 24, 10, TileType.HALF_WALL)
+  setTile(map, 0, 25, 10, TileType.HALF_WALL)
+  setTile(map, 0, 7, 18, TileType.HALF_WALL)
+  setTile(map, 0, 7, 19, TileType.HALF_WALL)
+  setTile(map, 0, 42, 18, TileType.HALF_WALL)
+  setTile(map, 0, 43, 18, TileType.HALF_WALL)
+  setTile(map, 0, 24, 25, TileType.HALF_WALL)
+  setTile(map, 0, 24, 26, TileType.HALF_WALL)
+
   return map
 }
 

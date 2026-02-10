@@ -62,7 +62,7 @@ const neutralInput: InputState = Object.freeze(createInputState())
  * causes visible client/server divergence (e.g., dash not starting server-side).
  */
 const TRANSIENT_ACTION_BUTTONS =
-  Button.ROLL | Button.RELOAD | Button.ABILITY | Button.SHOOT
+  Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
 
 /**
  * Merge a trimmed backlog into one input:

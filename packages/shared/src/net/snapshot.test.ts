@@ -16,6 +16,7 @@ import {
   EnemyType,
   Enemy,
   Collider,
+  ZPosition,
 } from '../sim/components'
 import { spawnPlayer, spawnBullet, spawnSwarmer, spawnGrunt, CollisionLayer, NO_OWNER } from '../sim/prefabs'
 import {
@@ -35,6 +36,8 @@ describe('snapshot', () => {
 
     const pEid = spawnPlayer(world, 100.5, 200.25, 0)
     Player.aimAngle[pEid] = 1.5
+    ZPosition.z[pEid] = 12
+    ZPosition.zVelocity[pEid] = -45
     PlayerState.state[pEid] = PlayerStateType.MOVING
     Health.current[pEid] = 80
 
@@ -59,6 +62,8 @@ describe('snapshot', () => {
     expect(p.eid).toBe(pEid)
     expect(p.x).toBe(100.5)
     expect(p.y).toBe(200.25)
+    expect(p.z).toBe(12)
+    expect(p.zVelocity).toBe(-45)
     expect(p.aimAngle).toBeCloseTo(1.5, 5)
     expect(p.state).toBe(PlayerStateType.MOVING)
     expect(p.hp).toBe(80)
@@ -124,6 +129,16 @@ describe('snapshot', () => {
     const snap = decodeSnapshot(encodeSnapshot(world, 0))
     const p = snap.players[0]!
     expect(p.flags & 4).toBe(4)
+  })
+
+  it('player flags: jumpButtonWasDown encodes correctly', () => {
+    const world = createGameWorld(2)
+    const eid = spawnPlayer(world, 0, 0, 0)
+    Player.jumpButtonWasDown[eid] = 1
+
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
+    const p = snap.players[0]!
+    expect(p.flags & 8).toBe(8)
   })
 
   it('roll payload: elapsed/duration/direction round-trip for rolling players', () => {
@@ -282,8 +297,8 @@ describe('snapshot', () => {
     expect(encoded.byteLength).toBe(expectedSize)
 
     // Verify the per-entity sizes match spec (2 players + 20 bullets + 30 enemies)
-    // 14 + 54 + 420 + 390 = 878
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(878)
+    // 14 + 70 + 420 + 390 = 894
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE).toBe(894)
   })
 
   it('lastProcessedSeq round-trip with playerSeqs map', () => {

@@ -1,15 +1,16 @@
 /**
- * Flow Field System
+ * Flow field system.
  *
- * BFS pathfinding from the player position. Computes direction vectors
- * per tile cell so enemies can navigate around obstacles.
- * Recomputes only when the player crosses a tile boundary.
+ * Computes weighted shortest paths toward alive players with a multi-source
+ * Dijkstra pass. Lava tiles have higher traversal cost so enemies prefer to
+ * route around hazards when alternatives exist.
  */
 
 import type { GameWorld, FlowField } from '../world'
 import { Position } from '../components'
-import { worldToTile, isSolidAt } from '../tilemap'
+import { worldToTile, isSolidAt, getFloorTileTypeAt, TileType } from '../tilemap'
 import { getAlivePlayers } from '../queries'
+import { LAVA_PATHFIND_COST } from '../content/hazards'
 
 const UNREACHABLE = 0xFFFF
 const INV_SQRT2 = 0.7071067811865476
@@ -24,11 +25,72 @@ const NEIGHBOR_DIAG = [true, false, true, false, false, true, false, true]
 const DIAG_CARD_A = [1, -1, 1, -1, -1, 6, -1, 6] // N or S
 const DIAG_CARD_B = [3, -1, 4, -1, -1, 3, -1, 4] // W or E
 
-// Pre-allocated buffers (reused across calls). Module-level for zero-allocation reuse.
-// Safe for determinism because they are fully overwritten each call.
-let queueBuffer: Uint32Array | null = null
-const _seeds: { idx: number }[] = []
-const _keyParts: string[] = []
+// Reused binary min-heap buffers
+let heapIndices: Uint32Array | null = null
+let heapPriorities: Uint16Array | null = null
+let heapSize = 0
+
+const seedScratch: { idx: number }[] = []
+const seedKeyParts: string[] = []
+
+function heapClear(): void {
+  heapSize = 0
+}
+
+function heapPush(idx: number, priority: number): void {
+  let pos = heapSize++
+  heapIndices![pos] = idx
+  heapPriorities![pos] = priority
+
+  while (pos > 0) {
+    const parent = (pos - 1) >> 1
+    if (heapPriorities![parent]! <= heapPriorities![pos]!) break
+
+    const tmpIdx = heapIndices![parent]!
+    const tmpPriority = heapPriorities![parent]!
+    heapIndices![parent] = heapIndices![pos]!
+    heapPriorities![parent] = heapPriorities![pos]!
+    heapIndices![pos] = tmpIdx
+    heapPriorities![pos] = tmpPriority
+    pos = parent
+  }
+}
+
+function heapPop(): { idx: number; priority: number } {
+  const idx = heapIndices![0]!
+  const priority = heapPriorities![0]!
+  heapSize--
+
+  if (heapSize > 0) {
+    heapIndices![0] = heapIndices![heapSize]!
+    heapPriorities![0] = heapPriorities![heapSize]!
+
+    let pos = 0
+    while (true) {
+      const left = 2 * pos + 1
+      const right = 2 * pos + 2
+      let smallest = pos
+
+      if (left < heapSize && heapPriorities![left]! < heapPriorities![smallest]!) {
+        smallest = left
+      }
+      if (right < heapSize && heapPriorities![right]! < heapPriorities![smallest]!) {
+        smallest = right
+      }
+      if (smallest === pos) break
+
+      const tmpIdx = heapIndices![pos]!
+      const tmpPriority = heapPriorities![pos]!
+      heapIndices![pos] = heapIndices![smallest]!
+      heapPriorities![pos] = heapPriorities![smallest]!
+      heapIndices![smallest] = tmpIdx
+      heapPriorities![smallest] = tmpPriority
+      pos = smallest
+    }
+  }
+
+  return { idx, priority }
+}
 
 export function flowFieldSystem(world: GameWorld, _dt: number): void {
   const tilemap = world.tilemap
@@ -37,33 +99,28 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
   const alivePlayers = getAlivePlayers(world)
   if (alivePlayers.length === 0) return
 
-  // Build seed key from sorted alive player tile positions (reuse module-level arrays)
-  const w = tilemap.width
-  const h = tilemap.height
-  _seeds.length = 0
-  _keyParts.length = 0
+  const width = tilemap.width
+  const height = tilemap.height
+  seedScratch.length = 0
+  seedKeyParts.length = 0
 
-  for (const pid of alivePlayers) {
-    const { tileX, tileY } = worldToTile(tilemap, Position.x[pid]!, Position.y[pid]!)
-    _seeds.push({ idx: tileY * w + tileX })
-    _keyParts.push(`${tileX},${tileY}`)
+  for (const playerEid of alivePlayers) {
+    const { tileX, tileY } = worldToTile(tilemap, Position.x[playerEid]!, Position.y[playerEid]!)
+    seedScratch.push({ idx: tileY * width + tileX })
+    seedKeyParts.push(`${tileX},${tileY}`)
   }
-  _keyParts.sort()
-  const seedKey = _keyParts.join('|')
+  seedKeyParts.sort()
+  const seedKey = seedKeyParts.join('|')
 
-  // Skip if no player has moved to a new cell
-  if (world.flowField && world.flowField.seedKey === seedKey) {
-    return
-  }
+  if (world.flowField && world.flowField.seedKey === seedKey) return
 
-  const totalCells = w * h
+  const totalCells = width * height
 
-  // Allocate or reuse flow field
   let ff: FlowField
-  if (!world.flowField || world.flowField.width !== w || world.flowField.height !== h) {
+  if (!world.flowField || world.flowField.width !== width || world.flowField.height !== height) {
     ff = {
-      width: w,
-      height: h,
+      width,
+      height,
       dirX: new Float32Array(totalCells),
       dirY: new Float32Array(totalCells),
       dist: new Uint16Array(totalCells),
@@ -76,45 +133,36 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
   }
   ff.dist.fill(UNREACHABLE)
 
-  // Allocate queue buffer
-  if (!queueBuffer || queueBuffer.length < totalCells) {
-    queueBuffer = new Uint32Array(totalCells)
+  if (!heapIndices || heapIndices.length < totalCells) {
+    heapIndices = new Uint32Array(totalCells)
+    heapPriorities = new Uint16Array(totalCells)
   }
 
-  // Multi-source BFS: seed from all alive player cells
-  let head = 0
-  let tail = 0
-  for (const seed of _seeds) {
+  heapClear()
+  for (const seed of seedScratch) {
     ff.dist[seed.idx] = 0
-    queueBuffer[tail++] = seed.idx
+    heapPush(seed.idx, 0)
   }
 
   const halfTile = tilemap.tileSize / 2
 
-  while (head < tail) {
-    const curIdx = queueBuffer[head++]!
-    const cx = curIdx % w
-    const cy = (curIdx - cx) / w
-    const curDist = ff.dist[curIdx]!
+  while (heapSize > 0) {
+    const { idx: curIdx, priority: curDist } = heapPop()
+    if (curDist > ff.dist[curIdx]!) continue
+
+    const cx = curIdx % width
+    const cy = (curIdx - cx) / width
 
     for (let n = 0; n < 8; n++) {
       const nx = cx + NEIGHBOR_DX[n]!
       const ny = cy + NEIGHBOR_DY[n]!
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
 
-      // Bounds check
-      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue
-
-      const nIdx = ny * w + nx
-
-      // Already visited
-      if (ff.dist[nIdx] !== UNREACHABLE) continue
-
-      // Solid check (use tile center)
+      const nIdx = ny * width + nx
       const nWorldX = nx * tilemap.tileSize + halfTile
       const nWorldY = ny * tilemap.tileSize + halfTile
       if (isSolidAt(tilemap, nWorldX, nWorldY)) continue
 
-      // Diagonal corner-cutting prevention
       if (NEIGHBOR_DIAG[n]) {
         const cardAIdx = DIAG_CARD_A[n]!
         const cardBIdx = DIAG_CARD_B[n]!
@@ -123,28 +171,33 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
         const cardBx = cx + NEIGHBOR_DX[cardBIdx]!
         const cardBy = cy + NEIGHBOR_DY[cardBIdx]!
 
-        const cardASolid = cardAx < 0 || cardAx >= w || cardAy < 0 || cardAy >= h ||
+        const cardASolid = cardAx < 0 || cardAx >= width || cardAy < 0 || cardAy >= height ||
           isSolidAt(tilemap, cardAx * tilemap.tileSize + halfTile, cardAy * tilemap.tileSize + halfTile)
-        const cardBSolid = cardBx < 0 || cardBx >= w || cardBy < 0 || cardBy >= h ||
+        const cardBSolid = cardBx < 0 || cardBx >= width || cardBy < 0 || cardBy >= height ||
           isSolidAt(tilemap, cardBx * tilemap.tileSize + halfTile, cardBy * tilemap.tileSize + halfTile)
 
         if (cardASolid && cardBSolid) continue
       }
 
-      ff.dist[nIdx] = curDist + 1
+      const floorType = getFloorTileTypeAt(tilemap, nWorldX, nWorldY)
+      const edgeCost = floorType === TileType.LAVA ? LAVA_PATHFIND_COST : 1
+      const newDist = curDist + edgeCost
 
-      // Direction: from neighbor toward current cell (one step closer to nearest player)
-      const dirX = cx - nx // always -1, 0, or 1
-      const dirY = cy - ny
-      if (NEIGHBOR_DIAG[n]) {
-        ff.dirX[nIdx] = dirX * INV_SQRT2
-        ff.dirY[nIdx] = dirY * INV_SQRT2
-      } else {
-        ff.dirX[nIdx] = dirX
-        ff.dirY[nIdx] = dirY
+      if (newDist < ff.dist[nIdx]!) {
+        ff.dist[nIdx] = newDist
+
+        const dirX = cx - nx
+        const dirY = cy - ny
+        if (NEIGHBOR_DIAG[n]) {
+          ff.dirX[nIdx] = dirX * INV_SQRT2
+          ff.dirY[nIdx] = dirY * INV_SQRT2
+        } else {
+          ff.dirX[nIdx] = dirX
+          ff.dirY[nIdx] = dirY
+        }
+
+        heapPush(nIdx, newDist)
       }
-
-      queueBuffer[tail++] = nIdx
     }
   }
 

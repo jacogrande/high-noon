@@ -10,31 +10,31 @@ Network protocol definitions and serialization.
 - Shared HUD derivation helpers (`hud.ts`) used by client and server
 - Protocol versioning
 
-## Message Types
+## Runtime Message Types
 
-### Client → Server
+### Client → Server (Colyseus room messages)
 
-- `InputCmd` - Player input (buttons, aim angle, movement vector, debug flags)
-- `AckSnapshot` - Acknowledge received server state
+- `input` - `NetworkInput` (seq + buttons + aim/move/cursor)
+- `ping` - clock sync ping payload
+- `request-game-config` - explicit config re-sync after reconnect
 
 ### Server → Client
 
-- `Snapshot` - Authoritative game state (players, key enemies)
-- `Events[]` - Game events (spawns, damage, pickups)
-
-## Event Types
-
-Events represent things that happened:
-
-- `SpawnBullet` - Bullet created (id, position, velocity, seed)
-- `SpawnEnemy` - Enemy created (id, archetype, position, seed)
-- `Damage` - Entity took damage (target, amount, source)
-- `Pickup` - Item collected (entity, item key)
-- `Death` - Entity died (entity, killer)
+- `game-config` - room seed + authoritative player/character identity
+- `snapshot` - authoritative world snapshot (binary)
+- `hud` - HUD data derived from authoritative local player state
+- `pong` - clock sync pong payload
 
 ## Binary Snapshots
 
-`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer — callers must consume or copy the data before the next encode call.
+`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
+
+Current snapshot protocol (`SNAPSHOT_VERSION = 6`) includes:
+
+- Player: `x/y`, jump height `z`, jump vertical velocity `zVelocity`, aim/state/hp
+- Player flags: `Dead`, `Invincible`, `rollButtonWasDown`, `jumpButtonWasDown`
+- Roll reconciliation payload: elapsed/duration/direction
+- Bullet and enemy authoritative state
 
 ## HUD Derivation
 

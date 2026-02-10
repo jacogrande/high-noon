@@ -156,8 +156,11 @@ export class Input {
     }
 
     // Action buttons
-    if (this.keys.has('Space') || this.keys.has('ShiftLeft')) {
+    if (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) {
       input.buttons |= Button.ROLL
+    }
+    if (this.keys.has('Space')) {
+      input.buttons |= Button.JUMP
     }
     if (this.mouseDown) {
       input.buttons |= Button.SHOOT

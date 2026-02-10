@@ -42,35 +42,36 @@ export class TilemapRenderer {
     this.sprites.length = 0
 
     const { width, height, tileSize, layers } = map
+    const drawLayer = (layerIndex: number): void => {
+      const layer = layers[layerIndex]
+      if (!layer) return
 
-    // Draw floor layer first (layer 1, non-solid)
-    if (layers[1]) {
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const tile = layers[1].data[y * width + x]
-          if (tile === TileType.FLOOR) {
-            const sprite = new Sprite(AssetLoader.getTileTexture(TileType.FLOOR))
-            sprite.position.set(x * tileSize, y * tileSize)
-            this.container.addChild(sprite)
-            this.sprites.push(sprite)
+          const tile = layer.data[y * width + x] ?? TileType.EMPTY
+          if (tile === TileType.EMPTY) continue
+
+          const sprite = new Sprite(AssetLoader.getTileTexture(tile))
+          sprite.position.set(x * tileSize, y * tileSize)
+
+          if (tile === TileType.LAVA) {
+            sprite.tint = 0xF06A2A
+          } else if (tile === TileType.HALF_WALL) {
+            sprite.tint = 0xC59A57
           }
+
+          this.container.addChild(sprite)
+          this.sprites.push(sprite)
         }
       }
     }
 
-    // Draw wall layer on top (layer 0, solid)
-    if (layers[0]) {
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const tile = layers[0].data[y * width + x]
-          if (tile === TileType.WALL) {
-            const sprite = new Sprite(AssetLoader.getTileTexture(TileType.WALL))
-            sprite.position.set(x * tileSize, y * tileSize)
-            this.container.addChild(sprite)
-            this.sprites.push(sprite)
-          }
-        }
-      }
+    // Draw non-solid layers first, then solid layers on top.
+    for (let i = 0; i < layers.length; i++) {
+      if (!layers[i]?.solid) drawLayer(i)
+    }
+    for (let i = 0; i < layers.length; i++) {
+      if (layers[i]?.solid) drawLayer(i)
     }
   }
 

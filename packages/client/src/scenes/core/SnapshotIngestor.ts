@@ -19,6 +19,7 @@ import {
   PLAYER_IFRAME_DURATION,
   PLAYER_RADIUS,
   Position,
+  ZPosition,
   Showdown,
   Speed,
   Velocity,
@@ -93,6 +94,7 @@ export class SnapshotIngestor {
         addComponent(ctx.world, Velocity, clientEid)
         addComponent(ctx.world, Player, clientEid)
         addComponent(ctx.world, PlayerState, clientEid)
+        addComponent(ctx.world, ZPosition, clientEid)
         addComponent(ctx.world, Collider, clientEid)
         addComponent(ctx.world, Health, clientEid)
 
@@ -106,6 +108,8 @@ export class SnapshotIngestor {
         Position.y[clientEid] = p.y
         Position.prevX[clientEid] = p.x
         Position.prevY[clientEid] = p.y
+        ZPosition.z[clientEid] = p.z
+        ZPosition.zVelocity[clientEid] = p.zVelocity
 
         ctx.playerEntities.set(p.eid, clientEid)
 
@@ -167,6 +171,8 @@ export class SnapshotIngestor {
       if (clientEid !== ctx.myClientEid) {
         Player.aimAngle[clientEid] = p.aimAngle
         PlayerState.state[clientEid] = p.state
+        ZPosition.z[clientEid] = p.z
+        ZPosition.zVelocity[clientEid] = p.zVelocity
       }
       const prevHP = Health.current[clientEid]!
       Health.current[clientEid] = p.hp

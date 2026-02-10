@@ -194,6 +194,8 @@ export interface GameWorld extends IWorld {
   showdownActivatedThisTick: boolean
   /** Set to true when Showdown duration expires naturally this tick */
   showdownExpiredThisTick: boolean
+  /** Set to true when a jump stomp lands this tick */
+  jumpStompThisTick: boolean
   /** Hook registry for behavioral node effects */
   hooks: HookRegistry
   /** Per-entity input map (entity ID → InputState). Populated each tick. */
@@ -276,6 +278,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     showdownKillThisTick: false,
     showdownActivatedThisTick: false,
     showdownExpiredThisTick: false,
+    jumpStompThisTick: false,
     hooks: new HookRegistry(),
     playerInputs: new Map(),
     players: new Map(),
@@ -332,6 +335,7 @@ export function resetWorld(world: GameWorld): void {
   world.showdownKillThisTick = false
   world.showdownActivatedThisTick = false
   world.showdownExpiredThisTick = false
+  world.jumpStompThisTick = false
   world.hooks.clear()
   world.playerInputs.clear()
   world.players.clear()

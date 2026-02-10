@@ -17,6 +17,7 @@ Wraps `colyseus.js` Client/Room with a typed event interface:
 const net = new NetworkClient('ws://localhost:2567')
 net.on('game-config', (config) => { /* { seed, sessionId, playerEid, characterId } */ })
 net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
+net.on('incompatible-protocol', (reason) => { /* snapshot protocol mismatch */ })
 net.on('disconnect', () => { /* connection permanently lost */ })
 await net.join({ characterId: 'undertaker' }) // Resolves after game-config (10s timeout)
 net.sendInput(inputState)
@@ -24,7 +25,9 @@ net.disconnect()              // Intentional leave, clears listeners
 ```
 
 - Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared
+- Current snapshot protocol (`v6`) includes jump state payload (`z`, `zVelocity`, jump edge-state flag) for reconciliation parity
 - Snapshot decode errors are caught and logged (don't crash the game loop)
+- Snapshot protocol mismatches trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)
 - `game-config` listeners stay active after join and can fire again after reconnect.
 - **Auto-reconnect**: on unexpected disconnect, attempts reconnection with exponential backoff (5 attempts, 500ms-8s delay) using the Colyseus reconnection token. After reconnect, the client explicitly requests `game-config` to avoid config-loss races and only fires `disconnect` after all attempts fail.

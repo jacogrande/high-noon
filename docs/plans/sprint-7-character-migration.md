@@ -16,7 +16,7 @@ This sprint ports the feature set into the **current architecture**:
 
 - `CoreGameScene` + mode controllers
 - Shared scene-core feedback pipeline
-- Snapshot v5 + input sequencing + reconciliation + interpolation + clock sync
+- Snapshot v6 + input sequencing + reconciliation + interpolation + clock sync
 - Current server input/rate-limit/reconnect hardening
 
 ## Goal
@@ -26,7 +26,7 @@ Port all gameplay value from `new-character` while preserving and extending curr
 ## Non-Negotiable Constraints
 
 - Do not reintroduce separate public game scenes.
-- Do not regress net protocol (`NetworkInput` seq, snapshot v5 fields, clock sync, reconnect behavior).
+- Do not regress net protocol (`NetworkInput` seq, snapshot v6 fields, clock sync, reconnect behavior).
 - Do not regress multiplayer prediction/reconciliation pipeline.
 - New character abilities must be integrated through shared scene-core modules, not duplicated scene logic.
 

@@ -13,10 +13,11 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Position, Velocity, Collider, Bullet } from '../components'
+import { Position, Velocity, Collider, Bullet, ZPosition } from '../components'
+import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import { MAX_COLLIDER_RADIUS } from '../prefabs'
 import type { Tilemap } from '../tilemap'
-import { getTilesInCircle, getTileBounds, isSolidAt } from '../tilemap'
+import { getTilesInCircle, getTileBounds, isSolidAt, getSolidTileTypeAt, TileType } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
 
 // Note: bitECS queries are stateless and safe to share across multiple worlds.
@@ -95,7 +96,8 @@ function resolveCircleTilemapCollision(
   map: Tilemap,
   x: number,
   y: number,
-  radius: number
+  radius: number,
+  z = 0,
 ): { resolvedX: number; resolvedY: number } {
   let resolvedX = x
   let resolvedY = y
@@ -117,6 +119,12 @@ function resolveCircleTilemapCollision(
       const tileCenterY = tileY * map.tileSize + map.tileSize / 2
       if (!isSolidAt(map, tileCenterX, tileCenterY)) {
         continue
+      }
+
+      // Airborne entities pass over half walls but still collide with real walls.
+      if (z > JUMP_AIRBORNE_THRESHOLD) {
+        const tileType = getSolidTileTypeAt(map, tileCenterX, tileCenterY)
+        if (tileType === TileType.HALF_WALL) continue
       }
 
       // Get tile bounds
@@ -151,6 +159,11 @@ function resolveCircleTilemapCollision(
   }
 
   return { resolvedX, resolvedY }
+}
+
+function getEntityZ(world: GameWorld, eid: number): number {
+  if (!hasComponent(world, ZPosition, eid)) return 0
+  return ZPosition.z[eid]!
 }
 
 /**
@@ -215,7 +228,8 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
       const x = Position.x[eid1]!
       const y = Position.y[eid1]!
       const radius = Collider.radius[eid1]!
-      const { resolvedX, resolvedY } = resolveCircleTilemapCollision(tilemap, x, y, radius)
+      const z = getEntityZ(world, eid1)
+      const { resolvedX, resolvedY } = resolveCircleTilemapCollision(tilemap, x, y, radius, z)
       if (resolvedX !== x || resolvedY !== y) {
         Position.x[eid1] = resolvedX
         Position.y[eid1] = resolvedY
@@ -236,6 +250,9 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
         const layer2 = Collider.layer[eid2]!
         if (layer1 === layer2) return
         if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
+        if (getEntityZ(world, eid1) > JUMP_AIRBORNE_THRESHOLD || getEntityZ(world, eid2) > JUMP_AIRBORNE_THRESHOLD) {
+          return
+        }
 
         const x2 = Position.x[eid2]!
         const y2 = Position.y[eid2]!
@@ -257,6 +274,9 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
       const layer2 = Collider.layer[eid2]!
       if (layer1 === layer2) continue
       if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) continue
+      if (getEntityZ(world, eid1) > JUMP_AIRBORNE_THRESHOLD || getEntityZ(world, eid2) > JUMP_AIRBORNE_THRESHOLD) {
+        continue
+      }
 
       const x2 = Position.x[eid2]!
       const y2 = Position.y[eid2]!
@@ -280,12 +300,14 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
       const x = Position.x[eid]!
       const y = Position.y[eid]!
       const radius = Collider.radius[eid]!
+      const z = getEntityZ(world, eid)
 
       const { resolvedX, resolvedY } = resolveCircleTilemapCollision(
         tilemap,
         x,
         y,
-        radius
+        radius,
+        z,
       )
 
       // Update position if changed
@@ -317,6 +339,9 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
 
         // Skip all bullet pairs — bullets are handled by bulletCollisionSystem.
         if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
+        if (getEntityZ(world, eid1) > JUMP_AIRBORNE_THRESHOLD || getEntityZ(world, eid2) > JUMP_AIRBORNE_THRESHOLD) {
+          return
+        }
 
         const x2 = Position.x[eid2]!
         const y2 = Position.y[eid2]!

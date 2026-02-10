@@ -20,6 +20,7 @@ class MemorySessionStorage {
 class FakeRoom {
   reconnectionToken = 'next-token'
   readonly sendCalls: Array<{ type: string; payload?: unknown }> = []
+  leaveCallCount = 0
 
   private readonly messageHandlers = new Map<string, Array<(payload: unknown) => void>>()
   private readonly leaveHandlers: Array<() => void> = []
@@ -60,6 +61,7 @@ class FakeRoom {
   }
 
   leave(): void {
+    this.leaveCallCount++
     for (const handler of this.leaveHandlers) handler()
   }
 }
@@ -137,5 +139,33 @@ describe('NetworkClient', () => {
     } satisfies GameConfig)
 
     expect(configEvents).toBe(1)
+  })
+
+  test('protocol mismatch on snapshot emits incompatible-protocol and disconnects', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    const originalConsoleError = console.error
+    console.error = () => undefined
+    try {
+      let incompatibleReason: string | null = null
+      let disconnectCount = 0
+      net.on('incompatible-protocol', (reason) => {
+        incompatibleReason = reason
+      })
+      net.on('disconnect', () => {
+        disconnectCount++
+      })
+
+      ;(net as any).registerRoomHandlers(room)
+
+      room.emit('snapshot', new Uint8Array([99]))
+
+      expect(incompatibleReason).toContain('Snapshot version mismatch')
+      expect(disconnectCount).toBe(1)
+      expect(room.leaveCallCount).toBe(1)
+      expect((net as any).room).toBeNull()
+    } finally {
+      console.error = originalConsoleError
+    }
   })
 })

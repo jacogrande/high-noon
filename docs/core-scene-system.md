@@ -159,6 +159,7 @@ When adding visual/audio feedback, prefer these shared modules first.
 Use this sequence:
 
 1. Add core gameplay behavior in `packages/shared` (systems/components/snapshots).
+   Example: jump + lava hazards live fully in shared systems, with multiplayer consuming the same `z`/hazard state via snapshots and prediction/replay.
 2. Add feedback signal detection in `feedbackSignals.ts` if needed.
 3. Emit gameplay events through `GameplayEvents` from both mode controllers.
 4. Handle effects in `GameplayEventProcessor` once.

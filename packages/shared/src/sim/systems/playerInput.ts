@@ -16,8 +16,11 @@ import {
   Speed,
   Velocity,
   Roll,
+  Jump,
+  ZPosition,
   Position,
 } from '../components'
+import { JUMP_VELOCITY } from '../content/jump'
 import { getUpgradeStateForPlayer } from '../upgrade'
 
 // Define query for player entities
@@ -45,6 +48,7 @@ export function playerInputSystem(
     const input = world.playerInputs.get(eid)
     if (!input) {
       Player.rollButtonWasDown[eid] = 0
+      Player.jumpButtonWasDown[eid] = 0
       continue
     }
 
@@ -60,13 +64,21 @@ export function playerInputSystem(
 
     // Get current state
     const currentState = PlayerState.state[eid]!
+    const hasJump = hasComponent(world, Jump, eid)
     const isRolling = currentState === PlayerStateType.ROLLING
+    const isJumping = currentState === PlayerStateType.JUMPING && hasJump
+    const isLanding = currentState === PlayerStateType.LANDING && hasJump
 
     // Handle roll initiation
     const wantsRoll = hasButton(input, Button.ROLL)
     const wasRollDown = Player.rollButtonWasDown[eid] === 1
     // Require button re-press: can only roll if button wasn't held last tick
-    const canRoll = !isRolling && !hasComponent(world, Roll, eid) && !wasRollDown
+    const canRoll =
+      !isRolling &&
+      !isJumping &&
+      !isLanding &&
+      !hasComponent(world, Roll, eid) &&
+      !wasRollDown
 
     if (wantsRoll && canRoll) {
       // Determine roll direction
@@ -107,16 +119,45 @@ export function playerInputSystem(
 
       // Track button state for re-press detection
       Player.rollButtonWasDown[eid] = wantsRoll ? 1 : 0
+      Player.jumpButtonWasDown[eid] = hasButton(input, Button.JUMP) ? 1 : 0
 
       // Skip normal movement processing this tick
       continue
     }
 
-    // Update player state (if not rolling)
-    if (!isRolling) {
-      PlayerState.state[eid] = isMoving
-        ? PlayerStateType.MOVING
-        : PlayerStateType.IDLE
+    // Handle jump initiation
+    const wantsJump = hasButton(input, Button.JUMP)
+    const wasJumpDown = Player.jumpButtonWasDown[eid] === 1
+    const canJump =
+      !isRolling &&
+      !isJumping &&
+      !isLanding &&
+      !hasComponent(world, Jump, eid) &&
+      !wasJumpDown
+
+    if (wantsJump && canJump) {
+      addComponent(world, Jump, eid)
+      addComponent(world, ZPosition, eid)
+      Jump.landed[eid] = 0
+      Jump.landingTimer[eid] = 0
+      Jump.bufferTimer[eid] = 0
+      ZPosition.z[eid] = 0
+      ZPosition.zVelocity[eid] = JUMP_VELOCITY
+      PlayerState.state[eid] = PlayerStateType.JUMPING
+
+      Player.rollButtonWasDown[eid] = wantsRoll ? 1 : 0
+      Player.jumpButtonWasDown[eid] = 1
+      continue
+    }
+
+    // Update player state (if not rolling/landing).
+    // Jumping still allows XY movement.
+    if (!isRolling && !isLanding) {
+      if (!isJumping) {
+        PlayerState.state[eid] = isMoving
+          ? PlayerStateType.MOVING
+          : PlayerStateType.IDLE
+      }
 
       // Apply velocity based on current speed
       const speed = Speed.current[eid]!
@@ -126,5 +167,6 @@ export function playerInputSystem(
 
     // Track button state for re-press detection (must be at end of loop)
     Player.rollButtonWasDown[eid] = wantsRoll ? 1 : 0
+    Player.jumpButtonWasDown[eid] = wantsJump ? 1 : 0
   }
 }

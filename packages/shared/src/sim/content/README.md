@@ -7,6 +7,8 @@ Data-driven game content definitions.
 - `player.ts` - Player constants (speed, radius, start position, roll params, HP, iframe duration)
 - `weapons.ts` - Weapon stats (pistol fire rate, bullet speed, damage, range)
 - `enemies.ts` - Enemy type definitions (4 archetypes, 2 tiers)
+- `jump.ts` - Jump arc/landing/stomp constants
+- `hazards.ts` - Lava DPS + hazard pathfinding weights
 - `waves.ts` - Wave/encounter definitions (STAGE_1_ENCOUNTER)
 - `xp.ts` - XP values per enemy type, level thresholds, `getLevelForXP()`
 - `upgrades.ts` - 15 upgrade definitions (enums, stat mods, rarity weights)
@@ -14,7 +16,7 @@ Data-driven game content definitions.
   - `types.ts` - CharacterDef, SkillBranch, SkillNodeDef, StatMod types
   - `sheriff.ts` - Sheriff character: 5 branches, 15 skill nodes (all implemented)
 - `nodeEffects.ts` - Behavioral effect handlers for skill nodes (pierce, burst, dodge-heal, timed buffs)
-- `maps/testArena.ts` - Test arena map with walls and obstacles
+- `maps/testArena.ts` - Test arena map with walls, lava tiles, and half-wall jump blockers
 
 ## Planned Content
 

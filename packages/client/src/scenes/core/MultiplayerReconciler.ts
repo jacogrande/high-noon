@@ -1,14 +1,15 @@
 import { addComponent, hasComponent, removeComponent } from 'bitecs'
 import {
-  Cylinder,
   Health,
+  Jump,
+  JUMP_LANDING_DURATION,
   Player,
   PlayerState,
   PlayerStateType,
   Position,
   Roll,
-  Showdown,
   Velocity,
+  ZPosition,
   PLAYER_IFRAME_DURATION,
   type GameWorld,
   type WorldSnapshot,
@@ -17,6 +18,7 @@ import type { InputBuffer } from '../../net/InputBuffer'
 import type { LocalPlayerSimulationDriver } from './SimulationDriver'
 import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
 import type { IGameplayEventSink, ILocalIdentityState, ISimStateSource } from './SceneRuntimeContracts'
+import { captureReplayExcludedState, restoreReplayExcludedState } from './ReplayExcludedState'
 
 export interface ReconcileContext extends ISimStateSource, ILocalIdentityState {
   inputBuffer: InputBuffer
@@ -85,6 +87,10 @@ export class MultiplayerReconciler {
     Velocity.x[ctx.myClientEid] = 0
     Velocity.y[ctx.myClientEid] = 0
     PlayerState.state[ctx.myClientEid] = serverPlayer.state
+    if (!hasComponent(ctx.world, ZPosition, ctx.myClientEid)) {
+      addComponent(ctx.world, ZPosition, ctx.myClientEid)
+    }
+    ZPosition.z[ctx.myClientEid] = serverPlayer.z
 
     // Handle Roll component based on server state.
     const serverRolling = serverPlayer.state === PlayerStateType.ROLLING
@@ -122,30 +128,55 @@ export class MultiplayerReconciler {
       ctx.world.rollDodgedBullets.delete(ctx.myClientEid)
     }
 
-    // Use authoritative roll edge-state from snapshot flags.
+    // Handle Jump component based on server state.
+    const serverJumping = serverPlayer.state === PlayerStateType.JUMPING
+    const serverLanding = serverPlayer.state === PlayerStateType.LANDING
+    const serverJumpState = serverJumping || serverLanding
+    const hasLocalJump = hasComponent(ctx.world, Jump, ctx.myClientEid)
+    const hadLocalLanding = hasLocalJump && Jump.landed[ctx.myClientEid] === 1
+
+    if (!serverJumpState) {
+      if (hasLocalJump) {
+        removeComponent(ctx.world, Jump, ctx.myClientEid)
+      }
+      ZPosition.z[ctx.myClientEid] = 0
+      ZPosition.zVelocity[ctx.myClientEid] = 0
+    } else {
+      if (!hasLocalJump) {
+        addComponent(ctx.world, Jump, ctx.myClientEid)
+      }
+
+      ZPosition.z[ctx.myClientEid] = serverPlayer.z
+      ZPosition.zVelocity[ctx.myClientEid] = serverJumping
+        ? serverPlayer.zVelocity
+        : 0
+
+      if (serverLanding) {
+        Jump.landed[ctx.myClientEid] = 1
+        // Only set full lockout when entering landing; do not re-extend landing
+        // on every snapshot while already landing.
+        if (!hadLocalLanding) {
+          Jump.landingTimer[ctx.myClientEid] = JUMP_LANDING_DURATION
+        }
+      } else {
+        Jump.landed[ctx.myClientEid] = 0
+        Jump.landingTimer[ctx.myClientEid] = 0
+      }
+    }
+
+    // Use authoritative edge-state from snapshot flags.
     Player.rollButtonWasDown[ctx.myClientEid] = (serverPlayer.flags & 4) !== 0 ? 1 : 0
+    Player.jumpButtonWasDown[ctx.myClientEid] = (serverPlayer.flags & 8) !== 0 ? 1 : 0
 
     // Save state excluded from replay systems.
-    const savedFireCooldown = Cylinder.fireCooldown[ctx.myClientEid]!
-    const savedShootWasDown = Player.shootWasDown[ctx.myClientEid]!
-    const savedShowdownActive = Showdown.active[ctx.myClientEid]!
-    const savedShowdownTargetEid = Showdown.targetEid[ctx.myClientEid]!
-    const savedShowdownDuration = Showdown.duration[ctx.myClientEid]!
-    const savedShowdownCooldown = Showdown.cooldown[ctx.myClientEid]!
-    const savedAbilityWasDown = Player.abilityWasDown[ctx.myClientEid]!
+    const excludedState = captureReplayExcludedState(ctx.world, ctx.myClientEid)
 
     ctx.inputBuffer.acknowledgeUpTo(serverPlayer.lastProcessedSeq)
     const pending = ctx.inputBuffer.getPending()
     ctx.replayDriver.replay(ctx.myClientEid, pending)
 
     // Restore state excluded from replay systems.
-    Cylinder.fireCooldown[ctx.myClientEid] = savedFireCooldown
-    Player.shootWasDown[ctx.myClientEid] = savedShootWasDown
-    Showdown.active[ctx.myClientEid] = savedShowdownActive
-    Showdown.targetEid[ctx.myClientEid] = savedShowdownTargetEid
-    Showdown.duration[ctx.myClientEid] = savedShowdownDuration
-    Showdown.cooldown[ctx.myClientEid] = savedShowdownCooldown
-    Player.abilityWasDown[ctx.myClientEid] = savedAbilityWasDown
+    restoreReplayExcludedState(ctx.world, ctx.myClientEid, excludedState)
 
     const newPredX = Position.x[ctx.myClientEid]!
     const newPredY = Position.y[ctx.myClientEid]!

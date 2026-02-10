@@ -1,87 +1,68 @@
 # systems/
 
-Individual ECS systems that operate on the game world.
+Deterministic ECS systems that run identically on client and server.
 
-## Current Systems
+## Active Systems
 
-- `playerInput.ts` - Convert input to player velocity, initiate rolls
-- `roll.ts` - Manage roll state, i-frames, locked velocity, and dodge detection (onRollDodge hook)
-- `showdown.ts` - Showdown ability: mark enemy, speed bonus, kill detection, cooldown, onShowdownActivate hook
-- `cylinder.ts` - Revolver cylinder: reload state machine, fire cooldown, auto-reload
-- `weapon.ts` - Handle firing, cooldowns, spawn bullets (cylinder-aware), onCylinderEmpty hook
-- `bullet.ts` - Track bullet distance traveled, despawn at range/lifetime
-- `bulletCollision.ts` - Bullet vs entity (circle-circle, layer filtering, Showdown pierce/bonus damage, hook-based pierce) and bullet vs tilemap
-- `movement.ts` - Apply velocity to position, store previous for interpolation
-- `health.ts` - Iframe countdown, death processing (Dead tag for players, removeEntity for others), XP awards, onKill hook
-- `buffSystem.ts` - Timed buff state ticking (Last Stand timer); stat bonuses applied idempotently in writeStatsToECS
-- `collision.ts` - Circle vs tilemap and circle vs circle collision detection/resolution
-- `debugSpawn.ts` - Debug: spawn test enemy bullets on DEBUG_SPAWN button press
-- `flowField.ts` - BFS pathfinding toward the player for enemy navigation
-- `enemyDetection.ts` - Enemy target acquisition and LOS checks
-- `enemyAI.ts` - Enemy AI state machine (idle, chase, telegraph, attack, recovery, stunned, flee)
-- `enemySteering.ts` - Enemy steering behaviors (seek, separation)
-- `enemyAttack.ts` - Enemy attack execution (projectiles, charger contact damage)
-- `spatialHash.ts` - Rebuild spatial hash for broadphase collision queries
-- `waveSpawner.ts` - Director-wave hybrid enemy spawning system
+- `playerInput.ts` - Per-player input mapping, roll/jump initiation
+- `roll.ts` - Roll movement, i-frames, dodge hooks
+- `jump.ts` - Airborne arc, landing lockout, stomp, half-wall landing pushout
+- `showdown.ts` - Sheriff ability state machine
+- `lastRites.ts` - Undertaker ability state machine
+- `dynamite.ts` - Prospector ability lifecycle
+- `cylinder.ts` - Revolver reload/fire cooldown state
+- `weapon.ts` - Bullet weapon firing (jump/roll gated)
+- `melee.ts` - Prospector melee combat path
+- `knockback.ts` - Knockback impulse ticking
+- `debugSpawn.ts` - Debug projectile spawn
+- `waveSpawner.ts` - Encounter-driven enemy spawning
+- `bullet.ts` - Bullet lifetime/range tracking
+- `flowField.ts` - Weighted Dijkstra field (`LAVA_PATHFIND_COST` aware)
+- `enemyDetection.ts` - Target acquisition + LOS
+- `enemyAI.ts` - Enemy state machine transitions
+- `spatialHash.ts` - Broadphase rebuild
+- `slowDebuff.ts` - Slow debuff timers
+- `enemySteering.ts` - Steering resolution
+- `enemyAttack.ts` - Enemy attack execution
+- `movement.ts` - Velocity integration + prev-position capture
+- `bulletCollision.ts` - Bullet-vs-entity/tile collision resolution
+- `hazardTile.ts` - Grounded lava damage-over-time
+- `health.ts` - I-frames and death processing
+- `goldRush.ts` - Gold nugget lifetime/pickup
+- `buffSystem.ts` - Timed buff bookkeeping
+- `collision.ts` - Circle push-out vs tiles/entities (jump-aware half-walls)
 
-## Execution Order
+## Canonical Order (`registerAllSystems`)
 
-Systems run in a specific order each tick:
+1. `playerInputSystem`
+2. `rollSystem`
+3. `jumpSystem`
+4. `showdownSystem`
+5. `lastRitesSystem`
+6. `dynamiteSystem`
+7. `cylinderSystem`
+8. `weaponSystem`
+9. `meleeSystem`
+10. `knockbackSystem`
+11. `debugSpawnSystem`
+12. `waveSpawnerSystem`
+13. `bulletSystem`
+14. `flowFieldSystem`
+15. `enemyDetectionSystem`
+16. `enemyAISystem`
+17. `spatialHashSystem`
+18. `slowDebuffSystem`
+19. `enemySteeringSystem`
+20. `enemyAttackSystem`
+21. `movementSystem`
+22. `bulletCollisionSystem`
+23. `hazardTileSystem`
+24. `healthSystem`
+25. `goldRushSystem`
+26. `buffSystem`
+27. `collisionSystem`
 
-1. `playerInputSystem` - Converts input to velocity, initiates rolls
-2. `rollSystem` - Applies roll velocity, manages i-frames
-3. `showdownSystem` - Showdown activation, kill check, speed bonus
-4. `cylinderSystem` - Reload state machine, fire cooldown
-5. `weaponSystem` - Spawns bullets at current position before movement
-6. `debugSpawnSystem` - Test enemy bullets, edge-detected
-7. `waveSpawnerSystem` - Enemy wave spawning
-8. `bulletSystem` - Tracks distance traveled, despawns at range/lifetime
-9. `flowFieldSystem` - BFS pathfinding toward player
-10. `enemyDetectionSystem` - Target acquisition, LOS
-11. `enemyAISystem` - AI state machine transitions
-12. `spatialHashSystem` - Rebuild spatial hash
-13. `enemySteeringSystem` - Steering behaviors
-14. `enemyAttackSystem` - Attack execution
-15. `movementSystem` - Applies velocity, stores prev position
-16. `bulletCollisionSystem` - Entity hits then wall hits, Showdown pierce/bonus
-17. `healthSystem` - Iframe countdown, death processing, XP, onKill hook
-18. `buffSystem` - Timed buff ticking (Last Stand)
-19. `collisionSystem` - Push-out resolution
+## Multiplayer Subsets
 
-## registerAllSystems
-
-Both client and server use `registerAllSystems(systems)` to register all 19 systems in the canonical execution order. This prevents order divergence between client and server.
-
-```typescript
-import { createSystemRegistry, registerAllSystems } from '@high-noon/shared'
-
-const systems = createSystemRegistry()
-registerAllSystems(systems)
-```
-
-## Design Pattern
-
-Systems should:
-- Use `defineQuery` to create queries outside the function
-- Take `world`, `dt`, and optionally `input` as parameters
-- Store previous state for interpolation where needed
-- Never directly cause I/O or rendering
-- Be deterministic given the same world state
-
-```typescript
-import { defineQuery } from 'bitecs'
-
-const playerQuery = defineQuery([Player, Velocity, Speed])
-
-export function playerInputSystem(
-  world: GameWorld,
-  _dt: number,
-  input?: InputState
-): void {
-  if (!input) return
-  for (const eid of playerQuery(world)) {
-    Velocity.x[eid] = input.moveX * Speed.max[eid]!
-    Velocity.y[eid] = input.moveY * Speed.max[eid]!
-  }
-}
-```
+- `registerPredictionSystems` and `registerReplaySystems` include `jumpSystem` and `hazardTileSystem` so local prediction/replay preserves jump/lava parity.
+- Systems that should stay server-authoritative (enemy spawns/AI/death cleanup) are excluded from replay.

@@ -15,6 +15,7 @@ import {
   PlayerState,
   PlayerStateType,
   Speed,
+  ZPosition,
   Collider,
   Weapon,
   Cylinder,
@@ -104,6 +105,7 @@ export function spawnPlayer(
   addComponent(world, Player, eid)
   addComponent(world, PlayerState, eid)
   addComponent(world, Speed, eid)
+  addComponent(world, ZPosition, eid)
   addComponent(world, Collider, eid)
   addComponent(world, Weapon, eid)
   addComponent(world, Health, eid)
@@ -117,6 +119,8 @@ export function spawnPlayer(
   // Set initial velocity (stationary)
   Velocity.x[eid] = 0
   Velocity.y[eid] = 0
+  ZPosition.z[eid] = 0
+  ZPosition.zVelocity[eid] = 0
 
   // Set player data
   Player.id[eid] = playerId
