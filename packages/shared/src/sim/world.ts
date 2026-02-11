@@ -121,6 +121,21 @@ export type BulletCollisionCallback = (
 ) => void
 
 /**
+ * Multi-stage run state
+ */
+export interface RunState {
+  /** Current stage index (0-indexed) */
+  currentStage: number
+  totalStages: number
+  stages: StageEncounter[]
+  completed: boolean
+  /** 'clearing' = delay between stages while enemies despawn */
+  transition: 'none' | 'clearing'
+  /** Seconds remaining in the current transition */
+  transitionTimer: number
+}
+
+/**
  * Director-Wave encounter runtime state
  */
 export interface EncounterState {
@@ -170,6 +185,10 @@ export interface GameWorld extends IWorld {
   debugSpawnWasDown: boolean
   /** Current encounter state (null = no encounter running) */
   encounter: EncounterState | null
+  /** Multi-stage run state (null = no run active) */
+  run: RunState | null
+  /** Per-tick flag: true on the tick a stage is cleared */
+  stageCleared: boolean
   /** Maximum enemy projectiles before fodder stops firing */
   maxProjectiles: number
   /** Initial seed used to create the RNG (stored for replay reset) */
@@ -266,6 +285,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     spatialHash: null,
     debugSpawnWasDown: false,
     encounter: null,
+    run: null,
+    stageCleared: false,
     maxProjectiles: 80,
     initialSeed: resolvedSeed,
     rng: new SeededRng(resolvedSeed),
@@ -325,6 +346,8 @@ export function resetWorld(world: GameWorld): void {
   world.spatialHash = null
   world.debugSpawnWasDown = false
   world.encounter = null
+  world.run = null
+  world.stageCleared = false
   world.maxProjectiles = 80
   world.lastPlayerHitDir.clear()
   world.upgradeState = initUpgradeState(charDef)
@@ -381,4 +404,19 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
     threatKilledThisWave: 0,
     prevThreatAlive: 0,
   }
+}
+
+/**
+ * Start a multi-stage run with the given stage encounters.
+ */
+export function startRun(world: GameWorld, stages: StageEncounter[]): void {
+  world.run = {
+    currentStage: 0,
+    totalStages: stages.length,
+    stages,
+    completed: false,
+    transition: 'none',
+    transitionTimer: 0,
+  }
+  setEncounter(world, stages[0]!)
 }

@@ -31,12 +31,10 @@ export interface StageEncounter {
   waves: WaveDefinition[]
 }
 
-/**
- * Stage 1 encounter — 4 escalating waves
- */
+/** Stage 1: Town Outskirts — easy intro (3 waves) */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   waves: [
-    // Wave 1: Gentle intro — swarmers only, 1 shooter (must kill it)
+    // Wave 1: Swarmers + 1 shooter
     {
       fodderBudget: 12,
       fodderPool: [
@@ -50,9 +48,9 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       spawnDelay: 0,
       threatClearRatio: 1.0,
     },
-    // Wave 2: Ramp up — kill 1 of 2 threats to advance
+    // Wave 2: Mixed fodder + 1 shooter + 1 charger
     {
-      fodderBudget: 20,
+      fodderBudget: 18,
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 2 },
@@ -63,42 +61,143 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.SHOOTER, count: 1 },
         { type: EnemyType.CHARGER, count: 1 },
       ],
-      spawnDelay: 6,
+      spawnDelay: 5,
       threatClearRatio: 0.5,
     },
-    // Wave 3: Pressure — kill 2 of 3 threats to advance
+    // Wave 3: Heavier fodder + 2 shooters
     {
-      fodderBudget: 30,
+      fodderBudget: 24,
       fodderPool: [
-        { type: EnemyType.SWARMER, weight: 3 },
+        { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 2 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
-        { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 1 },
       ],
       maxFodderAlive: 10,
       threats: [
         { type: EnemyType.SHOOTER, count: 2 },
-        { type: EnemyType.CHARGER, count: 1 },
       ],
-      spawnDelay: 6,
+      spawnDelay: 5,
+      threatClearRatio: 1.0,
+    },
+  ],
+}
+
+/** Stage 2: Badlands — medium pressure (3 waves) */
+export const STAGE_2_ENCOUNTER: StageEncounter = {
+  waves: [
+    // Wave 1: Mixed fodder + 2 shooters
+    {
+      fodderBudget: 25,
+      fodderPool: [
+        { type: EnemyType.SWARMER, weight: 2 },
+        { type: EnemyType.GRUNT, weight: 3 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
+      ],
+      maxFodderAlive: 10,
+      threats: [
+        { type: EnemyType.SHOOTER, count: 2 },
+      ],
+      spawnDelay: 0,
+      threatClearRatio: 1.0,
+    },
+    // Wave 2: Heavy mix + shooter + 2 chargers
+    {
+      fodderBudget: 30,
+      fodderPool: [
+        { type: EnemyType.SWARMER, weight: 2 },
+        { type: EnemyType.GRUNT, weight: 2 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
+      ],
+      maxFodderAlive: 12,
+      threats: [
+        { type: EnemyType.SHOOTER, count: 1 },
+        { type: EnemyType.CHARGER, count: 2 },
+      ],
+      spawnDelay: 5,
       threatClearRatio: 0.6,
     },
-    // Wave 4: Boss rush — kill 2 of 4 threats to complete
+    // Wave 3: Full pressure + 3 threats
     {
-      fodderBudget: 40,
+      fodderBudget: 35,
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 3 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
         { type: EnemyType.GOBLIN_BARBARIAN, weight: 3 },
       ],
+      maxFodderAlive: 14,
+      threats: [
+        { type: EnemyType.SHOOTER, count: 2 },
+        { type: EnemyType.CHARGER, count: 1 },
+      ],
+      spawnDelay: 5,
+      threatClearRatio: 0.6,
+    },
+  ],
+}
+
+/** Stage 3: Devil's Canyon — hard finish (3 waves) */
+export const STAGE_3_ENCOUNTER: StageEncounter = {
+  waves: [
+    // Wave 1: Immediate pressure + 2 shooters + 1 charger
+    {
+      fodderBudget: 30,
+      fodderPool: [
+        { type: EnemyType.SWARMER, weight: 2 },
+        { type: EnemyType.GRUNT, weight: 3 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
+      ],
       maxFodderAlive: 12,
+      threats: [
+        { type: EnemyType.SHOOTER, count: 2 },
+        { type: EnemyType.CHARGER, count: 1 },
+      ],
+      spawnDelay: 0,
+      threatClearRatio: 0.6,
+    },
+    // Wave 2: Heavy swarm + 2 chargers + 1 shooter
+    {
+      fodderBudget: 40,
+      fodderPool: [
+        { type: EnemyType.SWARMER, weight: 3 },
+        { type: EnemyType.GRUNT, weight: 2 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 3 },
+      ],
+      maxFodderAlive: 14,
+      threats: [
+        { type: EnemyType.CHARGER, count: 2 },
+        { type: EnemyType.SHOOTER, count: 1 },
+      ],
+      spawnDelay: 5,
+      threatClearRatio: 0.6,
+    },
+    // Wave 3: Final stand — massive fodder + 4 threats
+    {
+      fodderBudget: 45,
+      fodderPool: [
+        { type: EnemyType.SWARMER, weight: 2 },
+        { type: EnemyType.GRUNT, weight: 3 },
+        { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
+        { type: EnemyType.GOBLIN_BARBARIAN, weight: 3 },
+      ],
+      maxFodderAlive: 16,
       threats: [
         { type: EnemyType.SHOOTER, count: 2 },
         { type: EnemyType.CHARGER, count: 2 },
       ],
-      spawnDelay: 8,
+      spawnDelay: 6,
       threatClearRatio: 0.5,
     },
   ],
 }
+
+/** Default 3-stage run */
+export const DEFAULT_RUN_STAGES: StageEncounter[] = [
+  STAGE_1_ENCOUNTER,
+  STAGE_2_ENCOUNTER,
+  STAGE_3_ENCOUNTER,
+]

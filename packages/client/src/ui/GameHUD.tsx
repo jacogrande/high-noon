@@ -1,6 +1,13 @@
 import { memo } from 'react'
 import type { HUDState } from '../scenes/types'
 
+function getStageDisplay(state: HUDState): string {
+  if (state.stageStatus === 'completed') return 'RUN COMPLETE'
+  if (state.stageStatus === 'clearing') return 'STAGE CLEAR'
+  if (state.stageStatus === 'none') return ''
+  return `STAGE ${state.stageNumber} / ${state.totalStages} — WAVE ${state.waveNumber} / ${state.totalWaves}`
+}
+
 export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
   const hpPct = state.maxHP > 0 ? (state.hp / state.maxHP) * 100 : 0
   const xpRange = state.xpForNextLevel - state.xpForCurrentLevel
@@ -16,14 +23,8 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
 
   return (
     <div style={styles.root}>
-      {/* Wave indicator — top-center */}
-      <div style={styles.waveContainer}>
-        {state.waveStatus === 'completed'
-          ? 'COMPLETE'
-          : state.waveStatus === 'none'
-            ? ''
-            : `WAVE ${state.waveNumber} / ${state.totalWaves}`}
-      </div>
+      {/* Stage + Wave indicator — top-center */}
+      <div style={styles.waveContainer}>{getStageDisplay(state)}</div>
 
       {/* Weapon + Ability — bottom-left */}
       <div style={styles.bottomLeft}>

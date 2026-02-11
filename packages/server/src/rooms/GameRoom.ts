@@ -3,7 +3,7 @@ import { hasComponent } from 'bitecs'
 import {
   createGameWorld,
   setWorldTilemap,
-  setEncounter,
+  startRun,
   createTestArena,
   createSystemRegistry,
   registerAllSystems,
@@ -25,7 +25,7 @@ import {
   LEVEL_THRESHOLDS,
   MAX_LEVEL,
   MAX_PLAYERS,
-  STAGE_1_ENCOUNTER,
+  DEFAULT_RUN_STAGES,
   TICK_MS,
   type GameWorld,
   type SystemRegistry,
@@ -446,7 +446,7 @@ export class GameRoom extends Room<GameRoomState> {
     if (!someoneReady) return
 
     this.state.phase = 'playing'
-    setEncounter(this.world, STAGE_1_ENCOUNTER)
+    startRun(this.world, DEFAULT_RUN_STAGES)
     this.broadcastPlayerRoster()
     this.broadcastGameConfig()
     console.log('[GameRoom] Phase → playing')
@@ -547,6 +547,14 @@ export class GameRoom extends Room<GameRoomState> {
       ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
       : 'none'
 
+    // Stage progression (global)
+    const run = this.world.run
+    const stageNumber = run ? run.currentStage + 1 : 0
+    const totalStages = run ? run.totalStages : 0
+    const stageStatus: HudData['stageStatus'] = run
+      ? (run.completed ? 'completed' : run.transition !== 'none' ? 'clearing' : 'active')
+      : 'none'
+
     for (const [, slot] of this.slots) {
       const eid = slot.eid
       const state = getUpgradeStateForPlayer(this.world, eid)
@@ -594,6 +602,9 @@ export class GameRoom extends Room<GameRoomState> {
         waveNumber,
         totalWaves,
         waveStatus,
+        stageNumber,
+        totalStages,
+        stageStatus,
       }
       slot.client.send('hud', hud)
     }

@@ -10,11 +10,11 @@ import {
   createSystemRegistry,
   spawnPlayer,
   setWorldTilemap,
-  setEncounter,
+  startRun,
   createTestArena,
   getArenaCenter,
   getPlayableBounds,
-  STAGE_1_ENCOUNTER,
+  DEFAULT_RUN_STAGES,
   registerAllSystems,
   writeStatsToECS,
   canTakeNode,
@@ -168,8 +168,8 @@ export class SingleplayerModeController implements SceneModeController {
     const { x: centerX, y: centerY } = getArenaCenter()
     spawnPlayer(this.world, centerX, centerY)
 
-    // Start the wave encounter
-    setEncounter(this.world, STAGE_1_ENCOUNTER)
+    // Start the multi-stage run
+    startRun(this.world, DEFAULT_RUN_STAGES)
 
     this.playerRenderer.sync(this.world)
 
@@ -273,6 +273,7 @@ export class SingleplayerModeController implements SceneModeController {
       showdownState,
     )
 
+    const run = this.world.run
     return {
       characterId,
       hp: playerEid !== null ? Health.current[playerEid]! : state.maxHP,
@@ -284,6 +285,11 @@ export class SingleplayerModeController implements SceneModeController {
       waveNumber: enc ? enc.currentWave + 1 : 0,
       totalWaves: enc ? enc.definition.waves.length : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
+      stageNumber: run ? run.currentStage + 1 : 0,
+      totalStages: run ? run.totalStages : 0,
+      stageStatus: run
+        ? (run.completed ? 'completed' : run.transition !== 'none' ? 'clearing' : 'active')
+        : 'none',
       cylinderRounds: hasCylinder ? Cylinder.rounds[playerEid!]! : 0,
       cylinderMax: hasCylinder ? Cylinder.maxRounds[playerEid!]! : 0,
       isReloading: hasCylinder ? Cylinder.reloading[playerEid!]! === 1 : false,
@@ -538,6 +544,7 @@ export class SingleplayerModeController implements SceneModeController {
 
     const enc = this.world.encounter
 
+    const runState = this.world.run
     const stats: DebugStats = {
       fps,
       tick: this.world.tick,
@@ -557,6 +564,10 @@ export class SingleplayerModeController implements SceneModeController {
       cameraX: camPos.x,
       cameraY: camPos.y,
       cameraTrauma: this.camera.shake.currentTrauma,
+      stageNumber: runState ? runState.currentStage + 1 : 0,
+      stageStatus: runState
+        ? (runState.completed ? 'completed' : runState.transition !== 'none' ? 'clearing' : 'active')
+        : 'none',
       waveNumber: enc ? enc.currentWave + 1 : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',
       fodderAlive: enc ? enc.fodderAliveCount : 0,

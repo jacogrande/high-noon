@@ -28,6 +28,7 @@ import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'
 import { spatialHashSystem } from './spatialHash'
 import { waveSpawnerSystem } from './waveSpawner'
+import { stageProgressionSystem, clearAllEnemies } from './stageProgression'
 import { buffSystem } from './buffSystem'
 import { slowDebuffSystem } from './slowDebuff'
 import { meleeSystem } from './melee'
@@ -57,6 +58,8 @@ export {
   enemyAttackSystem,
   spatialHashSystem,
   waveSpawnerSystem,
+  stageProgressionSystem,
+  clearAllEnemies,
   buffSystem,
   slowDebuffSystem,
   meleeSystem,
@@ -122,6 +125,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(knockbackSystem)
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
+  systems.register(stageProgressionSystem)
   systems.register(bulletSystem)
   systems.register(flowFieldSystem)
   systems.register(enemyDetectionSystem)

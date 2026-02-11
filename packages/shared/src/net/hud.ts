@@ -66,6 +66,11 @@ export interface HudData {
   waveNumber: number
   totalWaves: number
   waveStatus: 'active' | 'delay' | 'completed' | 'none'
+
+  // Stage progression
+  stageNumber: number
+  totalStages: number
+  stageStatus: 'active' | 'clearing' | 'completed' | 'none'
 }
 
 export interface SelectNodeRequest { nodeId: string }
