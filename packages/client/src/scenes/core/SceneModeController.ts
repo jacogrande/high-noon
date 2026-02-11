@@ -8,6 +8,8 @@ export interface SceneModeController {
   hasPendingPoints(): boolean
   getSkillTreeData(): SkillTreeUIData | null
   selectNode(nodeId: string): boolean
+  completeCamp(): void
+  setWorldVisible(visible: boolean): void
   isDisconnected(): boolean
   destroy(): void
 }

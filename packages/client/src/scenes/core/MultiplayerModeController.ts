@@ -884,6 +884,14 @@ export class MultiplayerModeController implements SceneModeController {
     return true
   }
 
+  completeCamp(): void {
+    console.warn('[MP] completeCamp not yet implemented for multiplayer')
+  }
+
+  setWorldVisible(visible: boolean): void {
+    this.gameApp.world.visible = visible
+  }
+
   // ===========================================================================
   // Cleanup
   // ===========================================================================

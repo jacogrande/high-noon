@@ -552,7 +552,7 @@ export class GameRoom extends Room<GameRoomState> {
     const stageNumber = run ? run.currentStage + 1 : 0
     const totalStages = run ? run.totalStages : 0
     const stageStatus: HudData['stageStatus'] = run
-      ? (run.completed ? 'completed' : run.transition !== 'none' ? 'clearing' : 'active')
+      ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
       : 'none'
 
     for (const [, slot] of this.slots) {

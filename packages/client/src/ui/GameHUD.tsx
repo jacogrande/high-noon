@@ -4,6 +4,7 @@ import type { HUDState } from '../scenes/types'
 function getStageDisplay(state: HUDState): string {
   if (state.stageStatus === 'completed') return 'RUN COMPLETE'
   if (state.stageStatus === 'clearing') return 'STAGE CLEAR'
+  if (state.stageStatus === 'camp') return ''
   if (state.stageStatus === 'none') return ''
   return `STAGE ${state.stageNumber} / ${state.totalStages} — WAVE ${state.waveNumber} / ${state.totalWaves}`
 }

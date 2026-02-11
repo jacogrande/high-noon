@@ -10,6 +10,7 @@ import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
 import { NetworkClient } from '../net/NetworkClient'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
+import { CampPanel } from '../ui/CampPanel'
 
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
@@ -23,9 +24,11 @@ export function MultiplayerGame() {
   const [localSessionId, setLocalSessionId] = useState<string | null>(null)
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
+  const [showCamp, setShowCamp] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
   const showingTreeRef = useRef(false)
+  const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
   const lastHudUpdateRef = useRef(0)
   const netRef = useRef<NetworkClient | null>(null)
@@ -185,28 +188,30 @@ export function MultiplayerGame() {
         (dt) => scene.update(dt),
         (alpha) => {
           scene.render(alpha, gameLoop.fps)
-          // Poll for skill tree open/close
-          const hasPts = scene.hasPendingPoints()
-          if (hasPts && !showingTreeRef.current) {
-            showingTreeRef.current = true
-            const data = scene.getSkillTreeData()
-            if (data) setSkillTreeData(data)
-            setShowSkillTree(true)
-          } else if (!hasPts && showingTreeRef.current) {
-            showingTreeRef.current = false
-            setShowSkillTree(false)
-            setSkillTreeData(null)
-          }
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
-            setHudState(scene.getHUDState())
+            const hud = scene.getHUDState()
+            setHudState(hud)
             if (scene.isDisconnected()) {
               destroyGame()
               setError('Connection lost')
               setPhase('error')
             }
+            // Detect camp entry/exit
+            const isCamp = hud.stageStatus === 'camp'
+            setShowCamp(isCamp)
+            if (isCamp && !wasCampRef.current) {
+              // Edge: just entered camp — hide game world, force-close auto-opened tree
+              scene.setWorldVisible(false)
+              if (showingTreeRef.current) {
+                showingTreeRef.current = false
+                setShowSkillTree(false)
+                setSkillTreeData(null)
+              }
+            }
+            wasCampRef.current = isCamp
           }
         },
       )
@@ -258,6 +263,28 @@ export function MultiplayerGame() {
       setShowSkillTree(false)
       setSkillTreeData(null)
     }
+  }, [])
+
+  const handleOpenSkillTree = useCallback(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+    const data = scene.getSkillTreeData()
+    if (data) {
+      setSkillTreeData(data)
+      showingTreeRef.current = true
+      setShowSkillTree(true)
+    }
+  }, [])
+
+  const handleRideOut = useCallback(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.setWorldVisible(true)
+    scene.completeCamp()
+    setShowCamp(false)
+    showingTreeRef.current = false
+    setShowSkillTree(false)
+    setSkillTreeData(null)
   }, [])
 
   const handleRetry = () => {
@@ -357,7 +384,16 @@ export function MultiplayerGame() {
         </Link>
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {showCamp && hudState && (
+        <CampPanel
+          stageNumber={hudState.stageNumber}
+          totalStages={hudState.totalStages}
+          hasPendingPoints={hudState.pendingPoints > 0}
+          onOpenSkillTree={handleOpenSkillTree}
+          onRideOut={handleRideOut}
+        />
+      )}
       {showSkillTree && skillTreeData && (
         <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
       )}

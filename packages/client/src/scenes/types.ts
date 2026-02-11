@@ -13,7 +13,7 @@ export interface HUDState {
   waveStatus: 'active' | 'delay' | 'completed' | 'none'
   stageNumber: number
   totalStages: number
-  stageStatus: 'active' | 'clearing' | 'completed' | 'none'
+  stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
   cylinderRounds: number
   cylinderMax: number
   isReloading: boolean

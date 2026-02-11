@@ -129,8 +129,8 @@ export interface RunState {
   totalStages: number
   stages: StageEncounter[]
   completed: boolean
-  /** 'clearing' = delay between stages while enemies despawn */
-  transition: 'none' | 'clearing'
+  /** 'clearing' = delay while enemies despawn, 'camp' = rest between stages */
+  transition: 'none' | 'clearing' | 'camp'
   /** Seconds remaining in the current transition */
   transitionTimer: number
 }
@@ -257,6 +257,8 @@ export interface GameWorld extends IWorld {
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
   rockslideShockwaves: RockslideShockwave[]
+  /** Set to true by the client/UI when the player is ready to leave camp */
+  campComplete: boolean
   /**
    * Simulation scope hint for systems.
    * - 'all': full-world simulation (server and canonical single-player)
@@ -321,6 +323,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lastKillWasMelee: false,
     tremorThisTick: false,
     rockslideShockwaves: [],
+    campComplete: false,
     simulationScope: 'all',
     localPlayerEid: -1,
   }
@@ -380,6 +383,7 @@ export function resetWorld(world: GameWorld): void {
   world.lastKillWasMelee = false
   world.tremorThisTick = false
   world.rockslideShockwaves = []
+  world.campComplete = false
   world.simulationScope = 'all'
   world.localPlayerEid = -1
   // Note: bitECS entities persist - call removeEntity for each if needed

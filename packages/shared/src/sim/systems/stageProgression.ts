@@ -9,10 +9,12 @@
 import { defineQuery, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter } from '../world'
-import { Enemy, Position, Bullet } from '../components'
+import { Enemy, Position, Bullet, Player, Health } from '../components'
 import { removeBullet } from '../prefabs'
 
-const STAGE_CLEAR_DELAY = 3.0 // seconds between stages
+const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
+
+const playerHealthQuery = defineQuery([Player, Health])
 
 const enemyCleanupQuery = defineQuery([Enemy, Position])
 const bulletCleanupQuery = defineQuery([Bullet])
@@ -43,6 +45,16 @@ export function clearAllEnemies(world: GameWorld): void {
   world.dynamites = []
 }
 
+/**
+ * Heal all players to full HP.
+ * Called when entering camp between stages.
+ */
+export function healAllPlayers(world: GameWorld): void {
+  for (const eid of playerHealthQuery(world)) {
+    Health.current[eid] = Health.max[eid]!
+  }
+}
+
 export function stageProgressionSystem(world: GameWorld, dt: number): void {
   const run = world.run
   if (!run || run.completed) return
@@ -56,7 +68,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
   // Detect encounter completion -> begin clearing
   if (enc.completed && run.transition === 'none') {
     run.transition = 'clearing'
-    run.transitionTimer = STAGE_CLEAR_DELAY
+    run.transitionTimer = CAMP_CLEAR_DELAY
     world.stageCleared = true
     clearAllEnemies(world)
     return
@@ -66,14 +78,31 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
   if (run.transition === 'clearing') {
     run.transitionTimer -= dt
     if (run.transitionTimer <= 0) {
-      run.currentStage++
-      if (run.currentStage >= run.totalStages) {
+      const isLastStage = run.currentStage + 1 >= run.totalStages
+      if (isLastStage) {
+        // Final stage — skip camp, go straight to completed
+        run.currentStage++
         run.completed = true
         run.transition = 'none'
       } else {
-        setEncounter(world, run.stages[run.currentStage]!)
-        run.transition = 'none'
+        // Enter camp phase — heal players and wait for campComplete signal
+        // currentStage stays at the just-completed stage so HUD shows correct number
+        run.transition = 'camp'
+        run.transitionTimer = 0
+        world.campComplete = false
+        healAllPlayers(world)
       }
+    }
+    return
+  }
+
+  // Camp phase — wait for player to signal ready
+  if (run.transition === 'camp') {
+    if (world.campComplete) {
+      world.campComplete = false
+      run.currentStage++
+      setEncounter(world, run.stages[run.currentStage]!)
+      run.transition = 'none'
     }
   }
 }

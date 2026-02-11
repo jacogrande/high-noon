@@ -288,7 +288,7 @@ export class SingleplayerModeController implements SceneModeController {
       stageNumber: run ? run.currentStage + 1 : 0,
       totalStages: run ? run.totalStages : 0,
       stageStatus: run
-        ? (run.completed ? 'completed' : run.transition !== 'none' ? 'clearing' : 'active')
+        ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
         : 'none',
       cylinderRounds: hasCylinder ? Cylinder.rounds[playerEid!]! : 0,
       cylinderMax: hasCylinder ? Cylinder.maxRounds[playerEid!]! : 0,
@@ -354,6 +354,14 @@ export class SingleplayerModeController implements SceneModeController {
       this.sound.play('upgrade_select')
     }
     return success
+  }
+
+  completeCamp(): void {
+    this.world.campComplete = true
+  }
+
+  setWorldVisible(visible: boolean): void {
+    this.gameApp.world.visible = visible
   }
 
   update(dt: number): void {
@@ -566,7 +574,7 @@ export class SingleplayerModeController implements SceneModeController {
       cameraTrauma: this.camera.shake.currentTrauma,
       stageNumber: runState ? runState.currentStage + 1 : 0,
       stageStatus: runState
-        ? (runState.completed ? 'completed' : runState.transition !== 'none' ? 'clearing' : 'active')
+        ? (runState.completed ? 'completed' : runState.transition === 'camp' ? 'camp' : runState.transition !== 'none' ? 'clearing' : 'active')
         : 'none',
       waveNumber: enc ? enc.currentWave + 1 : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',

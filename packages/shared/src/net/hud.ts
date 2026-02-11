@@ -70,7 +70,7 @@ export interface HudData {
   // Stage progression
   stageNumber: number
   totalStages: number
-  stageStatus: 'active' | 'clearing' | 'completed' | 'none'
+  stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
 }
 
 export interface SelectNodeRequest { nodeId: string }

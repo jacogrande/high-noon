@@ -2,8 +2,8 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, startRun, type GameWorld } from '../world'
 import { createTestArena } from '../content/maps/testArena'
-import { Enemy, EnemyType, EnemyTier, Position, Health, Bullet } from '../components'
-import { stageProgressionSystem, clearAllEnemies } from './stageProgression'
+import { Enemy, EnemyType, EnemyTier, Position, Health, Bullet, Player } from '../components'
+import { stageProgressionSystem, clearAllEnemies, healAllPlayers } from './stageProgression'
 import { waveSpawnerSystem } from './waveSpawner'
 import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
@@ -14,6 +14,7 @@ const DT = 1 / 60
 
 const enemyQuery = defineQuery([Enemy, Position])
 const bulletQuery = defineQuery([Bullet])
+const playerQuery = defineQuery([Player, Health])
 
 /** Create a minimal 1-wave encounter */
 function makeEncounter(wave: Partial<WaveDefinition>): StageEncounter {
@@ -113,7 +114,7 @@ describe('stageProgressionSystem', () => {
     stageProgressionSystem(world, DT)
 
     expect(world.run!.transition).toBe('clearing')
-    expect(world.run!.transitionTimer).toBeCloseTo(3.0, 1)
+    expect(world.run!.transitionTimer).toBeCloseTo(0.5, 1)
     expect(world.stageCleared).toBe(true)
   })
 
@@ -167,12 +168,12 @@ describe('stageProgressionSystem', () => {
     stageProgressionSystem(world, DT) // triggers clearing
 
     const initialTimer = world.run!.transitionTimer
-    stageProgressionSystem(world, 1.0) // advance 1 second
-    expect(world.run!.transitionTimer).toBeCloseTo(initialTimer - 1.0, 1)
+    stageProgressionSystem(world, 0.2) // advance 0.2 seconds (still within 0.5s)
+    expect(world.run!.transitionTimer).toBeCloseTo(initialTimer - 0.2, 1)
     expect(world.run!.transition).toBe('clearing')
   })
 
-  test('next stage starts after clearing timer expires', () => {
+  test('clearing timer expires into camp phase (not directly to next stage)', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -183,35 +184,100 @@ describe('stageProgressionSystem', () => {
     completeCurrentEncounter(world)
     stageProgressionSystem(world, DT) // triggers clearing
 
-    // Advance past the clearing timer (3s)
-    stageProgressionSystem(world, 4.0)
+    // Advance past the clearing timer (0.5s)
+    stageProgressionSystem(world, 1.0)
 
-    expect(world.run!.currentStage).toBe(1)
+    // Should be in camp — currentStage stays at the completed stage
+    expect(world.run!.transition).toBe('camp')
+    expect(world.run!.currentStage).toBe(0)
+    expect(world.campComplete).toBe(false)
+  })
+
+  test('camp phase waits for campComplete signal then starts next stage', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // clearing
+    stageProgressionSystem(world, 1.0) // -> camp
+
+    expect(world.run!.transition).toBe('camp')
+
+    // Ticking without campComplete should stay in camp
+    stageProgressionSystem(world, DT)
+    expect(world.run!.transition).toBe('camp')
+
+    // Signal campComplete
+    world.campComplete = true
+    stageProgressionSystem(world, DT)
+
     expect(world.run!.transition).toBe('none')
     expect(world.run!.completed).toBe(false)
-    // New encounter should be active
     expect(world.encounter).not.toBeNull()
     expect(world.encounter!.completed).toBe(false)
   })
 
-  test('run completes after final stage', () => {
+  test('campComplete flag resets after use', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // clearing
+    stageProgressionSystem(world, 1.0) // -> camp
+
+    world.campComplete = true
+    stageProgressionSystem(world, DT) // consume campComplete
+
+    expect(world.campComplete).toBe(false)
+  })
+
+  test('camp entry heals all players to full HP', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    // Damage the player
+    const players = playerQuery(world)
+    expect(players.length).toBeGreaterThan(0)
+    const playerEid = players[0]!
+    Health.current[playerEid] = 1
+    expect(Health.current[playerEid]).toBe(1)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // clearing
+    stageProgressionSystem(world, 1.0) // -> camp (heals)
+
+    // Player should be at full HP
+    expect(Health.current[playerEid]).toBe(Health.max[playerEid]!)
+  })
+
+  test('no camp after final stage — goes straight to completed', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
     ]
     startRun(world, stages)
 
     completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // triggers clearing
+    stageProgressionSystem(world, DT) // clearing
 
     // Advance past clearing timer
-    stageProgressionSystem(world, 4.0)
+    stageProgressionSystem(world, 1.0)
 
     expect(world.run!.completed).toBe(true)
     expect(world.run!.transition).toBe('none')
+    // Should NOT be in camp
     expect(world.run!.currentStage).toBe(1) // past end
   })
 
-  test('player state persists across stages', () => {
+  test('player state persists across stages (HP restored)', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -223,18 +289,28 @@ describe('stageProgressionSystem', () => {
       .filter(eid => !Enemy.type[eid])
     expect(playerEids.length).toBeGreaterThan(0)
     const playerEid = playerEids[0]!
-    const hpBefore = Health.current[playerEid]!
+    const maxHP = Health.max[playerEid]!
     const posXBefore = Position.x[playerEid]!
     const posYBefore = Position.y[playerEid]!
 
+    // Damage player
+    Health.current[playerEid] = 1
+
     completeCurrentEncounter(world)
     stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 4.0) // advance to stage 2
+    stageProgressionSystem(world, 1.0) // -> camp (heals)
 
-    // Player should still exist with same state
-    expect(Health.current[playerEid]).toBe(hpBefore)
+    // Player should be at full HP after camp
+    expect(Health.current[playerEid]).toBe(maxHP)
     expect(Position.x[playerEid]).toBe(posXBefore)
     expect(Position.y[playerEid]).toBe(posYBefore)
+
+    // Signal campComplete to advance
+    world.campComplete = true
+    stageProgressionSystem(world, DT)
+
+    // Player still exists
+    expect(Health.current[playerEid]).toBe(maxHP)
   })
 
   test('full 2-stage run integration', () => {
@@ -248,15 +324,18 @@ describe('stageProgressionSystem', () => {
     expect(world.run!.currentStage).toBe(0)
     completeCurrentEncounter(world)
     stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 4.0) // advance
+    stageProgressionSystem(world, 1.0) // -> camp
+    expect(world.run!.transition).toBe('camp')
+    world.campComplete = true
+    stageProgressionSystem(world, DT) // -> next stage
 
-    // Stage 2
+    // Stage 2 (final)
     expect(world.run!.currentStage).toBe(1)
     expect(world.run!.completed).toBe(false)
 
     completeCurrentEncounter(world)
     stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 4.0) // advance
+    stageProgressionSystem(world, 1.0) // -> completed (no camp on final)
 
     // Run complete
     expect(world.run!.completed).toBe(true)
@@ -284,5 +363,19 @@ describe('stageProgressionSystem', () => {
     expect(world.dustClouds.length).toBe(0)
     expect(world.dynamites.length).toBe(0)
     expect(world.rockslideShockwaves.length).toBe(0)
+  })
+
+  test('healAllPlayers heals all players', () => {
+    const players = playerQuery(world)
+    expect(players.length).toBeGreaterThan(0)
+    for (const eid of players) {
+      Health.current[eid] = 1
+    }
+
+    healAllPlayers(world)
+
+    for (const eid of players) {
+      expect(Health.current[eid]).toBe(Health.max[eid]!)
+    }
   })
 })

@@ -59,6 +59,14 @@ export class CoreGameScene {
     return this.controller.selectNode(nodeId)
   }
 
+  completeCamp(): void {
+    this.controller.completeCamp()
+  }
+
+  setWorldVisible(visible: boolean): void {
+    this.controller.setWorldVisible(visible)
+  }
+
   isDisconnected(): boolean {
     return this.controller.isDisconnected()
   }
