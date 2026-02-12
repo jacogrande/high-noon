@@ -448,15 +448,10 @@ describe('waveSpawnerSystem', () => {
       for (const eid of getThreatEids(world)) killEnemy(world, eid)
       waveSpawnerSystem(world, 1 / 60)
 
-      // Wave 2 activate + clear
-      waveSpawnerSystem(world, 5.1)
-      for (const eid of getThreatEids(world)) killEnemy(world, eid)
-      waveSpawnerSystem(world, 1 / 60)
-
-      // Wave 3 activates after delay
-      waveSpawnerSystem(world, 5.1)
+      // Wave 2 activates after delay
+      waveSpawnerSystem(world, 3.1)
       const types = countByType(world)
-      expect(world.encounter!.currentWave).toBe(2)
+      expect(world.encounter!.currentWave).toBe(1)
       expect(types[EnemyType.BOOMSTICK] ?? 0).toBe(1)
     })
   })

@@ -136,6 +136,9 @@ export class EnemyRenderer {
   private readonly lastAlpha = new Map<number, number>()
   private readonly currentEntities = new Set<number>()
   private readonly lastHP = new Map<number, number>()
+  /** Lowest HP for which we've emitted a damage number. Prevents duplicates
+   *  when server confirms optimistic prediction damage. */
+  private readonly hpWatermark = new Map<number, number>()
   private readonly damageFlashTimer = new Map<number, number>()
   private readonly spawnTimer = new Map<number, number>()
   private readonly lastDirection = new Map<number, Direction>()
@@ -207,19 +210,46 @@ export class EnemyRenderer {
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
         this.enemyTypes.set(eid, type)
-        this.lastHP.set(eid, Health.current[eid]!)
+        const spawnHP = Health.current[eid]!
+        this.lastHP.set(eid, spawnHP)
+        this.hpWatermark.set(eid, spawnHP)
         this.spawnTimer.set(eid, SPAWN_EFFECT_DURATION)
       } else {
-        // Detect damage on existing enemies (HP decreased this tick)
+        // Watermark-based damage detection (multiplayer-safe).
+        //
+        // hpWatermark tracks the lowest HP we've already emitted a damage
+        // number for.  We only emit when HP drops to a NEW all-time low,
+        // preventing duplicates from the prediction → server-correction →
+        // server-confirm cycle.
+        //
+        // IMPORTANT: we only evaluate when HP actually changed (gates out
+        // redundant high-FPS render frames that would otherwise fool the
+        // two-change watermark reset).
+        //
+        // If HP is above the watermark for two consecutive *HP changes*
+        // (i.e. the server sustained its correction across two separate
+        // snapshots), we reset the watermark so future real damage is shown.
         const currentHP = Health.current[eid]!
         const prevHP = this.lastHP.get(eid) ?? currentHP
-        if (currentHP < prevHP) {
-          this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
-          const cachedType = this.enemyTypes.get(eid)
-          const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
-          result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: prevHP - currentHP })
+
+        if (currentHP !== prevHP) {
+          let watermark = this.hpWatermark.get(eid) ?? currentHP
+
+          if (currentHP < watermark) {
+            // New all-time low — genuine damage
+            this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
+            const cachedType = this.enemyTypes.get(eid)
+            const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
+            result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: watermark - currentHP })
+            this.hpWatermark.set(eid, currentHP)
+          } else if (currentHP > watermark && prevHP > watermark) {
+            // Two consecutive HP changes both above watermark — the server
+            // has sustained its correction, so accept it.
+            this.hpWatermark.set(eid, currentHP)
+          }
+
+          this.lastHP.set(eid, currentHP)
         }
-        this.lastHP.set(eid, currentHP)
       }
     }
 
@@ -235,11 +265,12 @@ export class EnemyRenderer {
         const cachedType = this.enemyTypes.get(eid)
         const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
         if (displayObj) {
-          result.deaths.push({ x: displayObj.x, y: displayObj.y, color, isThreat })
-          const lastHP = this.lastHP.get(eid) ?? 0
-          if (lastHP > 0) {
-            result.hits.push({ x: displayObj.x, y: displayObj.y, color, amount: lastHP })
+          // Emit final damage for any unshown HP (killing blow)
+          const watermark = this.hpWatermark.get(eid) ?? 0
+          if (watermark > 0) {
+            result.hits.push({ x: displayObj.x, y: displayObj.y, color, amount: watermark })
           }
+          result.deaths.push({ x: displayObj.x, y: displayObj.y, color, isThreat })
         }
 
         const isSprite = cachedType !== undefined && isSpriteEnemy(cachedType)
@@ -262,6 +293,7 @@ export class EnemyRenderer {
         this.lastColor.delete(eid)
         this.lastAlpha.delete(eid)
         this.lastHP.delete(eid)
+        this.hpWatermark.delete(eid)
         this.damageFlashTimer.delete(eid)
         this.spawnTimer.delete(eid)
         this.lastDirection.delete(eid)
@@ -588,6 +620,7 @@ export class EnemyRenderer {
     this.lastColor.clear()
     this.lastAlpha.clear()
     this.lastHP.clear()
+    this.hpWatermark.clear()
     this.damageFlashTimer.clear()
     this.spawnTimer.clear()
     this.lastDirection.clear()

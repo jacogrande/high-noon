@@ -6,9 +6,8 @@
  * - Pulsing ground telegraph + fuse pixel on landed dynamites
  */
 
-import { hasComponent } from 'bitecs'
 import { Container, Graphics } from 'pixi.js'
-import { Position, type GameWorld } from '@high-noon/shared'
+import type { GameWorld } from '@high-noon/shared'
 import { emitDynamiteTrail, type ParticlePool } from '../fx'
 
 interface DynamiteThrowAnim {
@@ -45,19 +44,13 @@ export class DynamiteRenderer {
         continue
       }
 
-      if (!hasComponent(world, Position, dyn.ownerId)) {
-        continue
-      }
-
-      const startX = Position.x[dyn.ownerId]!
-      const startY = Position.y[dyn.ownerId]!
-      const dx = dyn.x - startX
-      const dy = dyn.y - startY
+      const dx = dyn.x - dyn.startX
+      const dy = dyn.y - dyn.startY
       const dist = Math.sqrt(dx * dx + dy * dy)
 
       this.throwAnims.push({
-        startX,
-        startY,
+        startX: dyn.startX,
+        startY: dyn.startY,
         endX: dyn.x,
         endY: dyn.y,
         elapsed: 0,
@@ -107,9 +100,7 @@ export class DynamiteRenderer {
       )
       if (inFlight) continue
 
-      const ownerState = world.playerUpgradeStates.get(dyn.ownerId) ?? world.upgradeState
-      const maxFuse = ownerState.dynamiteFuse
-      const fuseProgress = maxFuse > 0 ? 1 - dyn.fuseRemaining / maxFuse : 1
+      const fuseProgress = dyn.maxFuse > 0 ? 1 - dyn.fuseRemaining / dyn.maxFuse : 1
       const pulseFreq = 3 + fuseProgress * 9
       const pulse = Math.sin(this.pulseClock * pulseFreq * Math.PI * 2) * 0.5 + 0.5
       const radiusAlpha = 0.08 + pulse * 0.12

@@ -86,7 +86,10 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
           world.dynamites.push({
             x: px,
             y: py,
+            startX: px,
+            startY: py,
             fuseRemaining: 0,
+            maxFuse: us.dynamiteFuse,
             damage: us.dynamiteDamage,
             radius: us.dynamiteRadius,
             knockback: DYNAMITE_KNOCKBACK,
@@ -119,7 +122,10 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
         world.dynamites.push({
           x: tx,
           y: ty,
+          startX: px,
+          startY: py,
           fuseRemaining: remainingFuse,
+          maxFuse: us.dynamiteFuse,
           damage: us.dynamiteDamage,
           radius: us.dynamiteRadius,
           knockback: DYNAMITE_KNOCKBACK,

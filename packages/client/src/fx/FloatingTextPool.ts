@@ -7,7 +7,7 @@
 
 import { Container, Text, TextStyle } from 'pixi.js'
 
-const POOL_SIZE = 32
+const POOL_SIZE = 64
 const FLOAT_DISTANCE = 30 // pixels upward
 const FLOAT_DURATION = 0.6 // seconds
 

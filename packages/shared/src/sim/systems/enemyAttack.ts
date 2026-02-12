@@ -309,7 +309,10 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
           world.dynamites.push({
             x: boomX,
             y: boomY,
+            startX: ex,
+            startY: ey,
             fuseRemaining: BOOMSTICK_BOOM_FUSE,
+            maxFuse: BOOMSTICK_BOOM_FUSE,
             damage: BOOMSTICK_BOOM_DAMAGE,
             radius: BOOMSTICK_BOOM_RADIUS,
             knockback: DYNAMITE_KNOCKBACK,

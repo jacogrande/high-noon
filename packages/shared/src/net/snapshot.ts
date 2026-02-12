@@ -30,7 +30,7 @@ import { NO_OWNER, NO_TARGET } from '../sim/prefabs'
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 8
+export const SNAPSHOT_VERSION = 9
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
 export const HEADER_SIZE = 14
@@ -91,7 +91,10 @@ export interface LastRitesZoneSnapshot {
 export interface DynamiteSnapshot {
   x: number
   y: number
+  startX: number
+  startY: number
   fuseRemaining: number
+  maxFuse: number
   radius: number
   ownerEid: number
 }
@@ -175,7 +178,7 @@ export function encodeSnapshot(
     bullets.length * BULLET_SIZE +
     enemies.length * ENEMY_SIZE +
     1 + lastRitesZones.length * 14 + // zone count header + 14 bytes/zone
-    1 + dynamites.length * 18         // dynamite count header + 18 bytes/dynamite
+    1 + dynamites.length * 30         // dynamite count header + 30 bytes/dynamite
 
   // Grow shared buffer if needed
   if (totalSize > sharedBuffer.byteLength) {
@@ -321,7 +324,13 @@ export function encodeSnapshot(
     offset += 4
     view.setFloat32(offset, dyn.y, true)
     offset += 4
+    view.setFloat32(offset, dyn.startX, true)
+    offset += 4
+    view.setFloat32(offset, dyn.startY, true)
+    offset += 4
     view.setFloat32(offset, dyn.fuseRemaining, true)
+    offset += 4
+    view.setFloat32(offset, dyn.maxFuse, true)
     offset += 4
     view.setFloat32(offset, dyn.radius, true)
     offset += 4
@@ -476,13 +485,19 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 4
     const dy = view.getFloat32(offset, true)
     offset += 4
+    const startX = view.getFloat32(offset, true)
+    offset += 4
+    const startY = view.getFloat32(offset, true)
+    offset += 4
     const fuseRemaining = view.getFloat32(offset, true)
+    offset += 4
+    const maxFuse = view.getFloat32(offset, true)
     offset += 4
     const radius = view.getFloat32(offset, true)
     offset += 4
     const ownerEid = view.getUint16(offset, true)
     offset += 2
-    dynamites[i] = { x: dx, y: dy, fuseRemaining, radius, ownerEid }
+    dynamites[i] = { x: dx, y: dy, startX, startY, fuseRemaining, maxFuse, radius, ownerEid }
   }
 
   return { tick, serverTime, players, bullets, enemies, lastRitesZones, dynamites }

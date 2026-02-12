@@ -359,6 +359,7 @@ export class SnapshotIngestor {
         Collider.radius[clientEid] = ENEMY_RADIUS[e.type] ?? 10
         Collider.layer[clientEid] = CollisionLayer.ENEMY
         Health.max[clientEid] = ENEMY_MAX_HP[e.type] ?? Math.max(1, e.hp)
+        Health.current[clientEid] = e.hp
         Health.iframes[clientEid] = 0
         Health.iframeDuration[clientEid] = 0
 
@@ -370,6 +371,9 @@ export class SnapshotIngestor {
         ctx.enemyEntities.set(e.eid, clientEid)
       }
 
+      // Always accept authoritative server HP. The EnemyRenderer uses a
+      // watermark to de-duplicate damage numbers so optimistic prediction hits
+      // won't be re-emitted when the server confirms.
       Health.current[clientEid] = e.hp
       // Keep max HP sane for render/UI ratio even if entity was created earlier.
       if (Health.max[clientEid]! <= 0) {
@@ -437,7 +441,10 @@ export class SnapshotIngestor {
       localDynamites.push({
         x: d.x,
         y: d.y,
+        startX: d.startX,
+        startY: d.startY,
         fuseRemaining: d.fuseRemaining,
+        maxFuse: d.maxFuse,
         damage: 0,
         radius: d.radius,
         knockback: 0,

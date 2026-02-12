@@ -53,7 +53,10 @@ export interface DustCloud {
 export interface DynamiteState {
   x: number
   y: number
+  startX: number
+  startY: number
   fuseRemaining: number
+  maxFuse: number
   damage: number
   radius: number
   knockback: number
