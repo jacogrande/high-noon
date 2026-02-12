@@ -8,9 +8,10 @@
 
 import { defineQuery, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
-import { setEncounter } from '../world'
+import { setEncounter, swapTilemap } from '../world'
 import { Enemy, Position, Bullet, Player, Health } from '../components'
 import { removeBullet } from '../prefabs'
+import { generateArena } from '../content/maps/mapGenerator'
 
 const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
 
@@ -91,6 +92,10 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
         run.transitionTimer = 0
         world.campComplete = false
         healAllPlayers(world)
+        // Pre-generate the next stage's map now so campComplete doesn't cause a frame hitch
+        const nextStageIndex = run.currentStage + 1
+        const nextStage = run.stages[nextStageIndex]!
+        run.pendingTilemap = generateArena(nextStage.mapConfig, world.initialSeed, nextStageIndex)
       }
     }
     return
@@ -101,7 +106,12 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
     if (world.campComplete) {
       world.campComplete = false
       run.currentStage++
-      setEncounter(world, run.stages[run.currentStage]!)
+      const nextStage = run.stages[run.currentStage]!
+      // Use pre-generated map (built on camp entry), fall back to generating if missing
+      const newMap = run.pendingTilemap ?? generateArena(nextStage.mapConfig, world.initialSeed, run.currentStage)
+      run.pendingTilemap = null
+      swapTilemap(world, newMap)
+      setEncounter(world, nextStage)
       run.transition = 'none'
     }
   }

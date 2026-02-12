@@ -12,8 +12,7 @@ import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
 import { Enemy, EnemyType, EnemyTier, Position, Dead } from '../components'
 import { spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger, spawnGoblinBarbarian, spawnGoblinRogue } from '../prefabs'
-import { getPlayableBounds } from '../content/maps/testArena'
-import { isSolidAt, type Tilemap } from '../tilemap'
+import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
 import {
   SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
@@ -44,22 +43,16 @@ const BUDGET_COST: Record<number, number> = {
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_BUDGET_COST,
 }
 
-/** Cached spawn bounds — computed once from playable bounds with inset */
-let cachedSpawnBounds: { left: number; right: number; top: number; bottom: number } | null = null
-
-function getSpawnBounds() {
-  if (!cachedSpawnBounds) {
-    const bounds = getPlayableBounds()
-    // Inset by 1.5 tiles to avoid spawning inside or adjacent to border walls
-    const inset = 48
-    cachedSpawnBounds = {
-      left: bounds.minX + inset,
-      right: bounds.maxX - inset,
-      top: bounds.minY + inset,
-      bottom: bounds.maxY - inset,
-    }
+function getSpawnBounds(tilemap: Tilemap) {
+  const bounds = getPlayableBoundsFromTilemap(tilemap)
+  // Inset by 1.5 tiles to avoid spawning inside or adjacent to border walls
+  const inset = 48
+  return {
+    left: bounds.minX + inset,
+    right: bounds.maxX - inset,
+    top: bounds.minY + inset,
+    bottom: bounds.maxY - inset,
   }
-  return cachedSpawnBounds
 }
 
 /**
@@ -82,7 +75,11 @@ export function pickSpawnPosition(
   spawnRadius = 0,
   radiusSpread = 0,
 ): { x: number; y: number } {
-  const { left, right, top, bottom } = getSpawnBounds()
+  // Compute spawn bounds from tilemap or use generous default (test scenarios)
+  const bounds = tilemap
+    ? getSpawnBounds(tilemap)
+    : { left: 80, right: 1520, top: 80, bottom: 1136 }
+  const { left, right, top, bottom } = bounds
 
   if (spawnRadius > 0) {
     // Ring-based spawning: pick points on a ring around the player

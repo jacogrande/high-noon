@@ -8,6 +8,7 @@ import { waveSpawnerSystem } from './waveSpawner'
 import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import type { StageEncounter, WaveDefinition } from '../content/waves'
+import { STAGE_1_MAP_CONFIG } from '../content/maps/mapConfig'
 
 const TEST_SEED = 54321
 const DT = 1 / 60
@@ -19,6 +20,7 @@ const playerQuery = defineQuery([Player, Health])
 /** Create a minimal 1-wave encounter */
 function makeEncounter(wave: Partial<WaveDefinition>): StageEncounter {
   return {
+    mapConfig: STAGE_1_MAP_CONFIG,
     waves: [{
       fodderBudget: wave.fodderBudget ?? 0,
       fodderPool: wave.fodderPool ?? [{ type: EnemyType.SWARMER, weight: 1 }],

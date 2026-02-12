@@ -1,7 +1,8 @@
 import { getTile, TileType, type Tilemap } from '@high-noon/shared'
 import { createLavaLight, type LightingSystem } from '../../lighting'
 
-export function seedLavaLights(lighting: LightingSystem, tilemap: Tilemap): void {
+/** Seed static lights for all hazard tiles on the tilemap. */
+export function seedHazardLights(lighting: LightingSystem, tilemap: Tilemap): void {
   const seen = new Set<string>()
   const halfTile = tilemap.tileSize / 2
 
@@ -11,7 +12,8 @@ export function seedLavaLights(lighting: LightingSystem, tilemap: Tilemap): void
 
     for (let y = 0; y < tilemap.height; y++) {
       for (let x = 0; x < tilemap.width; x++) {
-        if (getTile(tilemap, layerIndex, x, y) !== TileType.LAVA) continue
+        const tile = getTile(tilemap, layerIndex, x, y)
+        if (tile !== TileType.LAVA) continue
         const key = `${x},${y}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -20,3 +22,6 @@ export function seedLavaLights(lighting: LightingSystem, tilemap: Tilemap): void
     }
   }
 }
+
+/** @deprecated Use seedHazardLights instead */
+export const seedLavaLights = seedHazardLights

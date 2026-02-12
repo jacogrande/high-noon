@@ -4,8 +4,9 @@
  * The world holds all entity state and is the main interface for the ECS.
  */
 
-import { createWorld as bitCreateWorld, type IWorld } from 'bitecs'
+import { createWorld as bitCreateWorld, defineQuery, type IWorld } from 'bitecs'
 import type { Tilemap } from './tilemap'
+import { getArenaCenterFromTilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
 import type { InputState } from '../net/input'
@@ -13,6 +14,9 @@ import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
+import { Player, Position, Velocity } from './components'
+
+const playerQuery = defineQuery([Player, Position])
 
 /**
  * Last Rites zone state (Undertaker ability)
@@ -133,6 +137,8 @@ export interface RunState {
   transition: 'none' | 'clearing' | 'camp'
   /** Seconds remaining in the current transition */
   transitionTimer: number
+  /** Pre-generated tilemap for the next stage (built on camp entry to avoid frame hitch) */
+  pendingTilemap: Tilemap | null
 }
 
 /**
@@ -257,6 +263,8 @@ export interface GameWorld extends IWorld {
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
   rockslideShockwaves: RockslideShockwave[]
+  /** Per-entity floor speed multiplier (e.g., mud/bramble). Reset each tick by hazardTileSystem. */
+  floorSpeedMul: Map<number, number>
   /** Set to true by the client/UI when the player is ready to leave camp */
   campComplete: boolean
   /**
@@ -323,6 +331,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lastKillWasMelee: false,
     tremorThisTick: false,
     rockslideShockwaves: [],
+    floorSpeedMul: new Map(),
     campComplete: false,
     simulationScope: 'all',
     localPlayerEid: -1,
@@ -383,6 +392,7 @@ export function resetWorld(world: GameWorld): void {
   world.lastKillWasMelee = false
   world.tremorThisTick = false
   world.rockslideShockwaves = []
+  world.floorSpeedMul.clear()
   world.campComplete = false
   world.simulationScope = 'all'
   world.localPlayerEid = -1
@@ -421,6 +431,28 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
     completed: false,
     transition: 'none',
     transitionTimer: 0,
+    pendingTilemap: null,
   }
   setEncounter(world, stages[0]!)
+}
+
+/**
+ * Swap the active tilemap (e.g., between stages).
+ * Resets spatial caches and teleports alive players to the new arena center.
+ */
+export function swapTilemap(world: GameWorld, tilemap: Tilemap): void {
+  world.tilemap = tilemap
+  world.flowField = null
+  world.spatialHash = null
+  world.floorSpeedMul.clear()
+
+  const center = getArenaCenterFromTilemap(tilemap)
+  for (const eid of playerQuery(world)) {
+    Position.x[eid] = center.x
+    Position.y[eid] = center.y
+    Position.prevX[eid] = center.x
+    Position.prevY[eid] = center.y
+    Velocity.x[eid] = 0
+    Velocity.y[eid] = 0
+  }
 }

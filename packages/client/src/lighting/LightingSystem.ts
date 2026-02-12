@@ -61,6 +61,16 @@ export class LightingSystem {
     this.lights.push(light)
   }
 
+  /** Remove all infinite-duration (static) lights. Keeps transient lights (ttl > 0). */
+  clearStaticLights(): void {
+    for (let i = this.lights.length - 1; i >= 0; i--) {
+      if (this.lights[i]!.ttl <= 0) {
+        this.lights[i] = this.lights[this.lights.length - 1]!
+        this.lights.pop()
+      }
+    }
+  }
+
   updateLights(realDt: number): void {
     this.elapsed += realDt
     for (let i = this.lights.length - 1; i >= 0; i--) {

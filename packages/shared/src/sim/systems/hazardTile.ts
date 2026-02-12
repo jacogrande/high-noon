@@ -1,14 +1,16 @@
 /**
  * Hazard tile system.
  *
- * Applies damage-over-time from lava to grounded entities.
+ * Applies damage-over-time and speed debuffs from hazard tiles to grounded entities.
+ * Writes per-entity speed multipliers to world.floorSpeedMul for consumption by
+ * playerInputSystem and enemySteeringSystem.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Position, Health, Dead, ZPosition } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
-import { LAVA_DPS } from '../content/hazards'
+import { LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL } from '../content/hazards'
 import { getFloorTileTypeAt, TileType } from '../tilemap'
 
 const hazardQuery = defineQuery([Position, Health])
@@ -16,6 +18,9 @@ const hazardQuery = defineQuery([Position, Health])
 export function hazardTileSystem(world: GameWorld, dt: number): void {
   const tilemap = world.tilemap
   if (!tilemap) return
+
+  // Clear previous tick's speed multipliers
+  world.floorSpeedMul.clear()
 
   const entities = hazardQuery(world)
   for (const eid of entities) {
@@ -29,8 +34,14 @@ export function hazardTileSystem(world: GameWorld, dt: number): void {
     if (z > JUMP_AIRBORNE_THRESHOLD) continue
 
     const tileType = getFloorTileTypeAt(tilemap, Position.x[eid]!, Position.y[eid]!)
+
     if (tileType === TileType.LAVA) {
       Health.current[eid] = Health.current[eid]! - LAVA_DPS * dt
+    } else if (tileType === TileType.MUD) {
+      world.floorSpeedMul.set(eid, MUD_SPEED_MUL)
+    } else if (tileType === TileType.BRAMBLE) {
+      Health.current[eid] = Health.current[eid]! - BRAMBLE_DPS * dt
+      world.floorSpeedMul.set(eid, BRAMBLE_SPEED_MUL)
     }
   }
 }

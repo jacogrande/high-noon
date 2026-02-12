@@ -8,6 +8,7 @@ import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import { SeededRng } from '../../math/rng'
 import type { StageEncounter, WaveDefinition } from '../content/waves'
+import { STAGE_1_MAP_CONFIG } from '../content/maps/mapConfig'
 
 const TEST_SEED = 12345
 
@@ -16,6 +17,7 @@ const enemyQuery = defineQuery([Enemy, Position])
 /** Create a minimal 1-wave encounter for testing */
 function makeEncounter(wave: Partial<WaveDefinition>): StageEncounter {
   return {
+    mapConfig: STAGE_1_MAP_CONFIG,
     waves: [{
       fodderBudget: wave.fodderBudget ?? 0,
       fodderPool: wave.fodderPool ?? [{ type: EnemyType.SWARMER, weight: 1 }],
@@ -33,6 +35,7 @@ function makeTwoWaveEncounter(
   wave2: Partial<WaveDefinition>,
 ): StageEncounter {
   return {
+    mapConfig: STAGE_1_MAP_CONFIG,
     waves: [
       {
         fodderBudget: wave1.fodderBudget ?? 0,

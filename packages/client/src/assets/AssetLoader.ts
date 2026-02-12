@@ -56,6 +56,8 @@ const TILE_FRAME_MAP: Record<number, string> = {
   [TileType.FLOOR]: 'tile_floor',
   [TileType.LAVA]: 'tile_floor',
   [TileType.HALF_WALL]: 'tile_wall',
+  [TileType.MUD]: 'tile_floor',
+  [TileType.BRAMBLE]: 'tile_floor',
 }
 
 /** Sprite directions that exist in the sprite sheet (W mirrors E) */

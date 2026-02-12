@@ -167,8 +167,8 @@ export function playerInputSystem(
           : PlayerStateType.IDLE
       }
 
-      // Apply velocity based on current speed
-      const speed = Speed.current[eid]!
+      // Apply velocity based on current speed (with floor hazard modifier)
+      const speed = Speed.current[eid]! * (world.floorSpeedMul.get(eid) ?? 1.0)
       Velocity.x[eid] = moveX * speed
       Velocity.y[eid] = moveY * speed
     }

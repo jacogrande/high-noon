@@ -11,9 +11,9 @@ import {
   spawnPlayer,
   setWorldTilemap,
   startRun,
-  createTestArena,
-  getArenaCenter,
-  getPlayableBounds,
+  generateArena,
+  getPlayableBoundsFromTilemap,
+  getArenaCenterFromTilemap,
   DEFAULT_RUN_STAGES,
   registerAllSystems,
   writeStatsToECS,
@@ -80,7 +80,8 @@ import {
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
 import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
-import { seedLavaLights } from './SceneLighting'
+import { seedHazardLights } from './SceneLighting'
+import { refreshTilemap } from './refreshTilemap'
 
 const GAME_ZOOM = 2
 
@@ -114,6 +115,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
+  private currentTilemap: Tilemap | null = null
   private readonly sound: SoundManager
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
@@ -131,11 +133,12 @@ export class SingleplayerModeController implements SceneModeController {
     // Input
     this.input = new Input()
 
-    // Tilemap
-    this.tilemap = createTestArena()
-
     // ECS world + systems
     this.world = createGameWorld(undefined, getCharacterDef(characterId))
+
+    // Generate first stage's tilemap from the run config
+    const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
+    this.tilemap = generateArena(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, this.tilemap)
     this.systems = createSystemRegistry()
 
@@ -149,7 +152,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
     const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
     this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
-    seedLavaLights(this.lightingSystem, this.tilemap)
+    seedHazardLights(this.lightingSystem, this.tilemap)
+    this.currentTilemap = this.tilemap
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
@@ -165,7 +169,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
 
     // Spawn player at arena center
-    const { x: centerX, y: centerY } = getArenaCenter()
+    const { x: centerX, y: centerY } = getArenaCenterFromTilemap(this.tilemap)
     spawnPlayer(this.world, centerX, centerY)
 
     // Start the multi-stage run
@@ -179,7 +183,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Camera
     this.camera = new Camera()
     this.camera.setViewport(this.gameApp.width / GAME_ZOOM, this.gameApp.height / GAME_ZOOM)
-    const bounds = getPlayableBounds()
+    const bounds = getPlayableBoundsFromTilemap(this.tilemap)
     this.camera.setBounds(bounds)
     this.camera.snapTo(centerX, centerY)
 
@@ -397,6 +401,12 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Step the simulation
     this.simulationDriver.step(inputState)
+
+    // Detect tilemap change (stage transition)
+    if (this.world.tilemap !== this.currentTilemap && this.world.tilemap) {
+      this.currentTilemap = this.world.tilemap
+      refreshTilemap(this.world.tilemap, this.tilemapRenderer, this.camera, this.lightingSystem)
+    }
 
     emitShowdownCueEvents(this.gameplayEvents, this.world)
     emitLastRitesCueEvents(this.gameplayEvents, this.world)

@@ -111,8 +111,19 @@ export function registerReplaySystems(systems: SystemRegistry): void {
  *
  * `characterId` is retained for backwards API compatibility but runtime now
  * supports mixed-character rooms via per-player character gating inside systems.
+ *
+ * ### Ordering dependency: `floorSpeedMul`
+ *
+ * `hazardTileSystem` clears and writes `world.floorSpeedMul` each tick.
+ * `playerInputSystem` and `enemySteeringSystem` read it for velocity scaling.
+ * Because hazardTileSystem runs **after** those consumers, the speed multiplier
+ * is always one tick stale. This is intentional — the single-tick lag is
+ * imperceptible and avoids a circular dependency (movement must happen before
+ * position-based tile lookups make sense). The same ordering holds in
+ * `registerPredictionSystems` and `registerReplaySystems`.
  */
 export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
+  // -- Input & abilities (read floorSpeedMul from previous tick) --
   systems.register(playerInputSystem)
   systems.register(rollSystem)
   systems.register(jumpSystem)
@@ -123,20 +134,26 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(weaponSystem)
   systems.register(meleeSystem)
   systems.register(knockbackSystem)
+  // -- Spawning & progression --
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
   systems.register(stageProgressionSystem)
+  // -- Projectiles & pathfinding --
   systems.register(bulletSystem)
   systems.register(flowFieldSystem)
+  // -- Enemy AI & steering (read floorSpeedMul from previous tick) --
   systems.register(enemyDetectionSystem)
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)
   systems.register(enemySteeringSystem)
   systems.register(enemyAttackSystem)
+  // -- Physics --
   systems.register(movementSystem)
   systems.register(bulletCollisionSystem)
+  // -- Tile hazards (writes floorSpeedMul for next tick's consumers) --
   systems.register(hazardTileSystem)
+  // -- Post-movement --
   systems.register(healthSystem)
   systems.register(goldRushSystem)
   systems.register(buffSystem)

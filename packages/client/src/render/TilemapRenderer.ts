@@ -58,6 +58,10 @@ export class TilemapRenderer {
             sprite.tint = 0xF06A2A
           } else if (tile === TileType.HALF_WALL) {
             sprite.tint = 0xC59A57
+          } else if (tile === TileType.MUD) {
+            sprite.tint = 0x8B6914
+          } else if (tile === TileType.BRAMBLE) {
+            sprite.tint = 0x3A7A3A
           }
 
           this.container.addChild(sprite)

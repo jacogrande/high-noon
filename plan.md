@@ -117,3 +117,65 @@ Three medium issues to fix before committing:
 1. Validate `seq > 0` in `isValidInput` or truncate in `clampInput`
 2. Fix the duplicate `const bytes` in the shared README example
 3. Fix "Protocol v2" → "Protocol v3" in the sprint doc ASCII diagram
+
+---
+
+# Procedural Per-Stage Maps — Review
+
+**Date**: 2026-02-11
+**Branch**: main (uncommitted)
+**Files Changed**: 22 (3 new, 17 modified, 2 test files updated)
+
+## Verification Results
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Tests | PASS | 663/663 pass, 0 fail |
+| Types | PASS | `tsc --build --force` clean |
+| Build | PASS | shared + client build succeeds |
+
+## Code Review Findings
+
+### Critical Issues
+
+**C1. Flood fill connectivity is single-pass** (`mapGenerator.ts:225-286`)
+Removing a wall adjacent to an unreachable pocket doesn't guarantee that pocket connects to the main area. Needs iterative re-flood until no unreachable pockets remain.
+
+### High Priority
+
+**H1. `swapTilemap` doesn't zero velocity** (`world.ts:440-453`)
+Players teleported to new center but velocity persists. Could cause brief visual glitch.
+
+**H2. Enemy hazard avoidance ignores MUD** (`enemySteering.ts:36-39`)
+`isHazardFloor()` only checks LAVA and BRAMBLE. Should document whether this is intentional.
+
+**H3. Tilemap change detection duplicated** in SP and MP mode controllers.
+
+### Medium Priority
+
+**M1. No unit tests for mapGenerator** — Poisson, noise, flood fill, determinism untested.
+**M2. `floorSpeedMul` ordering dependency** — hazardTileSystem must run before input/steering. Should document.
+**M3. Map generation synchronous during camp-complete** — potential frame hitch.
+
+### Low Priority
+
+**L1.** Magic numbers in map configs (noise thresholds).
+**L2.** `getFloorPathfindCost` silently falls back to 1 for unknown types.
+
+## Positive Observations
+
+- Excellent determinism: SeededRng used throughout, seed derivation isolated per stage
+- Clean architecture: map generation fully isolated in `content/maps/`
+- All 663 existing tests pass with updated StageEncounter interface
+- Both SP and MP mode controllers properly handle tilemap swaps with lighting refresh
+- Server and client use same generation path for multiplayer parity
+
+## Verdict: CONDITIONAL PASS
+
+Fix C1 (iterative flood fill), H1 (zero velocity), and add basic mapGenerator tests.
+
+### Next Steps
+1. Fix flood fill to iterate until fully connected
+2. Zero velocity in `swapTilemap`
+3. Add `mapGenerator.test.ts` (determinism, center walkability, connectivity)
+4. Document MUD avoidance behavior in enemySteering

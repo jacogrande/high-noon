@@ -33,7 +33,15 @@ const SAFE_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
 /** Golden angle in radians (~137.5°) — maximally distributes overlapping entities */
 const GOLDEN_ANGLE = 2.399
 
-function findNonLavaDirection(world: GameWorld, ex: number, ey: number): { x: number; y: number } | null {
+/**
+ * Returns true if the given floor tile type is a hazard that enemies should avoid walking into.
+ * MUD is intentionally excluded — enemies don't avoid slow zones, only damage hazards.
+ */
+function isHazardFloor(tileType: number): boolean {
+  return tileType === TileType.LAVA || tileType === TileType.BRAMBLE
+}
+
+function findNonHazardDirection(world: GameWorld, ex: number, ey: number): { x: number; y: number } | null {
   const tilemap = world.tilemap
   const ff = world.flowField
   if (!tilemap) return null
@@ -55,7 +63,7 @@ function findNonLavaDirection(world: GameWorld, ex: number, ey: number): { x: nu
     const worldX = nx * tilemap.tileSize + halfTile
     const worldY = ny * tilemap.tileSize + halfTile
     if (isSolidAt(tilemap, worldX, worldY)) continue
-    if (getFloorTileTypeAt(tilemap, worldX, worldY) === TileType.LAVA) continue
+    if (isHazardFloor(getFloorTileTypeAt(tilemap, worldX, worldY))) continue
 
     const dirX = worldX - ex
     const dirY = worldY - ey
@@ -216,15 +224,15 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       desiredY /= desiredLen
     }
 
-    // Avoid entering lava when there is a non-lava alternative direction.
+    // Avoid entering hazard tiles when there is a non-hazard alternative direction.
     if (tilemap && desiredLen > 0) {
       const currentFloor = getFloorTileTypeAt(tilemap, ex, ey)
-      if (currentFloor !== TileType.LAVA) {
+      if (!isHazardFloor(currentFloor)) {
         const probeDistance = tilemap.tileSize * LAVA_PROBE_TILES
         const probeX = ex + desiredX * probeDistance
         const probeY = ey + desiredY * probeDistance
-        if (getFloorTileTypeAt(tilemap, probeX, probeY) === TileType.LAVA) {
-          const reroute = findNonLavaDirection(world, ex, ey)
+        if (isHazardFloor(getFloorTileTypeAt(tilemap, probeX, probeY))) {
+          const reroute = findNonHazardDirection(world, ex, ey)
           if (reroute) {
             desiredX = reroute.x
             desiredY = reroute.y
@@ -233,7 +241,8 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       }
     }
 
-    Velocity.x[eid] = desiredX * speed
-    Velocity.y[eid] = desiredY * speed
+    const floorMul = world.floorSpeedMul.get(eid) ?? 1.0
+    Velocity.x[eid] = desiredX * speed * floorMul
+    Velocity.y[eid] = desiredY * speed * floorMul
   }
 }

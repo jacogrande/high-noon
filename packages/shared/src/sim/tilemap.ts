@@ -36,6 +36,8 @@ export const TileType = {
   FLOOR: 2,
   LAVA: 3,
   HALF_WALL: 4,
+  MUD: 5,
+  BRAMBLE: 6,
 } as const
 
 export type TileTypeValue = (typeof TileType)[keyof typeof TileType]
@@ -260,4 +262,31 @@ export function getTilesInCircle(
   }
 
   return tiles
+}
+
+/**
+ * Get the playable bounds of a tilemap (one tile inset from edges).
+ */
+export function getPlayableBoundsFromTilemap(map: Tilemap): {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+} {
+  return {
+    minX: map.tileSize,
+    minY: map.tileSize,
+    maxX: (map.width - 1) * map.tileSize,
+    maxY: (map.height - 1) * map.tileSize,
+  }
+}
+
+/**
+ * Get the center of a tilemap in world coordinates.
+ */
+export function getArenaCenterFromTilemap(map: Tilemap): { x: number; y: number } {
+  return {
+    x: (map.width * map.tileSize) / 2,
+    y: (map.height * map.tileSize) / 2,
+  }
 }

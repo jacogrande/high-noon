@@ -8,10 +8,10 @@
 import { hasComponent } from 'bitecs'
 import {
   createGameWorld,
-  createTestArena,
+  generateArena,
   setWorldTilemap,
-  getPlayableBounds,
-  getArenaCenter,
+  getPlayableBoundsFromTilemap,
+  getArenaCenterFromTilemap,
   Position,
   Velocity,
   Player,
@@ -33,6 +33,8 @@ import {
   type UpgradeState,
   type SelectNodeResponse,
   type SystemRegistry,
+  DEFAULT_RUN_STAGES,
+  type Tilemap,
   type GameWorld,
   type InputState,
   type NetworkInput,
@@ -83,7 +85,8 @@ import {
   emitMeleeSwingEvents,
   emitShowdownCueEvents,
 } from './PlayerPresentationEvents'
-import { seedLavaLights } from './SceneLighting'
+import { seedHazardLights } from './SceneLighting'
+import { refreshTilemap } from './refreshTilemap'
 
 const GAME_ZOOM = 2
 
@@ -113,6 +116,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly dynamiteRenderer: DynamiteRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
+  private currentTilemap: Tilemap | null = null
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
   private readonly sound: SoundManager
@@ -152,6 +156,8 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** HUD data from server */
   private latestHud: HudData | null = null
+  /** Last known stage number for detecting stage transitions */
+  private lastStageNumber = 1
 
   /** Latest authoritative snapshot pending application on the fixed update tick */
   private pendingSnapshot: WorldSnapshot | null = null
@@ -184,7 +190,8 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Shadow world — local player is predicted, remote entities populated from snapshots
     this.world = createGameWorld(0, getCharacterDef(selectedCharacterId))
-    const tilemap = createTestArena()
+    const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
+    const tilemap = generateArena(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, tilemap)
 
     // Renderers
@@ -193,7 +200,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
     const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
     this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
-    seedLavaLights(this.lightingSystem, tilemap)
+    seedHazardLights(this.lightingSystem, tilemap)
+    this.currentTilemap = tilemap
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
@@ -213,9 +221,9 @@ export class MultiplayerModeController implements SceneModeController {
     // Camera
     this.camera = new Camera()
     this.camera.setViewport(this.gameApp.width / GAME_ZOOM, this.gameApp.height / GAME_ZOOM)
-    const bounds = getPlayableBounds()
+    const bounds = getPlayableBoundsFromTilemap(tilemap)
     this.camera.setBounds(bounds)
-    const { x: centerX, y: centerY } = getArenaCenter()
+    const { x: centerX, y: centerY } = getArenaCenterFromTilemap(tilemap)
     this.camera.snapTo(centerX, centerY)
     this.renderPause = new HitStop()
 
@@ -295,6 +303,23 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.net.on('hud', (data: HudData) => {
       this.latestHud = data
+
+      // Detect stage transition — regenerate tilemap from seed
+      if (data.stageNumber > 0 && data.stageNumber !== this.lastStageNumber) {
+        this.lastStageNumber = data.stageNumber
+        const stageIndex = data.stageNumber - 1
+        const stageConfig = DEFAULT_RUN_STAGES[stageIndex]
+        if (stageConfig) {
+          const newMap = generateArena(stageConfig.mapConfig, this.world.initialSeed, stageIndex)
+          this.world.tilemap = newMap
+          this.world.flowField = null
+          this.world.spatialHash = null
+          this.world.floorSpeedMul.clear()
+          this.currentTilemap = newMap
+          refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+        }
+      }
+
       // Sync local upgrade state cache for skill tree UI.
       // Skip during in-flight node selection to avoid overwriting optimistic update.
       if (this.upgradeStateCache && !this.pendingNodeSelection) {
@@ -360,6 +385,20 @@ export class MultiplayerModeController implements SceneModeController {
   private applyGameConfig(config: GameConfig): void {
     this.myServerEid = config.playerEid
     this.authoritativeCharacterId = config.characterId
+
+    // Update world seed for map generation (server sends authoritative seed)
+    if (config.seed !== this.world.initialSeed) {
+      this.world.initialSeed = config.seed
+      // Regenerate stage 0 tilemap with correct seed
+      const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
+      const newMap = generateArena(stage0Config, config.seed, 0)
+      this.world.tilemap = newMap
+      this.world.flowField = null
+      this.world.spatialHash = null
+      this.world.floorSpeedMul.clear()
+      this.currentTilemap = newMap
+      refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+    }
     this.serverCharacterIds.set(config.playerEid, config.characterId)
     if (config.roster) {
       this.applyPlayerRoster(config.roster)

@@ -4,7 +4,7 @@ import {
   createGameWorld,
   setWorldTilemap,
   startRun,
-  createTestArena,
+  generateArena,
   createSystemRegistry,
   registerAllSystems,
   stepWorld,
@@ -213,7 +213,8 @@ export class GameRoom extends Room<GameRoomState> {
   override onCreate() {
     const seed = Date.now()
     this.world = createGameWorld(seed)
-    setWorldTilemap(this.world, createTestArena())
+    const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
+    setWorldTilemap(this.world, generateArena(stage0Config, seed, 0))
 
     this.systems = createSystemRegistry()
     registerAllSystems(this.systems)

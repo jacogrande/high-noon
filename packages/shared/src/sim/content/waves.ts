@@ -7,6 +7,8 @@
  */
 
 import { EnemyType } from '../components'
+import type { MapConfig } from './maps/mapConfig'
+import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './maps/mapConfig'
 
 export interface FodderPool {
   type: number       // EnemyType
@@ -29,10 +31,12 @@ export interface WaveDefinition {
 
 export interface StageEncounter {
   waves: WaveDefinition[]
+  mapConfig: MapConfig
 }
 
 /** Stage 1: Town Outskirts — easy intro (3 waves) */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
+  mapConfig: STAGE_1_MAP_CONFIG,
   waves: [
     // Wave 1: Swarmers + 1 shooter
     {
@@ -85,6 +89,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
 
 /** Stage 2: Badlands — medium pressure (3 waves) */
 export const STAGE_2_ENCOUNTER: StageEncounter = {
+  mapConfig: STAGE_2_MAP_CONFIG,
   waves: [
     // Wave 1: Mixed fodder + 2 shooters
     {
@@ -140,6 +145,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
 
 /** Stage 3: Devil's Canyon — hard finish (3 waves) */
 export const STAGE_3_ENCOUNTER: StageEncounter = {
+  mapConfig: STAGE_3_MAP_CONFIG,
   waves: [
     // Wave 1: Immediate pressure + 2 shooters + 1 charger
     {

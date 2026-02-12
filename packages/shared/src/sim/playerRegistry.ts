@@ -10,6 +10,7 @@ import { removeEntity } from 'bitecs'
 import type { GameWorld } from './world'
 import type { UpgradeState } from './upgrade'
 import { spawnPlayer } from './prefabs'
+import { getArenaCenterFromTilemap } from './tilemap'
 import { getArenaCenter } from './content/maps/testArena'
 
 /** Maximum number of concurrent players */
@@ -59,7 +60,9 @@ export function addPlayer(world: GameWorld, sessionId: string, upgradeState?: Up
     throw new Error(`Room is full (max ${MAX_PLAYERS} players)`)
   }
 
-  const { x: cx, y: cy } = getArenaCenter()
+  const { x: cx, y: cy } = world.tilemap
+    ? getArenaCenterFromTilemap(world.tilemap)
+    : getArenaCenter()
   const offset = SPAWN_OFFSETS[slot]!
   const eid = spawnPlayer(world, cx + offset.dx, cy + offset.dy, slot, upgradeState)
 

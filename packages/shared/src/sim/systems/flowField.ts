@@ -8,9 +8,9 @@
 
 import type { GameWorld, FlowField } from '../world'
 import { Position } from '../components'
-import { worldToTile, isSolidAt, getFloorTileTypeAt, TileType } from '../tilemap'
+import { worldToTile, isSolidAt, getFloorTileTypeAt } from '../tilemap'
 import { getAlivePlayers } from '../queries'
-import { LAVA_PATHFIND_COST } from '../content/hazards'
+import { getFloorPathfindCost } from '../content/hazards'
 
 const UNREACHABLE = 0xFFFF
 const INV_SQRT2 = 0.7071067811865476
@@ -180,7 +180,7 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
       }
 
       const floorType = getFloorTileTypeAt(tilemap, nWorldX, nWorldY)
-      const edgeCost = floorType === TileType.LAVA ? LAVA_PATHFIND_COST : 1
+      const edgeCost = getFloorPathfindCost(floorType)
       const newDist = curDist + edgeCost
 
       if (newDist < ff.dist[nIdx]!) {
