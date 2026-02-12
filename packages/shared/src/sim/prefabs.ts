@@ -22,6 +22,7 @@ import {
   Bullet,
   Health,
   Enemy,
+  BossPhase,
   EnemyAI,
   Detection,
   AttackConfig,
@@ -44,17 +45,25 @@ import { clampDamage } from './damage'
 import {
   SWARMER_SPEED, SWARMER_RADIUS, SWARMER_HP, SWARMER_AGGRO_RANGE, SWARMER_ATTACK_RANGE,
   SWARMER_TELEGRAPH, SWARMER_RECOVERY, SWARMER_COOLDOWN, SWARMER_DAMAGE, SWARMER_BULLET_SPEED,
+  SWARMER_BULLET_ACCEL, SWARMER_BULLET_DRAG,
   SWARMER_SEPARATION_RADIUS, SWARMER_TIER,
   GRUNT_SPEED, GRUNT_RADIUS, GRUNT_HP, GRUNT_AGGRO_RANGE, GRUNT_ATTACK_RANGE,
   GRUNT_TELEGRAPH, GRUNT_RECOVERY, GRUNT_COOLDOWN, GRUNT_DAMAGE, GRUNT_BULLET_SPEED,
+  GRUNT_BULLET_ACCEL, GRUNT_BULLET_DRAG,
   GRUNT_SEPARATION_RADIUS, GRUNT_TIER,
   SHOOTER_SPEED, SHOOTER_RADIUS, SHOOTER_HP, SHOOTER_AGGRO_RANGE, SHOOTER_ATTACK_RANGE,
   SHOOTER_TELEGRAPH, SHOOTER_RECOVERY, SHOOTER_COOLDOWN, SHOOTER_DAMAGE, SHOOTER_BULLET_SPEED,
+  SHOOTER_BULLET_ACCEL, SHOOTER_BULLET_DRAG,
   SHOOTER_BULLET_COUNT, SHOOTER_SPREAD_ANGLE, SHOOTER_PREFERRED_RANGE,
   SHOOTER_SEPARATION_RADIUS, SHOOTER_TIER,
   CHARGER_SPEED, CHARGER_RADIUS, CHARGER_HP, CHARGER_AGGRO_RANGE, CHARGER_ATTACK_RANGE,
   CHARGER_TELEGRAPH, CHARGER_RECOVERY, CHARGER_COOLDOWN, CHARGER_DAMAGE,
   CHARGER_SEPARATION_RADIUS, CHARGER_TIER,
+  BOOMSTICK_SPEED, BOOMSTICK_RADIUS, BOOMSTICK_HP, BOOMSTICK_AGGRO_RANGE, BOOMSTICK_ATTACK_RANGE,
+  BOOMSTICK_TELEGRAPH, BOOMSTICK_RECOVERY, BOOMSTICK_COOLDOWN, BOOMSTICK_DAMAGE,
+  BOOMSTICK_BULLET_SPEED, BOOMSTICK_BULLET_ACCEL, BOOMSTICK_BULLET_DRAG,
+  BOOMSTICK_BULLET_COUNT, BOOMSTICK_SPREAD_ANGLE,
+  BOOMSTICK_PREFERRED_RANGE, BOOMSTICK_SEPARATION_RADIUS, BOOMSTICK_TIER,
   GOBLIN_BARBARIAN_SPEED, GOBLIN_BARBARIAN_RADIUS, GOBLIN_BARBARIAN_HP,
   GOBLIN_BARBARIAN_AGGRO_RANGE, GOBLIN_BARBARIAN_ATTACK_RANGE,
   GOBLIN_BARBARIAN_TELEGRAPH, GOBLIN_BARBARIAN_RECOVERY, GOBLIN_BARBARIAN_COOLDOWN,
@@ -72,6 +81,7 @@ export const MAX_COLLIDER_RADIUS = Math.max(
   GRUNT_RADIUS,
   SHOOTER_RADIUS,
   CHARGER_RADIUS,
+  BOOMSTICK_RADIUS,
   GOBLIN_BARBARIAN_RADIUS,
   GOBLIN_ROGUE_RADIUS,
 )
@@ -216,6 +226,10 @@ export interface SpawnBulletOptions {
   vy: number
   /** Damage dealt on hit */
   damage: number
+  /** Signed acceleration along travel direction (px/s^2) */
+  accel?: number
+  /** Fractional speed loss per second (0.2 = 20%/s) */
+  drag?: number
   /** Maximum travel distance in pixels */
   range: number
   /** Entity ID of the owner (for friendly fire prevention) */
@@ -234,7 +248,7 @@ export interface SpawnBulletOptions {
  * @returns The entity ID
  */
 export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): number {
-  const { x, y, vx, vy, damage, range, ownerId, onCollide, layer } = options
+  const { x, y, vx, vy, damage, accel, drag, range, ownerId, onCollide, layer } = options
   const eid = addEntity(world)
 
   // Add bullet components
@@ -256,6 +270,8 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
   // Set bullet data
   Bullet.ownerId[eid] = ownerId
   Bullet.damage[eid] = damage
+  Bullet.accel[eid] = accel ?? 0
+  Bullet.drag[eid] = drag ?? 0
   Bullet.lifetime[eid] = BULLET_LIFETIME
   Bullet.range[eid] = range
   Bullet.distanceTraveled[eid] = 0
@@ -319,6 +335,8 @@ function setEnemyDefaults(world: GameWorld, eid: number, x: number, y: number): 
   EnemyAI.initialDelay[eid] = 0
   Detection.staggerOffset[eid] = world.tick % 5
   AttackConfig.cooldownRemaining[eid] = 0
+  AttackConfig.projectileAccel[eid] = 0
+  AttackConfig.projectileDrag[eid] = 0
   AttackConfig.aimX[eid] = 0
   AttackConfig.aimY[eid] = 0
   Steering.seekWeight[eid] = 1.0
@@ -348,6 +366,8 @@ export function spawnSwarmer(world: GameWorld, x: number, y: number): number {
   AttackConfig.cooldown[eid] = SWARMER_COOLDOWN
   AttackConfig.damage[eid] = SWARMER_DAMAGE
   AttackConfig.projectileSpeed[eid] = SWARMER_BULLET_SPEED
+  AttackConfig.projectileAccel[eid] = SWARMER_BULLET_ACCEL
+  AttackConfig.projectileDrag[eid] = SWARMER_BULLET_DRAG
   AttackConfig.projectileCount[eid] = 1
   AttackConfig.spreadAngle[eid] = 0
   Steering.preferredRange[eid] = 0
@@ -380,6 +400,8 @@ export function spawnGrunt(world: GameWorld, x: number, y: number): number {
   AttackConfig.cooldown[eid] = GRUNT_COOLDOWN
   AttackConfig.damage[eid] = GRUNT_DAMAGE
   AttackConfig.projectileSpeed[eid] = GRUNT_BULLET_SPEED
+  AttackConfig.projectileAccel[eid] = GRUNT_BULLET_ACCEL
+  AttackConfig.projectileDrag[eid] = GRUNT_BULLET_DRAG
   AttackConfig.projectileCount[eid] = 1
   AttackConfig.spreadAngle[eid] = 0
   Steering.preferredRange[eid] = 0
@@ -412,6 +434,8 @@ export function spawnShooter(world: GameWorld, x: number, y: number): number {
   AttackConfig.cooldown[eid] = SHOOTER_COOLDOWN
   AttackConfig.damage[eid] = SHOOTER_DAMAGE
   AttackConfig.projectileSpeed[eid] = SHOOTER_BULLET_SPEED
+  AttackConfig.projectileAccel[eid] = SHOOTER_BULLET_ACCEL
+  AttackConfig.projectileDrag[eid] = SHOOTER_BULLET_DRAG
   AttackConfig.projectileCount[eid] = SHOOTER_BULLET_COUNT
   AttackConfig.spreadAngle[eid] = SHOOTER_SPREAD_ANGLE
   Steering.preferredRange[eid] = SHOOTER_PREFERRED_RANGE
@@ -449,6 +473,44 @@ export function spawnCharger(world: GameWorld, x: number, y: number): number {
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = CHARGER_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
+
+  return eid
+}
+
+/**
+ * Spawn a Boomstick enemy — Stage 1 test boss threat
+ */
+export function spawnBoomstick(world: GameWorld, x: number, y: number): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  addComponent(world, BossPhase, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.BOOMSTICK
+  Enemy.tier[eid] = BOOMSTICK_TIER
+  BossPhase.phase[eid] = 1
+  Speed.current[eid] = BOOMSTICK_SPEED
+  Speed.max[eid] = BOOMSTICK_SPEED
+  Collider.radius[eid] = BOOMSTICK_RADIUS
+  Health.current[eid] = BOOMSTICK_HP
+  Health.max[eid] = BOOMSTICK_HP
+  Detection.aggroRange[eid] = BOOMSTICK_AGGRO_RANGE
+  Detection.attackRange[eid] = BOOMSTICK_ATTACK_RANGE
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = BOOMSTICK_TELEGRAPH
+  AttackConfig.recoveryDuration[eid] = BOOMSTICK_RECOVERY
+  AttackConfig.cooldown[eid] = BOOMSTICK_COOLDOWN
+  AttackConfig.damage[eid] = BOOMSTICK_DAMAGE
+  AttackConfig.projectileSpeed[eid] = BOOMSTICK_BULLET_SPEED
+  AttackConfig.projectileAccel[eid] = BOOMSTICK_BULLET_ACCEL
+  AttackConfig.projectileDrag[eid] = BOOMSTICK_BULLET_DRAG
+  AttackConfig.projectileCount[eid] = BOOMSTICK_BULLET_COUNT
+  AttackConfig.spreadAngle[eid] = BOOMSTICK_SPREAD_ANGLE
+  // Boomstick uses AttackConfig.aimX as "attacks until next halo" cadence state.
+  AttackConfig.aimX[eid] = world.rng.nextInt(2) + 1
+  Steering.preferredRange[eid] = BOOMSTICK_PREFERRED_RANGE
+  Steering.separationRadius[eid] = BOOMSTICK_SEPARATION_RADIUS
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.8, 1.2)
 
   return eid
 }

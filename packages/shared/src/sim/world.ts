@@ -159,8 +159,8 @@ export interface EncounterState {
   threatSpawnedThisWave: number
   /** Threat kills accumulated during current wave */
   threatKilledThisWave: number
-  /** Threat alive count from previous tick (for delta-based death detection) */
-  prevThreatAlive: number
+  /** EIDs of threat entities spawned for the active wave (used for wave-clear accounting) */
+  activeWaveThreatEids: Set<number>
 }
 
 /**
@@ -416,7 +416,7 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
     fodderSpawnAccumulator: 0,
     threatSpawnedThisWave: 0,
     threatKilledThisWave: 0,
-    prevThreatAlive: 0,
+    activeWaveThreatEids: new Set(),
   }
 }
 

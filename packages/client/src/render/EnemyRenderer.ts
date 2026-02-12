@@ -36,6 +36,19 @@ const SPRITE_DEATH_DURATION = 3 / 8
 const SPAWN_EFFECT_DURATION = 0.5
 /** Sprite scale for goblin enemies */
 const GOBLIN_SPRITE_SCALE = 2
+/** Default enemy health bar dimensions (world-space px) */
+const ENEMY_BAR_MIN_WIDTH = 20
+const ENEMY_BAR_HEIGHT = 4
+/** Boomstick keeps a larger health bar for readability */
+const BOSS_BAR_WIDTH = 44
+const BOSS_BAR_HEIGHT = 6
+/** Vertical offset above smaller enemies */
+const ENEMY_BAR_Y_PADDING = 10
+/** Vertical offset above Boomstick origin */
+const BOSS_BAR_Y_OFFSET = 30
+/** Synthetic SpriteRegistry ID offsets for enemy health bar graphics */
+const ENEMY_BAR_BG_ID_OFFSET = 20000
+const ENEMY_BAR_FILL_ID_OFFSET = 30000
 
 /** Colors per enemy type (rendering data, client-only) */
 const ENEMY_COLORS: Record<number, number> = {
@@ -43,6 +56,7 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.GRUNT]: 0xff6633,            // red-orange
   [EnemyType.SHOOTER]: 0xaa44dd,          // purple
   [EnemyType.CHARGER]: 0xaa1111,          // dark red
+  [EnemyType.BOOMSTICK]: 0xffcc33,       // showman gold
   [EnemyType.GOBLIN_BARBARIAN]: 0x44aa44, // forest green
   [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
 }
@@ -55,6 +69,38 @@ const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
 
 function isSpriteEnemy(type: number): boolean {
   return ENEMY_SPRITE_ID[type] !== undefined
+}
+
+function getEnemyBarBgId(eid: number): number {
+  return ENEMY_BAR_BG_ID_OFFSET + eid
+}
+
+function getEnemyBarFillId(eid: number): number {
+  return ENEMY_BAR_FILL_ID_OFFSET + eid
+}
+
+function getEnemyBarWidth(type: number, radius: number): number {
+  if (type === EnemyType.BOOMSTICK) return BOSS_BAR_WIDTH
+  return Math.max(ENEMY_BAR_MIN_WIDTH, radius * 2 + 6)
+}
+
+function getEnemyBarHeight(type: number): number {
+  return type === EnemyType.BOOMSTICK ? BOSS_BAR_HEIGHT : ENEMY_BAR_HEIGHT
+}
+
+function getEnemyBarYOffset(type: number, radius: number): number {
+  if (type === EnemyType.BOOMSTICK) return BOSS_BAR_Y_OFFSET
+  if (isSpriteEnemy(type)) return radius * GOBLIN_SPRITE_SCALE + ENEMY_BAR_Y_PADDING
+  return radius + ENEMY_BAR_Y_PADDING
+}
+
+/** Green -> red health gradient for enemy health bars */
+function getHealthBarColor(ratio: number): number {
+  const t = Math.max(0, Math.min(1, ratio))
+  const r = Math.floor(255 * (1 - t))
+  const g = Math.floor(210 * t)
+  const b = 40
+  return (r << 16) | (g << 8) | b
 }
 
 /** Death effect data for ephemeral scale-down + fade */
@@ -93,6 +139,10 @@ export class EnemyRenderer {
   private readonly damageFlashTimer = new Map<number, number>()
   private readonly spawnTimer = new Map<number, number>()
   private readonly lastDirection = new Map<number, Direction>()
+  /** Tracks enemy IDs that currently have enemy health bar sprites */
+  private readonly healthBars = new Set<number>()
+  private readonly healthBarWidths = new Map<number, number>()
+  private readonly healthBarYOffsets = new Map<number, number>()
   private readonly deathEffects: DeathEffect[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
@@ -141,6 +191,18 @@ export class EnemyRenderer {
           const radius = Collider.radius[eid]!
           this.registry.createCircle(eid, radius, color)
         }
+
+        const radius = Collider.radius[eid]!
+        const barWidth = getEnemyBarWidth(type, radius)
+        const barHeight = getEnemyBarHeight(type)
+        const barYOffset = getEnemyBarYOffset(type, radius)
+        const bgId = getEnemyBarBgId(eid)
+        const fillId = getEnemyBarFillId(eid)
+        this.registry.createRect(bgId, barWidth, barHeight, 0x111111)
+        this.registry.createRect(fillId, barWidth, barHeight, getHealthBarColor(1))
+        this.healthBars.add(eid)
+        this.healthBarWidths.set(eid, barWidth)
+        this.healthBarYOffsets.set(eid, barYOffset)
 
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
@@ -203,6 +265,14 @@ export class EnemyRenderer {
         this.damageFlashTimer.delete(eid)
         this.spawnTimer.delete(eid)
         this.lastDirection.delete(eid)
+
+        if (this.healthBars.has(eid)) {
+          this.registry.remove(getEnemyBarBgId(eid))
+          this.registry.remove(getEnemyBarFillId(eid))
+          this.healthBars.delete(eid)
+          this.healthBarWidths.delete(eid)
+          this.healthBarYOffsets.delete(eid)
+        }
       }
     }
 
@@ -365,6 +435,8 @@ export class EnemyRenderer {
           this.lastAlpha.set(eid, a)
         }
 
+        this.updateEnemyHealthBar(eid, renderX, renderY, a)
+
         continue // skip circle rendering path
       }
 
@@ -417,6 +489,8 @@ export class EnemyRenderer {
         this.lastAlpha.set(eid, a)
       }
 
+      this.updateEnemyHealthBar(eid, renderX, renderY, a)
+
       // Threat-tier outline ring
       if (tier === EnemyTier.THREAT && this.debug) {
         this.debug.circleOutline(renderX, renderY, Collider.radius[eid]! + 3, 0xffff00, 1.5)
@@ -465,6 +539,31 @@ export class EnemyRenderer {
     }
   }
 
+  private updateEnemyHealthBar(eid: number, renderX: number, renderY: number, alpha: number): void {
+    if (!this.healthBars.has(eid)) return
+
+    const bgId = getEnemyBarBgId(eid)
+    const fillId = getEnemyBarFillId(eid)
+    const barWidth = this.healthBarWidths.get(eid) ?? ENEMY_BAR_MIN_WIDTH
+    const yOffset = this.healthBarYOffsets.get(eid) ?? ENEMY_BAR_Y_PADDING
+
+    const hp = Health.current[eid]!
+    const maxHP = Math.max(1, Health.max[eid]!)
+    const ratio = Math.max(0, Math.min(1, hp / maxHP))
+    const barY = renderY - yOffset
+
+    this.registry.setPosition(bgId, renderX, barY)
+    this.registry.setAlpha(bgId, alpha * 0.9)
+
+    const scaledWidth = barWidth * ratio
+    const leftEdgeX = renderX - barWidth / 2
+    const fillCenterX = leftEdgeX + scaledWidth / 2
+    this.registry.setScale(fillId, ratio, 1)
+    this.registry.setPosition(fillId, fillCenterX, barY)
+    this.registry.setColor(fillId, getHealthBarColor(ratio))
+    this.registry.setAlpha(fillId, alpha)
+  }
+
   /**
    * Get current enemy count
    */
@@ -493,5 +592,13 @@ export class EnemyRenderer {
     this.spawnTimer.clear()
     this.lastDirection.clear()
     this.currentEntities.clear()
+
+    for (const eid of this.healthBars) {
+      this.registry.remove(getEnemyBarBgId(eid))
+      this.registry.remove(getEnemyBarFillId(eid))
+    }
+    this.healthBars.clear()
+    this.healthBarWidths.clear()
+    this.healthBarYOffsets.clear()
   }
 }

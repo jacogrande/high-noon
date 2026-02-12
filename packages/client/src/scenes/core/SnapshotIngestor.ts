@@ -26,11 +26,19 @@ import {
   Weapon,
   Roll,
   SWARMER_RADIUS,
+  SWARMER_HP,
   GRUNT_RADIUS,
+  GRUNT_HP,
   SHOOTER_RADIUS,
+  SHOOTER_HP,
   CHARGER_RADIUS,
+  CHARGER_HP,
+  BOOMSTICK_RADIUS,
+  BOOMSTICK_HP,
   GOBLIN_BARBARIAN_RADIUS,
+  GOBLIN_BARBARIAN_HP,
   GOBLIN_ROGUE_RADIUS,
+  GOBLIN_ROGUE_HP,
   Player,
   PlayerState,
   getCharacterDef,
@@ -53,8 +61,20 @@ const ENEMY_RADIUS: Record<number, number> = {
   [EnemyType.GRUNT]: GRUNT_RADIUS,
   [EnemyType.SHOOTER]: SHOOTER_RADIUS,
   [EnemyType.CHARGER]: CHARGER_RADIUS,
+  [EnemyType.BOOMSTICK]: BOOMSTICK_RADIUS,
   [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_RADIUS,
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_RADIUS,
+}
+
+/** Enemy max HP lookup by EnemyType value */
+const ENEMY_MAX_HP: Record<number, number> = {
+  [EnemyType.SWARMER]: SWARMER_HP,
+  [EnemyType.GRUNT]: GRUNT_HP,
+  [EnemyType.SHOOTER]: SHOOTER_HP,
+  [EnemyType.CHARGER]: CHARGER_HP,
+  [EnemyType.BOOMSTICK]: BOOMSTICK_HP,
+  [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_HP,
+  [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_HP,
 }
 
 /** Enemy tier lookup by EnemyType value */
@@ -63,6 +83,7 @@ const ENEMY_TIER: Record<number, number> = {
   [EnemyType.GRUNT]: EnemyTier.FODDER,
   [EnemyType.SHOOTER]: EnemyTier.THREAT,
   [EnemyType.CHARGER]: EnemyTier.THREAT,
+  [EnemyType.BOOMSTICK]: EnemyTier.THREAT,
   [EnemyType.GOBLIN_BARBARIAN]: EnemyTier.FODDER,
   [EnemyType.GOBLIN_ROGUE]: EnemyTier.FODDER,
 }
@@ -333,9 +354,13 @@ export class SnapshotIngestor {
         addComponent(ctx.world, EnemyAI, clientEid)
 
         Enemy.type[clientEid] = e.type
+        EnemyAI.targetEid[clientEid] = NO_TARGET
         Enemy.tier[clientEid] = ENEMY_TIER[e.type] ?? EnemyTier.FODDER
         Collider.radius[clientEid] = ENEMY_RADIUS[e.type] ?? 10
         Collider.layer[clientEid] = CollisionLayer.ENEMY
+        Health.max[clientEid] = ENEMY_MAX_HP[e.type] ?? Math.max(1, e.hp)
+        Health.iframes[clientEid] = 0
+        Health.iframeDuration[clientEid] = 0
 
         Position.x[clientEid] = e.x
         Position.y[clientEid] = e.y
@@ -346,7 +371,18 @@ export class SnapshotIngestor {
       }
 
       Health.current[clientEid] = e.hp
+      // Keep max HP sane for render/UI ratio even if entity was created earlier.
+      if (Health.max[clientEid]! <= 0) {
+        Health.max[clientEid] = ENEMY_MAX_HP[e.type] ?? Math.max(1, e.hp)
+      }
       EnemyAI.state[clientEid] = e.aiState
+      if (e.targetEid === NO_TARGET) {
+        EnemyAI.targetEid[clientEid] = NO_TARGET
+      } else if (e.targetEid === ctx.myServerEid && ctx.myClientEid >= 0) {
+        EnemyAI.targetEid[clientEid] = ctx.myClientEid
+      } else {
+        EnemyAI.targetEid[clientEid] = ctx.playerEntities.get(e.targetEid) ?? NO_TARGET
+      }
     }
 
     for (const [serverEid, clientEid] of ctx.enemyEntities) {

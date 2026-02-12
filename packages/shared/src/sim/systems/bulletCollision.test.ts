@@ -511,6 +511,52 @@ describe('bulletCollisionSystem', () => {
     })
   })
 
+  describe('local-player scope optimistic hits', () => {
+    test('local player bullets apply optimistic enemy damage immediately', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X, y: OPEN_Y,
+        vx: 100, vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      // Build hash in full-world mode (local-player mode reuses this authoritative hash).
+      rebuildHash(world)
+      world.simulationScope = 'local-player'
+      world.localPlayerEid = playerEid
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('local-player scope ignores bullets not owned by local player', () => {
+      const localPlayer = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const remotePlayer = spawnPlayer(world, OPEN_X + 200, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X, y: OPEN_Y,
+        vx: 100, vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: remotePlayer,
+      })
+
+      rebuildHash(world)
+      world.simulationScope = 'local-player'
+      world.localPlayerEid = localPlayer
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(20)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(true)
+    })
+  })
+
   describe('onBulletHit hook', () => {
     test('hook can modify damage', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)

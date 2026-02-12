@@ -50,6 +50,7 @@ describe('snapshot', () => {
     const eEid = spawnSwarmer(world, 400, 500)
     Health.current[eEid] = 3
     EnemyAI.state[eEid] = AIState.CHASE
+    EnemyAI.targetEid[eEid] = pEid
 
     const encoded = encodeSnapshot(world, 12345.678)
     const snap = decodeSnapshot(encoded)
@@ -97,6 +98,7 @@ describe('snapshot', () => {
     expect(e.type).toBe(EnemyType.SWARMER)
     expect(e.hp).toBe(3)
     expect(e.aiState).toBe(AIState.CHASE)
+    expect(e.targetEid).toBe(pEid)
 
     // Ability sections (empty)
     expect(snap.lastRitesZones).toHaveLength(0)
@@ -309,8 +311,8 @@ describe('snapshot', () => {
     expect(encoded.byteLength).toBe(expectedSize)
 
     // Verify the per-entity sizes match spec (2 players + 20 bullets + 30 enemies + 2 section headers)
-    // 14 + 76 + 420 + 390 + 2 = 902
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE + 2).toBe(902)
+    // 14 + 76 + 420 + 450 + 2 = 962
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE + 2).toBe(962)
   })
 
   it('lastProcessedSeq round-trip with playerSeqs map', () => {

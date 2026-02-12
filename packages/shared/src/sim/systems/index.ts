@@ -23,6 +23,7 @@ import { healthSystem } from './health'
 import { debugSpawnSystem } from './debugSpawn'
 import { flowFieldSystem } from './flowField'
 import { enemyDetectionSystem } from './enemyDetection'
+import { boomstickBossSystem } from './boomstickBoss'
 import { enemyAISystem } from './enemyAI'
 import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'
@@ -53,6 +54,7 @@ export {
   debugSpawnSystem,
   flowFieldSystem,
   enemyDetectionSystem,
+  boomstickBossSystem,
   enemyAISystem,
   enemySteeringSystem,
   enemyAttackSystem,
@@ -143,6 +145,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(flowFieldSystem)
   // -- Enemy AI & steering (read floorSpeedMul from previous tick) --
   systems.register(enemyDetectionSystem)
+  systems.register(boomstickBossSystem)
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)

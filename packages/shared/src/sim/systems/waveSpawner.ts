@@ -11,12 +11,20 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
 import { Enemy, EnemyType, EnemyTier, Position, Dead } from '../components'
-import { spawnSwarmer, spawnGrunt, spawnShooter, spawnCharger, spawnGoblinBarbarian, spawnGoblinRogue } from '../prefabs'
+import {
+  spawnSwarmer,
+  spawnGrunt,
+  spawnShooter,
+  spawnCharger,
+  spawnBoomstick,
+  spawnGoblinBarbarian,
+  spawnGoblinRogue,
+} from '../prefabs'
 import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
 import {
   SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
-  GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
+  BOOMSTICK_BUDGET_COST, GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
 } from '../content/enemies'
 import type { FodderPool } from '../content/waves'
 
@@ -31,6 +39,7 @@ const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => numbe
   [EnemyType.GRUNT]: spawnGrunt,
   [EnemyType.SHOOTER]: spawnShooter,
   [EnemyType.CHARGER]: spawnCharger,
+  [EnemyType.BOOMSTICK]: spawnBoomstick,
   [EnemyType.GOBLIN_BARBARIAN]: spawnGoblinBarbarian,
   [EnemyType.GOBLIN_ROGUE]: spawnGoblinRogue,
 }
@@ -39,6 +48,7 @@ const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => numbe
 const BUDGET_COST: Record<number, number> = {
   [EnemyType.SWARMER]: SWARMER_BUDGET_COST,
   [EnemyType.GRUNT]: GRUNT_BUDGET_COST,
+  [EnemyType.BOOMSTICK]: BOOMSTICK_BUDGET_COST,
   [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_BUDGET_COST,
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_BUDGET_COST,
 }
@@ -191,13 +201,18 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
   enc.fodderAliveCount = fodderAlive
   enc.threatAliveCount = threatAlive
 
-  // Detect threat deaths via tick-over-tick delta (before spawning new ones)
-  const threatDeaths = enc.prevThreatAlive - threatAlive
-  if (threatDeaths > 0) {
-    enc.threatKilledThisWave += threatDeaths
+  // Count deaths for threats spawned by the currently active wave only.
+  // Carry-over threat kills must not contribute to this wave's clear ratio.
+  if (enc.activeWaveThreatEids.size > 0) {
+    for (const threatEid of enc.activeWaveThreatEids) {
+      if (!hasComponent(world, Enemy, threatEid) || hasComponent(world, Dead, threatEid)) {
+        enc.activeWaveThreatEids.delete(threatEid)
+        enc.threatKilledThisWave++
+      }
+    }
   }
 
-  // Track threats spawned this tick so we can update prevThreatAlive correctly
+  // Track threats spawned this tick so threatAliveCount includes them immediately.
   let threatsSpawnedThisTick = 0
 
   // Pre-wave delay
@@ -210,13 +225,15 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       enc.totalFodderSpawned = 0
       enc.fodderSpawnAccumulator = 0
       enc.threatKilledThisWave = 0
+      enc.activeWaveThreatEids.clear()
 
       // Spawn all threats at once — further out for reaction time
       let threatCount = 0
       for (const threat of waveDef.threats) {
         for (let i = 0; i < threat.count; i++) {
           const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 400, 80)
-          spawnEnemy(world, threat.type, pos.x, pos.y)
+          const eid = spawnEnemy(world, threat.type, pos.x, pos.y)
+          enc.activeWaveThreatEids.add(eid)
           threatsSpawnedThisTick++
           threatCount++
         }
@@ -239,7 +256,6 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       enc.fodderAliveCount = fodderAlive
       enc.waveActive = true
     } else {
-      enc.prevThreatAlive = threatAlive
       return
     }
   }
@@ -287,15 +303,13 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
   const totalThreatsAlive = threatAlive + threatsSpawnedThisTick
   enc.threatAliveCount = totalThreatsAlive
 
-  // Update prevThreatAlive for next tick's death detection
-  enc.prevThreatAlive = totalThreatsAlive
-
   // Wave clear: enough of this wave's threats killed (fodder irrelevant)
   // Survivors carry over into the next wave
   const killsNeeded = Math.ceil(enc.threatSpawnedThisWave * waveDef.threatClearRatio)
 
   if (enc.threatKilledThisWave >= killsNeeded) {
     enc.waveActive = false
+    enc.activeWaveThreatEids.clear()
     enc.currentWave++
     if (enc.currentWave >= enc.definition.waves.length) {
       enc.completed = true

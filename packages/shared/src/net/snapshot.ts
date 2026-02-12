@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v7)
+ * Binary Snapshot Serialization (v8)
  *
  * Encodes/decodes the world state into a compact binary format for
  * server→client broadcast at 20Hz.
@@ -30,13 +30,13 @@ import { NO_OWNER, NO_TARGET } from '../sim/prefabs'
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 7
+export const SNAPSHOT_VERSION = 8
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
 export const HEADER_SIZE = 14
-export const PLAYER_SIZE = 38 // v7: +3 bytes (showdownActive:1 + showdownTargetEid:2)
+export const PLAYER_SIZE = 38 // v7+: +3 bytes (showdownActive:1 + showdownTargetEid:2)
 export const BULLET_SIZE = 21
-export const ENEMY_SIZE = 13
+export const ENEMY_SIZE = 15 // v8: +2 bytes (enemy targetEid)
 
 // ============================================================================
 // Snapshot Types
@@ -78,6 +78,7 @@ export interface EnemySnapshot {
   type: number
   hp: number
   aiState: number
+  targetEid: number
 }
 
 export interface LastRitesZoneSnapshot {
@@ -277,7 +278,7 @@ export function encodeSnapshot(
     offset += 2
   }
 
-  // Enemies
+  // Enemies (v8: includes targetEid)
   for (let i = 0; i < enemies.length; i++) {
     const eid = enemies[i]!
     view.setUint16(offset, eid, true)
@@ -292,6 +293,10 @@ export function encodeSnapshot(
     offset += 1
     view.setUint8(offset, EnemyAI.state[eid]!)
     offset += 1
+    const target = EnemyAI.targetEid[eid]!
+    const encodedTarget = target === NO_TARGET ? NO_TARGET : clampU16(target)
+    view.setUint16(offset, encodedTarget, true)
+    offset += 2
   }
 
   // Last Rites Zones (v7)
@@ -440,7 +445,10 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 1
     const aiState = view.getUint8(offset)
     offset += 1
-    enemies[i] = { eid, x, y, type, hp, aiState }
+    const rawTargetEid = view.getUint16(offset, true)
+    offset += 2
+    const targetEid = rawTargetEid === NO_TARGET ? NO_TARGET : rawTargetEid
+    enemies[i] = { eid, x, y, type, hp, aiState, targetEid }
   }
 
   // Last Rites Zones (v7)
