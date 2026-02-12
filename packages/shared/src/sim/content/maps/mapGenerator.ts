@@ -23,6 +23,18 @@ function deriveMapSeed(baseSeed: number, stageIndex: number): number {
 }
 
 /**
+ * Derive a stable visual seed for base-tile variant picking.
+ * Kept separate from map generation so visual and collision layout concerns
+ * remain decoupled.
+ */
+function deriveBaseTileSeed(baseSeed: number, stageIndex: number): number {
+  let h = baseSeed ^ Math.imul(stageIndex + 1, 0x7f4a7c15)
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return (h ^ (h >>> 16)) >>> 0
+}
+
+/**
  * Generate a tilemap from a MapConfig.
  *
  * @param config - Map configuration for the stage
@@ -36,6 +48,11 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
 
   // 1. Create tilemap with solid + floor layers
   const map = createTilemap(width, height, tileSize)
+  map.baseTiles = {
+    style: config.baseTiles.style,
+    variantCount: Math.max(1, Math.floor(config.baseTiles.variantCount)),
+    seed: deriveBaseTileSeed(baseSeed, stageIndex),
+  }
   addLayer(map, true)   // layer 0: solid
   addLayer(map, false)  // layer 1: floor
 

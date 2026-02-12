@@ -5,6 +5,25 @@
  * Designed to work identically on client and server.
  */
 
+/** Supported stage base-tile styles */
+export const BASE_TILE_STYLES = ['red_dirt', 'grass', 'stone'] as const
+export type BaseTileStyle = (typeof BASE_TILE_STYLES)[number]
+
+/** Number of base-tile variants per style in base_tileset.png */
+export const BASE_TILE_VARIANTS_PER_STYLE = 6
+
+/**
+ * Stage base-tile rendering metadata.
+ *
+ * This is presentation metadata used by the client renderer; simulation and
+ * collision continue to use TileType values.
+ */
+export interface BaseTileMetadata {
+  style: BaseTileStyle
+  variantCount: number
+  seed: number
+}
+
 /**
  * A single layer of tiles
  */
@@ -27,6 +46,8 @@ export interface Tilemap {
   tileSize: number
   /** Map layers (bottom to top) */
   layers: TileLayer[]
+  /** Optional base-tile visual metadata for stage-aware rendering */
+  baseTiles?: BaseTileMetadata
 }
 
 /** Tile type constants */

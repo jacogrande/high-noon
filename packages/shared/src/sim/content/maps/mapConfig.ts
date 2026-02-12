@@ -2,7 +2,7 @@
  * Map generation configuration types and per-stage configs.
  */
 
-import { TileType } from '../../tilemap'
+import { TileType, BASE_TILE_VARIANTS_PER_STYLE, type BaseTileStyle } from '../../tilemap'
 import { OBSTACLE_TEMPLATES } from './obstacleTemplates'
 
 export interface ObstacleTemplate {
@@ -22,10 +22,16 @@ export interface HazardConfig {
   maxCoverage: number
 }
 
+export interface BaseTileConfig {
+  style: BaseTileStyle
+  variantCount: number
+}
+
 export interface MapConfig {
   width: number
   height: number
   tileSize: number
+  baseTiles: BaseTileConfig
   /** Radius (in tiles) around center to keep clear for spawning */
   centerClearRadius: number
   obstacles: {
@@ -41,6 +47,7 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
   width: 50,
   height: 38,
   tileSize: 32,
+  baseTiles: { style: 'red_dirt', variantCount: BASE_TILE_VARIANTS_PER_STYLE },
   centerClearRadius: 4,
   obstacles: {
     count: 8,
@@ -57,6 +64,7 @@ export const STAGE_2_MAP_CONFIG: MapConfig = {
   width: 54,
   height: 42,
   tileSize: 32,
+  baseTiles: { style: 'grass', variantCount: BASE_TILE_VARIANTS_PER_STYLE },
   centerClearRadius: 4,
   obstacles: {
     count: 10,
@@ -74,6 +82,7 @@ export const STAGE_3_MAP_CONFIG: MapConfig = {
   width: 46,
   height: 36,
   tileSize: 32,
+  baseTiles: { style: 'stone', variantCount: BASE_TILE_VARIANTS_PER_STYLE },
   centerClearRadius: 4,
   obstacles: {
     count: 12,

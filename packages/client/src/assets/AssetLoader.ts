@@ -6,7 +6,7 @@
  */
 
 import { Assets, Texture, Rectangle } from 'pixi.js'
-import { TileType } from '@high-noon/shared'
+import { TileType, type BaseTileStyle } from '@high-noon/shared'
 import type { Spritesheet } from 'pixi.js'
 import {
   ANIMATION_STATES,
@@ -20,6 +20,12 @@ import {
   type AnimationState,
   type EnemyAnimationState,
 } from './animations'
+import {
+  BASE_TILESET_PATH,
+  BASE_TILE_SIZE,
+  BASE_TILE_VARIANTS,
+  BASE_TILE_STYLE_ROW,
+} from './baseTileset'
 
 /** Base path for character sprite sheets */
 const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
@@ -27,6 +33,7 @@ const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
 /** Asset manifest for non-character assets */
 const MANIFEST = {
   tileset: '/assets/sprites/tileset.json',
+  baseTileset: BASE_TILESET_PATH,
   bullet: '/assets/sprites/bullet.png',
 } as const
 
@@ -69,10 +76,14 @@ const SPRITE_DIRS = ['N', 'E', 'S'] as const
 export class AssetLoader {
   private static loaded = false
   private static tilesetSheet: Spritesheet | null = null
+  private static baseTilesetTexture: Texture | null = null
   private static bulletTexture: Texture | null = null
 
   /** Pre-sliced player textures: key = `${state}_${spriteDir}_${frame}` */
   private static playerTextures = new Map<string, Texture>()
+
+  /** Pre-sliced base tile textures: key = `${style}_${variant}` */
+  private static baseTileTextures = new Map<string, Texture>()
 
   /** Weapon textures: key = weaponId */
   private static weaponTextures = new Map<string, Texture>()
@@ -94,8 +105,9 @@ export class AssetLoader {
 
     console.log('[AssetLoader] Starting asset load...')
 
-    // Load tileset + bullet
+    // Load tilesets + bullet
     Assets.add({ alias: 'tileset', src: MANIFEST.tileset })
+    Assets.add({ alias: 'base_tileset', src: MANIFEST.baseTileset })
     Assets.add({ alias: 'bullet', src: MANIFEST.bullet })
 
     // Add character sprite sheets
@@ -117,6 +129,7 @@ export class AssetLoader {
 
     const allAliases = [
       'tileset',
+      'base_tileset',
       'bullet',
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
@@ -145,14 +158,21 @@ export class AssetLoader {
     console.log('[AssetLoader] Assets loaded, storing references...')
 
     this.tilesetSheet = loaded.tileset as Spritesheet
+    this.baseTilesetTexture = loaded.base_tileset as Texture
     this.bulletTexture = loaded.bullet as Texture
 
     if (!this.tilesetSheet?.textures) {
       throw new Error('Tileset spritesheet failed to load or has no textures')
     }
+    if (!this.baseTilesetTexture) {
+      throw new Error('Base tileset texture failed to load')
+    }
     if (!this.bulletTexture) {
       throw new Error('Bullet texture failed to load')
     }
+
+    this.baseTilesetTexture.source.scaleMode = 'nearest'
+    this.sliceBaseTileset(this.baseTilesetTexture)
 
     // Store weapon textures with nearest-neighbor scaling
     for (const weaponId of Object.keys(WEAPON_SPRITES)) {
@@ -233,6 +253,26 @@ export class AssetLoader {
     this.loaded = true
   }
 
+  private static sliceBaseTileset(baseTileset: Texture): void {
+    this.baseTileTextures.clear()
+
+    for (const [style, row] of Object.entries(BASE_TILE_STYLE_ROW)) {
+      for (let variant = 0; variant < BASE_TILE_VARIANTS; variant++) {
+        const rect = new Rectangle(
+          variant * BASE_TILE_SIZE,
+          row * BASE_TILE_SIZE,
+          BASE_TILE_SIZE,
+          BASE_TILE_SIZE,
+        )
+        const subTexture = new Texture({
+          source: baseTileset.source,
+          frame: rect,
+        })
+        this.baseTileTextures.set(`${style}_${variant}`, subTexture)
+      }
+    }
+  }
+
   /**
    * Check if assets are loaded
    */
@@ -258,6 +298,19 @@ export class AssetLoader {
       throw new Error(`Texture not found: ${frameName}`)
     }
 
+    return texture
+  }
+
+  /**
+   * Get a stage base tile texture by style + variant index.
+   */
+  static getBaseTileTexture(style: BaseTileStyle, variantIndex: number): Texture {
+    const wrappedVariant = ((Math.floor(variantIndex) % BASE_TILE_VARIANTS) + BASE_TILE_VARIANTS) % BASE_TILE_VARIANTS
+    const key = `${style}_${wrappedVariant}`
+    const texture = this.baseTileTextures.get(key)
+    if (!texture) {
+      throw new Error(`Base tile texture not found: ${key}. Call AssetLoader.loadAll() first.`)
+    }
     return texture
   }
 
@@ -332,7 +385,9 @@ export class AssetLoader {
   static reset(): void {
     this.loaded = false
     this.tilesetSheet = null
+    this.baseTilesetTexture = null
     this.bulletTexture = null
+    this.baseTileTextures.clear()
     this.playerTextures.clear()
     this.weaponTextures.clear()
     this.enemyTextures.clear()
