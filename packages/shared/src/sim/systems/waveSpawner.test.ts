@@ -7,7 +7,7 @@ import { waveSpawnerSystem, pickSpawnPosition } from './waveSpawner'
 import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import { SeededRng } from '../../math/rng'
-import type { StageEncounter, WaveDefinition } from '../content/waves'
+import { STAGE_1_ENCOUNTER, type StageEncounter, type WaveDefinition } from '../content/waves'
 
 const TEST_SEED = 12345
 
@@ -322,6 +322,58 @@ describe('waveSpawnerSystem', () => {
       expect(countByTier(world).threat).toBe(2)
     })
 
+    test('carryover threat kills do not count toward next wave clear ratio', () => {
+      // Wave 1: 2 shooters, ratio 0.5 -> kill 1 to advance (1 shooter carries over)
+      // Wave 2: 2 chargers, ratio 1.0 -> must kill both chargers to clear
+      const encounter = makeTwoWaveEncounter(
+        {
+          fodderBudget: 0,
+          threats: [{ type: EnemyType.SHOOTER, count: 2 }],
+          spawnDelay: 0,
+          threatClearRatio: 0.5,
+        },
+        {
+          fodderBudget: 0,
+          threats: [{ type: EnemyType.CHARGER, count: 2 }],
+          spawnDelay: 0,
+          threatClearRatio: 1.0,
+        },
+      )
+      setEncounter(world, encounter)
+
+      // Activate wave 1 and kill one shooter to advance.
+      waveSpawnerSystem(world, 1 / 60)
+      const wave1Threats = getThreatEids(world)
+      killEnemy(world, wave1Threats[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.currentWave).toBe(1)
+
+      // Activate wave 2: 1 carryover shooter + 2 spawned chargers.
+      waveSpawnerSystem(world, 1 / 60)
+      const allThreats = getThreatEids(world)
+      const carryoverShooter = allThreats.find(eid => Enemy.type[eid] === EnemyType.SHOOTER)
+      const wave2Chargers = allThreats.filter(eid => Enemy.type[eid] === EnemyType.CHARGER)
+      expect(carryoverShooter).toBeDefined()
+      expect(wave2Chargers).toHaveLength(2)
+
+      // Kill carryover threat: should NOT progress wave 2 kill counter.
+      killEnemy(world, carryoverShooter!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.threatKilledThisWave).toBe(0)
+      expect(world.encounter!.waveActive).toBe(true)
+
+      // Kill one wave-2 threat: still not enough for ratio 1.0.
+      killEnemy(world, wave2Chargers[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.threatKilledThisWave).toBe(1)
+      expect(world.encounter!.waveActive).toBe(true)
+
+      // Kill second wave-2 threat: now final wave can complete.
+      killEnemy(world, wave2Chargers[1]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.completed).toBe(true)
+    })
+
     test('fodder does not block wave progression', () => {
       // Wave with threats + lots of fodder alive, ratio 1.0
       const encounter = makeEncounter({
@@ -383,6 +435,26 @@ describe('waveSpawnerSystem', () => {
       waveSpawnerSystem(world, 1 / 60)
       expect(world.encounter!.completed).toBe(true)
       expect(world.encounter!.currentWave).toBe(1)
+    })
+
+    test('stage 1 final wave includes the boomstick test boss', () => {
+      setEncounter(world, STAGE_1_ENCOUNTER)
+
+      // Wave 1 activate + clear
+      waveSpawnerSystem(world, 1 / 60)
+      for (const eid of getThreatEids(world)) killEnemy(world, eid)
+      waveSpawnerSystem(world, 1 / 60)
+
+      // Wave 2 activate + clear
+      waveSpawnerSystem(world, 5.1)
+      for (const eid of getThreatEids(world)) killEnemy(world, eid)
+      waveSpawnerSystem(world, 1 / 60)
+
+      // Wave 3 activates after delay
+      waveSpawnerSystem(world, 5.1)
+      const types = countByType(world)
+      expect(world.encounter!.currentWave).toBe(2)
+      expect(types[EnemyType.BOOMSTICK] ?? 0).toBe(1)
     })
   })
 

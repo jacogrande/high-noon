@@ -94,14 +94,6 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         const minDist = radius + Collider.radius[targetEid]!
         if (distSq >= minDist * minDist) return
 
-        if (localOnly) {
-          // Client prediction path: despawn local bullet for immediate visual impact.
-          // Authoritative damage and gameplay effects remain server-only.
-          bulletsToRemove.push(eid)
-          hitEntity = true
-          return
-        }
-
         // Determine damage and pierce behavior
         let damage = Bullet.damage[eid]!
         let shouldRemoveBullet = true
@@ -121,8 +113,9 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         }
 
         // Fire onBulletHit hooks for player bullets (pierce, JJE bonus, etc.)
+        // Keep this server-authoritative to avoid prediction-only gameplay side-effects.
         const isPlayerBullet = Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET
-        if (isPlayerBullet && world.hooks.hasHandlers('onBulletHit')) {
+        if (!localOnly && isPlayerBullet && world.hooks.hasHandlers('onBulletHit')) {
           const hookResult = world.hooks.fireBulletHit(world, eid, targetEid, damage)
           damage = hookResult.damage
           if (hookResult.pierce && shouldRemoveBullet) {
@@ -138,6 +131,16 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         // Final Arrangement: 25% damage reduction when player is below 50% HP
         if (hasComponent(world, Player, targetEid) && getUpgradeStateForPlayer(world, targetEid).finalArrangementActive) {
           damage = clampDamage(damage * 0.75)
+        }
+
+        if (localOnly) {
+          // Prediction path: apply optimistic enemy HP change immediately so hit feedback
+          // doesn't wait for the next authoritative snapshot.
+          const oldHP = Health.current[targetEid]!
+          Health.current[targetEid] = Math.max(0, oldHP - damage)
+          if (shouldRemoveBullet) bulletsToRemove.push(eid)
+          if (shouldStopIteration) hitEntity = true
+          return
         }
 
         // HIT — apply damage
