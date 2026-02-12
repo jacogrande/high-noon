@@ -2,17 +2,19 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import {
-  spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
+  spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger, spawnBoomstick,
   spawnGoblinBarbarian, spawnGoblinRogue,
 } from '../prefabs'
 import { createTestArena } from '../content/maps/testArena'
 import { enemyAttackSystem } from './enemyAttack'
 import {
   EnemyAI, AIState, AttackConfig, Position, Velocity, Collider,
-  Health, Dead, Bullet, Enemy, EnemyType, EnemyTier, Invincible, Knockback,
+  Health, Dead, Bullet, Enemy, EnemyType, EnemyTier, Invincible, Knockback, BossPhase,
 } from '../components'
 import {
   CHARGER_CHARGE_DURATION, CHARGER_CHARGE_SPEED,
+  BOOMSTICK_BULLET_COUNT, BOOMSTICK_RING_BULLET_COUNT,
+  BOOMSTICK_PHASE_3_FAN_BULLETS, BOOMSTICK_PHASE_3_RING_BULLETS,
   GOBLIN_BARBARIAN_ATTACK_DURATION, GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_DAMAGE,
   GOBLIN_ROGUE_ATTACK_DURATION, GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_DAMAGE,
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
@@ -69,6 +71,38 @@ describe('enemyAttackSystem', () => {
       enemyAttackSystem(world, 1 / 60)
 
       expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('boomstick fan volley and halo are offset across attacks', () => {
+      const eid = spawnBoomstick(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      AttackConfig.aimX[eid] = 1
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+      expect(countBullets()).toBe(BOOMSTICK_BULLET_COUNT)
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+
+      transition(eid, AIState.ATTACK)
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(BOOMSTICK_BULLET_COUNT + BOOMSTICK_RING_BULLET_COUNT)
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('boomstick phase 3 uses denser halo pattern', () => {
+      const eid = spawnBoomstick(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      BossPhase.phase[eid] = 3
+      AttackConfig.projectileCount[eid] = BOOMSTICK_PHASE_3_FAN_BULLETS
+      AttackConfig.aimX[eid] = 0
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(BOOMSTICK_PHASE_3_RING_BULLETS)
     })
   })
 

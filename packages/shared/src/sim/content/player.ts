@@ -12,7 +12,7 @@ export const PLAYER_SPEED = 250
 export const PLAYER_RADIUS = 16
 
 /** Player health points */
-export const PLAYER_HP = 5
+export const PLAYER_HP = 40
 
 /** Player invulnerability duration after taking damage (seconds) */
 export const PLAYER_IFRAME_DURATION = 0.5

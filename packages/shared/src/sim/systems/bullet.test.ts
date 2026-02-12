@@ -50,6 +50,47 @@ describe('bulletSystem', () => {
       // Should have traveled ~5 pixels (100 px/sec * 0.05 sec)
       expect(Bullet.distanceTraveled[bulletEid]).toBeCloseTo(5, 1)
     })
+
+    test('applies positive acceleration to bullet velocity', () => {
+      const bulletEid = spawnBullet(world, {
+        x: 0,
+        y: 0,
+        vx: 100,
+        vy: 0,
+        damage: 10,
+        accel: 200,
+        drag: 0,
+        range: 500,
+        ownerId: 1,
+      })
+
+      bulletSystem(world, 0.5)
+
+      // Speed: 100 + (200 * 0.5) = 200
+      expect(Velocity.x[bulletEid]).toBeCloseTo(200)
+      // Distance uses updated speed for this tick.
+      expect(Bullet.distanceTraveled[bulletEid]).toBeCloseTo(100)
+    })
+
+    test('applies drag to slow bullets over time', () => {
+      const bulletEid = spawnBullet(world, {
+        x: 0,
+        y: 0,
+        vx: 200,
+        vy: 0,
+        damage: 10,
+        accel: 0,
+        drag: 1.0,
+        range: 500,
+        ownerId: 1,
+      })
+
+      bulletSystem(world, 0.5)
+
+      // Speed: 200 * (1 - 1.0 * 0.5) = 100
+      expect(Velocity.x[bulletEid]).toBeCloseTo(100)
+      expect(Bullet.distanceTraveled[bulletEid]).toBeCloseTo(50)
+    })
   })
 
   describe('lifetime tracking', () => {

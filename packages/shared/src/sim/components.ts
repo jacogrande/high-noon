@@ -138,6 +138,10 @@ export const Bullet = {
   ownerId: new Uint16Array(MAX_ENTITIES),
   /** Damage dealt on hit */
   damage: new Uint8Array(MAX_ENTITIES),
+  /** Signed acceleration along current travel direction (px/s^2) */
+  accel: new Float32Array(MAX_ENTITIES),
+  /** Fractional speed loss per second (0.2 = 20%/s) */
+  drag: new Float32Array(MAX_ENTITIES),
   /** Remaining lifetime in seconds (failsafe despawn) */
   lifetime: new Float32Array(MAX_ENTITIES),
   /** Maximum travel distance in pixels */
@@ -284,7 +288,13 @@ export const AIState = {
 
 /** Enemy type identifiers */
 export const EnemyType = {
-  SWARMER: 0, GRUNT: 1, SHOOTER: 2, CHARGER: 3, GOBLIN_BARBARIAN: 4, GOBLIN_ROGUE: 5,
+  SWARMER: 0,
+  GRUNT: 1,
+  SHOOTER: 2,
+  CHARGER: 3,
+  GOBLIN_BARBARIAN: 4,
+  GOBLIN_ROGUE: 5,
+  BOOMSTICK: 6,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
@@ -296,6 +306,12 @@ export const EnemyTier = {
 export const Enemy = {
   type: new Uint8Array(MAX_ENTITIES),
   tier: new Uint8Array(MAX_ENTITIES),
+}
+
+/** Boss phase state (used by multi-phase bosses only) */
+export const BossPhase = {
+  /** Current phase number (1-based) */
+  phase: new Uint8Array(MAX_ENTITIES),
 }
 
 /** AI state machine data */
@@ -323,6 +339,8 @@ export const AttackConfig = {
   cooldownRemaining: new Float32Array(MAX_ENTITIES),
   damage: new Uint8Array(MAX_ENTITIES),
   projectileSpeed: new Float32Array(MAX_ENTITIES),
+  projectileAccel: new Float32Array(MAX_ENTITIES),
+  projectileDrag: new Float32Array(MAX_ENTITIES),
   projectileCount: new Uint8Array(MAX_ENTITIES),
   spreadAngle: new Float32Array(MAX_ENTITIES),
   /** Locked aim direction X (set at TELEGRAPH entry for chargers) */
@@ -369,6 +387,7 @@ export const AllComponents = [
   Knockback,
   SlowDebuff,
   Enemy,
+  BossPhase,
   EnemyAI,
   Detection,
   AttackConfig,

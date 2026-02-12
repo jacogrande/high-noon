@@ -64,7 +64,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       spawnDelay: 5,
       threatClearRatio: 0.5,
     },
-    // Wave 3: Heavier fodder + 2 shooters
+    // Wave 3: Heavier fodder + stage test boss
     {
       fodderBudget: 24,
       fodderPool: [
@@ -75,7 +75,8 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       ],
       maxFodderAlive: 10,
       threats: [
-        { type: EnemyType.SHOOTER, count: 2 },
+        { type: EnemyType.SHOOTER, count: 1 },
+        { type: EnemyType.BOOMSTICK, count: 1 },
       ],
       spawnDelay: 5,
       threatClearRatio: 1.0,

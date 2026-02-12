@@ -27,11 +27,30 @@ export function bulletSystem(world: GameWorld, dt: number): void {
   for (const eid of bullets) {
     if (localOnly && Bullet.ownerId[eid] !== localOwner) continue
 
+    // Apply per-bullet acceleration/drag before movement.
+    const accel = Bullet.accel[eid]!
+    const drag = Bullet.drag[eid]!
     // Calculate distance traveled this tick
-    const vx = Velocity.x[eid]!
-    const vy = Velocity.y[eid]!
+    let vx = Velocity.x[eid]!
+    let vy = Velocity.y[eid]!
     const speed = Math.sqrt(vx * vx + vy * vy)
-    const distanceThisTick = speed * dt
+    let nextSpeed = speed
+
+    if (speed > 0 && (accel !== 0 || drag !== 0)) {
+      nextSpeed = speed + accel * dt
+      if (drag > 0) {
+        nextSpeed = nextSpeed * Math.max(0, 1 - drag * dt)
+      }
+      nextSpeed = Math.max(0, nextSpeed)
+
+      const scale = speed > 0 ? nextSpeed / speed : 1
+      vx *= scale
+      vy *= scale
+      Velocity.x[eid] = vx
+      Velocity.y[eid] = vy
+    }
+
+    const distanceThisTick = nextSpeed * dt
 
     // Accumulate distance
     // Note: Non-null assertion safe because entities come from query with Bullet component
