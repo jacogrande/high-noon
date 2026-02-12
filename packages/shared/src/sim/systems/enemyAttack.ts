@@ -22,11 +22,20 @@ import {
   BOOMSTICK_PHASE_1_RING_BULLETS,
   BOOMSTICK_PHASE_2_RING_BULLETS,
   BOOMSTICK_PHASE_3_RING_BULLETS,
+  BOOMSTICK_BOOM_DAMAGE,
+  BOOMSTICK_BOOM_RADIUS,
+  BOOMSTICK_BOOM_FUSE,
+  BOOMSTICK_BOOM_THROW_RANGE,
+  BOOMSTICK_BOOM_AIM_JITTER,
+  BOOMSTICK_BOOM_DELAY_PHASE_2_MIN,
+  BOOMSTICK_BOOM_DELAY_PHASE_2_MAX,
+  BOOMSTICK_BOOM_DELAY_PHASE_3_MIN,
+  BOOMSTICK_BOOM_DELAY_PHASE_3_MAX,
   GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_ATTACK_DURATION,
   GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_ATTACK_DURATION,
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
 } from '../content/enemies'
-import { ENEMY_BULLET_RANGE } from '../content/weapons'
+import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK } from '../content/weapons'
 
 function isGoblinMelee(type: number): boolean {
   return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE
@@ -76,6 +85,16 @@ function rollBoomstickRingDelay(world: GameWorld, phase: number): number {
   } else if (phase === 2) {
     min = BOOMSTICK_RING_DELAY_PHASE_2_MIN
     max = BOOMSTICK_RING_DELAY_PHASE_2_MAX
+  }
+  return min + world.rng.nextInt(max - min + 1)
+}
+
+function rollBoomstickBoomDelay(world: GameWorld, phase: number): number {
+  let min = BOOMSTICK_BOOM_DELAY_PHASE_2_MIN
+  let max = BOOMSTICK_BOOM_DELAY_PHASE_2_MAX
+  if (phase >= 3) {
+    min = BOOMSTICK_BOOM_DELAY_PHASE_3_MIN
+    max = BOOMSTICK_BOOM_DELAY_PHASE_3_MAX
   }
   return min + world.rng.nextInt(max - min + 1)
 }
@@ -270,6 +289,36 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         AttackConfig.aimX[eid] = rollBoomstickRingDelay(world, phase)
       } else {
         AttackConfig.aimX[eid] = ringDelayRemaining - 1
+      }
+
+      // Phase 2+ also gains "boom" throws (prospector-style dynamite telegraphs).
+      if (phase >= 2) {
+        const boomDelayRemaining = Math.max(0, Math.floor(AttackConfig.aimY[eid]!))
+        if (boomDelayRemaining <= 0) {
+          let boomX = targetX + world.rng.nextRange(-BOOMSTICK_BOOM_AIM_JITTER, BOOMSTICK_BOOM_AIM_JITTER)
+          let boomY = targetY + world.rng.nextRange(-BOOMSTICK_BOOM_AIM_JITTER, BOOMSTICK_BOOM_AIM_JITTER)
+          const bdx = boomX - ex
+          const bdy = boomY - ey
+          const distSq = bdx * bdx + bdy * bdy
+          const maxRangeSq = BOOMSTICK_BOOM_THROW_RANGE * BOOMSTICK_BOOM_THROW_RANGE
+          if (distSq > maxRangeSq) {
+            const dist = Math.sqrt(distSq)
+            boomX = ex + (bdx / dist) * BOOMSTICK_BOOM_THROW_RANGE
+            boomY = ey + (bdy / dist) * BOOMSTICK_BOOM_THROW_RANGE
+          }
+          world.dynamites.push({
+            x: boomX,
+            y: boomY,
+            fuseRemaining: BOOMSTICK_BOOM_FUSE,
+            damage: BOOMSTICK_BOOM_DAMAGE,
+            radius: BOOMSTICK_BOOM_RADIUS,
+            knockback: DYNAMITE_KNOCKBACK,
+            ownerId: eid,
+          })
+          AttackConfig.aimY[eid] = rollBoomstickBoomDelay(world, phase)
+        } else {
+          AttackConfig.aimY[eid] = boomDelayRemaining - 1
+        }
       }
 
       transition(eid, AIState.RECOVERY)

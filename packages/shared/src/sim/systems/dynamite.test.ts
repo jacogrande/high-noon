@@ -235,6 +235,40 @@ describe('dynamiteSystem', () => {
 
       expect(Health.current[enemyEid]).toBe(startHP)
     })
+
+    test('enemy-owned dynamite damages nearby player', () => {
+      const enemyOwner = spawnSwarmer(world, 220, 100)
+      rebuildHash(world)
+      const startHP = Health.current[playerEid]!
+
+      world.dynamites.push({
+        x: 100, y: 100, fuseRemaining: 0.01,
+        damage: 9, radius: 80,
+        knockback: 60, ownerId: enemyOwner,
+      })
+
+      dynamiteSystem(world, 0.02)
+
+      expect(Health.current[playerEid]).toBe(startHP - 9)
+      expect(Health.iframes[playerEid]).toBeGreaterThan(0)
+    })
+
+    test('enemy-owned dynamite does not damage enemies', () => {
+      const enemyOwner = spawnSwarmer(world, 220, 100)
+      const nearbyEnemy = spawnSwarmer(world, 100, 100)
+      rebuildHash(world)
+      const nearbyEnemyHP = Health.current[nearbyEnemy]!
+
+      world.dynamites.push({
+        x: 100, y: 100, fuseRemaining: 0.01,
+        damage: 9, radius: 80,
+        knockback: 60, ownerId: enemyOwner,
+      })
+
+      dynamiteSystem(world, 0.02)
+
+      expect(Health.current[nearbyEnemy]).toBe(nearbyEnemyHP)
+    })
   })
 
   describe('self-damage', () => {

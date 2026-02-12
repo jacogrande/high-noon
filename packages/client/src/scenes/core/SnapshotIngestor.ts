@@ -433,7 +433,8 @@ export class SnapshotIngestor {
       // Skip local player's dynamites — driven by prediction
       if (d.ownerEid === ctx.myServerEid) continue
 
-      const clientOwner = ctx.playerEntities.get(d.ownerEid) ?? d.ownerEid
+      const resolvedOwner = this.resolveOwnerClientEid(d.ownerEid, ctx)
+      const clientOwner = resolvedOwner !== NO_OWNER ? resolvedOwner : d.ownerEid
       localDynamites.push({
         x: d.x,
         y: d.y,

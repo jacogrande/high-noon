@@ -140,6 +140,19 @@ export const BOOMSTICK_PHASE_3_COOLDOWN = 1.00
 export const BOOMSTICK_PHASE_3_FAN_BULLETS = 7
 export const BOOMSTICK_PHASE_3_RING_BULLETS = 10
 
+// Boom throw ("booms") — enabled in phases 2+
+export const BOOMSTICK_BOOM_DAMAGE = 12
+export const BOOMSTICK_BOOM_RADIUS = 88
+export const BOOMSTICK_BOOM_FUSE = 1.05
+export const BOOMSTICK_BOOM_THROW_RANGE = 320
+export const BOOMSTICK_BOOM_AIM_JITTER = 40
+/** Number of ATTACK executions until next boom throw (phase 2). */
+export const BOOMSTICK_BOOM_DELAY_PHASE_2_MIN = 1
+export const BOOMSTICK_BOOM_DELAY_PHASE_2_MAX = 2
+/** Number of ATTACK executions until next boom throw (phase 3). */
+export const BOOMSTICK_BOOM_DELAY_PHASE_3_MIN = 0
+export const BOOMSTICK_BOOM_DELAY_PHASE_3_MAX = 1
+
 // One-time add burst counts at phase transitions
 export const BOOMSTICK_PHASE_2_SUMMON_SWARMERS = 3
 export const BOOMSTICK_PHASE_2_SUMMON_ROGUES = 1
