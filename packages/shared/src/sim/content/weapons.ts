@@ -57,7 +57,7 @@ export const PISTOL_RANGE = 400
 export const PISTOL_CYLINDER_SIZE = 6
 
 /** Time in seconds to reload a full cylinder */
-export const PISTOL_RELOAD_TIME = 1.2
+export const PISTOL_RELOAD_TIME = 0.8
 
 /** Minimum time between shots in seconds (click-to-fire soft floor) */
 export const PISTOL_MIN_FIRE_INTERVAL = 0.075
@@ -143,7 +143,7 @@ export const LAST_RITES_PULSE_RADIUS = 100
 export const LAST_RITES_CHAIN_LIMIT = 3
 
 /** Cooldown after Last Rites ends (seconds) */
-export const LAST_RITES_COOLDOWN = 14.0
+export const LAST_RITES_COOLDOWN = 8.0
 
 /** Cooldown refund per chain kill (seconds) */
 export const LAST_RITES_KILL_REFUND = 1.0
@@ -216,7 +216,7 @@ export const DYNAMITE_RADIUS = 100
 export const DYNAMITE_FUSE = 1.5
 
 /** Cooldown between throws in seconds */
-export const DYNAMITE_COOLDOWN = 8
+export const DYNAMITE_COOLDOWN = 4
 
 /** Maximum throw range in pixels */
 export const DYNAMITE_THROW_RANGE = 300
@@ -273,7 +273,7 @@ export const ENEMY_BULLET_RANGE = 500
 export const SHOWDOWN_DURATION = 4.0
 
 /** Cooldown after Showdown ends in seconds */
-export const SHOWDOWN_COOLDOWN = 12.0
+export const SHOWDOWN_COOLDOWN = 6.0
 
 /** Seconds refunded from cooldown on marked target kill */
 export const SHOWDOWN_KILL_REFUND = 4.0
