@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { generateArena } from './mapGenerator'
 import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './mapConfig'
 import {
+  BASE_TILE_VARIANTS_PER_STYLE,
   TileType,
   isSolidAt,
   getFloorTileTypeAt,
@@ -96,6 +97,31 @@ describe('mapGenerator', () => {
       expect(map.width).toBe(STAGE_1_MAP_CONFIG.width)
       expect(map.height).toBe(STAGE_1_MAP_CONFIG.height)
       expect(map.tileSize).toBe(STAGE_1_MAP_CONFIG.tileSize)
+    })
+  })
+
+  describe('base tile metadata', () => {
+    test('includes base tile style and variant count', () => {
+      const stage1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const stage2 = generateArena(STAGE_2_MAP_CONFIG, 12345, 1)
+      const stage3 = generateArena(STAGE_3_MAP_CONFIG, 12345, 2)
+
+      expect(stage1.baseTiles?.style).toBe('red_dirt')
+      expect(stage2.baseTiles?.style).toBe('grass')
+      expect(stage3.baseTiles?.style).toBe('stone')
+
+      expect(stage1.baseTiles?.variantCount).toBe(BASE_TILE_VARIANTS_PER_STYLE)
+      expect(stage2.baseTiles?.variantCount).toBe(BASE_TILE_VARIANTS_PER_STYLE)
+      expect(stage3.baseTiles?.variantCount).toBe(BASE_TILE_VARIANTS_PER_STYLE)
+    })
+
+    test('uses deterministic base tile seed per seed + stage', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map3 = generateArena(STAGE_1_MAP_CONFIG, 99999, 0)
+
+      expect(map1.baseTiles?.seed).toBe(map2.baseTiles?.seed)
+      expect(map1.baseTiles?.seed).not.toBe(map3.baseTiles?.seed)
     })
   })
 

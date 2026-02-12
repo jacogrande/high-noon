@@ -4,10 +4,33 @@
  * Renders the tilemap using sprites from the loaded tileset.
  */
 
-import { Container, Sprite, Graphics } from 'pixi.js'
-import type { Tilemap } from '@high-noon/shared'
+import { Container, Sprite, Graphics, Texture } from 'pixi.js'
+import type { Tilemap, BaseTileMetadata } from '@high-noon/shared'
 import { TileType } from '@high-noon/shared'
 import { AssetLoader } from '../assets'
+
+function isStageBaseTile(tileType: number): boolean {
+  return (
+    tileType === TileType.FLOOR ||
+    tileType === TileType.LAVA ||
+    tileType === TileType.MUD ||
+    tileType === TileType.BRAMBLE
+  )
+}
+
+function hashBaseTileVariant(seed: number, tileX: number, tileY: number): number {
+  let h = seed >>> 0
+  h ^= Math.imul(tileX + 0x9e3779b9, 0x85ebca6b)
+  h ^= Math.imul(tileY + 0xc2b2ae35, 0x27d4eb2d)
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return (h ^ (h >>> 16)) >>> 0
+}
+
+function pickBaseTileVariant(baseTiles: BaseTileMetadata, tileX: number, tileY: number): number {
+  const count = Math.max(1, Math.floor(baseTiles.variantCount))
+  return hashBaseTileVariant(baseTiles.seed, tileX, tileY) % count
+}
 
 /**
  * Tilemap renderer - draws tiles as sprites
@@ -51,7 +74,7 @@ export class TilemapRenderer {
           const tile = layer.data[y * width + x] ?? TileType.EMPTY
           if (tile === TileType.EMPTY) continue
 
-          const sprite = new Sprite(AssetLoader.getTileTexture(tile))
+          const sprite = new Sprite(this.getTileTextureForRender(map, x, y, tile))
           sprite.position.set(x * tileSize, y * tileSize)
 
           if (tile === TileType.LAVA) {
@@ -77,6 +100,20 @@ export class TilemapRenderer {
     for (let i = 0; i < layers.length; i++) {
       if (layers[i]?.solid) drawLayer(i)
     }
+  }
+
+  private getTileTextureForRender(map: Tilemap, tileX: number, tileY: number, tileType: number): Texture {
+    if (!isStageBaseTile(tileType)) {
+      return AssetLoader.getTileTexture(tileType)
+    }
+
+    const baseTiles = map.baseTiles
+    if (!baseTiles) {
+      return AssetLoader.getTileTexture(TileType.FLOOR)
+    }
+
+    const variant = pickBaseTileVariant(baseTiles, tileX, tileY)
+    return AssetLoader.getBaseTileTexture(baseTiles.style, variant)
   }
 
   /**
