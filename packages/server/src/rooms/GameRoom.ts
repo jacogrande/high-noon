@@ -26,10 +26,10 @@ import {
   MAX_LEVEL,
   MAX_PLAYERS,
   DEFAULT_RUN_STAGES,
+  TICK_RATE,
   TICK_MS,
   type GameWorld,
   type SystemRegistry,
-  type InputState,
   type NetworkInput,
   type PingMessage,
   type PongMessage,
@@ -40,12 +40,14 @@ import {
   type PlayerRosterEntry,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
+import { ClientTickMapper } from '../net/ClientTickMapper'
+import { RewindHistory } from '../net/RewindHistory'
 
 /** Maximum ticks to catch up in one update call (spiral-of-death protection) */
 const MAX_CATCHUP_TICKS = 4
 
-/** Snapshot broadcast interval (every N ticks). 60Hz / 3 = 20Hz */
-const SNAPSHOT_INTERVAL = 3
+/** Snapshot broadcast interval (every N ticks). 60Hz / 2 = 30Hz */
+const SNAPSHOT_INTERVAL = 2
 
 /** Maximum queued inputs per player before dropping oldest */
 const MAX_INPUT_QUEUE = 30
@@ -63,7 +65,23 @@ const INPUT_QUEUE_TRIM_TO = 3
 const INPUT_HOLD_TICKS = 3
 
 /** Neutral input (all zeros) used when a player's queue is empty. Frozen to prevent accidental mutation. */
-const neutralInput: InputState = Object.freeze(createInputState())
+const neutralInput: NetworkInput = Object.freeze({
+  ...createInputState(),
+  seq: 0,
+  clientTick: 0,
+  clientTimeMs: 0,
+  estimatedServerTimeMs: 0,
+  viewInterpDelayMs: 0,
+  shootSeq: 0,
+})
+
+const REWIND_MAX_MS = 120
+const REWIND_MAX_TICKS = Math.max(1, Math.floor((REWIND_MAX_MS / 1000) * TICK_RATE))
+const REWIND_HISTORY_TICKS = REWIND_MAX_TICKS + 8
+const REWIND_MAX_VIEW_INTERP_DELAY_MS = 200
+const REWIND_HISTORICAL_RADIUS_PADDING = 2
+const REWIND_LATENCY_WEIGHT = 0.45
+const REWIND_VIEW_DELAY_WEIGHT = 0.35
 
 /**
  * Action buttons that should survive queue trimming.
@@ -88,11 +106,14 @@ interface PlayerSlot {
   characterId: CharacterId
   inputQueue: NetworkInput[]
   lastProcessedSeq: number
-  lastInput: InputState
+  lastInput: NetworkInput
   heldInputTicks: number
   inputTokens: number
   inputTokenLastRefillMs: number
   rateLimitedDrops: number
+  tickMapper: ClientTickMapper
+  lastShootSeq: number
+  protocolMismatchNotified: boolean
 }
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
@@ -148,6 +169,11 @@ function isValidInput(data: unknown): data is NetworkInput {
   const d = data as Record<string, unknown>
   return (
     isFiniteNumber(d.seq) &&
+    isFiniteNumber(d.clientTick) &&
+    isFiniteNumber(d.clientTimeMs) &&
+    isFiniteNumber(d.estimatedServerTimeMs) &&
+    isFiniteNumber(d.viewInterpDelayMs) &&
+    isFiniteNumber(d.shootSeq) &&
     isFiniteNumber(d.buttons) &&
     isFiniteNumber(d.aimAngle) &&
     isFiniteNumber(d.moveX) &&
@@ -163,8 +189,13 @@ const STRIPPED_BUTTONS = Button.DEBUG_SPAWN
 /** Clamp validated input values to safe ranges */
 function clampInput(input: NetworkInput): NetworkInput {
   return {
-    seq: Math.max(1, input.seq | 0),
-    buttons: (input.buttons | 0) & ~STRIPPED_BUTTONS,
+    seq: Math.max(1, Math.trunc(input.seq)),
+    clientTick: Math.max(0, Math.trunc(input.clientTick)),
+    clientTimeMs: Math.max(0, input.clientTimeMs),
+    estimatedServerTimeMs: Math.max(0, input.estimatedServerTimeMs),
+    viewInterpDelayMs: Math.max(0, Math.min(REWIND_MAX_VIEW_INTERP_DELAY_MS, input.viewInterpDelayMs)),
+    shootSeq: Math.max(0, Math.trunc(input.shootSeq)),
+    buttons: Math.trunc(input.buttons) & ~STRIPPED_BUTTONS,
     aimAngle: Math.max(-Math.PI, Math.min(Math.PI, input.aimAngle)),
     moveX: Math.max(-1, Math.min(1, input.moveX)),
     moveY: Math.max(-1, Math.min(1, input.moveY)),
@@ -191,10 +222,23 @@ export class GameRoom extends Room<GameRoomState> {
 
   private world!: GameWorld
   private systems!: SystemRegistry
+  private rewindHistory!: RewindHistory
   private slots = new Map<string, PlayerSlot>()
   private accumulator = 0
   private readonly playerSeqs = new Map<number, number>()
   private lastRateLimitLogTick = 0
+  private lastRewindLogTick = 0
+  private rewindShotsTotal = 0
+  private rewindShotsClamped = 0
+  private rewindHistoryMisses = 0
+  private rewindTicksAccum = 0
+  private rewindTickSamples: number[] = []
+  private rewindTimeBasedSamples = 0
+  private rewindMapperFallbackSamples = 0
+  private rewindHeldInputShotsSkipped = 0
+  private rewindLatencyMsAccum = 0
+  private rewindInterpMsAccum = 0
+  private rewindEffectiveAgeMsAccum = 0
 
   override onAuth(_client: Client, options?: JoinOptions): boolean {
     if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
@@ -206,6 +250,12 @@ export class GameRoom extends Room<GameRoomState> {
   override onCreate() {
     const seed = Date.now()
     this.world = createGameWorld(seed)
+    this.world.lagCompEnabled = true
+    this.world.lagCompMaxRewindTicks = REWIND_MAX_TICKS
+    this.world.lagCompHistoricalRadiusPadding = REWIND_HISTORICAL_RADIUS_PADDING
+    this.rewindHistory = new RewindHistory(REWIND_HISTORY_TICKS)
+    this.world.lagCompGetPlayerPosAtTick = (eid, tick) => this.rewindHistory.getPlayerAtTick(eid, tick)
+    this.world.lagCompGetEnemyStateAtTick = (eid, tick) => this.rewindHistory.getEnemyStateAtTick(eid, tick)
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
     setWorldTilemap(this.world, generateArena(stage0Config, seed, 0))
 
@@ -220,7 +270,24 @@ export class GameRoom extends Room<GameRoomState> {
       if (this.state.phase !== 'playing') return
       const slot = this.slots.get(client.sessionId)
       if (!slot) return
-      if (!isValidInput(data)) return
+      if (!isValidInput(data)) {
+        const payload = data as Record<string, unknown> | null
+        const hasRequiredTiming =
+          !!payload &&
+          isFiniteNumber(payload.clientTick) &&
+          isFiniteNumber(payload.clientTimeMs) &&
+          isFiniteNumber(payload.estimatedServerTimeMs) &&
+          isFiniteNumber(payload.viewInterpDelayMs) &&
+          isFiniteNumber(payload.shootSeq)
+        if (!hasRequiredTiming && !slot.protocolMismatchNotified) {
+          slot.protocolMismatchNotified = true
+          client.send(
+            'incompatible-protocol',
+            'Input protocol mismatch: expected clientTick + timing metadata',
+          )
+        }
+        return
+      }
       if (!consumeInputToken(slot, performance.now())) {
         slot.rateLimitedDrops++
         return
@@ -328,6 +395,9 @@ export class GameRoom extends Room<GameRoomState> {
       inputTokens: INPUT_RATE_BURST_CAPACITY,
       inputTokenLastRefillMs: performance.now(),
       rateLimitedDrops: 0,
+      tickMapper: new ClientTickMapper(),
+      lastShootSeq: 0,
+      protocolMismatchNotified: false,
     }
     this.slots.set(client.sessionId, slot)
 
@@ -354,6 +424,9 @@ export class GameRoom extends Room<GameRoomState> {
           slot.inputTokens = INPUT_RATE_BURST_CAPACITY
           slot.inputTokenLastRefillMs = performance.now()
           slot.rateLimitedDrops = 0
+          slot.tickMapper = new ClientTickMapper()
+          slot.lastShootSeq = 0
+          slot.protocolMismatchNotified = false
           this.sendGameConfig(reconnectedClient, slot)
         }
         return // Slot preserved
@@ -372,6 +445,13 @@ export class GameRoom extends Room<GameRoomState> {
 
   override onDispose() {
     this.slots.clear()
+    this.rewindHistory.clear()
+    this.world.lagCompShotTickByPlayer.clear()
+    this.world.lagCompBulletShotTick.clear()
+    this.rewindTickSamples.length = 0
+    this.rewindLatencyMsAccum = 0
+    this.rewindInterpMsAccum = 0
+    this.rewindEffectiveAgeMsAccum = 0
     console.log('[GameRoom] Disposed')
   }
 
@@ -417,6 +497,9 @@ export class GameRoom extends Room<GameRoomState> {
     slot.inputTokens = INPUT_RATE_BURST_CAPACITY
     slot.inputTokenLastRefillMs = performance.now()
     slot.rateLimitedDrops = 0
+    slot.tickMapper = new ClientTickMapper()
+    slot.lastShootSeq = 0
+    slot.protocolMismatchNotified = false
   }
 
   private broadcastGameConfig(): void {
@@ -465,7 +548,82 @@ export class GameRoom extends Room<GameRoomState> {
     }
   }
 
+  private buildHeldInput(slot: PlayerSlot): NetworkInput {
+    const heldButtons = slot.lastInput.buttons & ~TRANSIENT_ACTION_BUTTONS
+    return {
+      ...slot.lastInput,
+      clientTick: slot.lastInput.clientTick + 1,
+      clientTimeMs: slot.lastInput.clientTimeMs + TICK_MS,
+      estimatedServerTimeMs: slot.lastInput.estimatedServerTimeMs > 0
+        ? slot.lastInput.estimatedServerTimeMs + TICK_MS
+        : 0,
+      buttons: heldButtons,
+    }
+  }
+
+  private estimateShotTickFromInputTime(
+    nowMs: number,
+    input: NetworkInput,
+  ): { tick: number; latencyMs: number; interpMs: number; effectiveAgeMs: number } | null {
+    if (input.estimatedServerTimeMs <= 0) return null
+    const oneWayLatencyMs = Math.max(0, nowMs - input.estimatedServerTimeMs)
+    const interpMs = Math.max(0, Math.min(REWIND_MAX_VIEW_INTERP_DELAY_MS, input.viewInterpDelayMs))
+    const effectiveAgeMs =
+      oneWayLatencyMs * REWIND_LATENCY_WEIGHT +
+      interpMs * REWIND_VIEW_DELAY_WEIGHT
+    if (!Number.isFinite(effectiveAgeMs)) return null
+    // Bias toward lower rewind to avoid over-rewinding on borderline fractions.
+    const ageTicks = Math.max(0, Math.floor(effectiveAgeMs / TICK_MS))
+    return {
+      tick: this.world.tick - ageTicks,
+      latencyMs: oneWayLatencyMs,
+      interpMs,
+      effectiveAgeMs,
+    }
+  }
+
+  private applyLagCompShotTick(slot: PlayerSlot, input: NetworkInput, hadFreshInput: boolean, nowMs: number): void {
+    if (hadFreshInput) {
+      slot.tickMapper.updateOffset(this.world.tick, input.clientTick)
+    }
+
+    if ((input.buttons & Button.SHOOT) === 0) return
+    if (!hadFreshInput) {
+      this.rewindHeldInputShotsSkipped++
+      return
+    }
+
+    const timeEstimated = this.estimateShotTickFromInputTime(nowMs, input)
+    const estimatedTick = timeEstimated?.tick ?? slot.tickMapper.estimateServerTick(input.clientTick)
+    if (timeEstimated !== null) {
+      this.rewindTimeBasedSamples++
+      this.rewindLatencyMsAccum += timeEstimated.latencyMs
+      this.rewindInterpMsAccum += timeEstimated.interpMs
+      this.rewindEffectiveAgeMsAccum += timeEstimated.effectiveAgeMs
+    } else {
+      this.rewindMapperFallbackSamples++
+    }
+    const rewind = slot.tickMapper.clampRewindTick(this.world.tick, estimatedTick, REWIND_MAX_TICKS)
+    this.world.lagCompShotTickByPlayer.set(slot.eid, rewind.tick)
+    this.rewindShotsTotal++
+    const rewindTicks = this.world.tick - rewind.tick
+    this.rewindTicksAccum += rewindTicks
+    this.rewindTickSamples.push(rewindTicks)
+    slot.lastShootSeq = Math.max(slot.lastShootSeq, input.shootSeq)
+
+    if (rewind.clamped) {
+      this.rewindShotsClamped++
+    }
+    if (!this.rewindHistory.hasTick(rewind.tick)) {
+      this.rewindHistoryMisses++
+    }
+  }
+
   private serverTick() {
+    const tickNowMs = performance.now()
+    this.rewindHistory.record(this.world)
+    this.world.lagCompShotTickByPlayer.clear()
+
     // 1. Pop one input per player into world.playerInputs (neutral if empty).
     //    Trim backlog aggressively: if queue depth exceeds threshold, discard
     //    oldest samples to cut latency while preserving transient actions.
@@ -485,20 +643,27 @@ export class GameRoom extends Room<GameRoomState> {
         }
       }
 
-      const input = slot.inputQueue.shift()
-      if (input) {
-        slot.lastProcessedSeq = input.seq
-        slot.lastInput = input
+      let input: NetworkInput
+      let hadFreshInput = false
+      const queued = slot.inputQueue.shift()
+      if (queued) {
+        input = queued
+        hadFreshInput = true
+        slot.lastProcessedSeq = queued.seq
+        slot.lastInput = queued
         slot.heldInputTicks = 0
-        this.world.playerInputs.set(slot.eid, input)
       } else {
         if (slot.heldInputTicks < INPUT_HOLD_TICKS) {
           slot.heldInputTicks++
-          this.world.playerInputs.set(slot.eid, slot.lastInput)
+          input = this.buildHeldInput(slot)
+          slot.lastInput = input
         } else {
-          this.world.playerInputs.set(slot.eid, neutralInput)
+          input = neutralInput
         }
       }
+
+      this.applyLagCompShotTick(slot, input, hadFreshInput, tickNowMs)
+      this.world.playerInputs.set(slot.eid, input)
     }
 
     // 2. Step simulation — DO NOT pass input param (that's the single-player bridge)
@@ -507,7 +672,7 @@ export class GameRoom extends Room<GameRoomState> {
     // 3. Update Schema tick
     this.state.serverTick = this.world.tick
 
-    // 4. Broadcast snapshot every SNAPSHOT_INTERVAL ticks (20Hz)
+    // 4. Broadcast snapshot every SNAPSHOT_INTERVAL ticks (30Hz)
     if (this.world.tick % SNAPSHOT_INTERVAL === 0) {
       this.broadcastSnapshot()
     }
@@ -518,6 +683,7 @@ export class GameRoom extends Room<GameRoomState> {
     }
 
     this.maybeLogRateLimitDrops()
+    this.maybeLogRewindStats()
   }
 
   private maybeLogRateLimitDrops(): void {
@@ -534,6 +700,51 @@ export class GameRoom extends Room<GameRoomState> {
     if (dropped > 0) {
       console.log(`[GameRoom][telemetry] dropped ${dropped} inputs due to rate limit over last 5s`)
     }
+  }
+
+  private percentile(samples: number[], p: number): number {
+    if (samples.length === 0) return 0
+    const sorted = [...samples].sort((a, b) => a - b)
+    const idx = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * p)))
+    return sorted[idx]!
+  }
+
+  private maybeLogRewindStats(): void {
+    const LOG_INTERVAL_TICKS = 60 * 5
+    if (this.world.tick - this.lastRewindLogTick < LOG_INTERVAL_TICKS) return
+    this.lastRewindLogTick = this.world.tick
+    if (this.rewindShotsTotal <= 0 && this.rewindHistoryMisses <= 0 && this.rewindHeldInputShotsSkipped <= 0) return
+
+    const avgRewindTicks = this.rewindShotsTotal > 0
+      ? this.rewindTicksAccum / this.rewindShotsTotal
+      : 0
+    const p50 = this.percentile(this.rewindTickSamples, 0.5)
+    const p95 = this.percentile(this.rewindTickSamples, 0.95)
+    const avgLatencyMs = this.rewindTimeBasedSamples > 0
+      ? this.rewindLatencyMsAccum / this.rewindTimeBasedSamples
+      : 0
+    const avgInterpMs = this.rewindTimeBasedSamples > 0
+      ? this.rewindInterpMsAccum / this.rewindTimeBasedSamples
+      : 0
+    const avgEffectiveAgeMs = this.rewindTimeBasedSamples > 0
+      ? this.rewindEffectiveAgeMsAccum / this.rewindTimeBasedSamples
+      : 0
+
+    console.log(
+      `[GameRoom][rewind] shots=${this.rewindShotsTotal} clamped=${this.rewindShotsClamped} historyMiss=${this.rewindHistoryMisses} avgTicks=${avgRewindTicks.toFixed(2)} p50Ticks=${p50.toFixed(2)} p95Ticks=${p95.toFixed(2)} timeBased=${this.rewindTimeBasedSamples} mapperFallback=${this.rewindMapperFallbackSamples} heldSkip=${this.rewindHeldInputShotsSkipped} avgLatencyMs=${avgLatencyMs.toFixed(1)} avgInterpMs=${avgInterpMs.toFixed(1)} avgEffectiveAgeMs=${avgEffectiveAgeMs.toFixed(1)}`,
+    )
+
+    this.rewindShotsTotal = 0
+    this.rewindShotsClamped = 0
+    this.rewindHistoryMisses = 0
+    this.rewindTicksAccum = 0
+    this.rewindTickSamples.length = 0
+    this.rewindTimeBasedSamples = 0
+    this.rewindMapperFallbackSamples = 0
+    this.rewindHeldInputShotsSkipped = 0
+    this.rewindLatencyMsAccum = 0
+    this.rewindInterpMsAccum = 0
+    this.rewindEffectiveAgeMsAccum = 0
   }
 
   private sendHudUpdates() {

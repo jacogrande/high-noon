@@ -27,6 +27,7 @@ The game canvas runs two "simulations":
 2. **Interpolated state** - Remote entities, smoothly interpolated between snapshots
 
 On server correction, the predicted simulation reconciles by rewinding and replaying unacknowledged inputs.
+Each outbound `NetworkInput` carries monotonic `seq` plus shot timing metadata (`clientTick`, `estimatedServerTimeMs`, `viewInterpDelayMs`) so the server can reconcile and apply bounded lag compensation against what the player actually saw.
 
 ## Commands
 
@@ -230,7 +231,7 @@ net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
 net.on('disconnect', () => { /* handle disconnect */ })
 net.on('pong', (clientTime, serverTime) => { /* clock sync */ })
 await net.join()
-net.sendInput(networkInput)  // NetworkInput (InputState + seq)
+net.sendInput(networkInput)  // NetworkInput (InputState + seq + timing metadata)
 net.sendPing(clientTime)     // Clock sync ping
 net.disconnect()             // clears room and listeners
 ```
@@ -247,7 +248,7 @@ clockSync.getRTT()         // Latest RTT estimate
 clockSync.stop()
 ```
 
-**SnapshotBuffer** - Interpolation buffer for smooth rendering between 20Hz snapshots:
+**SnapshotBuffer** - Interpolation buffer for smooth rendering between authoritative snapshots:
 ```typescript
 import { SnapshotBuffer } from './net'
 

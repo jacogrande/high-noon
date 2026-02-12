@@ -2,7 +2,7 @@
  * Binary Snapshot Serialization (v8)
  *
  * Encodes/decodes the world state into a compact binary format for
- * server→client broadcast at 20Hz.
+ * server→client broadcast at room-configured cadence (currently 30Hz).
  */
 
 import { defineQuery, hasComponent } from 'bitecs'

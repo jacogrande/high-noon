@@ -108,4 +108,37 @@ describe('GameRoom lobby state', () => {
 
     expect(room.state.phase).toBe('playing')
   })
+
+  test('input without clientTick emits incompatible-protocol once', () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    onSetReady(client, { ready: true })
+    expect(room.state.phase).toBe('playing')
+
+    const onInput = getOnMessageHandler(room, 'input')
+    onInput(client, {
+      seq: 1,
+      buttons: 0,
+      aimAngle: 0,
+      moveX: 0,
+      moveY: 0,
+      cursorWorldX: 0,
+      cursorWorldY: 0,
+    })
+    onInput(client, {
+      seq: 2,
+      buttons: 0,
+      aimAngle: 0,
+      moveX: 0,
+      moveY: 0,
+      cursorWorldX: 0,
+      cursorWorldY: 0,
+    })
+
+    const protocolMsgs = client.sent.filter(message => message.type === 'incompatible-protocol')
+    expect(protocolMsgs).toHaveLength(1)
+  })
 })

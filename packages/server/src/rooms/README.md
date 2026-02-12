@@ -48,7 +48,7 @@ Lobby messages:
 - Player metadata (name, ready)
 - Server tick counter
 
-**Sync via binary snapshots** (manual, 20Hz):
+**Sync via binary snapshots** (manual, 30Hz):
 - Full entity state via `encodeSnapshot` → `sendBytes`
 - Per-client HUD payloads are sent at 10Hz (`hud` message) with character-aware ability/cylinder fields.
 

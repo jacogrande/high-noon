@@ -280,11 +280,19 @@ if (hasButton(input, Button.SHOOT)) {
 
 **Button flags:** `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `SHOOT`, `ROLL`
 
-**NetworkInput** — extends `InputState` with a monotonic sequence number for client→server messages:
+**NetworkInput** — extends `InputState` with monotonic sequencing and timing metadata for client→server messages:
 ```typescript
 import type { NetworkInput } from '@high-noon/shared'
 
-const networkInput: NetworkInput = { ...inputState, seq: 42 }
+const networkInput: NetworkInput = {
+  ...inputState,
+  seq: 42,
+  clientTick: 1337,
+  clientTimeMs: 123456.7,
+  estimatedServerTimeMs: 123440.2,
+  viewInterpDelayMs: 75,
+  shootSeq: 12,
+}
 ```
 
 Used by the server to track acknowledged inputs (`lastProcessedSeq`) and by the client to replay unacknowledged inputs during reconciliation.

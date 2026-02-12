@@ -357,4 +357,26 @@ describe('NetworkClient', () => {
       console.error = originalConsoleError
     }
   })
+
+  test('server incompatible-protocol message forces disconnect', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+
+    let incompatibleReason: string | null = null
+    let disconnectCount = 0
+    net.on('incompatible-protocol', (reason) => {
+      incompatibleReason = reason
+    })
+    net.on('disconnect', () => {
+      disconnectCount++
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+    room.emit('incompatible-protocol', 'Input protocol mismatch: expected clientTick')
+
+    expect(incompatibleReason).toContain('clientTick')
+    expect(disconnectCount).toBe(1)
+    expect(room.leaveCallCount).toBe(1)
+    expect((net as any).room).toBeNull()
+  })
 })

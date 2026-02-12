@@ -11,6 +11,7 @@ import type { GameWorld } from '../world'
 import { hasButton, Button } from '../../net/input'
 import {
   Player,
+  Bullet,
   Position,
   Weapon,
   Cylinder,
@@ -24,6 +25,37 @@ import { getUpgradeStateForPlayer } from '../upgrade'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
+
+interface RewoundFireContext {
+  originX: number
+  originY: number
+  rewindSeconds: number
+  shotTick: number | null
+}
+
+function getRewoundFireContext(world: GameWorld, playerEid: number, x: number, y: number, dt: number): RewoundFireContext {
+  if (!world.lagCompEnabled || world.lagCompMaxRewindTicks <= 0) {
+    return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
+  }
+
+  const shotTick = world.lagCompShotTickByPlayer.get(playerEid)
+  if (shotTick === undefined) {
+    return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
+  }
+
+  const historicalPos = world.lagCompGetPlayerPosAtTick?.(playerEid, shotTick)
+  if (!historicalPos) {
+    return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
+  }
+
+  const rewindTicks = Math.max(0, Math.min(world.lagCompMaxRewindTicks, world.tick - shotTick))
+  return {
+    originX: historicalPos.x,
+    originY: historicalPos.y,
+    rewindSeconds: rewindTicks * dt,
+    shotTick,
+  }
+}
 
 /**
  * Weapon system - handles firing with cylinder-based ammo
@@ -92,6 +124,7 @@ export function weaponSystem(
     const bulletSpeed = Weapon.bulletSpeed[eid]!
     let bulletDamage = Weapon.bulletDamage[eid]!
     const bulletRange = Weapon.range[eid]!
+    const rewoundFire = getRewoundFireContext(world, eid, x, y, dt)
 
     // Deadweight buff: +40% damage on first shot after roll
     if (us.deadweightBuffTimer > 0) {
@@ -120,15 +153,34 @@ export function weaponSystem(
       const vx = Math.cos(pelletAngle) * bulletSpeed
       const vy = Math.sin(pelletAngle) * bulletSpeed
 
-      spawnBullet(world, {
-        x,
-        y,
+      const bulletEid = spawnBullet(world, {
+        x: rewoundFire.originX,
+        y: rewoundFire.originY,
         vx,
         vy,
         damage: perPelletDamage,
         range: bulletRange,
         ownerId: eid,
       })
+
+      if (rewoundFire.rewindSeconds > 0) {
+        const catchupX = rewoundFire.originX + vx * rewoundFire.rewindSeconds
+        const catchupY = rewoundFire.originY + vy * rewoundFire.rewindSeconds
+        Position.prevX[bulletEid] = rewoundFire.originX
+        Position.prevY[bulletEid] = rewoundFire.originY
+        Position.x[bulletEid] = catchupX
+        Position.y[bulletEid] = catchupY
+
+        const dx = catchupX - rewoundFire.originX
+        const dy = catchupY - rewoundFire.originY
+        const catchupDist = Math.sqrt(dx * dx + dy * dy)
+        Bullet.distanceTraveled[bulletEid] = Math.min(Bullet.range[bulletEid]!, catchupDist)
+        Bullet.lifetime[bulletEid] = Math.max(0, Bullet.lifetime[bulletEid]! - rewoundFire.rewindSeconds)
+      }
+
+      if (rewoundFire.shotTick !== null) {
+        world.lagCompBulletShotTick.set(bulletEid, rewoundFire.shotTick)
+      }
     }
 
     // Consume round and set fire cooldown

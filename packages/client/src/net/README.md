@@ -5,7 +5,7 @@ Client networking: connection management, clock sync, input buffering, and snaps
 ## Current Files
 
 - `NetworkClient.ts` - Colyseus connection wrapper with auto-reconnect
-- `SnapshotBuffer.ts` - Snapshot interpolation buffer for smooth rendering between 20Hz server updates
+- `SnapshotBuffer.ts` - Snapshot interpolation buffer for smooth rendering between server updates
 - `ClockSync.ts` - Server clock synchronization via ping/pong RTT estimation
 - `InputBuffer.ts` - Input sequence buffer for server reconciliation (stores unacknowledged inputs)
 
@@ -19,7 +19,7 @@ net.on('game-config', (config) => { /* { seed, sessionId, playerEid, characterId
 net.on('lobby-state', (state) => { /* { phase, serverTick, players[] } */ })
 net.on('player-roster', (roster) => { /* [{ eid, characterId }] */ })
 net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
-net.on('incompatible-protocol', (reason) => { /* snapshot protocol mismatch */ })
+net.on('incompatible-protocol', (reason) => { /* input/snapshot protocol mismatch */ })
 net.on('disconnect', () => { /* connection permanently lost */ })
 await net.join({ characterId: 'undertaker' }) // Resolves after game-config (10s timeout)
 net.sendInput(inputState)
@@ -31,7 +31,7 @@ net.disconnect()              // Intentional leave, clears listeners
 - Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared
 - Current snapshot protocol (`v6`) includes jump state payload (`z`, `zVelocity`, jump edge-state flag) for reconciliation parity
 - Snapshot decode errors are caught and logged (don't crash the game loop)
-- Snapshot protocol mismatches trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
+- Protocol mismatches (snapshot or input shape/version) trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)
 - `lobby-state` is derived from Colyseus schema sync (`phase`, `serverTick`, `players` with `sessionId/name/characterId/ready`)
 - Lobby controls use `set-character` / `set-ready` room messages via `sendCharacter()` / `sendReady()`
@@ -52,7 +52,7 @@ const interp = buffer.getInterpolationState(serverTime)
 // interp = { from: WorldSnapshot, to: WorldSnapshot, alpha: number }
 ```
 
-- Buffer size: 5 snapshots (250ms at 20Hz)
+- Buffer size: 8 snapshots (~266ms at 30Hz)
 - Interpolation uses server-time-based rendering when clock sync is converged
 - Alpha is clamped to [0, 1]
 - Returns null until 2+ snapshots are buffered

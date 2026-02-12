@@ -79,4 +79,23 @@ export function clearButton(buttons: number, flag: ButtonFlag): number {
 export interface NetworkInput extends InputState {
   /** Monotonically increasing sequence number, starts at 1 */
   seq: number
+  /**
+   * Client-side prediction tick this input was sampled on.
+   * Used by server-side lag compensation to estimate command time.
+   */
+  clientTick: number
+  /** Client-local timestamp (performance.now domain) when sampled */
+  clientTimeMs: number
+  /**
+   * Client-estimated server timestamp (performance.now domain).
+   * 0 means unknown/unconverged and server should use fallback mapping.
+   */
+  estimatedServerTimeMs: number
+  /**
+   * Interpolation delay used by client render when input was sampled.
+   * Server subtracts this from estimatedServerTimeMs to align with what player saw.
+   */
+  viewInterpDelayMs: number
+  /** Monotonic SHOOT press-edge counter for decoupled shot timing diagnostics */
+  shootSeq: number
 }

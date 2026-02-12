@@ -246,6 +246,50 @@ describe('weaponSystem', () => {
     })
   })
 
+  describe('lag-comp rewound spawn', () => {
+    test('spawns from historical origin and fast-forwards bullet by rewind ticks', () => {
+      world.lagCompEnabled = true
+      world.lagCompMaxRewindTicks = 10
+      world.tick = 20
+      world.lagCompShotTickByPlayer.set(playerEid, 17)
+      world.lagCompGetPlayerPosAtTick = () => ({ x: 50, y: 60 })
+
+      setInput(world, playerEid, createShootInput(0))
+      weaponSystem(world, 1 / 60)
+
+      const bulletEid = findBulletEntity(world)
+      expect(bulletEid).not.toBeNull()
+      const eid = bulletEid!
+
+      const rewindSeconds = (20 - 17) * (1 / 60)
+      const vx = Velocity.x[eid]!
+      const vy = Velocity.y[eid]!
+      expect(Position.prevX[eid]).toBeCloseTo(50)
+      expect(Position.prevY[eid]).toBeCloseTo(60)
+      expect(Position.x[eid]).toBeCloseTo(50 + vx * rewindSeconds)
+      expect(Position.y[eid]).toBeCloseTo(60 + vy * rewindSeconds)
+      expect(world.lagCompBulletShotTick.get(eid)).toBe(17)
+    })
+
+    test('falls back to current player origin when historical state is unavailable', () => {
+      world.lagCompEnabled = true
+      world.lagCompMaxRewindTicks = 10
+      world.tick = 25
+      world.lagCompShotTickByPlayer.set(playerEid, 20)
+      world.lagCompGetPlayerPosAtTick = () => null
+
+      setInput(world, playerEid, createShootInput())
+      weaponSystem(world, 1 / 60)
+
+      const bulletEid = findBulletEntity(world)
+      expect(bulletEid).not.toBeNull()
+      const eid = bulletEid!
+      expect(Position.x[eid]).toBe(100)
+      expect(Position.y[eid]).toBe(100)
+      expect(world.lagCompBulletShotTick.has(eid)).toBe(false)
+    })
+  })
+
   describe('no input', () => {
     test('does nothing without input state', () => {
       // playerInputs is empty — no input for this entity

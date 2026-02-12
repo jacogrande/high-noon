@@ -76,13 +76,14 @@ function overlapsSweptCircle(
 
 function forEachPotentialTarget(
   world: GameWorld,
-  localOnly: boolean,
+  useSpatialHash: boolean,
   x: number,
   y: number,
   queryRadius: number,
+  ignoreRadiusFilter: boolean,
   callback: (targetEid: number) => void,
 ): void {
-  if (world.spatialHash && !localOnly) {
+  if (world.spatialHash && useSpatialHash) {
     forEachInRadius(world.spatialHash, x, y, queryRadius, callback)
     return
   }
@@ -90,6 +91,10 @@ function forEachPotentialTarget(
   const targets = damageableQuery(world)
   const queryRadiusSq = queryRadius * queryRadius
   for (const targetEid of targets) {
+    if (ignoreRadiusFilter) {
+      callback(targetEid)
+      continue
+    }
     const dx = Position.x[targetEid]! - x
     const dy = Position.y[targetEid]! - y
     if (dx * dx + dy * dy > queryRadiusSq) continue
@@ -129,13 +134,25 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     const travelY = y - startY
     const travelDist = Math.sqrt(travelX * travelX + travelY * travelY)
     const queryRadius = radius + MAX_COLLIDER_RADIUS + travelDist
+    // Authoritative player-bullet hit checks prefer direct ECS scans so
+    // local prediction and server authority do not diverge on stale hashes.
+    const useSpatialHash = !localOnly && Collider.layer[eid] !== CollisionLayer.PLAYER_BULLET
     // Determine Showdown state for this bullet's owner
     const bulletOwner = Bullet.ownerId[eid]!
     const ownerHasShowdown =
       hasComponent(world, Showdown, bulletOwner) && Showdown.active[bulletOwner] === 1
     const showdownTarget = ownerHasShowdown ? Showdown.targetEid[bulletOwner]! : NO_TARGET
+    const shotTick = world.lagCompBulletShotTick.get(eid)
+    const useHistoricalEnemyOverlap =
+      !localOnly &&
+      world.lagCompEnabled &&
+      Collider.layer[eid] === CollisionLayer.PLAYER_BULLET &&
+      shotTick !== undefined &&
+      world.tick <= shotTick + 1 &&
+      world.lagCompGetEnemyStateAtTick !== undefined
+    const ignoreRadiusFilter = useHistoricalEnemyOverlap && !useSpatialHash
 
-    forEachPotentialTarget(world, localOnly, x, y, queryRadius, (targetEid) => {
+    forEachPotentialTarget(world, useSpatialHash, x, y, queryRadius, ignoreRadiusFilter, (targetEid) => {
       if (hitEntity) return
       if (!hasComponent(world, Health, targetEid)) return
       // Skip owner
@@ -156,7 +173,23 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       const tx = Position.x[targetEid]!
       const ty = Position.y[targetEid]!
       const minDist = radius + Collider.radius[targetEid]!
-      if (!overlapsSweptCircle(startX, startY, x, y, tx, ty, minDist)) return
+      let overlaps = overlapsSweptCircle(startX, startY, x, y, tx, ty, minDist)
+      if (!overlaps && useHistoricalEnemyOverlap && Collider.layer[targetEid] === CollisionLayer.ENEMY) {
+        const historical = world.lagCompGetEnemyStateAtTick?.(targetEid, shotTick)
+        if (historical && historical.alive) {
+          const historicalMinDist = radius + historical.radius + world.lagCompHistoricalRadiusPadding
+          overlaps = overlapsSweptCircle(
+            startX,
+            startY,
+            x,
+            y,
+            historical.x,
+            historical.y,
+            historicalMinDist,
+          )
+        }
+      }
+      if (!overlaps) return
 
       // Determine damage and pierce behavior
       let damage = Bullet.damage[eid]!

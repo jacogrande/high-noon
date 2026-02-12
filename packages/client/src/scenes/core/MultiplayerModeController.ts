@@ -19,6 +19,7 @@ import {
   Dead,
   Cylinder,
   Showdown,
+  Button,
   NO_TARGET,
   TICK_S,
   PLAYER_HP,
@@ -95,7 +96,7 @@ const SNAP_THRESHOLD = 96    // pixels — teleport if error exceeds this
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
 const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
 const MAX_PENDING_SNAPSHOTS = 6
-const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 2
+const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 4
 
 interface MultiplayerInitializeOptions extends Record<string, unknown> {
   net?: NetworkClient
@@ -142,6 +143,9 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** Input sequence counter for network messages */
   private inputSeq = 0
+  /** Monotonic local shoot press-edge sequence for input metadata */
+  private shootSeq = 0
+  private shootWasDown = false
 
   /** Server EID → client EID maps */
   private readonly playerEntities = new Map<number, number>()
@@ -425,6 +429,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.syncPlayerCharacterMapToWorld()
     this.connected = true
     this.disconnected = false
+    this.shootWasDown = false
     console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
     this.clockSync.stop()
     this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
@@ -481,6 +486,36 @@ export class MultiplayerModeController implements SceneModeController {
     )
     this.telemetry.onPredictedBulletsMatched(ingestStats.matchedPredictedBullets)
     this.telemetry.onPredictedBulletsTimedOut(ingestStats.timedOutPredictedBullets)
+  }
+
+  /**
+   * Keep simulation-side remote transforms aligned to the freshest authoritative
+   * snapshot so local prediction does not collide against render-delayed state.
+   */
+  private prepareSimulationStateFromLatestSnapshot(): void {
+    const latest = this.snapshotBuffer.latest
+    if (!latest) return
+
+    this.interpolateFromBuffer({
+      from: latest,
+      to: latest,
+      alpha: 1,
+    })
+
+    // Collision simulation runs in present time. Extrapolate remote enemies
+    // from latest authoritative snapshot toward estimated server-now.
+    const rawAgeMs = this.clockSync.isConverged()
+      ? this.clockSync.getServerTime() - latest.serverTime
+      : 25
+    const ageS = Math.max(0, Math.min(0.12, rawAgeMs / 1000))
+    if (ageS <= 0) return
+
+    for (const enemyEid of this.enemyEntities.values()) {
+      Position.prevX[enemyEid] = Position.x[enemyEid]!
+      Position.prevY[enemyEid] = Position.y[enemyEid]!
+      Position.x[enemyEid] = Position.x[enemyEid]! + Velocity.x[enemyEid]! * ageS
+      Position.y[enemyEid] = Position.y[enemyEid]! + Velocity.y[enemyEid]! * ageS
+    }
   }
 
   private applyPlayerRoster(entries: PlayerRosterEntry[]): void {
@@ -545,8 +580,9 @@ export class MultiplayerModeController implements SceneModeController {
   update(_dt: number): void {
     if (!this.connected) return
 
-    // Apply at most one pending authoritative snapshot on the fixed tick.
+    // Apply pending authoritative snapshots on the fixed tick (bounded catch-up).
     this.processPendingSnapshots()
+    this.prepareSimulationStateFromLatestSnapshot()
     this.tickPlayerHitIframes(TICK_S)
 
     // Level-up detection from server HUD data (emit one event per level gained)
@@ -577,8 +613,23 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Collect and tag input
     const inputState: InputState = this.input.getInputState()
+    const wantsShoot = (inputState.buttons & Button.SHOOT) !== 0
+    if (wantsShoot && !this.shootWasDown) {
+      this.shootSeq++
+    }
+    this.shootWasDown = wantsShoot
     this.inputSeq++
-    const networkInput: NetworkInput = { ...inputState, seq: this.inputSeq }
+    const sampleClientTimeMs = performance.now()
+    const estimatedServerTimeMs = this.clockSync.isConverged() ? this.clockSync.getServerTime() : 0
+    const networkInput: NetworkInput = {
+      ...inputState,
+      seq: this.inputSeq,
+      clientTick: this.predictionTick,
+      clientTimeMs: sampleClientTimeMs,
+      estimatedServerTimeMs,
+      viewInterpDelayMs: this.snapshotBuffer.getInterpolationDelayMs(),
+      shootSeq: this.shootSeq,
+    }
     this.inputBuffer.push(networkInput)
     this.net.sendInput(networkInput)
 

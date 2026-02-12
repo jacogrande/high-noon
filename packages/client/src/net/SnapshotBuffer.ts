@@ -2,7 +2,7 @@
  * Snapshot interpolation buffer.
  *
  * Stores recent server snapshots with receive timestamps and provides
- * interpolation state for smooth rendering between 20Hz snapshot updates.
+ * interpolation state for smooth rendering between snapshot updates.
  */
 
 import type { WorldSnapshot } from '@high-noon/shared'
@@ -19,19 +19,18 @@ export interface InterpolationState {
   alpha: number
 }
 
-/** Maximum number of snapshots to retain (5 = 250ms at 20Hz, ample for adaptive 75-200ms delay) */
-const MAX_BUFFER_SIZE = 5
-
-/** Snapshot send cadence: 20Hz */
-const SNAPSHOT_INTERVAL_MS = 50
-/** Default interpolation delay in ms (1.5x snapshot interval) */
-const DEFAULT_INTERPOLATION_DELAY = 75
+/** Maximum number of snapshots to retain (8 ~= 266ms at 30Hz). */
+const MAX_BUFFER_SIZE = 8
+/** Default interpolation delay in ms for responsive multiplayer presentation. */
+const DEFAULT_INTERPOLATION_DELAY = 50
 /** Upper bound to keep remote presentation responsive */
 const MAX_INTERPOLATION_DELAY = 200
 /** Convert observed interval jitter into delay headroom */
 const DELAY_JITTER_MULTIPLIER = 2
 /** EWMA smoothing for interval jitter estimation */
 const JITTER_SMOOTHING = 0.1
+/** EWMA smoothing for expected interval estimate */
+const INTERVAL_SMOOTHING = 0.2
 /** Decrease delay slowly to avoid oscillation */
 const DELAY_DECAY = 0.1
 
@@ -40,6 +39,7 @@ export class SnapshotBuffer {
   private readonly baseInterpolationDelay: number
   private dynamicInterpolationDelay: number
   private lastServerTime: number | null = null
+  private expectedServerInterval: number | null = null
   private intervalJitter = 0
 
   constructor(interpolationDelay = DEFAULT_INTERPOLATION_DELAY) {
@@ -74,8 +74,13 @@ export class SnapshotBuffer {
     // Guard against invalid or stale timestamps.
     if (!Number.isFinite(interval) || interval <= 0 || interval > 1000) return
 
-    // Estimate irregularity in snapshot spacing.
-    const deviation = Math.abs(interval - SNAPSHOT_INTERVAL_MS)
+    if (this.expectedServerInterval === null) {
+      this.expectedServerInterval = interval
+      return
+    }
+
+    const deviation = Math.abs(interval - this.expectedServerInterval)
+    this.expectedServerInterval += (interval - this.expectedServerInterval) * INTERVAL_SMOOTHING
     this.intervalJitter += (deviation - this.intervalJitter) * JITTER_SMOOTHING
 
     const target = Math.max(
@@ -99,6 +104,11 @@ export class SnapshotBuffer {
     return this.buffer.length > 0
       ? this.buffer[this.buffer.length - 1]!.snapshot
       : null
+  }
+
+  /** Current adaptive interpolation delay in milliseconds. */
+  getInterpolationDelayMs(): number {
+    return this.dynamicInterpolationDelay
   }
 
   /**
@@ -168,6 +178,7 @@ export class SnapshotBuffer {
     this.buffer.length = 0
     this.dynamicInterpolationDelay = this.baseInterpolationDelay
     this.lastServerTime = null
+    this.expectedServerInterval = null
     this.intervalJitter = 0
   }
 }

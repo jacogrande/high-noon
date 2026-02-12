@@ -184,6 +184,18 @@ export interface DamageAttribution {
   wasMelee: boolean
 }
 
+export interface RewindPlayerState {
+  x: number
+  y: number
+}
+
+export interface RewindEnemyState {
+  x: number
+  y: number
+  radius: number
+  alive: boolean
+}
+
 /**
  * Game world containing all ECS state
  */
@@ -290,6 +302,20 @@ export interface GameWorld extends IWorld {
   simulationScope: 'all' | 'local-player'
   /** Local player entity used when simulationScope is 'local-player' */
   localPlayerEid: number
+  /** Enables server-side lag-compensated shot rewind in shared systems */
+  lagCompEnabled: boolean
+  /** Max rewind distance in ticks for lag compensation */
+  lagCompMaxRewindTicks: number
+  /** Per-player shot command tick for current simulation step */
+  lagCompShotTickByPlayer: Map<number, number>
+  /** Per-bullet originating shot tick for early historical hit checks */
+  lagCompBulletShotTick: Map<number, number>
+  /** Radius padding applied only during historical lag-comp overlap checks */
+  lagCompHistoricalRadiusPadding: number
+  /** Resolve historical player position for a rewind tick */
+  lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
+  /** Resolve historical enemy state for a rewind tick */
+  lagCompGetEnemyStateAtTick?: (eid: number, tick: number) => RewindEnemyState | null
 }
 
 /**
@@ -351,6 +377,11 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     campComplete: false,
     simulationScope: 'all',
     localPlayerEid: -1,
+    lagCompEnabled: false,
+    lagCompMaxRewindTicks: 0,
+    lagCompShotTickByPlayer: new Map(),
+    lagCompBulletShotTick: new Map(),
+    lagCompHistoricalRadiusPadding: 0,
   }
 }
 
@@ -413,6 +444,13 @@ export function resetWorld(world: GameWorld): void {
   world.campComplete = false
   world.simulationScope = 'all'
   world.localPlayerEid = -1
+  world.lagCompEnabled = false
+  world.lagCompMaxRewindTicks = 0
+  world.lagCompShotTickByPlayer.clear()
+  world.lagCompBulletShotTick.clear()
+  world.lagCompHistoricalRadiusPadding = 0
+  delete world.lagCompGetPlayerPosAtTick
+  delete world.lagCompGetEnemyStateAtTick
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

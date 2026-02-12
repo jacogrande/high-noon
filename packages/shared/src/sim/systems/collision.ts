@@ -242,31 +242,8 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
     const r1 = Collider.radius[eid1]!
     const layer1 = Collider.layer[eid1]!
 
-    if (world.spatialHash) {
-      const queryRadius = r1 + MAX_COLLIDER_RADIUS
-      forEachInRadius(world.spatialHash, x1, y1, queryRadius, (eid2) => {
-        if (eid1 === eid2) return
-
-        const layer2 = Collider.layer[eid2]!
-        if (layer1 === layer2) return
-        if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
-        if (getEntityZ(world, eid1) > JUMP_AIRBORNE_THRESHOLD || getEntityZ(world, eid2) > JUMP_AIRBORNE_THRESHOLD) {
-          return
-        }
-
-        const x2 = Position.x[eid2]!
-        const y2 = Position.y[eid2]!
-        const r2 = Collider.radius[eid2]!
-        const collision = circleCircleCollision(x1, y1, r1, x2, y2, r2)
-        if (collision) {
-          Position.x[eid1] = x1 + collision.overlapX
-          Position.y[eid1] = y1 + collision.overlapY
-        }
-      })
-      return
-    }
-
-    // Fallback if spatial hash is unavailable.
+    // In local-player prediction/replay, remote entities can move between
+    // authoritative hash rebuilds. Use direct ECS scan to avoid stale broadphase.
     const movingEntities = movingCollidableQuery(world)
     for (const eid2 of movingEntities) {
       if (eid1 === eid2) continue

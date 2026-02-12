@@ -5,6 +5,11 @@ import type { NetworkInput } from '@high-noon/shared'
 function makeInput(seq: number): NetworkInput {
   return {
     seq,
+    clientTick: seq,
+    clientTimeMs: seq * 16.67,
+    estimatedServerTimeMs: seq * 16.67,
+    viewInterpDelayMs: 75,
+    shootSeq: 0,
     buttons: 0,
     aimAngle: 0,
     moveX: 0,

@@ -41,7 +41,8 @@ src/
 1. **Keep synced state small** - Only sync essential data via Colyseus schema
 2. **Use events for transient data** - Bullets, particles sent as events
 3. **Validate all inputs** - Never trust client data
-4. **Input sequencing** - Client inputs include monotonic `seq` numbers (`NetworkInput`). The server tracks `lastProcessedSeq` per player and includes it in snapshot broadcasts, enabling client-side prediction reconciliation.
+4. **Input sequencing + timing** - Client inputs include monotonic `seq` plus timing metadata (`clientTick`, `estimatedServerTimeMs`, `viewInterpDelayMs`). The server tracks `lastProcessedSeq` for reconciliation and maps shot timing into bounded rewind ticks.
+5. **Authoritative lag compensation** - Server records short per-tick rewind history (player/enemy state) and uses it only to validate shot overlap timing. Damage authority remains server-side.
 
 ## Configuration
 

@@ -14,7 +14,7 @@ Network protocol definitions and serialization.
 
 ### Client → Server (Colyseus room messages)
 
-- `input` - `NetworkInput` (seq + buttons + aim/move/cursor)
+- `input` - `NetworkInput` (`seq` + `clientTick` + `clientTimeMs` + `estimatedServerTimeMs` + `viewInterpDelayMs` + `shootSeq` + buttons + aim/move/cursor)
 - `ping` - clock sync ping payload
 - `request-game-config` - explicit config re-sync after reconnect
 - `set-character` - lobby character selection
@@ -27,12 +27,19 @@ Network protocol definitions and serialization.
 - `snapshot` - authoritative world snapshot (binary)
 - `hud` - HUD data derived from authoritative local player state
 - `pong` - clock sync pong payload
+- `incompatible-protocol` - protocol/version mismatch message; client should disconnect and reload
 
 Lobby metadata (`phase`, `players` with name/character/ready, `serverTick`) is synced through Colyseus room schema state and surfaced client-side as `LobbyState`.
 
+## Input Timing and Lag Compensation
+
+`NetworkInput.clientTick` is the client's local prediction tick for that input sample. `estimatedServerTimeMs` is the client's clock-synced estimate of server time at sample time, and `viewInterpDelayMs` tells the server how far behind remote entities were rendered on that frame.
+
+The server subtracts `viewInterpDelayMs` from `estimatedServerTimeMs`, converts that perceived-shot time into a bounded rewind tick window, and falls back to client-tick mapping when clock sync data is unavailable.
+
 ## Binary Snapshots
 
-`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
+`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 30Hz (every 2nd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
 
 Current snapshot protocol (`SNAPSHOT_VERSION = 6`) includes:
 

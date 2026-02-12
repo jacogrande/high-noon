@@ -104,10 +104,15 @@ export interface SnapshotIngestStats {
 }
 
 export class SnapshotIngestor {
+  /** Server-authoritative enemy transform history (for velocity estimation). */
+  private readonly enemyAuthState = new Map<number, { x: number; y: number; serverTime: number }>()
+  /** Grace window for rejecting immediate HP rollbacks after optimistic local hits. */
+  private readonly enemyHpRollbackGraceUntil = new Map<number, number>()
+
   applyEntityLifecycle(snapshot: WorldSnapshot, ctx: SnapshotIngestContext, predictionTick: number): SnapshotIngestStats {
     this.applyPlayers(snapshot.players, ctx)
     const matchedPredictedBullets = this.applyBullets(snapshot.bullets, ctx)
-    this.applyEnemies(snapshot.enemies, ctx)
+    this.applyEnemies(snapshot.enemies, snapshot.serverTime, ctx)
     this.applyLastRitesZones(snapshot.lastRitesZones, ctx)
     this.applyDynamites(snapshot.dynamites, ctx)
     const timedOutPredictedBullets = ctx.tracker.cleanupPredictedBullets(ctx.world, predictionTick)
@@ -337,8 +342,11 @@ export class SnapshotIngestor {
     return matchedPredictedBullets
   }
 
-  private applyEnemies(enemies: EnemySnapshot[], ctx: SnapshotIngestContext): void {
+  private applyEnemies(enemies: EnemySnapshot[], snapshotServerTime: number, ctx: SnapshotIngestContext): void {
     const seen = new Set<number>()
+    const nowMs = performance.now()
+    // One RTT + one snapshot interval gives the server time to confirm a valid hit.
+    const rollbackGraceMs = Math.max(100, Math.min(350, ctx.resolveRttMs() + 50))
 
     for (const e of enemies) {
       seen.add(e.eid)
@@ -362,6 +370,8 @@ export class SnapshotIngestor {
         Health.current[clientEid] = e.hp
         Health.iframes[clientEid] = 0
         Health.iframeDuration[clientEid] = 0
+        Velocity.x[clientEid] = 0
+        Velocity.y[clientEid] = 0
 
         Position.x[clientEid] = e.x
         Position.y[clientEid] = e.y
@@ -369,12 +379,37 @@ export class SnapshotIngestor {
         Position.prevY[clientEid] = e.y
 
         ctx.enemyEntities.set(e.eid, clientEid)
+        this.enemyAuthState.set(e.eid, { x: e.x, y: e.y, serverTime: snapshotServerTime })
+        this.enemyHpRollbackGraceUntil.delete(clientEid)
+      } else {
+        const prev = this.enemyAuthState.get(e.eid)
+        if (prev && snapshotServerTime > prev.serverTime) {
+          const dt = (snapshotServerTime - prev.serverTime) / 1000
+          if (dt > 0) {
+            Velocity.x[clientEid] = (e.x - prev.x) / dt
+            Velocity.y[clientEid] = (e.y - prev.y) / dt
+          }
+        }
+        this.enemyAuthState.set(e.eid, { x: e.x, y: e.y, serverTime: snapshotServerTime })
       }
 
-      // Always accept authoritative server HP. The EnemyRenderer uses a
-      // watermark to de-duplicate damage numbers so optimistic prediction hits
-      // won't be re-emitted when the server confirms.
-      Health.current[clientEid] = e.hp
+      // Avoid immediate HP bar flash-up when optimistic local hit prediction is
+      // waiting on server confirmation. Upward correction is delayed briefly.
+      const localHp = Health.current[clientEid]!
+      const serverHp = e.hp
+      if (serverHp > localHp) {
+        const graceUntil = this.enemyHpRollbackGraceUntil.get(clientEid)
+        if (graceUntil === undefined) {
+          this.enemyHpRollbackGraceUntil.set(clientEid, nowMs + rollbackGraceMs)
+        } else if (nowMs >= graceUntil) {
+          Health.current[clientEid] = serverHp
+          this.enemyHpRollbackGraceUntil.delete(clientEid)
+        }
+      } else {
+        Health.current[clientEid] = serverHp
+        this.enemyHpRollbackGraceUntil.delete(clientEid)
+      }
+
       // Keep max HP sane for render/UI ratio even if entity was created earlier.
       if (Health.max[clientEid]! <= 0) {
         Health.max[clientEid] = ENEMY_MAX_HP[e.type] ?? Math.max(1, e.hp)
@@ -392,6 +427,8 @@ export class SnapshotIngestor {
     for (const [serverEid, clientEid] of ctx.enemyEntities) {
       if (!seen.has(serverEid)) {
         removeEntity(ctx.world, clientEid)
+        this.enemyAuthState.delete(serverEid)
+        this.enemyHpRollbackGraceUntil.delete(clientEid)
         ctx.enemyEntities.delete(serverEid)
       }
     }

@@ -226,6 +226,101 @@ describe('bulletCollisionSystem', () => {
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
     })
 
+    test('authoritative player bullets still hit when spatial hash is stale', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 200, OPEN_Y, 20)
+
+      // Build broadphase with enemy far away, then move enemy on ECS without
+      // rebuilding hash (simulates stale authoritative broadphase data).
+      rebuildHash(world)
+      Position.x[enemyEid] = OPEN_X
+      Position.y[enemyEid] = OPEN_Y
+
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('server lag-comp historical overlap confirms first-tick player bullet hit', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 120, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      world.lagCompEnabled = true
+      world.tick = 100
+      world.lagCompBulletShotTick.set(bulletEid, 99)
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 99) return null
+        return {
+          x: OPEN_X,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('historical overlap uses lag-comp radius padding for near-miss forgiveness', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 200, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      const bulletRadius = Collider.radius[bulletEid]!
+      const enemyRadius = Collider.radius[enemyEid]!
+      const outsideBy = 2
+
+      world.lagCompEnabled = true
+      world.tick = 100
+      world.lagCompHistoricalRadiusPadding = 3
+      world.lagCompBulletShotTick.set(bulletEid, 99)
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 99) return null
+        return {
+          x: OPEN_X + bulletRadius + enemyRadius + outsideBy,
+          y: OPEN_Y,
+          radius: enemyRadius,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
     test('enemy bullet damages player and is removed', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
       const enemyEid = spawnTestEnemy(world, OPEN_X + 100, OPEN_Y)

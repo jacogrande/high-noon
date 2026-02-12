@@ -45,21 +45,21 @@ describe('SnapshotBuffer', () => {
   // Buffer eviction
   // ---------------------------------------------------------------------------
 
-  it('evicts oldest snapshot when exceeding MAX_BUFFER_SIZE (5)', () => {
+  it('evicts oldest snapshot when exceeding MAX_BUFFER_SIZE (8)', () => {
     const buf = new SnapshotBuffer()
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 10; i++) {
       buf.push(makeSnapshot(i, 1000 + i * 50))
     }
-    // After 7 pushes with max 5, oldest 2 should be evicted.
-    // latest should be tick=6
-    expect(buf.latest!.tick).toBe(6)
+    // After 10 pushes with max 8, oldest 2 should be evicted.
+    // latest should be tick=9
+    expect(buf.latest!.tick).toBe(9)
 
-    // The buffer should still return interpolation state (has >=2 entries)
-    // Use server-time mode with a time that brackets the remaining snapshots
-    // Remaining: ticks 2-6 with serverTimes 1100-1300
-    const state = buf.getInterpolationState(1250) // renderTime = 1250 - 100 = 1150
+    // Render time before all buffered snapshots returns the oldest pair.
+    // If eviction worked, these are ticks 2 and 3.
+    const state = buf.getInterpolationState(1000)
     expect(state).not.toBeNull()
-    expect(state!.from.tick).toBeGreaterThanOrEqual(2)
+    expect(state!.from.tick).toBe(2)
+    expect(state!.to.tick).toBe(3)
   })
 
   // ---------------------------------------------------------------------------

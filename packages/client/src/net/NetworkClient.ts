@@ -209,6 +209,10 @@ export class NetworkClient {
       this.emit('select-node-result', data)
     }))
 
+    cleanup.push(room.onMessage('incompatible-protocol', (reason: string) => {
+      this.handleProtocolMismatch(room, new Error(reason))
+    }))
+
     cleanup.push(room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
       try {
         const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
