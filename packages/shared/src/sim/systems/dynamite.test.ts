@@ -253,6 +253,31 @@ describe('dynamiteSystem', () => {
       expect(Health.iframes[playerEid]).toBeGreaterThan(0)
     })
 
+    test('enemy-owned dynamite fires onHealthChanged hook for player damage', () => {
+      const enemyOwner = spawnSwarmer(world, 220, 100)
+      rebuildHash(world)
+
+      let hookFired = false
+      let oldHP = 0
+      let newHP = 0
+      world.hooks.register('onHealthChanged', 'test_dyn_damage', (_world, _pid, prev, next) => {
+        hookFired = true
+        oldHP = prev
+        newHP = next
+      })
+
+      world.dynamites.push({
+        x: 100, y: 100, fuseRemaining: 0.01,
+        damage: 9, radius: 80,
+        knockback: 60, ownerId: enemyOwner,
+      })
+
+      dynamiteSystem(world, 0.02)
+
+      expect(hookFired).toBe(true)
+      expect(newHP).toBe(oldHP - 9)
+    })
+
     test('enemy-owned dynamite does not damage enemies', () => {
       const enemyOwner = spawnSwarmer(world, 220, 100)
       const nearbyEnemy = spawnSwarmer(world, 100, 100)

@@ -90,6 +90,36 @@ describe('healthSystem', () => {
 
       expect(hasComponent(world, Health, eid)).toBe(true)
     })
+
+    test('onKill is attributed to the recorded killer player', () => {
+      const playerA = spawnPlayer(world, 100, 100)
+      const playerB = spawnPlayer(world, 120, 100)
+      const eid = spawnHealthEntity(1)
+      Health.current[eid] = 0
+      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerB, wasMelee: false })
+
+      let capturedKiller = -1
+      world.hooks.register('onKill', 'test_kill_credit', (_world, killerEid) => {
+        capturedKiller = killerEid
+      })
+
+      healthSystem(world, 1 / 60)
+
+      expect(capturedKiller).toBe(playerB)
+      // Ensure we don't accidentally fall back to first player in query order.
+      expect(capturedKiller).not.toBe(playerA)
+    })
+
+    test('melee attribution applies double gold drop', () => {
+      const playerEid = spawnPlayer(world, 100, 100)
+      const eid = spawnHealthEntity(1)
+      Health.current[eid] = 0
+      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerEid, wasMelee: true })
+
+      healthSystem(world, 1 / 60)
+
+      expect(world.goldNuggets.length).toBe(2)
+    })
   })
 
   describe('bullet callback cleanup', () => {

@@ -198,6 +198,34 @@ describe('bulletCollisionSystem', () => {
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
     })
 
+    test('swept collision detects fast bullet crossing target between ticks', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
+
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X + 40,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      // Simulate a high-speed step where the bullet moved from left to right
+      // across the enemy in a single tick.
+      Position.prevX[bulletEid] = OPEN_X - 40
+      Position.prevY[bulletEid] = OPEN_Y
+      Position.x[bulletEid] = OPEN_X + 40
+      Position.y[bulletEid] = OPEN_Y
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(15)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
     test('enemy bullet damages player and is removed', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
       const enemyEid = spawnTestEnemy(world, OPEN_X + 100, OPEN_Y)
@@ -525,6 +553,29 @@ describe('bulletCollisionSystem', () => {
 
       // Build hash in full-world mode (local-player mode reuses this authoritative hash).
       rebuildHash(world)
+      world.simulationScope = 'local-player'
+      world.localPlayerEid = playerEid
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('local player optimistic hits work without a spatial hash rebuild', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 100,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      world.spatialHash = null
       world.simulationScope = 'local-player'
       world.localPlayerEid = playerEid
 

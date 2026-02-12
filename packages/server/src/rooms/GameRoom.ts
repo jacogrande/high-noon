@@ -56,6 +56,8 @@ const INPUT_RATE_BURST_CAPACITY = 60
 
 /** If queue exceeds this depth, skip to latest input to reduce latency */
 const INPUT_QUEUE_TRIM_THRESHOLD = 6
+/** When trimming backlog, keep this many recent inputs */
+const INPUT_QUEUE_TRIM_TO = 3
 
 /** When queue is briefly empty, reuse last input for a few ticks to avoid edge glitches */
 const INPUT_HOLD_TICKS = 3
@@ -71,21 +73,12 @@ const neutralInput: InputState = Object.freeze(createInputState())
 const TRANSIENT_ACTION_BUTTONS =
   Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
 
-/**
- * Merge a trimmed backlog into one input:
- * - Keep latest analog state (movement/aim/cursor)
- * - Preserve any transient action taps observed in dropped inputs
- */
-function mergeTrimmedInputs(queue: NetworkInput[]): NetworkInput {
-  const latest = queue[queue.length - 1]!
-  let mergedButtons = latest.buttons
-  for (let i = 0; i < queue.length - 1; i++) {
-    mergedButtons |= queue[i]!.buttons & TRANSIENT_ACTION_BUTTONS
+function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): number {
+  let merged = baseButtons
+  for (let i = 0; i < inputs.length; i++) {
+    merged |= inputs[i]!.buttons & TRANSIENT_ACTION_BUTTONS
   }
-  return {
-    ...latest,
-    buttons: mergedButtons,
-  }
+  return merged
 }
 
 /** Per-player server state */
@@ -474,32 +467,36 @@ export class GameRoom extends Room<GameRoomState> {
 
   private serverTick() {
     // 1. Pop one input per player into world.playerInputs (neutral if empty).
-    //    Trim backlog aggressively: if queue depth exceeds threshold, skip to
-    //    the latest input to prevent snowballing latency under jitter.
+    //    Trim backlog aggressively: if queue depth exceeds threshold, discard
+    //    oldest samples to cut latency while preserving transient actions.
     for (const [, slot] of this.slots) {
       if (slot.inputQueue.length > INPUT_QUEUE_TRIM_THRESHOLD) {
-        // Skip to latest analog state but preserve action-button taps from
-        // dropped inputs to avoid losing edge-triggered actions.
-        const merged = mergeTrimmedInputs(slot.inputQueue)
-        slot.inputQueue.length = 0
-        slot.lastProcessedSeq = merged.seq
-        slot.lastInput = merged
-        slot.heldInputTicks = 0
-        this.world.playerInputs.set(slot.eid, merged)
-      } else {
-        const input = slot.inputQueue.shift()
-        if (input) {
-          slot.lastProcessedSeq = input.seq
-          slot.lastInput = input
-          slot.heldInputTicks = 0
-          this.world.playerInputs.set(slot.eid, input)
-        } else {
-          if (slot.heldInputTicks < INPUT_HOLD_TICKS) {
-            slot.heldInputTicks++
-            this.world.playerInputs.set(slot.eid, slot.lastInput)
-          } else {
-            this.world.playerInputs.set(slot.eid, neutralInput)
+        const trimTo = Math.max(1, Math.min(INPUT_QUEUE_TRIM_TO, INPUT_QUEUE_TRIM_THRESHOLD))
+        const dropCount = Math.max(0, slot.inputQueue.length - trimTo)
+        if (dropCount > 0) {
+          const dropped = slot.inputQueue.splice(0, dropCount)
+          const next = slot.inputQueue[0]
+          if (next) {
+            slot.inputQueue[0] = {
+              ...next,
+              buttons: mergeTransientButtons(dropped, next.buttons),
+            }
           }
+        }
+      }
+
+      const input = slot.inputQueue.shift()
+      if (input) {
+        slot.lastProcessedSeq = input.seq
+        slot.lastInput = input
+        slot.heldInputTicks = 0
+        this.world.playerInputs.set(slot.eid, input)
+      } else {
+        if (slot.heldInputTicks < INPUT_HOLD_TICKS) {
+          slot.heldInputTicks++
+          this.world.playerInputs.set(slot.eid, slot.lastInput)
+        } else {
+          this.world.playerInputs.set(slot.eid, neutralInput)
         }
       }
     }

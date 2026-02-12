@@ -15,6 +15,7 @@ import { BULLET_RADIUS } from './weapons'
 import { applySlow } from '../systems/slowDebuff'
 import { hasComponent, addComponent } from 'bitecs'
 import { forEachInRadius } from '../SpatialHash'
+import { applyDamage } from '../systems/applyDamage'
 
 function stateForPlayer(world: GameWorld, playerEid: number) {
   return world.playerUpgradeStates.get(playerEid) ?? world.upgradeState
@@ -253,7 +254,7 @@ const OVERKILL_RADIUS = 60
 function registerOverkill(hooks: HookRegistry): void {
   hooks.register('onKill', 'overkill', (
     world: GameWorld,
-    _playerEid: number,
+    playerEid: number,
     victimEid: number,
   ) => {
     // Prevent overkill from chaining with itself this tick
@@ -277,7 +278,10 @@ function registerOverkill(hooks: HookRegistry): void {
       const dy = Position.y[nearbyEid]! - vy
       if (dx * dx + dy * dy > OVERKILL_RADIUS * OVERKILL_RADIUS) return
 
-      Health.current[nearbyEid] = Health.current[nearbyEid]! - excessDamage
+      applyDamage(world, nearbyEid, {
+        amount: excessDamage,
+        ownerPlayerEid: playerEid,
+      })
       world.overkillProcessed.add(nearbyEid)
     })
   }, 10) // Higher priority to run after other onKill hooks
@@ -374,7 +378,10 @@ function registerOpenCasket(hooks: HookRegistry): void {
             const dx = Position.x[enemyEid]! - px
             const dy = Position.y[enemyEid]! - py
             if (dx * dx + dy * dy > OPEN_CASKET_PULSE_RADIUS * OPEN_CASKET_PULSE_RADIUS) return
-            Health.current[enemyEid] = Health.current[enemyEid]! - OPEN_CASKET_PULSE_DAMAGE
+            applyDamage(world, enemyEid, {
+              amount: OPEN_CASKET_PULSE_DAMAGE,
+              ownerPlayerEid: playerEid,
+            })
           })
           world.lastRitesPulseThisTick = true
         }

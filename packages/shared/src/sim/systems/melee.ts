@@ -16,7 +16,6 @@ import {
   Player,
   Position,
   MeleeWeapon,
-  Health,
   Knockback,
   Roll,
   PlayerState,
@@ -25,6 +24,7 @@ import {
 import { PICKAXE_CHARGE_ARC, MELEE_KNOCKBACK_DURATION, TREMOR_RADIUS } from '../content/weapons'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
+import { applyDamage } from './applyDamage'
 
 const meleePlayerQuery = defineQuery([Player, MeleeWeapon, Position])
 
@@ -180,7 +180,11 @@ function executeSwing(
     if (!isInArc(px, py, aimAngle, arcHalf, reach, ex, ey)) return
 
     // Apply damage
-    Health.current[enemyEid] = Health.current[enemyEid]! - damage
+    const hit = applyDamage(world, enemyEid, {
+      amount: damage,
+      ownerPlayerEid: eid,
+      melee: true,
+    })
 
     // Apply knockback
     const dist = Math.sqrt(distSq)
@@ -197,7 +201,7 @@ function executeSwing(
     }
 
     // Track melee kill for Gold Rush (2x gold)
-    if (Health.current[enemyEid]! <= 0) {
+    if (hit.killed) {
       world.lastKillWasMelee = true
       if (isCharged) killedWithCharge = true
     }
@@ -220,6 +224,9 @@ function executeTremor(world: GameWorld, us: UpgradeState, eid: number, px: numb
   world.tremorThisTick = true
 
   forEachAliveEnemyInRadius(world, px, py, TREMOR_RADIUS, (enemyEid) => {
-    Health.current[enemyEid] = Health.current[enemyEid]! - tremorDamage
+    applyDamage(world, enemyEid, {
+      amount: tremorDamage,
+      ownerPlayerEid: eid,
+    })
   })
 }

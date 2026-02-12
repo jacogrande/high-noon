@@ -26,6 +26,7 @@ import {
 } from '../content/jump'
 import { forEachInRadius } from '../SpatialHash'
 import { getSolidTileTypeAt, TileType, worldToTile, isSolidAt, type Tilemap } from '../tilemap'
+import { applyDamage } from './applyDamage'
 
 const jumpQuery = defineQuery([Jump, ZPosition, PlayerState, Position])
 
@@ -113,7 +114,10 @@ export function jumpSystem(world: GameWorld, dt: number): void {
         const dy = Position.y[targetEid]! - py
         const maxDist = JUMP_STOMP_RADIUS + Collider.radius[targetEid]!
         if (dx * dx + dy * dy < maxDist * maxDist) {
-          Health.current[targetEid] = Health.current[targetEid]! - JUMP_STOMP_DAMAGE
+          applyDamage(world, targetEid, {
+            amount: JUMP_STOMP_DAMAGE,
+            ownerPlayerEid: eid,
+          })
         }
       })
     } else {

@@ -175,6 +175,16 @@ export interface PlayerInfo {
 }
 
 /**
+ * Last damage attribution metadata per entity.
+ */
+export interface DamageAttribution {
+  /** Most recent player responsible for damage, if any */
+  ownerPlayerEid: number | null
+  /** Whether the most recent damaging hit was melee */
+  wasMelee: boolean
+}
+
+/**
  * Game world containing all ECS state
  */
 export interface GameWorld extends IWorld {
@@ -262,6 +272,8 @@ export interface GameWorld extends IWorld {
   goldCollected: number
   /** Set to true when last kill was via melee (for Gold Rush 2x) */
   lastKillWasMelee: boolean
+  /** Last authoritative damage attribution keyed by target eid */
+  lastDamageByEntity: Map<number, DamageAttribution>
   /** Set to true when Tremor ground slam fires this tick */
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
@@ -332,6 +344,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     goldNuggets: [],
     goldCollected: 0,
     lastKillWasMelee: false,
+    lastDamageByEntity: new Map(),
     tremorThisTick: false,
     rockslideShockwaves: [],
     floorSpeedMul: new Map(),
@@ -393,6 +406,7 @@ export function resetWorld(world: GameWorld): void {
   world.goldNuggets = []
   world.goldCollected = 0
   world.lastKillWasMelee = false
+  world.lastDamageByEntity.clear()
   world.tremorThisTick = false
   world.rockslideShockwaves = []
   world.floorSpeedMul.clear()

@@ -1,7 +1,8 @@
 export class MultiplayerTelemetry {
   private snapshotsReceived = 0
   private snapshotsApplied = 0
-  private snapshotOverwrites = 0
+  private snapshotBacklog = 0
+  private snapshotsDropped = 0
   private reconciliationCorrections = 0
   private reconciliationSnaps = 0
   private predictedBulletsSpawned = 0
@@ -9,9 +10,13 @@ export class MultiplayerTelemetry {
   private predictedBulletsTimedOut = 0
   private lastLogAtMs = 0
 
-  onSnapshotReceived(overwrotePending: boolean): void {
+  onSnapshotReceived(hadBacklog: boolean): void {
     this.snapshotsReceived++
-    if (overwrotePending) this.snapshotOverwrites++
+    if (hadBacklog) this.snapshotBacklog++
+  }
+
+  onSnapshotDropped(): void {
+    this.snapshotsDropped++
   }
 
   onSnapshotApplied(): void {
@@ -37,7 +42,7 @@ export class MultiplayerTelemetry {
 
   getOverlayText(): string {
     return [
-      `Net rcv:${this.snapshotsReceived} app:${this.snapshotsApplied} ovw:${this.snapshotOverwrites}`,
+      `Net rcv:${this.snapshotsReceived} app:${this.snapshotsApplied} back:${this.snapshotBacklog} drop:${this.snapshotsDropped}`,
       `Rec corr:${this.reconciliationCorrections} snap:${this.reconciliationSnaps}`,
       `PB spawn:${this.predictedBulletsSpawned} match:${this.predictedBulletsMatched} timeout:${this.predictedBulletsTimedOut}`,
     ].join(' | ')
@@ -47,7 +52,7 @@ export class MultiplayerTelemetry {
     if (nowMs - this.lastLogAtMs < 5000) return
     this.lastLogAtMs = nowMs
 
-    if (this.snapshotOverwrites > 0 || this.reconciliationSnaps > 0 || this.predictedBulletsTimedOut > 0) {
+    if (this.snapshotsDropped > 0 || this.reconciliationSnaps > 0 || this.predictedBulletsTimedOut > 0) {
       console.log(
         `[MP][telemetry] ${this.getOverlayText()}`,
       )

@@ -21,6 +21,7 @@ import {
 } from '../components'
 import { forEachInRadius } from '../SpatialHash'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
+import { applyDamage } from './applyDamage'
 
 const lastRitesPlayerQuery = defineQuery([Player, Showdown, Position])
 
@@ -108,7 +109,10 @@ export function lastRitesSystem(world: GameWorld, dt: number): void {
           const accumulated = (accum.get(enemyEid) ?? 0) + dpsIncrement
           const wholeDamage = Math.floor(accumulated)
           if (wholeDamage >= 1) {
-            Health.current[enemyEid] = Health.current[enemyEid]! - wholeDamage
+            applyDamage(world, enemyEid, {
+              amount: wholeDamage,
+              ownerPlayerEid: eid,
+            })
             accum.set(enemyEid, accumulated - wholeDamage)
           } else {
             accum.set(enemyEid, accumulated)
@@ -216,9 +220,12 @@ function processDeathPulses(world: GameWorld, zoneOwnerEid: number, zone: LastRi
         const dy = Position.y[enemyEid]! - pulse.y
         if (dx * dx + dy * dy > us.pulseRadius * us.pulseRadius) return
 
-        Health.current[enemyEid] = Health.current[enemyEid]! - pulse.damage
+        const hit = applyDamage(world, enemyEid, {
+          amount: pulse.damage,
+          ownerPlayerEid: zoneOwnerEid,
+        })
 
-        if (Health.current[enemyEid]! <= 0 && zone.chainCount < effectiveChainLimit) {
+        if (hit.killed && zone.chainCount < effectiveChainLimit) {
           const ex = Position.x[enemyEid]!
           const ey = Position.y[enemyEid]!
           const zdx = ex - zone.x

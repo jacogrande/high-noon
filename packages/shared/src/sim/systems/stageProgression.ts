@@ -30,6 +30,7 @@ export function clearAllEnemies(world: GameWorld): void {
     world.bulletCollisionCallbacks.delete(eid)
     world.bulletPierceHits.delete(eid)
     world.hookPierceCount.delete(eid)
+    world.lastDamageByEntity.delete(eid)
     removeEntity(world, eid)
   }
   // Remove all bullets so none carry across stages

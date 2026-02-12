@@ -36,6 +36,7 @@ import {
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
 } from '../content/enemies'
 import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK } from '../content/weapons'
+import { applyDamage } from './applyDamage'
 
 function isGoblinMelee(type: number): boolean {
   return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE
@@ -168,8 +169,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         Health.iframes[targetEid]! <= 0 &&
         !hasComponent(world, Invincible, targetEid)
       ) {
-        Health.current[targetEid] = Health.current[targetEid]! - AttackConfig.damage[eid]!
-        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+        applyDamage(world, targetEid, {
+          amount: AttackConfig.damage[eid]!,
+          attackerEid: eid,
+          setIframes: true,
+        })
 
         // Store hit direction per-player for camera kick (charger charge direction)
         world.lastPlayerHitDir.set(targetEid, {
@@ -198,8 +202,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         !hasComponent(world, Invincible, targetEid)
       ) {
         // Deal damage
-        Health.current[targetEid] = Health.current[targetEid]! - AttackConfig.damage[eid]!
-        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
+        applyDamage(world, targetEid, {
+          amount: AttackConfig.damage[eid]!,
+          attackerEid: eid,
+          setIframes: true,
+        })
 
         // Store hit direction for camera kick
         const dist = Math.sqrt(distSq)

@@ -31,6 +31,7 @@ import {
 } from '../content/weapons'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
+import { applyDamage } from './applyDamage'
 
 const dynamitePlayerQuery = defineQuery([Player, Showdown, Position, MeleeWeapon])
 const explosionPlayerQuery = defineQuery([Player, Position, Health])
@@ -179,7 +180,10 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
       hitThisFrame.add(enemyEid)
 
       // Apply damage
-      Health.current[enemyEid] = Health.current[enemyEid]! - dyn.damage
+      applyDamage(world, enemyEid, {
+        amount: dyn.damage,
+        ownerPlayerEid: dyn.ownerId,
+      })
 
       // Apply knockback
       const dist = Math.sqrt(distSq)
@@ -209,7 +213,11 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
         const dx = px - dyn.x
         const dy = py - dyn.y
         if (dx * dx + dy * dy <= dyn.radius * dyn.radius) {
-          Health.current[ownerEid] = Health.current[ownerEid]! - dyn.damage
+          applyDamage(world, ownerEid, {
+            amount: dyn.damage,
+            attackerEid: dyn.ownerId,
+            ownerPlayerEid: dyn.ownerId,
+          })
         }
       }
     }
@@ -220,7 +228,10 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
         forEachAliveEnemyInRadius(world, kill.x, kill.y, NITRO_RADIUS, (nearbyEid) => {
           if (hitThisFrame.has(nearbyEid)) return
           hitThisFrame.add(nearbyEid)
-          Health.current[nearbyEid] = Health.current[nearbyEid]! - NITRO_DAMAGE
+          applyDamage(world, nearbyEid, {
+            amount: NITRO_DAMAGE,
+            ownerPlayerEid: dyn.ownerId,
+          })
         })
       }
     }
@@ -238,8 +249,11 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
     const distSq = dx * dx + dy * dy
     if (distSq > dyn.radius * dyn.radius) continue
 
-    Health.current[playerEid] = Health.current[playerEid]! - dyn.damage
-    Health.iframes[playerEid] = Health.iframeDuration[playerEid]!
+    applyDamage(world, playerEid, {
+      amount: dyn.damage,
+      attackerEid: dyn.ownerId,
+      setIframes: true,
+    })
 
     const dist = Math.sqrt(distSq)
     const nx = dist > 0 ? dx / dist : 0

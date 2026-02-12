@@ -192,6 +192,32 @@ describe('enemyAttackSystem', () => {
       expect(Health.current[playerEid]!).toBe(prevHP - AttackConfig.damage[eid]!)
     })
 
+    test('fires onHealthChanged hook when damaging player', () => {
+      const eid = spawnCharger(world, 200, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+      transition(eid, AIState.ATTACK)
+
+      Position.x[eid] = Position.x[playerEid]!
+      Position.y[eid] = Position.y[playerEid]!
+
+      let hookFired = false
+      let oldHP = 0
+      let newHP = 0
+      world.hooks.register('onHealthChanged', 'test_enemy_attack', (_world, _pid, prev, next) => {
+        hookFired = true
+        oldHP = prev
+        newHP = next
+      })
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(hookFired).toBe(true)
+      expect(newHP).toBe(oldHP - AttackConfig.damage[eid]!)
+    })
+
     test('stores hit direction for camera kick on player hit', () => {
       const eid = spawnCharger(world, 200, 200)
       EnemyAI.initialDelay[eid] = 0

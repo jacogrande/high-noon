@@ -31,15 +31,18 @@ export function healthSystem(world: GameWorld, dt: number): void {
         // Player death — tag as dead, keep entity for rendering
         addComponent(world, Dead, eid)
       } else {
-        // Fire onKill hook for player kills
-        const players = playerQuery(world)
-        if (players.length > 0) {
-          world.hooks.fireKill(world, players[0]!, eid)
+        const attribution = world.lastDamageByEntity.get(eid)
+        const killerPlayerEid = attribution?.ownerPlayerEid ?? null
+        const killWasMelee = attribution?.wasMelee ?? world.lastKillWasMelee
+
+        // Fire onKill hook only when the kill can be attributed to a player.
+        if (killerPlayerEid !== null && hasComponent(world, Player, killerPlayerEid)) {
+          world.hooks.fireKill(world, killerPlayerEid, eid)
         }
 
         // Drop gold nugget at enemy position
         const goldValue = 1
-        const goldCount = world.lastKillWasMelee ? 2 : 1
+        const goldCount = killWasMelee ? 2 : 1
         for (let g = 0; g < goldCount; g++) {
           world.goldNuggets.push({
             x: Position.x[eid]!,
@@ -77,6 +80,7 @@ export function healthSystem(world: GameWorld, dt: number): void {
         world.bulletCollisionCallbacks.delete(eid)
         world.bulletPierceHits.delete(eid)
         world.hookPierceCount.delete(eid)
+        world.lastDamageByEntity.delete(eid)
         removeEntity(world, eid)
       }
     }

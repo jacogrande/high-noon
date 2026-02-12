@@ -94,6 +94,8 @@ const GAME_ZOOM = 2
 const SNAP_THRESHOLD = 96    // pixels — teleport if error exceeds this
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
 const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
+const MAX_PENDING_SNAPSHOTS = 6
+const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 2
 
 interface MultiplayerInitializeOptions extends Record<string, unknown> {
   net?: NetworkClient
@@ -159,8 +161,8 @@ export class MultiplayerModeController implements SceneModeController {
   /** Last known stage number for detecting stage transitions */
   private lastStageNumber = 1
 
-  /** Latest authoritative snapshot pending application on the fixed update tick */
-  private pendingSnapshot: WorldSnapshot | null = null
+  /** Authoritative snapshots waiting to be applied on fixed ticks */
+  private readonly pendingSnapshots: WorldSnapshot[] = []
 
   /** Dry fire debounce cooldown (seconds) */
   private dryFireCooldown = 0
@@ -297,7 +299,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.connected = false
       this.disconnected = true
       this.latestHud = null
-      this.pendingSnapshot = null
+      this.pendingSnapshots.length = 0
       console.log('[MP] Disconnected from server')
     })
 
@@ -359,8 +361,12 @@ export class MultiplayerModeController implements SceneModeController {
     this.net.on('snapshot', (snapshot: WorldSnapshot) => {
       // Defer heavy decode/apply/reconcile work to fixed update, so socket
       // callbacks stay lightweight and don't preempt rendering.
-      this.telemetry.onSnapshotReceived(this.pendingSnapshot !== null)
-      this.pendingSnapshot = snapshot
+      this.telemetry.onSnapshotReceived(this.pendingSnapshots.length > 0)
+      if (this.pendingSnapshots.length >= MAX_PENDING_SNAPSHOTS) {
+        this.pendingSnapshots.shift()
+        this.telemetry.onSnapshotDropped()
+      }
+      this.pendingSnapshots.push(snapshot)
     })
 
     if (initOptions.preconnected) {
@@ -428,25 +434,26 @@ export class MultiplayerModeController implements SceneModeController {
   // Network Snapshot Processing
   // ===========================================================================
 
-  private processPendingSnapshot(): void {
-    const snapshot = this.pendingSnapshot
-    if (!snapshot) return
-    this.pendingSnapshot = null
+  private processPendingSnapshots(): void {
+    let processed = 0
+    while (this.pendingSnapshots.length > 0 && processed < MAX_SNAPSHOT_APPLIES_PER_UPDATE) {
+      const snapshot = this.pendingSnapshots.shift()!
+      this.world.tick = snapshot.tick
+      this.applyEntityLifecycle(snapshot)
+      this.telemetry.onSnapshotApplied()
 
-    this.world.tick = snapshot.tick
-    this.applyEntityLifecycle(snapshot)
-    this.telemetry.onSnapshotApplied()
+      // Rebuild broadphase once per authoritative snapshot, then reuse during
+      // prediction/replay ticks (local-player scope skips per-tick rebuilds).
+      spatialHashSystem(this.world, TICK_S)
 
-    // Rebuild broadphase once per authoritative snapshot, then reuse during
-    // prediction/replay ticks (local-player scope skips per-tick rebuilds).
-    spatialHashSystem(this.world, TICK_S)
+      // Reconcile local player prediction against server authority
+      if (this.myClientEid >= 0) {
+        this.reconcileLocalPlayer(snapshot)
+      }
 
-    // Reconcile local player prediction against server authority
-    if (this.myClientEid >= 0) {
-      this.reconcileLocalPlayer(snapshot)
+      this.snapshotBuffer.push(snapshot)
+      processed++
     }
-
-    this.snapshotBuffer.push(snapshot)
   }
 
   // ===========================================================================
@@ -539,7 +546,7 @@ export class MultiplayerModeController implements SceneModeController {
     if (!this.connected) return
 
     // Apply at most one pending authoritative snapshot on the fixed tick.
-    this.processPendingSnapshot()
+    this.processPendingSnapshots()
     this.tickPlayerHitIframes(TICK_S)
 
     // Level-up detection from server HUD data (emit one event per level gained)
@@ -860,10 +867,14 @@ export class MultiplayerModeController implements SceneModeController {
         }
       : localAbilityHud
 
+    const localHp = this.myClientEid >= 0 ? Health.current[this.myClientEid]! : null
+    const localMaxHp = this.myClientEid >= 0 ? Health.max[this.myClientEid]! : null
+
     return {
       characterId,
-      hp: hud?.hp ?? (this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0),
-      maxHP: hud?.maxHp ?? (this.myClientEid >= 0 ? Health.max[this.myClientEid]! : PLAYER_HP),
+      // Prefer authoritative snapshot-applied ECS HP for responsive damage feedback.
+      hp: localHp ?? (hud?.hp ?? 0),
+      maxHP: localMaxHp ?? (hud?.maxHp ?? PLAYER_HP),
       xp: hud?.xp ?? 0,
       xpForCurrentLevel: hud?.xpForCurrentLevel ?? 0,
       xpForNextLevel: hud?.xpForNextLevel ?? 0,
@@ -938,7 +949,7 @@ export class MultiplayerModeController implements SceneModeController {
   destroy(): void {
     this.predictedEntityTracker.clear(this.world)
 
-    this.pendingSnapshot = null
+    this.pendingSnapshots.length = 0
     this.gameplayEvents.clear()
     this.inputBuffer.clear()
     this.clockSync.stop()

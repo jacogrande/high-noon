@@ -9,9 +9,9 @@
  */
 
 import type { GameWorld } from '../world'
-import { Health } from '../components'
 import { applySlow } from './slowDebuff'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
+import { applyDamage } from './applyDamage'
 
 export function buffSystem(world: GameWorld, dt: number): void {
   const states = world.playerUpgradeStates.size > 0
@@ -72,7 +72,10 @@ export function buffSystem(world: GameWorld, dt: number): void {
     if (!shock.processed) {
       shock.processed = true
       forEachAliveEnemyInRadius(world, shock.x, shock.y, shock.radius, (enemyEid) => {
-        Health.current[enemyEid] = Health.current[enemyEid]! - shock.damage
+        applyDamage(world, enemyEid, {
+          amount: shock.damage,
+          ownerPlayerEid: shock.ownerEid,
+        })
         applySlow(world, enemyEid, shock.slow, shock.slowDuration)
       })
     }

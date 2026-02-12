@@ -12,6 +12,7 @@ import { Position, Health, Dead, ZPosition } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import { LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL } from '../content/hazards'
 import { getFloorTileTypeAt, TileType } from '../tilemap'
+import { applyDamage } from './applyDamage'
 
 const hazardQuery = defineQuery([Position, Health])
 
@@ -36,11 +37,11 @@ export function hazardTileSystem(world: GameWorld, dt: number): void {
     const tileType = getFloorTileTypeAt(tilemap, Position.x[eid]!, Position.y[eid]!)
 
     if (tileType === TileType.LAVA) {
-      Health.current[eid] = Health.current[eid]! - LAVA_DPS * dt
+      applyDamage(world, eid, { amount: LAVA_DPS * dt, ownerPlayerEid: null })
     } else if (tileType === TileType.MUD) {
       world.floorSpeedMul.set(eid, MUD_SPEED_MUL)
     } else if (tileType === TileType.BRAMBLE) {
-      Health.current[eid] = Health.current[eid]! - BRAMBLE_DPS * dt
+      applyDamage(world, eid, { amount: BRAMBLE_DPS * dt, ownerPlayerEid: null })
       world.floorSpeedMul.set(eid, BRAMBLE_SPEED_MUL)
     }
   }
