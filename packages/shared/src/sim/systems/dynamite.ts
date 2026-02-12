@@ -1,5 +1,5 @@
 /**
- * Dynamite System (Prospector ability)
+ * Dynamite System (Prospector ability + enemy-owned dynamite entities)
  *
  * Handles dynamite throwing, fuse countdown, detonation, AoE damage,
  * knockback, cook-the-fuse mechanic, and self-damage.
@@ -16,6 +16,7 @@ import {
   Showdown,
   Health,
   Dead,
+  Invincible,
   Knockback,
   Roll,
   PlayerState,
@@ -32,6 +33,7 @@ import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
 
 const dynamitePlayerQuery = defineQuery([Player, Showdown, Position, MeleeWeapon])
+const explosionPlayerQuery = defineQuery([Player, Position, Health])
 
 const EXPLOSION_KB_SPEED = DYNAMITE_KNOCKBACK / DYNAMITE_EXPLOSION_KB_DURATION
 
@@ -156,62 +158,91 @@ export function dynamiteSystem(world: GameWorld, dt: number): void {
 
 function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage: number; radius: number; knockback: number; ownerId: number }): void {
   world.dynamiteDetonatedThisTick = true
-  const us: UpgradeState = getUpgradeStateForPlayer(world, dyn.ownerId)
+  const ownerIsPlayer = dyn.ownerId >= 0 && hasComponent(world, Player, dyn.ownerId)
+  const us: UpgradeState | null = ownerIsPlayer ? getUpgradeStateForPlayer(world, dyn.ownerId) : null
 
   if (!world.spatialHash) return
 
-  const hasNitro = us.nodesTaken.has('nitro')
+  const hasNitro = us?.nodesTaken.has('nitro') ?? false
   const nitroKills: Array<{ x: number; y: number }> = []
   // Track entities already hit this detonation to avoid double-dipping
   const hitThisFrame = new Set<number>()
 
-  forEachAliveEnemyInRadius(world, dyn.x, dyn.y, dyn.radius, (enemyEid, dx, dy, distSq) => {
-    hitThisFrame.add(enemyEid)
+  if (ownerIsPlayer) {
+    forEachAliveEnemyInRadius(world, dyn.x, dyn.y, dyn.radius, (enemyEid, dx, dy, distSq) => {
+      hitThisFrame.add(enemyEid)
 
-    // Apply damage
-    Health.current[enemyEid] = Health.current[enemyEid]! - dyn.damage
+      // Apply damage
+      Health.current[enemyEid] = Health.current[enemyEid]! - dyn.damage
 
-    // Apply knockback
-    const dist = Math.sqrt(distSq)
-    if (dist > 0) {
-      const nx = dx / dist
-      const ny = dy / dist
+      // Apply knockback
+      const dist = Math.sqrt(distSq)
+      if (dist > 0) {
+        const nx = dx / dist
+        const ny = dy / dist
 
-      addComponent(world, Knockback, enemyEid)
-      Knockback.vx[enemyEid] = nx * EXPLOSION_KB_SPEED
-      Knockback.vy[enemyEid] = ny * EXPLOSION_KB_SPEED
-      Knockback.duration[enemyEid] = DYNAMITE_EXPLOSION_KB_DURATION
-    }
+        addComponent(world, Knockback, enemyEid)
+        Knockback.vx[enemyEid] = nx * EXPLOSION_KB_SPEED
+        Knockback.vy[enemyEid] = ny * EXPLOSION_KB_SPEED
+        Knockback.duration[enemyEid] = DYNAMITE_EXPLOSION_KB_DURATION
+      }
 
-    // Track Nitro kills
-    if (Health.current[enemyEid]! <= 0 && hasNitro) {
-      nitroKills.push({ x: Position.x[enemyEid]!, y: Position.y[enemyEid]! })
-    }
-  })
+      // Track Nitro kills
+      if (Health.current[enemyEid]! <= 0 && hasNitro) {
+        nitroKills.push({ x: Position.x[enemyEid]!, y: Position.y[enemyEid]! })
+      }
+    })
 
-  // Self-damage: check if owner is in blast radius
-  const ownerEid = dyn.ownerId
-  if (ownerEid >= 0 && hasComponent(world, Health, ownerEid) && !hasComponent(world, Dead, ownerEid)) {
-    // Controlled Demolition: skip self-damage
-    if (!us.nodesTaken.has('controlled_demolition')) {
-      const px = Position.x[ownerEid]!
-      const py = Position.y[ownerEid]!
-      const dx = px - dyn.x
-      const dy = py - dyn.y
-      if (dx * dx + dy * dy <= dyn.radius * dyn.radius) {
-        Health.current[ownerEid] = Health.current[ownerEid]! - dyn.damage
+    // Self-damage: check if owner is in blast radius
+    const ownerEid = dyn.ownerId
+    if (ownerEid >= 0 && hasComponent(world, Health, ownerEid) && !hasComponent(world, Dead, ownerEid)) {
+      // Controlled Demolition: skip self-damage
+      if (!(us?.nodesTaken.has('controlled_demolition') ?? false)) {
+        const px = Position.x[ownerEid]!
+        const py = Position.y[ownerEid]!
+        const dx = px - dyn.x
+        const dy = py - dyn.y
+        if (dx * dx + dy * dy <= dyn.radius * dyn.radius) {
+          Health.current[ownerEid] = Health.current[ownerEid]! - dyn.damage
+        }
       }
     }
+
+    // Nitro: secondary explosions on kills (batch-processed with dedup)
+    if (hasNitro) {
+      for (const kill of nitroKills) {
+        forEachAliveEnemyInRadius(world, kill.x, kill.y, NITRO_RADIUS, (nearbyEid) => {
+          if (hitThisFrame.has(nearbyEid)) return
+          hitThisFrame.add(nearbyEid)
+          Health.current[nearbyEid] = Health.current[nearbyEid]! - NITRO_DAMAGE
+        })
+      }
+    }
+    return
   }
 
-  // Nitro: secondary explosions on kills (batch-processed with dedup)
-  if (hasNitro) {
-    for (const kill of nitroKills) {
-      forEachAliveEnemyInRadius(world, kill.x, kill.y, NITRO_RADIUS, (nearbyEid) => {
-        if (hitThisFrame.has(nearbyEid)) return
-        hitThisFrame.add(nearbyEid)
-        Health.current[nearbyEid] = Health.current[nearbyEid]! - NITRO_DAMAGE
-      })
-    }
+  // Enemy-owned dynamite: damages nearby players (not enemies).
+  for (const playerEid of explosionPlayerQuery(world)) {
+    if (hasComponent(world, Dead, playerEid)) continue
+    if (hasComponent(world, Invincible, playerEid)) continue
+    if (Health.iframes[playerEid]! > 0) continue
+
+    const dx = Position.x[playerEid]! - dyn.x
+    const dy = Position.y[playerEid]! - dyn.y
+    const distSq = dx * dx + dy * dy
+    if (distSq > dyn.radius * dyn.radius) continue
+
+    Health.current[playerEid] = Health.current[playerEid]! - dyn.damage
+    Health.iframes[playerEid] = Health.iframeDuration[playerEid]!
+
+    const dist = Math.sqrt(distSq)
+    const nx = dist > 0 ? dx / dist : 0
+    const ny = dist > 0 ? dy / dist : -1
+    world.lastPlayerHitDir.set(playerEid, { x: nx, y: ny })
+
+    addComponent(world, Knockback, playerEid)
+    Knockback.vx[playerEid] = nx * EXPLOSION_KB_SPEED
+    Knockback.vy[playerEid] = ny * EXPLOSION_KB_SPEED
+    Knockback.duration[playerEid] = DYNAMITE_EXPLOSION_KB_DURATION
   }
 }

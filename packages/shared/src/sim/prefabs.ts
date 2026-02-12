@@ -508,6 +508,8 @@ export function spawnBoomstick(world: GameWorld, x: number, y: number): number {
   AttackConfig.spreadAngle[eid] = BOOMSTICK_SPREAD_ANGLE
   // Boomstick uses AttackConfig.aimX as "attacks until next halo" cadence state.
   AttackConfig.aimX[eid] = world.rng.nextInt(2) + 1
+  // Boomstick uses AttackConfig.aimY as "attacks until next boom throw" cadence state.
+  AttackConfig.aimY[eid] = 0
   Steering.preferredRange[eid] = BOOMSTICK_PREFERRED_RANGE
   Steering.separationRadius[eid] = BOOMSTICK_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.8, 1.2)

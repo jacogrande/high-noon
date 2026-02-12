@@ -173,9 +173,10 @@ describe('cylinderSystem', () => {
     })
 
     test('does not restart reload when already reloading', () => {
+      const midReload = PISTOL_RELOAD_TIME * 0.4
       Cylinder.rounds[playerEid] = 0
       Cylinder.reloading[playerEid] = 1
-      Cylinder.reloadTimer[playerEid] = 0.8
+      Cylinder.reloadTimer[playerEid] = midReload
 
       const input = createInputState()
       input.buttons = setButton(input.buttons, Button.RELOAD)
@@ -183,7 +184,7 @@ describe('cylinderSystem', () => {
       cylinderSystem(world, dt)
 
       // Timer should advance, not reset
-      expect(Cylinder.reloadTimer[playerEid]).toBeGreaterThan(0.8)
+      expect(Cylinder.reloadTimer[playerEid]).toBeGreaterThan(midReload)
     })
   })
 
