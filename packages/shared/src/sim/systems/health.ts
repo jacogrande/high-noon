@@ -11,7 +11,6 @@ import type { GameWorld } from '../world'
 import { Health, Player, Dead, Enemy, Position } from '../components'
 import { XP_VALUES } from '../content/xp'
 import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
-import { GOLD_NUGGET_LIFETIME } from './goldRush'
 
 const healthQuery = defineQuery([Health])
 const playerQuery = defineQuery([Player, Health])
@@ -34,41 +33,40 @@ export function healthSystem(world: GameWorld, dt: number): void {
         const attribution = world.lastDamageByEntity.get(eid)
         const killerPlayerEid = attribution?.ownerPlayerEid ?? null
         const killWasMelee = attribution?.wasMelee ?? world.lastKillWasMelee
+        const isEnemy = hasComponent(world, Enemy, eid)
 
         // Fire onKill hook only when the kill can be attributed to a player.
         if (killerPlayerEid !== null && hasComponent(world, Player, killerPlayerEid)) {
           world.hooks.fireKill(world, killerPlayerEid, eid)
         }
 
-        // Drop gold nugget at enemy position
-        const goldValue = 1
-        const goldCount = killWasMelee ? 2 : 1
-        for (let g = 0; g < goldCount; g++) {
-          world.goldNuggets.push({
-            x: Position.x[eid]!,
-            y: Position.y[eid]!,
-            value: goldValue,
-            lifetime: GOLD_NUGGET_LIFETIME,
+        if (isEnemy) {
+          world.pendingGoldRewards.push({
+            enemyType: Enemy.type[eid]!,
+            killerPlayerEid,
+            wasMelee: killWasMelee,
           })
         }
 
         // Queue death pulses for any active Last Rites zones that contain this kill.
-        for (const [ownerEid, zone] of world.lastRitesZones) {
-          if (!zone.active) continue
-          const dx = Position.x[eid]! - zone.x
-          const dy = Position.y[eid]! - zone.y
-          if (dx * dx + dy * dy <= zone.radius * zone.radius) {
-            const ownerState = getUpgradeStateForPlayer(world, ownerEid)
-            zone.pendingPulses.push({
-              x: Position.x[eid]!,
-              y: Position.y[eid]!,
-              damage: ownerState.pulseDamage + zone.chainDamageBonus,
-            })
+        if (isEnemy) {
+          for (const [ownerEid, zone] of world.lastRitesZones) {
+            if (!zone.active) continue
+            const dx = Position.x[eid]! - zone.x
+            const dy = Position.y[eid]! - zone.y
+            if (dx * dx + dy * dy <= zone.radius * zone.radius) {
+              const ownerState = getUpgradeStateForPlayer(world, ownerEid)
+              zone.pendingPulses.push({
+                x: Position.x[eid]!,
+                y: Position.y[eid]!,
+                damage: ownerState.pulseDamage + zone.chainDamageBonus,
+              })
+            }
           }
         }
 
         // Award XP for enemy kills
-        const xp = XP_VALUES[Enemy.type[eid]!]
+        const xp = isEnemy ? XP_VALUES[Enemy.type[eid]!] : undefined
         if (xp !== undefined) {
           // Shared encounter progression: all alive players receive encounter XP.
           const players = playerQuery(world)

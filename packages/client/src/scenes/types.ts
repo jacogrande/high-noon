@@ -5,6 +5,7 @@ export interface HUDState {
   hp: number
   maxHP: number
   xp: number
+  goldCollected: number
   xpForCurrentLevel: number
   xpForNextLevel: number
   level: number

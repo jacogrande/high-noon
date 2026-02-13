@@ -28,6 +28,7 @@ Deterministic ECS systems that run identically on client and server.
 - `bulletCollision.ts` - Bullet-vs-entity/tile collision resolution
 - `hazardTile.ts` - Grounded lava damage-over-time
 - `health.ts` - I-frames and death processing
+- `goldReward.ts` - Kill reward payout (enemy strength + time scaling)
 - `goldRush.ts` - Gold nugget lifetime/pickup
 - `buffSystem.ts` - Timed buff bookkeeping
 - `collision.ts` - Circle push-out vs tiles/entities (jump-aware half-walls)
@@ -58,9 +59,10 @@ Deterministic ECS systems that run identically on client and server.
 22. `bulletCollisionSystem`
 23. `hazardTileSystem`
 24. `healthSystem`
-25. `goldRushSystem`
-26. `buffSystem`
-27. `collisionSystem`
+25. `goldRewardSystem`
+26. `goldRushSystem`
+27. `buffSystem`
+28. `collisionSystem`
 
 ## Multiplayer Subsets
 

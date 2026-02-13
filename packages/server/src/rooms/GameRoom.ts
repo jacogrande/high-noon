@@ -816,6 +816,7 @@ export class GameRoom extends Room<GameRoomState> {
     const stageStatus: HudData['stageStatus'] = run
       ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
       : 'none'
+    const goldCollected = this.world.goldCollected
 
     for (const [, slot] of this.slots) {
       const eid = slot.eid
@@ -858,6 +859,7 @@ export class GameRoom extends Room<GameRoomState> {
         ...abilityHud,
         xp: state.xp,
         level: state.level,
+        goldCollected,
         pendingPoints: state.pendingPoints,
         xpForCurrentLevel: xpForCurrent,
         xpForNextLevel: xpForNext,

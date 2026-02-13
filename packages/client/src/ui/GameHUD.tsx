@@ -101,6 +101,7 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       <div style={styles.bottomRight}>
         {/* XP bar (smaller, above HP) */}
         <div style={styles.xpRow}>
+          <div style={styles.goldBadge}>$ {state.goldCollected}</div>
           <div style={styles.levelBadge}>
             LVL {state.level}
             {state.pendingPoints > 0 && (
@@ -268,6 +269,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
+  },
+  goldBadge: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#ffd24a',
+    textShadow: '0 0 6px rgba(255, 210, 74, 0.45)',
+    whiteSpace: 'nowrap',
   },
   xpBarOuter: {
     width: 120,

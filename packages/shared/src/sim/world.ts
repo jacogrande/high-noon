@@ -184,6 +184,12 @@ export interface DamageAttribution {
   wasMelee: boolean
 }
 
+export interface PendingGoldReward {
+  enemyType: number
+  killerPlayerEid: number | null
+  wasMelee: boolean
+}
+
 export interface RewindPlayerState {
   x: number
   y: number
@@ -286,6 +292,8 @@ export interface GameWorld extends IWorld {
   lastKillWasMelee: boolean
   /** Last authoritative damage attribution keyed by target eid */
   lastDamageByEntity: Map<number, DamageAttribution>
+  /** Enemy kill rewards queued by healthSystem for goldRewardSystem */
+  pendingGoldRewards: PendingGoldReward[]
   /** Set to true when Tremor ground slam fires this tick */
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
@@ -371,6 +379,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     goldCollected: 0,
     lastKillWasMelee: false,
     lastDamageByEntity: new Map(),
+    pendingGoldRewards: [],
     tremorThisTick: false,
     rockslideShockwaves: [],
     floorSpeedMul: new Map(),
@@ -438,6 +447,7 @@ export function resetWorld(world: GameWorld): void {
   world.goldCollected = 0
   world.lastKillWasMelee = false
   world.lastDamageByEntity.clear()
+  world.pendingGoldRewards = []
   world.tremorThisTick = false
   world.rockslideShockwaves = []
   world.floorSpeedMul.clear()

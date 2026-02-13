@@ -58,6 +58,7 @@ export interface HudData {
   // XP / Level
   xp: number
   level: number
+  goldCollected: number
   pendingPoints: number
   xpForCurrentLevel: number
   xpForNextLevel: number

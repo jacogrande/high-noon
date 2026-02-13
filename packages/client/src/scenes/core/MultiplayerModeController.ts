@@ -927,6 +927,7 @@ export class MultiplayerModeController implements SceneModeController {
       hp: localHp ?? (hud?.hp ?? 0),
       maxHP: localMaxHp ?? (hud?.maxHp ?? PLAYER_HP),
       xp: hud?.xp ?? 0,
+      goldCollected: hud?.goldCollected ?? 0,
       xpForCurrentLevel: hud?.xpForCurrentLevel ?? 0,
       xpForNextLevel: hud?.xpForNextLevel ?? 0,
       level: hud?.level ?? 0,

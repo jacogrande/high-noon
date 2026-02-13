@@ -3,7 +3,7 @@ import { hasComponent, addComponent, addEntity } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { healthSystem } from './health'
-import { Health, Player, Dead } from '../components'
+import { Health, Player, Dead, Enemy, EnemyType } from '../components'
 
 describe('healthSystem', () => {
   let world: GameWorld
@@ -110,15 +110,18 @@ describe('healthSystem', () => {
       expect(capturedKiller).not.toBe(playerA)
     })
 
-    test('melee attribution applies double gold drop', () => {
+    test('melee attribution applies melee bonus gold reward', () => {
       const playerEid = spawnPlayer(world, 100, 100)
       const eid = spawnHealthEntity(1)
+      addComponent(world, Enemy, eid)
+      Enemy.type[eid] = EnemyType.SWARMER
       Health.current[eid] = 0
       world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerEid, wasMelee: true })
 
       healthSystem(world, 1 / 60)
 
-      expect(world.goldNuggets.length).toBe(2)
+      expect(world.pendingGoldRewards).toHaveLength(1)
+      expect(world.pendingGoldRewards[0]?.wasMelee).toBe(true)
     })
   })
 

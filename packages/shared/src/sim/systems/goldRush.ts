@@ -1,9 +1,10 @@
 /**
  * Gold Rush System (universal gold + Prospector passive)
  *
- * Handles gold nugget pickups and Gold Fever stack management.
- * Gold nuggets are spawned by healthSystem (on enemy kill) via world hooks.
- * This system handles: pickup detection, Gold Fever stacking, timer tick.
+ * Handles gold nugget pickups and Gold Fever timer management.
+ * Kill-gold payouts are applied by goldRewardSystem.
+ * This system handles: pickup detection (if nuggets exist), Gold Fever stacking,
+ * and timer tick.
  *
  * Runs for all characters (gold is universal), but only the Prospector
  * gets Gold Fever damage stacks.

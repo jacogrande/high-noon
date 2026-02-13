@@ -7,6 +7,7 @@
 export * from './player'
 export * from './weapons'
 export * from './enemies'
+export * from './gold'
 export * from './maps/testArena'
 export * from './maps/mapConfig'
 export * from './maps/mapGenerator'

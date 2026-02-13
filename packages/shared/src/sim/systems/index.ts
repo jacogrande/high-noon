@@ -35,6 +35,7 @@ import { slowDebuffSystem } from './slowDebuff'
 import { meleeSystem } from './melee'
 import { knockbackSystem } from './knockback'
 import { dynamiteSystem } from './dynamite'
+import { goldRewardSystem } from './goldReward'
 import { goldRushSystem } from './goldRush'
 import { hazardTileSystem } from './hazardTile'
 
@@ -67,6 +68,7 @@ export {
   meleeSystem,
   knockbackSystem,
   dynamiteSystem,
+  goldRewardSystem,
   goldRushSystem,
   hazardTileSystem,
 }
@@ -158,6 +160,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(hazardTileSystem)
   // -- Post-movement --
   systems.register(healthSystem)
+  systems.register(goldRewardSystem)
   systems.register(goldRushSystem)
   systems.register(buffSystem)
   systems.register(collisionSystem)
