@@ -141,4 +141,63 @@ describe('GameRoom lobby state', () => {
     const protocolMsgs = client.sent.filter(message => message.type === 'incompatible-protocol')
     expect(protocolMsgs).toHaveLength(1)
   })
+
+  test('camp progression requires all connected players to mark ready', () => {
+    const room = createRoom()
+    const clientA = createClient('session-a')
+    const clientB = createClient('session-b')
+    room.onJoin(clientA, { name: 'Alice', characterId: 'sheriff' })
+    room.onJoin(clientB, { name: 'Bob', characterId: 'prospector' })
+
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    const onSetCampReady = getOnMessageHandler(room, 'set-camp-ready')
+    onSetReady(clientA, { ready: true })
+    expect(room.state.phase).toBe('playing')
+
+    const roomWithWorld = room as unknown as {
+      world: {
+        run: { transition: string; completed: boolean } | null
+        campComplete: boolean
+      }
+    }
+    if (!roomWithWorld.world.run) {
+      throw new Error('Expected world.run after match start')
+    }
+    roomWithWorld.world.run.transition = 'camp'
+    roomWithWorld.world.run.completed = false
+    roomWithWorld.world.campComplete = false
+
+    onSetCampReady(clientA, { ready: true })
+    expect(roomWithWorld.world.campComplete).toBe(false)
+
+    onSetCampReady(clientB, { ready: true })
+    expect(roomWithWorld.world.campComplete).toBe(true)
+  })
+
+  test('set-camp-ready is ignored outside camp transition', () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    const onSetCampReady = getOnMessageHandler(room, 'set-camp-ready')
+    onSetReady(client, { ready: true })
+    expect(room.state.phase).toBe('playing')
+
+    const roomWithWorld = room as unknown as {
+      world: {
+        run: { transition: string; completed: boolean } | null
+        campComplete: boolean
+      }
+    }
+    if (!roomWithWorld.world.run) {
+      throw new Error('Expected world.run after match start')
+    }
+    roomWithWorld.world.run.transition = 'none'
+    roomWithWorld.world.run.completed = false
+    roomWithWorld.world.campComplete = false
+
+    onSetCampReady(client, { ready: true })
+    expect(roomWithWorld.world.campComplete).toBe(false)
+  })
 })

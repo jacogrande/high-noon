@@ -239,6 +239,8 @@ export class GameRoom extends Room<GameRoomState> {
   private rewindLatencyMsAccum = 0
   private rewindInterpMsAccum = 0
   private rewindEffectiveAgeMsAccum = 0
+  private readonly campReadySessions = new Set<string>()
+  private wasCampTransition = false
 
   override onAuth(_client: Client, options?: JoinOptions): boolean {
     if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
@@ -333,6 +335,23 @@ export class GameRoom extends Room<GameRoomState> {
       if (!meta) return
       meta.ready = msg.ready
       this.maybeStartMatch()
+    })
+
+    this.onMessage('set-camp-ready', (client, data) => {
+      if (this.state.phase !== 'playing') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const run = this.world.run
+      if (!run || run.completed || run.transition !== 'camp') return
+
+      const msg = parseReadyMessage(data)
+      if (!msg) return
+      if (msg.ready) {
+        this.campReadySessions.add(client.sessionId)
+      } else {
+        this.campReadySessions.delete(client.sessionId)
+      }
+      this.maybeCompleteCamp()
     })
 
     this.onMessage('set-character', (client, data) => {
@@ -438,6 +457,8 @@ export class GameRoom extends Room<GameRoomState> {
     removePlayer(this.world, client.sessionId)
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
+    this.campReadySessions.delete(client.sessionId)
+    this.maybeCompleteCamp()
     this.broadcastPlayerRoster()
 
     console.log(`[GameRoom] ${client.sessionId} left (players=${this.slots.size})`)
@@ -452,6 +473,7 @@ export class GameRoom extends Room<GameRoomState> {
     this.rewindLatencyMsAccum = 0
     this.rewindInterpMsAccum = 0
     this.rewindEffectiveAgeMsAccum = 0
+    this.campReadySessions.clear()
     console.log('[GameRoom] Disposed')
   }
 
@@ -524,9 +546,36 @@ export class GameRoom extends Room<GameRoomState> {
 
     this.state.phase = 'playing'
     startRun(this.world, DEFAULT_RUN_STAGES)
+    this.campReadySessions.clear()
+    this.wasCampTransition = false
     this.broadcastPlayerRoster()
     this.broadcastGameConfig()
     console.log('[GameRoom] Phase → playing')
+  }
+
+  private syncCampTransitionState(): void {
+    const run = this.world.run
+    const isCamp = !!run && !run.completed && run.transition === 'camp'
+    if (isCamp !== this.wasCampTransition) {
+      this.campReadySessions.clear()
+      this.wasCampTransition = isCamp
+    }
+  }
+
+  private maybeCompleteCamp(): void {
+    if (this.state.phase !== 'playing') return
+    const run = this.world.run
+    if (!run || run.completed || run.transition !== 'camp') return
+
+    for (const sessionId of this.campReadySessions) {
+      if (!this.slots.has(sessionId)) {
+        this.campReadySessions.delete(sessionId)
+      }
+    }
+
+    if (this.slots.size === 0) return
+    if (this.campReadySessions.size < this.slots.size) return
+    this.world.campComplete = true
   }
 
 
@@ -623,6 +672,7 @@ export class GameRoom extends Room<GameRoomState> {
     const tickNowMs = performance.now()
     this.rewindHistory.record(this.world)
     this.world.lagCompShotTickByPlayer.clear()
+    this.syncCampTransitionState()
 
     // 1. Pop one input per player into world.playerInputs (neutral if empty).
     //    Trim backlog aggressively: if queue depth exceeds threshold, discard
@@ -666,8 +716,11 @@ export class GameRoom extends Room<GameRoomState> {
       this.world.playerInputs.set(slot.eid, input)
     }
 
+    this.maybeCompleteCamp()
+
     // 2. Step simulation — DO NOT pass input param (that's the single-player bridge)
     stepWorld(this.world, this.systems)
+    this.syncCampTransitionState()
 
     // 3. Update Schema tick
     this.state.serverTick = this.world.tick

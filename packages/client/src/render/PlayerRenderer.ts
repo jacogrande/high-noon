@@ -79,6 +79,7 @@ interface PlayerVisuals {
   weaponPivot: Container
   weaponSprite: Sprite
   weapon: WeaponSpriteData
+  muzzleOffset: { x: number; y: number }
   kickOffset: number
   deathStartTime: number | null
 }
@@ -112,6 +113,17 @@ export class PlayerRenderer {
     return getWeaponSpriteForCharacter(characterId)
   }
 
+  private resolveMuzzleOffset(weapon: WeaponSpriteData): { x: number; y: number } {
+    const texture = AssetLoader.getWeaponTexture(weapon.sprite)
+    const weaponScale = getWeaponScale(weapon)
+    const dx = (weapon.muzzleAnchor.x - weapon.gripAnchor.x) * texture.frame.width
+    const dy = (weapon.muzzleAnchor.y - weapon.gripAnchor.y) * texture.frame.height
+    return {
+      x: dx * weaponScale,
+      y: dy * weaponScale,
+    }
+  }
+
   private syncWeaponVisual(world: GameWorld, eid: number, visuals: PlayerVisuals): WeaponSpriteData {
     const nextWeapon = this.resolveWeaponData(world, eid)
     const current = visuals.weapon
@@ -121,14 +133,18 @@ export class PlayerRenderer {
       nextWeapon.scale !== current.scale ||
       nextWeapon.gripOffset.x !== current.gripOffset.x ||
       nextWeapon.gripOffset.y !== current.gripOffset.y ||
-      nextWeapon.barrelTip.x !== current.barrelTip.x ||
-      nextWeapon.barrelTip.y !== current.barrelTip.y
+      nextWeapon.gripAnchor.x !== current.gripAnchor.x ||
+      nextWeapon.gripAnchor.y !== current.gripAnchor.y ||
+      nextWeapon.muzzleAnchor.x !== current.muzzleAnchor.x ||
+      nextWeapon.muzzleAnchor.y !== current.muzzleAnchor.y
     ) {
       visuals.weapon = nextWeapon
       visuals.weaponSprite.texture = AssetLoader.getWeaponTexture(nextWeapon.sprite)
+      visuals.weaponSprite.anchor.set(nextWeapon.gripAnchor.x, nextWeapon.gripAnchor.y)
       const weaponScale = getWeaponScale(nextWeapon)
       const aimedLeft = visuals.weaponSprite.scale.y < 0
       visuals.weaponSprite.scale.set(weaponScale, aimedLeft ? -weaponScale : weaponScale)
+      visuals.muzzleOffset = this.resolveMuzzleOffset(nextWeapon)
       visuals.kickOffset = 0
     }
 
@@ -173,10 +189,10 @@ export class PlayerRenderer {
         weaponPivot.position.set(weapon.gripOffset.x, weapon.gripOffset.y)
         weaponPivot.zIndex = 1 // in front by default
 
-        // Weapon sprite — anchor at left-center (grip point)
+        // Weapon sprite — anchor at authored grip point
         const weaponTexture = AssetLoader.getWeaponTexture(weapon.sprite)
         const weaponSprite = new Sprite(weaponTexture)
-        weaponSprite.anchor.set(0, 0.5)
+        weaponSprite.anchor.set(weapon.gripAnchor.x, weapon.gripAnchor.y)
         weaponSprite.scale.set(getWeaponScale(weapon))
         weaponPivot.addChild(weaponSprite)
 
@@ -190,6 +206,7 @@ export class PlayerRenderer {
           weaponPivot,
           weaponSprite,
           weapon,
+          muzzleOffset: this.resolveMuzzleOffset(weapon),
           kickOffset: 0,
           deathStartTime: null,
         })
@@ -413,8 +430,8 @@ export class PlayerRenderer {
     const cos = Math.cos(aimAngle)
     const sin = Math.sin(aimAngle)
 
-    const btx = visuals.weapon.barrelTip.x
-    const bty = visuals.weapon.barrelTip.y
+    const btx = visuals.muzzleOffset.x
+    const bty = visuals.muzzleOffset.y
 
     // When aiming left, the weapon flips vertically so Y is negated
     const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
@@ -449,8 +466,9 @@ export class PlayerRenderer {
     const aimAngle = Player.aimAngle[eid]!
     const cos = Math.cos(aimAngle)
     const sin = Math.sin(aimAngle)
-    const btx = weapon.barrelTip.x
-    const bty = weapon.barrelTip.y
+    const muzzleOffset = this.players.get(eid)?.muzzleOffset ?? this.resolveMuzzleOffset(weapon)
+    const btx = muzzleOffset.x
+    const bty = muzzleOffset.y
     const aimingLeft = Math.abs(aimAngle) > Math.PI / 2
     const localY = aimingLeft ? -bty : bty
 

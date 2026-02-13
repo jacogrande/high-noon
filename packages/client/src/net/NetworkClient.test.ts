@@ -316,16 +316,18 @@ describe('NetworkClient', () => {
     } satisfies LobbyState)
   })
 
-  test('sendReady and sendCharacter forward to room', () => {
+  test('sendReady, sendCampReady, and sendCharacter forward to room', () => {
     const net = new NetworkClient('ws://localhost:2567')
     const room = new FakeRoom()
     ;(net as any).room = room
 
     net.sendReady(true)
+    net.sendCampReady(true)
     net.sendCharacter('undertaker' satisfies CharacterId)
 
     expect(room.sendCalls).toEqual([
       { type: 'set-ready', payload: { ready: true } },
+      { type: 'set-camp-ready', payload: { ready: true } },
       { type: 'set-character', payload: { characterId: 'undertaker' } },
     ])
   })

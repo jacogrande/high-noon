@@ -25,6 +25,7 @@ export function MultiplayerGame() {
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const [showCamp, setShowCamp] = useState(false)
+  const [campReadySent, setCampReadySent] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
   const showingTreeRef = useRef(false)
@@ -205,11 +206,19 @@ export function MultiplayerGame() {
             if (isCamp && !wasCampRef.current) {
               // Edge: just entered camp — hide game world, force-close auto-opened tree
               scene.setWorldVisible(false)
+              setCampReadySent(false)
               if (showingTreeRef.current) {
                 showingTreeRef.current = false
                 setShowSkillTree(false)
                 setSkillTreeData(null)
               }
+            }
+            if (!isCamp && wasCampRef.current) {
+              scene.setWorldVisible(true)
+              setCampReadySent(false)
+              showingTreeRef.current = false
+              setShowSkillTree(false)
+              setSkillTreeData(null)
             }
             wasCampRef.current = isCamp
           }
@@ -279,13 +288,13 @@ export function MultiplayerGame() {
   const handleRideOut = useCallback(() => {
     const scene = sceneRef.current
     if (!scene) return
-    scene.setWorldVisible(true)
+    if (campReadySent) return
     scene.completeCamp()
-    setShowCamp(false)
+    setCampReadySent(true)
     showingTreeRef.current = false
     setShowSkillTree(false)
     setSkillTreeData(null)
-  }, [])
+  }, [campReadySent])
 
   const handleRetry = () => {
     destroyGame()
@@ -296,6 +305,7 @@ export function MultiplayerGame() {
     setLocalSessionId(null)
     setLobbyState(null)
     setHudState(null)
+    setCampReadySent(false)
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -390,6 +400,7 @@ export function MultiplayerGame() {
           stageNumber={hudState.stageNumber}
           totalStages={hudState.totalStages}
           hasPendingPoints={hudState.pendingPoints > 0}
+          rideOutPending={campReadySent}
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
         />

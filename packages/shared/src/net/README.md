@@ -19,6 +19,7 @@ Network protocol definitions and serialization.
 - `request-game-config` - explicit config re-sync after reconnect
 - `set-character` - lobby character selection
 - `set-ready` - lobby ready/unready toggle
+- `set-camp-ready` - camp ready/unready toggle between stages (multiplayer stage progression)
 
 ### Server → Client
 

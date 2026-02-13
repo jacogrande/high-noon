@@ -2,6 +2,7 @@ interface CampPanelProps {
   stageNumber: number
   totalStages: number
   hasPendingPoints: boolean
+  rideOutPending?: boolean
   onOpenSkillTree: () => void
   onRideOut: () => void
 }
@@ -10,6 +11,7 @@ export function CampPanel({
   stageNumber,
   totalStages,
   hasPendingPoints,
+  rideOutPending = false,
   onOpenSkillTree,
   onRideOut,
 }: CampPanelProps) {
@@ -37,16 +39,22 @@ export function CampPanel({
             </button>
           )}
           <button
-            style={styles.rideOutButton}
-            onClick={onRideOut}
+            style={rideOutPending ? styles.rideOutButtonDisabled : styles.rideOutButton}
+            disabled={rideOutPending}
+            onClick={() => {
+              if (rideOutPending) return
+              onRideOut()
+            }}
             onMouseEnter={(e) => {
+              if (rideOutPending) return
               e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.35)'
             }}
             onMouseLeave={(e) => {
+              if (rideOutPending) return
               e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.2)'
             }}
           >
-            RIDE OUT
+            {rideOutPending ? 'WAITING FOR POSSE...' : 'RIDE OUT'}
           </button>
         </div>
       </div>
@@ -129,5 +137,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'background-color 0.15s',
     textShadow: '0 0 8px rgba(255, 68, 34, 0.5)',
+  },
+  rideOutButtonDisabled: {
+    padding: '10px 36px',
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    letterSpacing: '0.15em',
+    color: '#7a524b',
+    backgroundColor: 'rgba(120, 82, 75, 0.16)',
+    border: '1px solid rgba(122, 82, 75, 0.35)',
+    borderRadius: 3,
+    cursor: 'default',
+    textShadow: 'none',
   },
 }

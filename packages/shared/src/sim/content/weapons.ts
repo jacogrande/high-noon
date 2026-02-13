@@ -14,10 +14,12 @@ import type { CharacterId } from './characters'
 export interface WeaponSpriteData {
   /** Texture key in AssetLoader (e.g. 'revolver') */
   sprite: string
-  /** Weapon pivot offset from body center (world-space pixels) */
+  /** Weapon grip offset from body center (world-space pixels) */
   gripOffset: { x: number; y: number }
-  /** Barrel tip offset from grip in weapon-pivot-local space (world-space pixels) */
-  barrelTip: { x: number; y: number }
+  /** Grip point in sprite UV space (0..1). This is the weapon rotation anchor. */
+  gripAnchor: { x: number; y: number }
+  /** Muzzle/barrel tip in sprite UV space (0..1), used for muzzle flash spawn. */
+  muzzleAnchor: { x: number; y: number }
   /** Recoil kick distance in pixels */
   kickDistance: number
   /** Sprite scale multiplier (applied on top of BODY_SCALE) */
@@ -28,7 +30,8 @@ export interface WeaponSpriteData {
 export const REVOLVER_SPRITE: WeaponSpriteData = {
   sprite: 'revolver',
   gripOffset: { x: 0, y: -10 },
-  barrelTip: { x: 30, y: 0 },
+  gripAnchor: { x: 0, y: 0.5 },
+  muzzleAnchor: { x: 0.625, y: 0.5 },
   kickDistance: 3,
   scale: 1,
 }
@@ -115,7 +118,8 @@ export const SAWED_OFF_SPREAD_ANGLE = 0.5
 export const SAWED_OFF_SPRITE: WeaponSpriteData = {
   sprite: 'sawed_off',
   gripOffset: { x: 0, y: -10 },
-  barrelTip: { x: 26, y: 0 },
+  gripAnchor: { x: 0, y: 0.5 },
+  muzzleAnchor: { x: 0.542, y: 0.5 },
   kickDistance: 5,
   scale: 1,
 }
@@ -186,7 +190,8 @@ export const TREMOR_RADIUS = 80
 export const PICKAXE_SPRITE: WeaponSpriteData = {
   sprite: 'pickaxe',
   gripOffset: { x: 0, y: -10 },
-  barrelTip: { x: 24, y: 0 },
+  gripAnchor: { x: 0, y: 0.5 },
+  muzzleAnchor: { x: 0.455, y: 0.5 },
   kickDistance: 2,
   scale: 1.1,
 }

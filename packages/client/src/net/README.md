@@ -25,6 +25,7 @@ await net.join({ characterId: 'undertaker' }) // Resolves after game-config (10s
 net.sendInput(inputState)
 net.sendCharacter('prospector')
 net.sendReady(true)
+net.sendCampReady(true)
 net.disconnect()              // Intentional leave, clears listeners
 ```
 
@@ -34,7 +35,7 @@ net.disconnect()              // Intentional leave, clears listeners
 - Protocol mismatches (snapshot or input shape/version) trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)
 - `lobby-state` is derived from Colyseus schema sync (`phase`, `serverTick`, `players` with `sessionId/name/characterId/ready`)
-- Lobby controls use `set-character` / `set-ready` room messages via `sendCharacter()` / `sendReady()`
+- Lobby/camp controls use `set-character` / `set-ready` / `set-camp-ready` room messages via `sendCharacter()` / `sendReady()` / `sendCampReady()`
 - `player-roster` updates provide authoritative server EID → `characterId` mappings for remote player presentation parity
 - `game-config` listeners stay active after join and can fire again after reconnect.
 - `getLatestGameConfig()` provides the most recent authoritative config (useful for preconnected scene bootstrap)
