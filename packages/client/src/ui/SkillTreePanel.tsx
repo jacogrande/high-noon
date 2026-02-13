@@ -4,6 +4,7 @@ import type { SkillTreeUIData, SkillNodeState } from '../scenes/types'
 interface SkillTreePanelProps {
   data: SkillTreeUIData
   onSelectNode: (nodeId: string) => void
+  onClose: () => void
 }
 
 const BRANCH_ACCENTS: Record<string, { color: string; glow: string; dim: string }> = {
@@ -88,7 +89,7 @@ function getTierConnectorColor(state: SkillNodeState, accent: { color: string })
   }
 }
 
-export function SkillTreePanel({ data, onSelectNode }: SkillTreePanelProps) {
+export function SkillTreePanel({ data, onSelectNode, onClose }: SkillTreePanelProps) {
   const handleClick = useCallback((nodeId: string, state: SkillNodeState) => {
     if (state === 'available') onSelectNode(nodeId)
   }, [onSelectNode])
@@ -192,9 +193,20 @@ export function SkillTreePanel({ data, onSelectNode }: SkillTreePanelProps) {
           })}
         </div>
 
-        {/* Footer hint */}
+        {/* Footer */}
         <div style={styles.footer}>
-          Click an available node to invest a skill point
+          <button
+            style={styles.closeButton}
+            onClick={onClose}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
+          >
+            BACK
+          </button>
         </div>
       </div>
     </div>
@@ -325,9 +337,21 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 2,
   },
   footer: {
-    textAlign: 'center',
-    fontSize: 9,
-    color: '#444',
-    letterSpacing: '0.05em',
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  closeButton: {
+    padding: '6px 24px',
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    letterSpacing: '0.1em',
+    color: '#888888',
+    backgroundColor: 'transparent',
+    border: '1px solid #444',
+    borderRadius: 3,
+    cursor: 'pointer',
+    transition: 'background-color 0.15s',
   },
 }

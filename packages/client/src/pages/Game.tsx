@@ -248,7 +248,11 @@ export function Game() {
         />
       )}
       {showSkillTree && skillTreeData && (
-        <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} />
+        <SkillTreePanel data={skillTreeData} onSelectNode={handleNodeSelect} onClose={() => {
+          showingTreeRef.current = false
+          setShowSkillTree(false)
+          setSkillTreeData(null)
+        }} />
       )}
     </div>
   )
