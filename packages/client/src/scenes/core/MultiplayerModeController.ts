@@ -59,7 +59,8 @@ import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
-import { ParticlePool, FloatingTextPool } from '../../fx'
+import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
+import { NpcRenderer } from '../../render/NpcRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { ClockSync } from '../../net/ClockSync'
 import { InputBuffer } from '../../net/InputBuffer'
@@ -114,6 +115,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly playerRenderer: PlayerRenderer
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
+  private readonly npcRenderer: NpcRenderer
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
@@ -122,6 +124,7 @@ export class MultiplayerModeController implements SceneModeController {
   private currentTilemap: Tilemap | null = null
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
+  private readonly chatBubblePool: ChatBubblePool
   private readonly sound: SoundManager
   private net: NetworkClient
   private readonly clockSync: ClockSync
@@ -216,6 +219,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
+    this.npcRenderer = new NpcRenderer(this.spriteRegistry)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
 
     // Debug graphics in entity layer (world space)
@@ -236,6 +240,7 @@ export class MultiplayerModeController implements SceneModeController {
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
     this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
+    this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.entities)
 
     // Sound
     this.sound = new SoundManager()
@@ -741,6 +746,8 @@ export class MultiplayerModeController implements SceneModeController {
       enemyRenderer: this.enemyRenderer,
       bulletRenderer: this.bulletRenderer,
       events: this.gameplayEvents,
+      npcRenderer: this.npcRenderer,
+      chatBubblePool: this.chatBubblePool,
     })
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
 
@@ -796,6 +803,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.bulletRenderer.render(this.world, alpha)
     }
     this.enemyRenderer.render(this.world, alpha, realDt)
+    this.npcRenderer.render(this.world, alpha)
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
     this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
@@ -803,6 +811,7 @@ export class MultiplayerModeController implements SceneModeController {
     // Update particles
     this.particles.update(realDt)
     this.floatingText.update(realDt)
+    this.chatBubblePool.update(realDt, this.world)
 
     const isDead = this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid)
     this.deathPresentation.update(isDead)
@@ -1015,6 +1024,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.debugRenderer.destroy()
     this.tilemapRenderer.destroy()
     this.playerRenderer.destroy()
+    this.npcRenderer.destroy()
+    this.chatBubblePool.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()
     this.dynamiteRenderer.destroy()

@@ -358,6 +358,61 @@ export const Steering = {
 }
 
 // ============================================================================
+// NPC Components
+// ============================================================================
+
+/** Movement pattern types for discovery NPCs */
+export const NpcMovementType = {
+  NONE: 0,
+  PACE: 1,
+  WANDER: 2,
+} as const
+
+/** Marks entity as a discovery NPC */
+export const Npc = {
+  /** NPC type ID (indexes into content definitions) */
+  type: new Uint8Array(MAX_ENTITIES),
+}
+
+/** NPC movement behavior */
+export const NpcMovement = {
+  /** Movement pattern (NpcMovementType enum) */
+  pattern: new Uint8Array(MAX_ENTITIES),
+  /** Spawn/home X position (center of movement area) */
+  homeX: new Float32Array(MAX_ENTITIES),
+  /** Spawn/home Y position (center of movement area) */
+  homeY: new Float32Array(MAX_ENTITIES),
+  /** Movement range in pixels (pace distance or wander radius) */
+  range: new Float32Array(MAX_ENTITIES),
+  /** Internal timer for movement state (pattern-specific) */
+  timer: new Float32Array(MAX_ENTITIES),
+  /** Pace direction: 0 = forward, 1 = backward (PACE only) */
+  paceDir: new Uint8Array(MAX_ENTITIES),
+  /** Wander target X (WANDER only) */
+  targetX: new Float32Array(MAX_ENTITIES),
+  /** Wander target Y (WANDER only) */
+  targetY: new Float32Array(MAX_ENTITIES),
+  /** Pause timer — NPC stands still for this many seconds before next move */
+  pauseTimer: new Float32Array(MAX_ENTITIES),
+}
+
+/** NPC dialogue trigger state */
+export const NpcDialogue = {
+  /** Whether dialogue is currently showing (0/1) */
+  active: new Uint8Array(MAX_ENTITIES),
+  /** Index of the current dialogue line (into content def's lines array) */
+  lineIndex: new Uint8Array(MAX_ENTITIES),
+  /** Time since dialogue was triggered (seconds) */
+  timer: new Float32Array(MAX_ENTITIES),
+  /** Total display duration for current line (seconds) */
+  duration: new Float32Array(MAX_ENTITIES),
+  /** Cooldown before this NPC can be triggered again (seconds) */
+  cooldown: new Float32Array(MAX_ENTITIES),
+  /** Whether this NPC has already been triggered this stage (0/1) */
+  triggered: new Uint8Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Component Registration
 // ============================================================================
 
@@ -392,4 +447,7 @@ export const AllComponents = [
   Detection,
   AttackConfig,
   Steering,
+  Npc,
+  NpcMovement,
+  NpcDialogue,
 ] as const
