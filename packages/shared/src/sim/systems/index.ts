@@ -42,6 +42,7 @@ import { goldRushSystem } from './goldRush'
 import { hazardTileSystem } from './hazardTile'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
+import { itemPickupSystem } from './itemPickup'
 
 export {
   movementSystem,
@@ -80,6 +81,7 @@ export {
   hazardTileSystem,
   interactionSystem,
   stashRewardSystem,
+  itemPickupSystem,
 }
 
 /**
@@ -178,4 +180,5 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(collisionSystem)
   systems.register(interactionSystem)
   systems.register(stashRewardSystem)
+  systems.register(itemPickupSystem)
 }

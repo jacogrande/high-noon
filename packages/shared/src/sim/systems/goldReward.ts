@@ -13,10 +13,19 @@ export function goldRewardSystem(world: GameWorld, _dt: number): void {
   if (world.pendingGoldRewards.length === 0) return
 
   for (const reward of world.pendingGoldRewards) {
-    const amount = getGoldRewardForKill(world, reward.enemyType, reward.wasMelee)
+    let amount = getGoldRewardForKill(world, reward.enemyType, reward.wasMelee)
+
+    // Apply Fool's Gold Nugget multiplier
+    const killer = reward.killerPlayerEid
+    if (killer !== null && hasComponent(world, Player, killer)) {
+      const killerState = getUpgradeStateForPlayer(world, killer)
+      if (killerState.goldMultiplier > 1) {
+        amount = Math.round(amount * killerState.goldMultiplier)
+      }
+    }
+
     world.goldCollected += amount
 
-    const killer = reward.killerPlayerEid
     if (killer === null || !hasComponent(world, Player, killer)) continue
 
     if (getCharacterIdForPlayer(world, killer) !== 'prospector') continue

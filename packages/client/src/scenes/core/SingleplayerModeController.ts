@@ -42,6 +42,7 @@ import {
   type InteractablesData,
   getCharacterDef,
   deriveAbilityHudState,
+  getItemDef,
   type CharacterId,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
@@ -323,6 +324,16 @@ export class SingleplayerModeController implements SceneModeController {
       ...abilityHud,
       pendingPoints: state.pendingPoints,
       isDead: this.isPlayerDead(),
+      items: Array.from(state.items.entries()).map(([itemId, stacks]) => {
+        const def = getItemDef(itemId)
+        return {
+          itemId,
+          key: def?.key ?? '',
+          name: def?.name ?? '???',
+          rarity: def?.rarity ?? 'brass',
+          stacks,
+        }
+      }),
     }
   }
 
@@ -559,6 +570,18 @@ export class SingleplayerModeController implements SceneModeController {
         stageIndex: stash.stageIndex,
         opened: stash.opened,
       })),
+      itemPickups: this.world.itemPickups
+        .filter(p => !p.collected)
+        .map(p => {
+          const def = getItemDef(p.itemId)
+          return {
+            id: p.id,
+            itemId: p.itemId,
+            x: p.x,
+            y: p.y,
+            rarity: def?.rarity ?? 'brass',
+          }
+        }),
     }
     this.interactableRenderer.render(interactables, realDt)
 

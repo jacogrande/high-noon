@@ -19,7 +19,16 @@ export interface StashData {
   opened: boolean
 }
 
+export interface ItemPickupData {
+  id: number
+  itemId: number
+  x: number
+  y: number
+  rarity: string
+}
+
 export interface InteractablesData {
   salesman: SalesmanData | null
   stashes: StashData[]
+  itemPickups: ItemPickupData[]
 }

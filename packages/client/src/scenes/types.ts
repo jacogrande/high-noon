@@ -37,6 +37,7 @@ export interface HUDState {
   showdownDurationMax: number
   pendingPoints: number
   isDead: boolean
+  items: Array<{ itemId: number; key: string; name: string; rarity: string; stacks: number }>
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'

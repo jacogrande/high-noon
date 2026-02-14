@@ -968,6 +968,7 @@ export class MultiplayerModeController implements SceneModeController {
       ...abilityHud,
       pendingPoints: hud?.pendingPoints ?? 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
+      items: hud?.items ?? [],
     }
   }
 

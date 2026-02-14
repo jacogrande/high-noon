@@ -9,6 +9,12 @@ function getStageDisplay(state: HUDState): string {
   return `STAGE ${state.stageNumber} / ${state.totalStages} — WAVE ${state.waveNumber} / ${state.totalWaves}`
 }
 
+const RARITY_BORDER_COLORS: Record<string, string> = {
+  brass: '#d4a046',
+  silver: '#b0b0c0',
+  gold: '#ffc800',
+}
+
 export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
   const hpPct = state.maxHP > 0 ? (state.hp / state.maxHP) * 100 : 0
   const xpRange = state.xpForNextLevel - state.xpForCurrentLevel
@@ -129,6 +135,33 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
           </div>
         </div>
       </div>
+
+      {/* Item strip — bottom-center */}
+      {state.items && state.items.length > 0 && (
+        <div style={styles.itemStrip}>
+          {state.items.map((item) => (
+            <div key={item.itemId} style={{
+              ...styles.itemBox,
+              borderColor: RARITY_BORDER_COLORS[item.rarity] ?? RARITY_BORDER_COLORS.brass,
+            }} title={item.name}>
+              {item.key ? (
+                <img
+                  src={`/assets/sprites/items/${item.key}.png`}
+                  alt={item.name}
+                  style={styles.itemIcon}
+                />
+              ) : (
+                <div style={styles.itemLetter}>
+                  {item.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              {item.stacks > 1 && (
+                <div style={styles.itemStackBadge}>x{item.stacks}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {state.interactionPrompt && (
         <div style={styles.promptContainer}>
@@ -369,5 +402,49 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ffffff',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     whiteSpace: 'nowrap',
+  },
+  // Item strip — bottom-center
+  itemStrip: {
+    position: 'absolute',
+    bottom: 12,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: 3,
+  },
+  itemBox: {
+    width: 22,
+    height: 22,
+    border: '2px solid',
+    borderRadius: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative' as const,
+  },
+  itemIcon: {
+    width: 16,
+    height: 16,
+    imageRendering: 'pixelated' as const,
+  },
+  itemLetter: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+    lineHeight: 1,
+  },
+  itemStackBadge: {
+    position: 'absolute' as const,
+    bottom: -3,
+    right: -3,
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 3,
+    padding: '0 2px',
+    lineHeight: 1.2,
   },
 }

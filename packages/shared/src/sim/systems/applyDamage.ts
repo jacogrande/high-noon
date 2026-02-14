@@ -1,6 +1,7 @@
 import { hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Bullet, Health, Player } from '../components'
+import { getUpgradeStateForPlayer } from '../upgrade'
 
 export interface ApplyDamageOptions {
   amount: number
@@ -48,6 +49,15 @@ export function applyDamage(world: GameWorld, targetEid: number, options: ApplyD
 
   if (oldHP <= 0 || amount <= 0) {
     return { oldHP, newHP: oldHP, applied: 0, killed: false }
+  }
+
+  // Tin Star Badge block chance — only for player targets damaged by enemies
+  // (not hazard tiles, which have no attackerEid)
+  if (hasComponent(world, Player, targetEid) && options.attackerEid !== undefined) {
+    const us = getUpgradeStateForPlayer(world, targetEid)
+    if (us.blockChance > 0 && world.rng.next() < us.blockChance) {
+      return { oldHP, newHP: oldHP, applied: 0, killed: false }
+    }
   }
 
   const unclampedNewHP = oldHP - amount

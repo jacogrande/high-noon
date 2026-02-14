@@ -1,6 +1,7 @@
 import type { SeededRng } from '../../math/rng'
+import { getItemsByRarity, type ItemRarity } from './items'
 
-/** Base shovel price in stage 1. */
+/** Base shovel price. */
 export const SHOVEL_BASE_PRICE = 18
 /** Flat shovel price increment per stage index. */
 export const SHOVEL_STAGE_PRICE_STEP = 8
@@ -33,6 +34,8 @@ export const STASH_RARE_BONUS_GOLD = 30
 export interface StashRewardRoll {
   gold: number
   rare: boolean
+  /** Item ID to drop (null = no item drop) */
+  itemId: number | null
 }
 
 export function getShovelPrice(stageIndex: number): number {
@@ -47,14 +50,59 @@ function getStashGoldRange(stageIndex: number): { min: number; max: number } {
   }
 }
 
+/**
+ * Pick a random item of a given rarity using the deterministic RNG.
+ */
+export function rollRandomItem(rng: SeededRng, rarity: ItemRarity): number | null {
+  const pool = getItemsByRarity(rarity)
+  if (pool.length === 0) return null
+  return pool[rng.nextInt(pool.length)]!.id
+}
+
+/**
+ * Roll stash reward with item drop table:
+ * - 55% gold only
+ * - 25% gold + brass item
+ * -  8% gold + silver item
+ * -  2% silver item only
+ * - 10% rare gold bonus (existing formula)
+ */
 export function rollStashReward(rng: SeededRng, stageIndex: number): StashRewardRoll {
   const range = getStashGoldRange(stageIndex)
   const spread = Math.max(0, range.max - range.min)
-  const base = range.min + (spread > 0 ? rng.nextInt(spread + 1) : 0)
-  const rare = rng.next() < STASH_RARE_BONUS_CHANCE
-  const bonus = rare ? STASH_RARE_BONUS_GOLD : 0
-  return {
-    gold: base + bonus,
-    rare,
+  const baseGold = range.min + (spread > 0 ? rng.nextInt(spread + 1) : 0)
+  const roll = rng.next()
+
+  if (roll < 0.55) {
+    // 55% — gold only
+    return { gold: baseGold, rare: false, itemId: null }
+  } else if (roll < 0.80) {
+    // 25% — gold (50%) + brass item
+    return {
+      gold: Math.round(baseGold * 0.5),
+      rare: false,
+      itemId: rollRandomItem(rng, 'brass'),
+    }
+  } else if (roll < 0.88) {
+    // 8% — gold (50%) + silver item
+    return {
+      gold: Math.round(baseGold * 0.5),
+      rare: false,
+      itemId: rollRandomItem(rng, 'silver'),
+    }
+  } else if (roll < 0.90) {
+    // 2% — silver item only (jackpot)
+    return {
+      gold: 0,
+      rare: true,
+      itemId: rollRandomItem(rng, 'silver'),
+    }
+  } else {
+    // 10% — rare gold bonus
+    return {
+      gold: baseGold + STASH_RARE_BONUS_GOLD,
+      rare: true,
+      itemId: null,
+    }
   }
 }

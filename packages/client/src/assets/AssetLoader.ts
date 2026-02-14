@@ -50,6 +50,22 @@ const ENEMY_SPRITES: Record<string, string> = {
   goblin_rogue: '/assets/sprites/enemies/goblin_rogue.png',
 }
 
+/** Item icon manifest: itemKey → path */
+const ITEM_SPRITES: Record<string, string> = {
+  gun_oil_tin: '/assets/sprites/items/gun_oil_tin.png',
+  gunpowder_pouch: '/assets/sprites/items/gunpowder_pouch.png',
+  trail_dust_boots: '/assets/sprites/items/trail_dust_boots.png',
+  leather_duster: '/assets/sprites/items/leather_duster.png',
+  tin_star_badge: '/assets/sprites/items/tin_star_badge.png',
+  fools_gold_nugget: '/assets/sprites/items/fools_gold_nugget.png',
+  rattlesnake_fang: '/assets/sprites/items/rattlesnake_fang.png',
+  moonshine_flask: '/assets/sprites/items/moonshine_flask.png',
+  powder_keg: '/assets/sprites/items/powder_keg.png',
+  sidewinder_belt: '/assets/sprites/items/sidewinder_belt.png',
+  dead_mans_deed: '/assets/sprites/items/dead_mans_deed.png',
+  grim_harvest: '/assets/sprites/items/grim_harvest.png',
+}
+
 /** Enemy animation states for slicing */
 const ENEMY_ANIM_STATES: EnemyAnimationState[] = ['idle', 'walk', 'death', 'attack']
 
@@ -91,6 +107,9 @@ export class AssetLoader {
   /** Pre-sliced enemy textures: key = `${enemyId}_${state}_${dir}_${frame}` */
   private static enemyTextures = new Map<string, Texture>()
 
+  /** Item icon textures: key = itemKey */
+  private static itemTextures = new Map<string, Texture>()
+
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000
 
@@ -127,6 +146,11 @@ export class AssetLoader {
       Assets.add({ alias: `enemy_${enemyId}`, src: path })
     }
 
+    // Add item icon sprites
+    for (const [itemKey, path] of Object.entries(ITEM_SPRITES)) {
+      Assets.add({ alias: `item_${itemKey}`, src: path })
+    }
+
     const allAliases = [
       'tileset',
       'base_tileset',
@@ -134,6 +158,7 @@ export class AssetLoader {
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
       ...Object.keys(ENEMY_SPRITES).map((id) => `enemy_${id}`),
+      ...Object.keys(ITEM_SPRITES).map((id) => `item_${id}`),
     ]
 
     const loadPromise = Assets.load(allAliases, (progress) => {
@@ -248,6 +273,17 @@ export class AssetLoader {
     }
 
     console.log('[AssetLoader] Enemy textures sliced:', this.enemyTextures.size, 'frames')
+
+    // Store item textures with nearest-neighbor scaling
+    for (const itemKey of Object.keys(ITEM_SPRITES)) {
+      const tex = loaded[`item_${itemKey}`] as Texture
+      if (tex) {
+        tex.source.scaleMode = 'nearest'
+        this.itemTextures.set(itemKey, tex)
+      }
+    }
+    console.log('[AssetLoader] Item textures loaded:', this.itemTextures.size)
+
     console.log('[AssetLoader] All assets loaded successfully')
 
     this.loaded = true
@@ -380,6 +416,13 @@ export class AssetLoader {
   }
 
   /**
+   * Get item icon texture by item key. Returns null if not loaded.
+   */
+  static getItemTexture(itemKey: string): Texture | null {
+    return this.itemTextures.get(itemKey) ?? null
+  }
+
+  /**
    * Reset loader state (for testing)
    */
   static reset(): void {
@@ -391,5 +434,6 @@ export class AssetLoader {
     this.playerTextures.clear()
     this.weaponTextures.clear()
     this.enemyTextures.clear()
+    this.itemTextures.clear()
   }
 }

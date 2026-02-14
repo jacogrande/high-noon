@@ -36,6 +36,7 @@ import {
   type PongMessage,
   type HudData,
   type InteractablesData,
+  getItemDef,
   type SelectNodeRequest,
   type SelectNodeResponse,
   type CharacterId,
@@ -850,6 +851,15 @@ export class GameRoom extends Room<GameRoomState> {
       const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
       const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
 
+      // Build items array from player's inventory
+      const items: HudData['items'] = []
+      for (const [itemId, stacks] of state.items) {
+        const def = getItemDef(itemId)
+        if (def) {
+          items.push({ itemId, key: def.key, name: def.name, rarity: def.rarity, stacks })
+        }
+      }
+
       const hud: HudData = {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
@@ -876,6 +886,7 @@ export class GameRoom extends Room<GameRoomState> {
         stageNumber,
         totalStages,
         stageStatus,
+        items,
       }
       slot.client.send('hud', hud)
     }
@@ -901,6 +912,18 @@ export class GameRoom extends Room<GameRoomState> {
         stageIndex: stash.stageIndex,
         opened: stash.opened,
       })),
+      itemPickups: this.world.itemPickups
+        .filter(p => !p.collected)
+        .map(p => {
+          const def = getItemDef(p.itemId)
+          return {
+            id: p.id,
+            itemId: p.itemId,
+            x: p.x,
+            y: p.y,
+            rarity: def?.rarity ?? 'brass',
+          }
+        }),
     }
 
     for (const [, slot] of this.slots) {

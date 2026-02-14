@@ -67,8 +67,12 @@ export function goldRushSystem(world: GameWorld, dt: number): void {
       const dx = nugget.x - px
       const dy = nugget.y - py
       if (dx * dx + dy * dy <= GOLD_PICKUP_RADIUS * GOLD_PICKUP_RADIUS) {
-        // Collect
-        world.goldCollected += nugget.value
+        // Collect — apply Fool's Gold Nugget multiplier
+        const us = getUpgradeStateForPlayer(world, eid)
+        const gold = us.goldMultiplier > 1
+          ? Math.round(nugget.value * us.goldMultiplier)
+          : nugget.value
+        world.goldCollected += gold
         world.goldNuggets.splice(i, 1)
 
         // Prospector: add Gold Fever stack

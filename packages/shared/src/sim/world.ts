@@ -219,6 +219,15 @@ export interface PendingStashReward {
   stashId: number
 }
 
+export interface ItemPickupState {
+  id: number
+  itemId: number
+  x: number
+  y: number
+  lifetime: number
+  collected: boolean
+}
+
 export interface RewindPlayerState {
   x: number
   y: number
@@ -369,6 +378,10 @@ export interface GameWorld extends IWorld {
   lagCompBulletShotTick: Map<number, number>
   /** Radius padding applied only during historical lag-comp overlap checks */
   lagCompHistoricalRadiusPadding: number
+  /** Item pickups on the ground */
+  itemPickups: ItemPickupState[]
+  /** ID counter for item pickups */
+  nextItemPickupId: number
   /** Active discovery NPC entity IDs (for cleanup between stages) */
   npcEntities: Set<number>
   /** Resolve historical player position for a rewind tick */
@@ -452,6 +465,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lagCompShotTickByPlayer: new Map(),
     lagCompBulletShotTick: new Map(),
     lagCompHistoricalRadiusPadding: 0,
+    itemPickups: [],
+    nextItemPickupId: 1,
     npcEntities: new Set(),
   }
 }
@@ -533,6 +548,8 @@ export function resetWorld(world: GameWorld): void {
   world.lagCompHistoricalRadiusPadding = 0
   delete world.lagCompGetPlayerPosAtTick
   delete world.lagCompGetEnemyStateAtTick
+  world.itemPickups = []
+  world.nextItemPickupId = 1
   world.npcEntities.clear()
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
@@ -577,6 +594,7 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
   world.stashes = []
   world.pendingStashRewards = []
   world.shovelCount = 0
+  world.itemPickups = []
   world.interactionHoldTicksByPlayer.clear()
   world.interactionTargetByPlayer.clear()
   world.interactionLastInputSeqByPlayer.clear()
@@ -597,6 +615,7 @@ export function swapTilemap(world: GameWorld, tilemap: Tilemap): void {
   world.interactionLayoutKey = ''
   world.salesman = null
   world.stashes = []
+  world.itemPickups = []
   world.interactionHoldTicksByPlayer.clear()
   world.interactionTargetByPlayer.clear()
   world.interactionLastInputSeqByPlayer.clear()

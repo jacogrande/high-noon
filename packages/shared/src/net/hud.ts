@@ -74,6 +74,9 @@ export interface HudData {
   stageNumber: number
   totalStages: number
   stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
+
+  // Items
+  items: Array<{ itemId: number; key: string; name: string; rarity: string; stacks: number }>
 }
 
 export interface SelectNodeRequest { nodeId: string }

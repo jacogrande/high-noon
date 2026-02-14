@@ -5,6 +5,18 @@ import { hasComponent } from 'bitecs'
 import type { GameWorld } from './world'
 import { applyNodeEffect } from './content/nodeEffects'
 import { clampDamage } from './damage'
+import {
+  getItemDef,
+  getItemDefByKey,
+  computeHyperbolicChance,
+  TIN_STAR_COEFFICIENT,
+  FOOLS_GOLD_PER_STACK,
+  MAX_ITEM_SLOTS,
+} from './content/items'
+
+// Resolve item IDs once at module load to avoid hardcoding
+const TIN_STAR_BADGE_ID = getItemDefByKey('tin_star_badge')!.id
+const FOOLS_GOLD_NUGGET_ID = getItemDefByKey('fools_gold_nugget')!.id
 
 export interface UpgradeState {
   characterDef: CharacterDef
@@ -84,6 +96,17 @@ export interface UpgradeState {
   lastStandActive: boolean
   lastStandTimer: number
 
+  // Item inventory (itemId → stack count)
+  items: Map<number, number>
+  /** Computed block chance from Tin Star Badge (hyperbolic) */
+  blockChance: number
+  /** Computed gold multiplier from Fool's Gold Nugget */
+  goldMultiplier: number
+  /** Moonshine Flask internal cooldown timer */
+  moonshineFlaskCooldown: number
+  /** Guard flag to prevent Grim Harvest from infinite recursion */
+  grimHarvestFiring: boolean
+
   // Undertaker buff timers
   deadweightBuffTimer: number
   corpseHarvestCooldownTimer: number
@@ -142,6 +165,11 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     goldFeverDuration: b.goldFeverDuration,
     goldFeverStacks: 0,
     goldFeverTimer: 0,
+    items: new Map(),
+    blockChance: 0,
+    goldMultiplier: 1,
+    moonshineFlaskCooldown: 0,
+    grimHarvestFiring: false,
     dynamiteCooking: false,
     dynamiteCookTimer: 0,
     consecutiveSwings: 0,
@@ -203,6 +231,19 @@ export function recomputePlayerStats(state: UpgradeState): void {
     }
   }
 
+  // Item stat mods (perStack * stacks)
+  for (const [itemId, stacks] of state.items) {
+    const def = getItemDef(itemId)
+    if (!def) continue
+    for (const mod of def.mods) {
+      if (mod.op === 'add') {
+        addTotals[mod.stat] = (addTotals[mod.stat] ?? 0) + mod.perStack * stacks
+      } else {
+        mulTotals[mod.stat] = (mulTotals[mod.stat] ?? 1) * (1 + mod.perStack * stacks)
+      }
+    }
+  }
+
   const base = state.characterDef.baseStats
   const calc = (stat: StatName): number =>
     (base[stat] + (addTotals[stat] ?? 0)) * (mulTotals[stat] ?? 1)
@@ -247,6 +288,13 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.dynamiteCooldown = calc('dynamiteCooldown')
   state.goldFeverBonus = calc('goldFeverBonus')
   state.goldFeverDuration = calc('goldFeverDuration')
+
+  // Computed item stats
+  const tinStarStacks = state.items.get(TIN_STAR_BADGE_ID) ?? 0
+  state.blockChance = computeHyperbolicChance(TIN_STAR_COEFFICIENT, tinStarStacks)
+
+  const foolsGoldStacks = state.items.get(FOOLS_GOLD_NUGGET_ID) ?? 0
+  state.goldMultiplier = 1 + FOOLS_GOLD_PER_STACK * foolsGoldStacks
 }
 
 /**
@@ -367,4 +415,60 @@ export function writeStatsToECS(
     }
     Cylinder.reloadTime[playerEid] = state.reloadTime
   }
+}
+
+// ============================================================================
+// Item Inventory Helpers
+// ============================================================================
+
+/** Number of distinct item slots currently occupied */
+export function getItemCount(state: UpgradeState): number {
+  return state.items.size
+}
+
+/** Get stack count for a specific item (0 if not held) */
+export function getItemStacks(state: UpgradeState, itemId: number): number {
+  return state.items.get(itemId) ?? 0
+}
+
+/**
+ * Add one copy of an item to inventory.
+ * Returns true if successfully added, false if inventory full or at maxStack.
+ */
+export function addItem(state: UpgradeState, itemId: number): boolean {
+  const def = getItemDef(itemId)
+  if (!def) return false
+
+  const current = state.items.get(itemId) ?? 0
+  if (current > 0) {
+    // Already have this item — try to stack
+    if (current >= def.maxStack) return false
+    state.items.set(itemId, current + 1)
+    return true
+  }
+
+  // New item — check slot cap
+  if (state.items.size >= MAX_ITEM_SLOTS) return false
+  state.items.set(itemId, 1)
+  return true
+}
+
+/**
+ * Add an item to a player's inventory and recompute stats + hooks.
+ * Caller must provide the hook reapply function to avoid circular imports
+ * (itemEffects.ts depends on upgrade.ts).
+ * Returns true if successfully added.
+ */
+export function addItemToPlayer(
+  world: GameWorld,
+  playerEid: number,
+  itemId: number,
+  reapplyHooks: (world: GameWorld, playerEid: number, items: Map<number, number>) => void,
+): boolean {
+  const state = getUpgradeStateForPlayer(world, playerEid)
+  if (!addItem(state, itemId)) return false
+  recomputePlayerStats(state)
+  writeStatsToECS(world, playerEid, state)
+  reapplyHooks(world, playerEid, state.items)
+  return true
 }

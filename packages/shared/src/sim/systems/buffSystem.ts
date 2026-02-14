@@ -56,6 +56,14 @@ export function buffSystem(world: GameWorld, dt: number): void {
       }
     }
 
+    // --- Moonshine Flask cooldown timer (Item) ---
+    if (us.moonshineFlaskCooldown > 0) {
+      us.moonshineFlaskCooldown -= dt
+      if (us.moonshineFlaskCooldown <= 0) {
+        us.moonshineFlaskCooldown = 0
+      }
+    }
+
     // --- Open Casket cooldown timer (Undertaker) ---
     if (us.openCasketCooldownTimer > 0) {
       us.openCasketCooldownTimer -= dt

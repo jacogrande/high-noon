@@ -1,16 +1,27 @@
-import { Container, Graphics } from 'pixi.js'
+import { Container, Graphics, Sprite } from 'pixi.js'
 import type { InteractablesData } from '@high-noon/shared'
+import { AssetLoader } from '../assets/AssetLoader'
+import { getItemDef } from '@high-noon/shared'
 
 const SALESMAN_CORE = 0xe4b86a
 const SALESMAN_RING = 0xffd89a
 const STASH_CLOSED = 0x9c6232
 const STASH_OPENED = 0x5a5a5a
 
+const RARITY_COLORS: Record<string, number> = {
+  brass: 0xd4a046,
+  silver: 0xb0b0c0,
+  gold: 0xffc800,
+}
+
 export class InteractableRenderer {
   private readonly graphics: Graphics
+  private readonly entityLayer: Container
+  private readonly pickupSprites = new Map<number, Sprite>()
   private pulseClock = 0
 
   constructor(entityLayer: Container) {
+    this.entityLayer = entityLayer
     this.graphics = new Graphics()
     entityLayer.addChild(this.graphics)
   }
@@ -67,9 +78,61 @@ export class InteractableRenderer {
         .circle(x, y - 14, 6 + shimmer * 2)
         .stroke({ color: 0xffc56b, width: 1, alpha: 0.2 + shimmer * 0.3 })
     }
+
+    // Render item pickups
+    const activePickupIds = new Set<number>()
+    if (data.itemPickups) {
+      for (let i = 0; i < data.itemPickups.length; i++) {
+        const pickup = data.itemPickups[i]!
+        activePickupIds.add(pickup.id)
+        const color = RARITY_COLORS[pickup.rarity] ?? RARITY_COLORS.brass!
+        const bob = Math.sin(this.pulseClock * 3 + pickup.id * 1.7) * 3
+        const glow = Math.sin(this.pulseClock * 5 + pickup.id * 0.8) * 0.5 + 0.5
+        const px = pickup.x
+        const py = pickup.y + bob
+
+        // Rarity glow ring (drawn with graphics)
+        this.graphics
+          .circle(px, py, 10 + glow * 2)
+          .stroke({ color, width: 1.5, alpha: 0.3 + glow * 0.4 })
+
+        // Item icon sprite
+        const def = getItemDef(pickup.itemId)
+        const tex = def ? AssetLoader.getItemTexture(def.key) : null
+        if (tex) {
+          let sprite = this.pickupSprites.get(pickup.id)
+          if (!sprite) {
+            sprite = new Sprite(tex)
+            sprite.anchor.set(0.5)
+            this.entityLayer.addChild(sprite)
+            this.pickupSprites.set(pickup.id, sprite)
+          }
+          sprite.texture = tex
+          sprite.position.set(px, py)
+          sprite.visible = true
+        } else {
+          // Fallback: colored circle
+          this.graphics
+            .circle(px, py, 6)
+            .fill({ color, alpha: 0.9 })
+        }
+      }
+    }
+
+    // Remove stale pickup sprites
+    for (const [id, sprite] of this.pickupSprites) {
+      if (!activePickupIds.has(id)) {
+        sprite.destroy()
+        this.pickupSprites.delete(id)
+      }
+    }
   }
 
   destroy(): void {
+    for (const sprite of this.pickupSprites.values()) {
+      sprite.destroy()
+    }
+    this.pickupSprites.clear()
     this.graphics.destroy()
   }
 }
