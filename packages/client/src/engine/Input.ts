@@ -67,6 +67,9 @@ export class Input {
       case 'KeyQ':
         this.transientButtons |= Button.ABILITY
         break
+      case 'KeyE':
+        this.transientButtons |= Button.INTERACT
+        break
     }
   }
 
@@ -201,6 +204,11 @@ export class Input {
     // Ability (Showdown)
     if ((transientButtons & Button.ABILITY) !== 0 || this.mouseRightDown || this.keys.has('KeyQ')) {
       input.buttons |= Button.ABILITY
+    }
+
+    // Interact
+    if ((transientButtons & Button.INTERACT) !== 0 || this.keys.has('KeyE')) {
+      input.buttons |= Button.INTERACT
     }
 
     // Convert mouse screen position to world space, then calculate aim angle

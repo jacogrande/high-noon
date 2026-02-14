@@ -20,6 +20,7 @@ import {
   getUpgradeStateForPlayer,
   deriveAbilityHudState,
   initUpgradeState,
+  getShovelPrice,
   takeNode,
   writeStatsToECS,
   LEVEL_THRESHOLDS,
@@ -34,6 +35,7 @@ import {
   type PingMessage,
   type PongMessage,
   type HudData,
+  type InteractablesData,
   type SelectNodeRequest,
   type SelectNodeResponse,
   type CharacterId,
@@ -733,6 +735,7 @@ export class GameRoom extends Room<GameRoomState> {
     // 5. Send per-client HUD data at 10Hz (every 6 ticks)
     if (this.world.tick % 6 === 0) {
       this.sendHudUpdates()
+      this.sendInteractablesUpdates()
     }
 
     this.maybeLogRateLimitDrops()
@@ -821,6 +824,8 @@ export class GameRoom extends Room<GameRoomState> {
     for (const [, slot] of this.slots) {
       const eid = slot.eid
       const state = getUpgradeStateForPlayer(this.world, eid)
+      const shovelCount = this.world.shovelCount
+      const interactionPrompt = this.world.interactionPromptByPlayer.get(eid) ?? null
       const hasShowdown = hasComponent(this.world, Showdown, eid)
       const hasCylinder = hasComponent(this.world, Cylinder, eid)
       const abilityHud = deriveAbilityHudState(
@@ -860,6 +865,8 @@ export class GameRoom extends Room<GameRoomState> {
         xp: state.xp,
         level: state.level,
         goldCollected,
+        shovelCount,
+        interactionPrompt,
         pendingPoints: state.pendingPoints,
         xpForCurrentLevel: xpForCurrent,
         xpForNextLevel: xpForNext,
@@ -871,6 +878,33 @@ export class GameRoom extends Room<GameRoomState> {
         stageStatus,
       }
       slot.client.send('hud', hud)
+    }
+  }
+
+  private sendInteractablesUpdates() {
+    const salesman = this.world.salesman
+    const payload: InteractablesData = {
+      salesman: salesman
+        ? {
+            x: salesman.x,
+            y: salesman.y,
+            stageIndex: salesman.stageIndex,
+            camp: salesman.camp,
+            active: salesman.active,
+            shovelPrice: getShovelPrice(salesman.stageIndex),
+          }
+        : null,
+      stashes: this.world.stashes.map((stash) => ({
+        id: stash.id,
+        x: stash.x,
+        y: stash.y,
+        stageIndex: stash.stageIndex,
+        opened: stash.opened,
+      })),
+    }
+
+    for (const [, slot] of this.slots) {
+      slot.client.send('interactables', payload)
     }
   }
 

@@ -14,6 +14,7 @@ import {
   type PingMessage,
   type PongMessage,
   type HudData,
+  type InteractablesData,
   type SelectNodeRequest,
   type SelectNodeResponse,
   type CharacterId,
@@ -44,6 +45,7 @@ export type NetworkEventMap = {
   'player-roster': (roster: PlayerRosterEntry[]) => void
   snapshot: (snapshot: WorldSnapshot) => void
   hud: (data: HudData) => void
+  interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
   'incompatible-protocol': (reason: string) => void
   disconnect: () => void
@@ -203,6 +205,10 @@ export class NetworkClient {
 
     cleanup.push(room.onMessage('hud', (data: HudData) => {
       this.emit('hud', data)
+    }))
+
+    cleanup.push(room.onMessage('interactables', (data: InteractablesData) => {
+      this.emit('interactables', data)
     }))
 
     cleanup.push(room.onMessage('player-roster', (roster: PlayerRosterEntry[]) => {

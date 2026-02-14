@@ -102,6 +102,7 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
         {/* XP bar (smaller, above HP) */}
         <div style={styles.xpRow}>
           <div style={styles.goldBadge}>$ {state.goldCollected}</div>
+          <div style={styles.shovelBadge}>Shovels {state.shovelCount}</div>
           <div style={styles.levelBadge}>
             LVL {state.level}
             {state.pendingPoints > 0 && (
@@ -128,6 +129,12 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
           </div>
         </div>
       </div>
+
+      {state.interactionPrompt && (
+        <div style={styles.promptContainer}>
+          <div style={styles.promptText}>{state.interactionPrompt}</div>
+        </div>
+      )}
     </div>
   )
 })
@@ -275,6 +282,37 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 'bold',
     color: '#ffd24a',
     textShadow: '0 0 6px rgba(255, 210, 74, 0.45)',
+    whiteSpace: 'nowrap',
+  },
+  shovelBadge: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#d8c89a',
+    textShadow: '0 0 6px rgba(216, 200, 154, 0.45)',
+    whiteSpace: 'nowrap',
+  },
+  promptContainer: {
+    position: 'absolute',
+    bottom: 56,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 220,
+    maxWidth: 440,
+    padding: '4px 10px',
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    border: '1px solid rgba(255, 210, 124, 0.55)',
+  },
+  promptText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#ffd07a',
+    letterSpacing: '0.06em',
+    textAlign: 'center',
+    textShadow: '0 0 4px rgba(0, 0, 0, 0.8)',
     whiteSpace: 'nowrap',
   },
   xpBarOuter: {

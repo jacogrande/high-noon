@@ -38,6 +38,8 @@ import { dynamiteSystem } from './dynamite'
 import { goldRewardSystem } from './goldReward'
 import { goldRushSystem } from './goldRush'
 import { hazardTileSystem } from './hazardTile'
+import { interactionSystem } from './interaction'
+import { stashRewardSystem } from './stashReward'
 
 export {
   movementSystem,
@@ -71,6 +73,8 @@ export {
   goldRewardSystem,
   goldRushSystem,
   hazardTileSystem,
+  interactionSystem,
+  stashRewardSystem,
 }
 
 /**
@@ -164,4 +168,6 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(goldRushSystem)
   systems.register(buffSystem)
   systems.register(collisionSystem)
+  systems.register(interactionSystem)
+  systems.register(stashRewardSystem)
 }

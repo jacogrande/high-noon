@@ -84,4 +84,21 @@ describe('Input transient action buffering', () => {
 
     input.destroy()
   })
+
+  test('preserves quick E tap between polls as a one-tick INTERACT pulse', () => {
+    const fakeWindow = new FakeWindow()
+    g.window = fakeWindow as unknown as Window & typeof globalThis
+
+    const input = new Input()
+    fakeWindow.dispatch('keydown', { code: 'KeyE', repeat: false })
+    fakeWindow.dispatch('keyup', { code: 'KeyE' })
+
+    const firstTick = input.getInputState()
+    expect(hasButton(firstTick.buttons, Button.INTERACT)).toBe(true)
+
+    const secondTick = input.getInputState()
+    expect(hasButton(secondTick.buttons, Button.INTERACT)).toBe(false)
+
+    input.destroy()
+  })
 })

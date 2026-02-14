@@ -6,6 +6,8 @@ export interface HUDState {
   maxHP: number
   xp: number
   goldCollected: number
+  shovelCount: number
+  interactionPrompt: string | null
   xpForCurrentLevel: number
   xpForNextLevel: number
   level: number

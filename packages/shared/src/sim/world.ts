@@ -190,6 +190,33 @@ export interface PendingGoldReward {
   wasMelee: boolean
 }
 
+export interface SalesmanState {
+  x: number
+  y: number
+  stageIndex: number
+  camp: boolean
+  active: boolean
+}
+
+export interface StashState {
+  id: number
+  x: number
+  y: number
+  stageIndex: number
+  opened: boolean
+}
+
+export interface InteractionFeedback {
+  text: string
+  timeLeft: number
+}
+
+export interface PendingStashReward {
+  playerEid: number
+  stageIndex: number
+  stashId: number
+}
+
 export interface RewindPlayerState {
   x: number
   y: number
@@ -288,12 +315,32 @@ export interface GameWorld extends IWorld {
   goldNuggets: GoldNugget[]
   /** Total gold collected this encounter */
   goldCollected: number
+  /** Shared shovel inventory for stash interactions */
+  shovelCount: number
   /** Set to true when last kill was via melee (for Gold Rush 2x) */
   lastKillWasMelee: boolean
   /** Last authoritative damage attribution keyed by target eid */
   lastDamageByEntity: Map<number, DamageAttribution>
   /** Enemy kill rewards queued by healthSystem for goldRewardSystem */
   pendingGoldRewards: PendingGoldReward[]
+  /** Stash rewards queued by interactionSystem for stashRewardSystem */
+  pendingStashRewards: PendingStashReward[]
+  /** Active shovel salesman (camp/stage) */
+  salesman: SalesmanState | null
+  /** Active stage stash states */
+  stashes: StashState[]
+  /** Internal key for active interactable layout generation */
+  interactionLayoutKey: string
+  /** Per-player hold-progress for interact confirmations */
+  interactionHoldTicksByPlayer: Map<number, number>
+  /** Per-player active interaction target key */
+  interactionTargetByPlayer: Map<number, string>
+  /** Per-player latest fresh network input seq observed by interaction system */
+  interactionLastInputSeqByPlayer: Map<number, number>
+  /** Per-player contextual interaction prompt text */
+  interactionPromptByPlayer: Map<number, string>
+  /** Per-player transient interaction feedback text + ttl */
+  interactionFeedbackByPlayer: Map<number, InteractionFeedback>
   /** Set to true when Tremor ground slam fires this tick */
   tremorThisTick: boolean
   /** Rockslide shockwaves from roll */
@@ -377,9 +424,19 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     dynamiteDetonations: [],
     goldNuggets: [],
     goldCollected: 0,
+    shovelCount: 0,
     lastKillWasMelee: false,
     lastDamageByEntity: new Map(),
     pendingGoldRewards: [],
+    pendingStashRewards: [],
+    salesman: null,
+    stashes: [],
+    interactionLayoutKey: '',
+    interactionHoldTicksByPlayer: new Map(),
+    interactionTargetByPlayer: new Map(),
+    interactionLastInputSeqByPlayer: new Map(),
+    interactionPromptByPlayer: new Map(),
+    interactionFeedbackByPlayer: new Map(),
     tremorThisTick: false,
     rockslideShockwaves: [],
     floorSpeedMul: new Map(),
@@ -445,9 +502,19 @@ export function resetWorld(world: GameWorld): void {
   world.dynamiteDetonations = []
   world.goldNuggets = []
   world.goldCollected = 0
+  world.shovelCount = 0
   world.lastKillWasMelee = false
   world.lastDamageByEntity.clear()
   world.pendingGoldRewards = []
+  world.pendingStashRewards = []
+  world.salesman = null
+  world.stashes = []
+  world.interactionLayoutKey = ''
+  world.interactionHoldTicksByPlayer.clear()
+  world.interactionTargetByPlayer.clear()
+  world.interactionLastInputSeqByPlayer.clear()
+  world.interactionPromptByPlayer.clear()
+  world.interactionFeedbackByPlayer.clear()
   world.tremorThisTick = false
   world.rockslideShockwaves = []
   world.floorSpeedMul.clear()
@@ -498,6 +565,16 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
     transitionTimer: 0,
     pendingTilemap: null,
   }
+  world.interactionLayoutKey = ''
+  world.salesman = null
+  world.stashes = []
+  world.pendingStashRewards = []
+  world.shovelCount = 0
+  world.interactionHoldTicksByPlayer.clear()
+  world.interactionTargetByPlayer.clear()
+  world.interactionLastInputSeqByPlayer.clear()
+  world.interactionPromptByPlayer.clear()
+  world.interactionFeedbackByPlayer.clear()
   setEncounter(world, stages[0]!)
 }
 
@@ -510,6 +587,14 @@ export function swapTilemap(world: GameWorld, tilemap: Tilemap): void {
   world.flowField = null
   world.spatialHash = null
   world.floorSpeedMul.clear()
+  world.interactionLayoutKey = ''
+  world.salesman = null
+  world.stashes = []
+  world.interactionHoldTicksByPlayer.clear()
+  world.interactionTargetByPlayer.clear()
+  world.interactionLastInputSeqByPlayer.clear()
+  world.interactionPromptByPlayer.clear()
+  world.interactionFeedbackByPlayer.clear()
 
   const center = getArenaCenterFromTilemap(tilemap)
   for (const eid of playerQuery(world)) {

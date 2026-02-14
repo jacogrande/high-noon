@@ -38,6 +38,8 @@ import {
   type Tilemap,
   LEVEL_THRESHOLDS,
   MAX_LEVEL,
+  getShovelPrice,
+  type InteractablesData,
   getCharacterDef,
   deriveAbilityHudState,
   type CharacterId,
@@ -55,6 +57,7 @@ import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
@@ -112,6 +115,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private readonly collisionDebugRenderer: CollisionDebugRenderer
@@ -156,6 +160,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.currentTilemap = this.tilemap
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
+    this.interactableRenderer = new InteractableRenderer(this.gameApp.layers.entities)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
     this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
     this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
@@ -278,12 +283,18 @@ export class SingleplayerModeController implements SceneModeController {
     )
 
     const run = this.world.run
+    const shovelCount = this.world.shovelCount
+    const interactionPrompt = playerEid !== null
+      ? (this.world.interactionPromptByPlayer.get(playerEid) ?? null)
+      : null
     return {
       characterId,
       hp: playerEid !== null ? Health.current[playerEid]! : state.maxHP,
       maxHP: playerEid !== null ? Health.max[playerEid]! : state.maxHP,
       xp,
       goldCollected: this.world.goldCollected,
+      shovelCount,
+      interactionPrompt,
       xpForCurrentLevel,
       xpForNextLevel,
       level,
@@ -523,6 +534,27 @@ export class SingleplayerModeController implements SceneModeController {
     this.debugRenderer.clear()
     this.collisionDebugRenderer.clear()
 
+    const interactables: InteractablesData = {
+      salesman: this.world.salesman
+        ? {
+            x: this.world.salesman.x,
+            y: this.world.salesman.y,
+            stageIndex: this.world.salesman.stageIndex,
+            camp: this.world.salesman.camp,
+            active: this.world.salesman.active,
+            shovelPrice: getShovelPrice(this.world.salesman.stageIndex),
+          }
+        : null,
+      stashes: this.world.stashes.map((stash) => ({
+        id: stash.id,
+        x: stash.x,
+        y: stash.y,
+        stageIndex: stash.stageIndex,
+        opened: stash.opened,
+      })),
+    }
+    this.interactableRenderer.render(interactables, realDt)
+
     // Render player with interpolation
     this.playerRenderer.render(this.world, alpha, realDt)
 
@@ -612,6 +644,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.debugRenderer.destroy()
     this.collisionDebugRenderer.destroy()
     this.tilemapRenderer.destroy()
+    this.interactableRenderer.destroy()
     this.playerRenderer.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()

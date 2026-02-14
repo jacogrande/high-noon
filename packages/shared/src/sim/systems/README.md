@@ -30,6 +30,8 @@ Deterministic ECS systems that run identically on client and server.
 - `health.ts` - I-frames and death processing
 - `goldReward.ts` - Kill reward payout (enemy strength + time scaling)
 - `goldRush.ts` - Gold nugget lifetime/pickup
+- `interaction.ts` - Salesman/stash proximity prompts + hold-to-interact actions
+- `stashReward.ts` - Stash reward payout queue processing
 - `buffSystem.ts` - Timed buff bookkeeping
 - `collision.ts` - Circle push-out vs tiles/entities (jump-aware half-walls)
 
@@ -63,6 +65,8 @@ Deterministic ECS systems that run identically on client and server.
 26. `goldRushSystem`
 27. `buffSystem`
 28. `collisionSystem`
+29. `interactionSystem`
+30. `stashRewardSystem`
 
 ## Multiplayer Subsets
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { NetworkClient, type GameConfig } from './NetworkClient'
-import type { CharacterId, LobbyState, PlayerRosterEntry } from '@high-noon/shared'
+import type { CharacterId, InteractablesData, LobbyState, PlayerRosterEntry } from '@high-noon/shared'
 
 class MemorySessionStorage {
   private readonly store = new Map<string, string>()
@@ -269,6 +269,35 @@ describe('NetworkClient', () => {
       { eid: 7, characterId: 'undertaker' },
       { eid: 9, characterId: 'prospector' },
     ])
+  })
+
+  test('registerRoomHandlers forwards interactables messages', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    let received: InteractablesData | null = null
+
+    net.on('interactables', (payload) => {
+      received = payload
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    room.emit('interactables', {
+      salesman: {
+        x: 100,
+        y: 120,
+        stageIndex: 0,
+        camp: false,
+        active: true,
+        shovelPrice: 18,
+      },
+      stashes: [
+        { id: 0, x: 140, y: 150, stageIndex: 0, opened: false },
+      ],
+    } satisfies InteractablesData)
+
+    expect(received?.stashes).toHaveLength(1)
+    expect(received?.salesman?.shovelPrice).toBe(18)
   })
 
   test('registerRoomHandlers emits lobby-state from schema state and updates', () => {

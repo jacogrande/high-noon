@@ -87,6 +87,11 @@ export function removePlayer(world: GameWorld, sessionId: string): void {
   world.playerUpgradeStates.delete(info.eid)
   world.playerCharacters.delete(info.eid)
   world.lastRitesZones.delete(info.eid)
+  world.interactionHoldTicksByPlayer.delete(info.eid)
+  world.interactionTargetByPlayer.delete(info.eid)
+  world.interactionLastInputSeqByPlayer.delete(info.eid)
+  world.interactionPromptByPlayer.delete(info.eid)
+  world.interactionFeedbackByPlayer.delete(info.eid)
   removeEntity(world, info.eid)
   world.players.delete(sessionId)
 }

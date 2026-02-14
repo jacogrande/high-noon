@@ -4,6 +4,7 @@
 
 export * from './clock'
 export * from './hud'
+export * from './interactables'
 export * from './input'
 export * from './lobby'
 export * from './roster'

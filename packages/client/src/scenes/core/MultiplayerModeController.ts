@@ -41,6 +41,7 @@ import {
   type NetworkInput,
   type WorldSnapshot,
   type HudData,
+  type InteractablesData,
   type CharacterId,
   type PlayerRosterEntry,
 } from '@high-noon/shared'
@@ -58,6 +59,7 @@ import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool } from '../../fx'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
@@ -117,6 +119,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private currentTilemap: Tilemap | null = null
@@ -162,6 +165,8 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** HUD data from server */
   private latestHud: HudData | null = null
+  /** Interactable state from server */
+  private latestInteractables: InteractablesData | null = null
   /** Last known stage number for detecting stage transitions */
   private lastStageNumber = 1
 
@@ -210,6 +215,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.currentTilemap = tilemap
 
     this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
+    this.interactableRenderer = new InteractableRenderer(this.gameApp.layers.entities)
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
     this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
     this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
@@ -303,6 +309,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.connected = false
       this.disconnected = true
       this.latestHud = null
+      this.latestInteractables = null
       this.pendingSnapshots.length = 0
       console.log('[MP] Disconnected from server')
     })
@@ -333,6 +340,10 @@ export class MultiplayerModeController implements SceneModeController {
         this.upgradeStateCache.pendingPoints = data.pendingPoints
         this.upgradeStateCache.xp = data.xp
       }
+    })
+
+    this.net.on('interactables', (data: InteractablesData) => {
+      this.latestInteractables = data
     })
 
     this.net.on('select-node-result', (result: SelectNodeResponse) => {
@@ -764,6 +775,7 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Clear debug
     this.debugRenderer.clear()
+    this.interactableRenderer.render(this.latestInteractables, realDt)
 
     // Local player presentation is decoupled from simulation ECS state:
     // provide a render-only override instead of mutating Position arrays.
@@ -928,6 +940,8 @@ export class MultiplayerModeController implements SceneModeController {
       maxHP: localMaxHp ?? (hud?.maxHp ?? PLAYER_HP),
       xp: hud?.xp ?? 0,
       goldCollected: hud?.goldCollected ?? 0,
+      shovelCount: hud?.shovelCount ?? 0,
+      interactionPrompt: hud?.interactionPrompt ?? null,
       xpForCurrentLevel: hud?.xpForCurrentLevel ?? 0,
       xpForNextLevel: hud?.xpForNextLevel ?? 0,
       level: hud?.level ?? 0,
@@ -1015,6 +1029,7 @@ export class MultiplayerModeController implements SceneModeController {
     window.removeEventListener('keydown', this.handleKeyDown)
     this.debugRenderer.destroy()
     this.tilemapRenderer.destroy()
+    this.interactableRenderer.destroy()
     this.playerRenderer.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()
