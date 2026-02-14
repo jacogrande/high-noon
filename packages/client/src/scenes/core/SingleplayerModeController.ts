@@ -62,7 +62,8 @@ import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRen
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
-import { ParticlePool, FloatingTextPool } from '../../fx'
+import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
+import { NpcRenderer } from '../../render/NpcRenderer'
 import { GameplayEventBuffer } from './GameplayEvents'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { FullWorldSimulationDriver } from './SimulationDriver'
@@ -112,6 +113,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly playerRenderer: PlayerRenderer
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
+  private readonly npcRenderer: NpcRenderer
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
@@ -123,6 +125,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly sound: SoundManager
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
+  private readonly chatBubblePool: ChatBubblePool
   private readonly gameplayEvents: GameplayEventBuffer
   private readonly gameplayEventProcessor: GameplayEventProcessor
   private readonly deathPresentation: DeathSequencePresentation
@@ -167,6 +170,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
+    this.npcRenderer = new NpcRenderer(this.spriteRegistry)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
@@ -202,6 +206,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
     this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
+    this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.entities)
     this.gameplayEvents = new GameplayEventBuffer()
     this.gameplayEventProcessor = new GameplayEventProcessor({
       camera: this.camera,
@@ -449,6 +454,8 @@ export class SingleplayerModeController implements SceneModeController {
       enemyRenderer: this.enemyRenderer,
       bulletRenderer: this.bulletRenderer,
       events: this.gameplayEvents,
+      npcRenderer: this.npcRenderer,
+      chatBubblePool: this.chatBubblePool,
     })
 
     this.dryFireCooldown = Math.max(0, this.dryFireCooldown - dt)
@@ -564,6 +571,9 @@ export class SingleplayerModeController implements SceneModeController {
     // Render enemies with interpolation
     this.enemyRenderer.render(this.world, alpha, realDt)
 
+    // Render NPCs with interpolation
+    this.npcRenderer.render(this.world, alpha)
+
     // Render dynamite pixel-fuse telegraphs + throw arcs.
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
 
@@ -575,6 +585,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Update particles (visual-only, uses real frame dt)
     this.particles.update(realDt)
     this.floatingText.update(realDt)
+    this.chatBubblePool.update(realDt, this.world)
 
     this.deathPresentation.update(this.isPlayerDead())
 
@@ -646,6 +657,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.tilemapRenderer.destroy()
     this.interactableRenderer.destroy()
     this.playerRenderer.destroy()
+    this.npcRenderer.destroy()
+    this.chatBubblePool.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()
     this.dynamiteRenderer.destroy()

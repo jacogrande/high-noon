@@ -142,6 +142,8 @@ export interface RunState {
   transitionTimer: number
   /** Pre-generated tilemap for the next stage (built on camp entry to avoid frame hitch) */
   pendingTilemap: Tilemap | null
+  /** Whether NPCs have been spawned for the current stage */
+  npcsSpawned: boolean
 }
 
 /**
@@ -367,6 +369,8 @@ export interface GameWorld extends IWorld {
   lagCompBulletShotTick: Map<number, number>
   /** Radius padding applied only during historical lag-comp overlap checks */
   lagCompHistoricalRadiusPadding: number
+  /** Active discovery NPC entity IDs (for cleanup between stages) */
+  npcEntities: Set<number>
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -448,6 +452,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lagCompShotTickByPlayer: new Map(),
     lagCompBulletShotTick: new Map(),
     lagCompHistoricalRadiusPadding: 0,
+    npcEntities: new Set(),
   }
 }
 
@@ -528,6 +533,7 @@ export function resetWorld(world: GameWorld): void {
   world.lagCompHistoricalRadiusPadding = 0
   delete world.lagCompGetPlayerPosAtTick
   delete world.lagCompGetEnemyStateAtTick
+  world.npcEntities.clear()
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 
@@ -564,6 +570,7 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
     transition: 'none',
     transitionTimer: 0,
     pendingTilemap: null,
+    npcsSpawned: false,
   }
   world.interactionLayoutKey = ''
   world.salesman = null

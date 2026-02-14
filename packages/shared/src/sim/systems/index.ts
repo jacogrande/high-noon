@@ -29,7 +29,9 @@ import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'
 import { spatialHashSystem } from './spatialHash'
 import { waveSpawnerSystem } from './waveSpawner'
-import { stageProgressionSystem, clearAllEnemies } from './stageProgression'
+import { stageProgressionSystem, clearAllEnemies, spawnStageNpcs } from './stageProgression'
+import { npcMovementSystem } from './npcMovement'
+import { npcDialogueSystem } from './npcDialogue'
 import { buffSystem } from './buffSystem'
 import { slowDebuffSystem } from './slowDebuff'
 import { meleeSystem } from './melee'
@@ -65,6 +67,9 @@ export {
   waveSpawnerSystem,
   stageProgressionSystem,
   clearAllEnemies,
+  spawnStageNpcs,
+  npcMovementSystem,
+  npcDialogueSystem,
   buffSystem,
   slowDebuffSystem,
   meleeSystem,
@@ -146,6 +151,9 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
   systems.register(stageProgressionSystem)
+  // -- NPC systems --
+  systems.register(npcMovementSystem)
+  systems.register(npcDialogueSystem)
   // -- Projectiles & pathfinding --
   systems.register(bulletSystem)
   systems.register(flowFieldSystem)

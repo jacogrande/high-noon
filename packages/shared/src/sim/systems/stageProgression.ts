@@ -10,8 +10,9 @@ import { defineQuery, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
 import { Enemy, Position, Bullet, Player, Health } from '../components'
-import { removeBullet } from '../prefabs'
+import { removeBullet, spawnNpc } from '../prefabs'
 import { generateArena } from '../content/maps/mapGenerator'
+import { STAGE_NPC_SPAWNS } from '../content/npcs'
 
 const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
 
@@ -21,7 +22,7 @@ const enemyCleanupQuery = defineQuery([Enemy, Position])
 const bulletCleanupQuery = defineQuery([Bullet])
 
 /**
- * Remove all enemies and bullets from the world.
+ * Remove all enemies, bullets, and NPCs from the world.
  * Used during stage transitions to start fresh.
  */
 export function clearAllEnemies(world: GameWorld): void {
@@ -37,6 +38,11 @@ export function clearAllEnemies(world: GameWorld): void {
   for (const eid of bulletCleanupQuery(world)) {
     removeBullet(world, eid)
   }
+  // Remove all NPCs
+  for (const eid of world.npcEntities) {
+    removeEntity(world, eid)
+  }
+  world.npcEntities.clear()
   // Reset derived/cached spatial state — will rebuild on next tick
   world.flowField = null
   world.spatialHash = null
@@ -45,6 +51,22 @@ export function clearAllEnemies(world: GameWorld): void {
   world.dustClouds = []
   world.rockslideShockwaves = []
   world.dynamites = []
+}
+
+/**
+ * Spawn discovery NPCs for the given stage index.
+ * Converts tile coordinates to world pixel positions.
+ */
+export function spawnStageNpcs(world: GameWorld, stageIndex: number): void {
+  const spawns = STAGE_NPC_SPAWNS[stageIndex]
+  if (!spawns || !world.tilemap) return
+
+  const tileSize = world.tilemap.tileSize
+  for (const spawn of spawns) {
+    const x = spawn.tileX * tileSize + tileSize / 2
+    const y = spawn.tileY * tileSize + tileSize / 2
+    spawnNpc(world, spawn.type, x, y)
+  }
 }
 
 /**
@@ -66,6 +88,12 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
 
   // Reset per-tick flag
   world.stageCleared = false
+
+  // Spawn NPCs if a stage is active but none have been spawned yet (covers stage 0)
+  if (run.transition === 'none' && !enc.completed && !run.npcsSpawned) {
+    spawnStageNpcs(world, run.currentStage)
+    run.npcsSpawned = true
+  }
 
   // Detect encounter completion -> begin clearing
   if (enc.completed && run.transition === 'none') {
@@ -113,6 +141,8 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
       run.pendingTilemap = null
       swapTilemap(world, newMap)
       setEncounter(world, nextStage)
+      spawnStageNpcs(world, run.currentStage)
+      run.npcsSpawned = true
       run.transition = 'none'
     }
   }

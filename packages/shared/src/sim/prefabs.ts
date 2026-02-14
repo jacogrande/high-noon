@@ -31,6 +31,10 @@ import {
   AIState,
   Showdown,
   MeleeWeapon,
+  Npc,
+  NpcMovement,
+  NpcMovementType,
+  NpcDialogue,
 } from './components'
 import {
   PLAYER_RADIUS,
@@ -41,6 +45,7 @@ import {
   BULLET_RADIUS,
   BULLET_LIFETIME,
 } from './content/weapons'
+import { getNpcDef } from './content/npcs'
 import { clampDamage } from './damage'
 import {
   SWARMER_SPEED, SWARMER_RADIUS, SWARMER_HP, SWARMER_AGGRO_RANGE, SWARMER_ATTACK_RANGE,
@@ -578,6 +583,77 @@ export function spawnGoblinRogue(world: GameWorld, x: number, y: number): number
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = GOBLIN_ROGUE_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
+
+  return eid
+}
+
+// ============================================================================
+// NPC Prefabs
+// ============================================================================
+
+/**
+ * Spawn a discovery NPC entity (non-combat, flavor only)
+ */
+export function spawnNpc(world: GameWorld, type: number, x: number, y: number): number {
+  const def = getNpcDef(type)
+  if (!def) return -1
+
+  const eid = addEntity(world)
+
+  addComponent(world, Position, eid)
+  addComponent(world, Velocity, eid)
+  addComponent(world, Speed, eid)
+  addComponent(world, Npc, eid)
+  addComponent(world, NpcMovement, eid)
+  addComponent(world, NpcDialogue, eid)
+
+  // Position
+  Position.x[eid] = x
+  Position.y[eid] = y
+  Position.prevX[eid] = x
+  Position.prevY[eid] = y
+
+  // Velocity (starts stationary)
+  Velocity.x[eid] = 0
+  Velocity.y[eid] = 0
+
+  // Speed
+  Speed.current[eid] = def.speed
+  Speed.max[eid] = def.speed
+
+  // NPC identity
+  Npc.type[eid] = type
+
+  // Movement
+  NpcMovement.pattern[eid] = def.movement
+  NpcMovement.homeX[eid] = x
+  NpcMovement.homeY[eid] = y
+  NpcMovement.range[eid] = def.moveRange
+  NpcMovement.timer[eid] = 0
+  NpcMovement.paceDir[eid] = 0
+  NpcMovement.pauseTimer[eid] = world.rng.nextRange(0, 1.5)
+
+  // Wander: set initial random target
+  if (def.movement === NpcMovementType.WANDER) {
+    const angle = world.rng.nextRange(0, Math.PI * 2)
+    const r = world.rng.nextRange(def.moveRange * 0.3, def.moveRange)
+    NpcMovement.targetX[eid] = x + Math.cos(angle) * r
+    NpcMovement.targetY[eid] = y + Math.sin(angle) * r
+  } else {
+    NpcMovement.targetX[eid] = x
+    NpcMovement.targetY[eid] = y
+  }
+
+  // Dialogue (starts inactive)
+  NpcDialogue.active[eid] = 0
+  NpcDialogue.lineIndex[eid] = 0
+  NpcDialogue.timer[eid] = 0
+  NpcDialogue.duration[eid] = 0
+  NpcDialogue.cooldown[eid] = 0
+  NpcDialogue.triggered[eid] = 0
+
+  // Track for cleanup
+  world.npcEntities.add(eid)
 
   return eid
 }
