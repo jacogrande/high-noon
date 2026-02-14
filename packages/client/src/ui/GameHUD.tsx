@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { HUDState } from '../scenes/types'
+import type { HUDState, MinimapMarker } from '../scenes/types'
 
 function getStageDisplay(state: HUDState): string {
   if (state.stageStatus === 'completed') return 'RUN COMPLETE'
@@ -13,6 +13,62 @@ const RARITY_BORDER_COLORS: Record<string, string> = {
   brass: '#d4a046',
   silver: '#b0b0c0',
   gold: '#ffc800',
+}
+
+const RARITY_MINIMAP_COLORS: Record<string, string> = {
+  brass: '#d4a046',
+  silver: '#d0d0e0',
+  gold: '#ffd24a',
+}
+
+function toPercent(value: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return 0
+  return Math.max(0, Math.min(100, (value / max) * 100))
+}
+
+function getMinimapMarkerStyle(marker: MinimapMarker): React.CSSProperties {
+  if (marker.kind === 'self') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapSelfMarker,
+    }
+  }
+  if (marker.kind === 'ally') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapAllyMarker,
+    }
+  }
+  if (marker.kind === 'enemy') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapEnemyMarker,
+    }
+  }
+  if (marker.kind === 'npc') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapNpcMarker,
+    }
+  }
+  if (marker.kind === 'salesman') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapSalesmanMarker,
+    }
+  }
+  if (marker.kind === 'stash') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapStashMarker,
+    }
+  }
+  return {
+    ...styles.minimapMarker,
+    ...styles.minimapItemMarker,
+    backgroundColor: RARITY_MINIMAP_COLORS[marker.rarity ?? 'brass'] ?? RARITY_MINIMAP_COLORS.brass,
+    boxShadow: `0 0 6px ${RARITY_MINIMAP_COLORS[marker.rarity ?? 'brass'] ?? RARITY_MINIMAP_COLORS.brass}`,
+  }
 }
 
 export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
@@ -32,6 +88,34 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
     <div style={styles.root}>
       {/* Stage + Wave indicator — top-center */}
       <div style={styles.waveContainer}>{getStageDisplay(state)}</div>
+
+      {state.minimap && (
+        <div style={styles.minimapContainer}>
+          <div style={styles.minimapTitle}>SCOUT MAP</div>
+          <div style={styles.minimapFrame}>
+            <div style={styles.minimapSurface}>
+              {state.minimap.markers.map((marker, i) => (
+                <div
+                  key={`${marker.kind}:${i}`}
+                  style={{
+                    ...getMinimapMarkerStyle(marker),
+                    left: `${toPercent(marker.x, state.minimap?.mapWidth ?? 1)}%`,
+                    top: `${toPercent(marker.y, state.minimap?.mapHeight ?? 1)}%`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <div style={styles.minimapLegend}>
+            <span style={{ ...styles.legendDot, ...styles.minimapSelfMarker }} />
+            <span>YOU</span>
+            <span style={{ ...styles.legendDot, ...styles.minimapEnemyMarker }} />
+            <span>ENEMY</span>
+            <span style={{ ...styles.legendDot, ...styles.minimapStashMarker }} />
+            <span>STASH</span>
+          </div>
+        </div>
+      )}
 
       {/* Weapon + Ability — bottom-left */}
       <div style={styles.bottomLeft}>
@@ -191,6 +275,106 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#aaaaaa',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     letterSpacing: '0.1em',
+  },
+  minimapContainer: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  minimapTitle: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#d9caa1',
+    letterSpacing: '0.12em',
+    textShadow: '0 0 6px rgba(0, 0, 0, 0.8)',
+  },
+  minimapFrame: {
+    width: 128,
+    height: 128,
+    padding: 4,
+    borderRadius: 6,
+    border: '1px solid rgba(214, 185, 125, 0.65)',
+    backgroundColor: 'rgba(16, 12, 8, 0.82)',
+    boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.55)',
+  },
+  minimapSurface: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    borderRadius: 3,
+    overflow: 'hidden',
+    backgroundColor: '#15120f',
+    backgroundImage:
+      'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+    backgroundSize: '16px 16px',
+  },
+  minimapMarker: {
+    position: 'absolute',
+    transform: 'translate(-50%, -50%)',
+    width: 4,
+    height: 4,
+    borderRadius: '50%',
+  },
+  minimapSelfMarker: {
+    width: 6,
+    height: 6,
+    backgroundColor: '#00f5ff',
+    boxShadow: '0 0 7px rgba(0, 245, 255, 0.9)',
+  },
+  minimapAllyMarker: {
+    width: 4,
+    height: 4,
+    backgroundColor: '#f4f4f4',
+    boxShadow: '0 0 5px rgba(244, 244, 244, 0.75)',
+  },
+  minimapEnemyMarker: {
+    width: 4,
+    height: 4,
+    backgroundColor: '#ff4c4c',
+    boxShadow: '0 0 6px rgba(255, 76, 76, 0.85)',
+  },
+  minimapNpcMarker: {
+    width: 4,
+    height: 4,
+    backgroundColor: '#be8fff',
+    boxShadow: '0 0 5px rgba(190, 143, 255, 0.8)',
+  },
+  minimapSalesmanMarker: {
+    width: 5,
+    height: 5,
+    backgroundColor: '#ffcf59',
+    boxShadow: '0 0 6px rgba(255, 207, 89, 0.9)',
+  },
+  minimapStashMarker: {
+    width: 4,
+    height: 4,
+    backgroundColor: '#8be86d',
+    boxShadow: '0 0 5px rgba(139, 232, 109, 0.8)',
+  },
+  minimapItemMarker: {
+    width: 3,
+    height: 3,
+    backgroundColor: '#d4a046',
+    boxShadow: '0 0 4px rgba(212, 160, 70, 0.7)',
+  },
+  minimapLegend: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: 'rgba(220, 206, 170, 0.9)',
+    letterSpacing: '0.06em',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+  },
+  legendDot: {
+    width: 4,
+    height: 4,
+    borderRadius: '50%',
   },
   // Cylinder — bottom-left
   bottomLeft: {

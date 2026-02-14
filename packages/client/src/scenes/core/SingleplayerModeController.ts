@@ -87,6 +87,7 @@ import {
 import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
 import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
+import { buildSingleplayerMinimapState } from './minimap'
 
 const GAME_ZOOM = 2
 
@@ -334,6 +335,7 @@ export class SingleplayerModeController implements SceneModeController {
           stacks,
         }
       }),
+      minimap: buildSingleplayerMinimapState(this.world, playerEid),
     }
   }
 

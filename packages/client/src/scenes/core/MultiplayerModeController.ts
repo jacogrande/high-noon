@@ -91,6 +91,7 @@ import {
 } from './PlayerPresentationEvents'
 import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
+import { buildMultiplayerMinimapState } from './minimap'
 
 const GAME_ZOOM = 2
 
@@ -941,6 +942,13 @@ export class MultiplayerModeController implements SceneModeController {
 
     const localHp = this.myClientEid >= 0 ? Health.current[this.myClientEid]! : null
     const localMaxHp = this.myClientEid >= 0 ? Health.max[this.myClientEid]! : null
+    const minimap = buildMultiplayerMinimapState(
+      this.world,
+      this.myClientEid >= 0 ? this.myClientEid : null,
+      this.playerEntities.values(),
+      this.enemyEntities.values(),
+      this.latestInteractables,
+    )
 
     return {
       characterId,
@@ -969,6 +977,7 @@ export class MultiplayerModeController implements SceneModeController {
       pendingPoints: hud?.pendingPoints ?? 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
       items: hud?.items ?? [],
+      minimap,
     }
   }
 

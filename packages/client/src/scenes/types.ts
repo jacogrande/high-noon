@@ -1,5 +1,20 @@
 import type { CharacterId } from '@high-noon/shared'
 
+export type MinimapMarkerKind = 'self' | 'ally' | 'enemy' | 'npc' | 'salesman' | 'stash' | 'item'
+
+export interface MinimapMarker {
+  x: number
+  y: number
+  kind: MinimapMarkerKind
+  rarity?: string
+}
+
+export interface MinimapState {
+  mapWidth: number
+  mapHeight: number
+  markers: MinimapMarker[]
+}
+
 export interface HUDState {
   characterId: CharacterId
   hp: number
@@ -38,6 +53,7 @@ export interface HUDState {
   pendingPoints: number
   isDead: boolean
   items: Array<{ itemId: number; key: string; name: string; rarity: string; stacks: number }>
+  minimap: MinimapState | null
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'
