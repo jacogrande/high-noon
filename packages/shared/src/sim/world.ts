@@ -14,6 +14,7 @@ import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
+import type { CampVisitorState } from './systems/campVisitor'
 import { Player, Position, Velocity } from './components'
 
 const playerQuery = defineQuery([Player, Position])
@@ -144,6 +145,10 @@ export interface RunState {
   pendingTilemap: Tilemap | null
   /** Whether NPCs have been spawned for the current stage */
   npcsSpawned: boolean
+  /** IDs of visitors seen in previous camp phases (for deprioritization) */
+  previousVisitorIds: number[]
+  /** Index of last greeting shown (for dedup across consecutive visits) */
+  lastGreetingIndex: number
 }
 
 /**
@@ -210,6 +215,7 @@ export interface StashState {
 
 export interface InteractionFeedback {
   text: string
+  description?: string
   timeLeft: number
 }
 
@@ -378,6 +384,8 @@ export interface GameWorld extends IWorld {
   lagCompBulletShotTick: Map<number, number>
   /** Radius padding applied only during historical lag-comp overlap checks */
   lagCompHistoricalRadiusPadding: number
+  /** Camp visitor state (non-null during camp phase) */
+  campVisitor: CampVisitorState | null
   /** Item pickups on the ground */
   itemPickups: ItemPickupState[]
   /** ID counter for item pickups */
@@ -465,6 +473,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lagCompShotTickByPlayer: new Map(),
     lagCompBulletShotTick: new Map(),
     lagCompHistoricalRadiusPadding: 0,
+    campVisitor: null,
     itemPickups: [],
     nextItemPickupId: 1,
     npcEntities: new Set(),
@@ -548,6 +557,7 @@ export function resetWorld(world: GameWorld): void {
   world.lagCompHistoricalRadiusPadding = 0
   delete world.lagCompGetPlayerPosAtTick
   delete world.lagCompGetEnemyStateAtTick
+  world.campVisitor = null
   world.itemPickups = []
   world.nextItemPickupId = 1
   world.npcEntities.clear()
@@ -588,6 +598,8 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
     transitionTimer: 0,
     pendingTilemap: null,
     npcsSpawned: false,
+    previousVisitorIds: [],
+    lastGreetingIndex: -1,
   }
   world.interactionLayoutKey = ''
   world.salesman = null

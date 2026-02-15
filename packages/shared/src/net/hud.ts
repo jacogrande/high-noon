@@ -75,8 +75,19 @@ export interface HudData {
   totalStages: number
   stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
 
+  // Interaction feedback description (item received, etc.)
+  interactionFeedbackDescription?: string
+
   // Items
-  items: Array<{ itemId: number; key: string; name: string; rarity: string; stacks: number }>
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
+
+  // Camp visitor
+  campVisitor: {
+    visitorId: number
+    visitorName: string
+    greeting: string
+    offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean }>
+  } | null
 }
 
 export interface SelectNodeRequest { nodeId: string }

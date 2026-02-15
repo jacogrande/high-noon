@@ -116,7 +116,7 @@ describe('interactionSystem', () => {
     expect(world.goldCollected).toBe(5)
   })
 
-  test('opening stash consumes shovel and grants gold', () => {
+  test('opening stash consumes shovel and grants item', () => {
     const { world, playerEid } = createStageWorld(778)
     runTick(world, playerEid, 0)
 
@@ -134,7 +134,12 @@ describe('interactionSystem', () => {
 
     expect(stash.opened).toBe(true)
     expect(world.shovelCount).toBe(0)
-    expect(world.goldCollected).toBeGreaterThan(0)
+    // Stashes now give items only, no gold
+    expect(world.goldCollected).toBe(0)
+    // Player should have received an item (directly to inventory or as pickup)
+    const state = world.upgradeState
+    const hasItem = state.items.size > 0 || world.itemPickups.length > 0
+    expect(hasItem).toBe(true)
   })
 
   test('shows missing shovel prompt near stash', () => {

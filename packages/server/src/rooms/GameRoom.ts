@@ -37,6 +37,8 @@ import {
   type HudData,
   type InteractablesData,
   getItemDef,
+  getVisitorDef,
+  tryVisitorPurchase,
   type SelectNodeRequest,
   type SelectNodeResponse,
   type CharacterId,
@@ -355,6 +357,17 @@ export class GameRoom extends Room<GameRoomState> {
         this.campReadySessions.delete(client.sessionId)
       }
       this.maybeCompleteCamp()
+    })
+
+    this.onMessage('camp-purchase', (client, data) => {
+      if (this.state.phase !== 'playing') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const run = this.world.run
+      if (!run || run.completed || run.transition !== 'camp') return
+      if (typeof data?.offerIndex !== 'number') return
+
+      tryVisitorPurchase(this.world, slot.eid, data.offerIndex)
     })
 
     this.onMessage('set-character', (client, data) => {
@@ -856,9 +869,36 @@ export class GameRoom extends Room<GameRoomState> {
       for (const [itemId, stacks] of state.items) {
         const def = getItemDef(itemId)
         if (def) {
-          items.push({ itemId, key: def.key, name: def.name, rarity: def.rarity, stacks })
+          items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks })
         }
       }
+
+      // Interaction feedback description (item received, etc.)
+      const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
+
+      // Camp visitor data
+      const cv = this.world.campVisitor
+      const campVisitorHud: HudData['campVisitor'] = cv
+        ? (() => {
+            const vDef = getVisitorDef(cv.visitorId)
+            return {
+              visitorId: cv.visitorId,
+              visitorName: vDef?.name ?? 'Visitor',
+              greeting: cv.greeting,
+              offers: cv.offers.map(o => {
+                const oDef = getItemDef(o.itemId)
+                return {
+                  itemId: o.itemId,
+                  itemName: oDef?.name ?? '???',
+                  itemDescription: oDef?.description ?? '',
+                  rarity: oDef?.rarity ?? 'brass',
+                  price: o.price,
+                  sold: o.sold,
+                }
+              }),
+            }
+          })()
+        : null
 
       const hud: HudData = {
         characterId: slot.characterId,
@@ -877,6 +917,7 @@ export class GameRoom extends Room<GameRoomState> {
         goldCollected,
         shovelCount,
         interactionPrompt,
+        interactionFeedbackDescription: feedbackDesc,
         pendingPoints: state.pendingPoints,
         xpForCurrentLevel: xpForCurrent,
         xpForNextLevel: xpForNext,
@@ -887,6 +928,7 @@ export class GameRoom extends Room<GameRoomState> {
         totalStages,
         stageStatus,
         items,
+        campVisitor: campVisitorHud,
       }
       slot.client.send('hud', hud)
     }

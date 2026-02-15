@@ -22,16 +22,27 @@ describe('economy', () => {
     expect(seqA).toEqual(seqB)
   })
 
-  test('later stages produce higher average stash payout', () => {
-    const samples = 200
-    const rngA = new SeededRng(7)
-    const rngB = new SeededRng(7)
-    let stage0 = 0
-    let stage2 = 0
-    for (let i = 0; i < samples; i++) {
-      stage0 += rollStashReward(rngA, 0).gold
-      stage2 += rollStashReward(rngB, 2).gold
+  test('stash rewards always give items and no gold', () => {
+    const rng = new SeededRng(42)
+    for (let i = 0; i < 200; i++) {
+      const reward = rollStashReward(rng, i % 3)
+      expect(reward.gold).toBe(0)
+      expect(reward.itemId).not.toBeNull()
     }
-    expect(stage2 / samples).toBeGreaterThan(stage0 / samples)
+  })
+
+  test('stash rewards include all rarity tiers', () => {
+    // Use enough samples to hit all rarity bands
+    const rng = new SeededRng(999)
+    const rarities = new Set<boolean>()
+    let hasItem = false
+    for (let i = 0; i < 500; i++) {
+      const reward = rollStashReward(rng, 0)
+      if (reward.itemId !== null) hasItem = true
+      rarities.add(reward.rare)
+    }
+    expect(hasItem).toBe(true)
+    expect(rarities.has(true)).toBe(true)   // some rare (gold/cursed)
+    expect(rarities.has(false)).toBe(true)  // some common (brass/silver)
   })
 })

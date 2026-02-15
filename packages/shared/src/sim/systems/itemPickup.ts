@@ -12,7 +12,7 @@ import { hasComponent } from 'bitecs'
 import { addItemToPlayer } from '../upgrade'
 import { getItemDef } from '../content/items'
 import { reapplyAllItemEffects } from '../content/itemEffects'
-import { INTERACTION_FEEDBACK_DURATION } from '../content/economy'
+import { ITEM_FEEDBACK_DURATION } from '../content/economy'
 
 const playerQuery = defineQuery([Player, Position])
 
@@ -56,8 +56,9 @@ export function itemPickupSystem(world: GameWorld, dt: number): void {
         const def = getItemDef(pickup.itemId)
         if (def) {
           world.interactionFeedbackByPlayer.set(playerEid, {
-            text: `+${def.name}`,
-            timeLeft: INTERACTION_FEEDBACK_DURATION,
+            text: `Found: ${def.name}!`,
+            description: def.description,
+            timeLeft: ITEM_FEEDBACK_DURATION,
           })
         }
         break // One player picks up each item

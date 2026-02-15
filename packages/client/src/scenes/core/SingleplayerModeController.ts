@@ -43,6 +43,8 @@ import {
   getCharacterDef,
   deriveAbilityHudState,
   getItemDef,
+  getVisitorDef,
+  tryVisitorPurchase,
   type CharacterId,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
@@ -325,17 +327,42 @@ export class SingleplayerModeController implements SceneModeController {
       ...abilityHud,
       pendingPoints: state.pendingPoints,
       isDead: this.isPlayerDead(),
+      interactionFeedbackDescription: playerEid !== null
+        ? (this.world.interactionFeedbackByPlayer.get(playerEid)?.description ?? null)
+        : null,
       items: Array.from(state.items.entries()).map(([itemId, stacks]) => {
         const def = getItemDef(itemId)
         return {
           itemId,
           key: def?.key ?? '',
           name: def?.name ?? '???',
+          description: def?.description ?? '',
           rarity: def?.rarity ?? 'brass',
           stacks,
         }
       }),
       minimap: buildSingleplayerMinimapState(this.world, playerEid),
+      campVisitor: this.world.campVisitor
+        ? (() => {
+            const vDef = getVisitorDef(this.world.campVisitor!.visitorId)
+            return {
+              visitorId: this.world.campVisitor!.visitorId,
+              visitorName: vDef?.name ?? 'Visitor',
+              greeting: this.world.campVisitor!.greeting,
+              offers: this.world.campVisitor!.offers.map(o => {
+                const def = getItemDef(o.itemId)
+                return {
+                  itemId: o.itemId,
+                  itemName: def?.name ?? '???',
+                  itemDescription: def?.description ?? '',
+                  rarity: def?.rarity ?? 'brass',
+                  price: o.price,
+                  sold: o.sold,
+                }
+              }),
+            }
+          })()
+        : null,
     }
   }
 
@@ -388,6 +415,12 @@ export class SingleplayerModeController implements SceneModeController {
       this.sound.play('upgrade_select')
     }
     return success
+  }
+
+  handleVisitorPurchase(offerIndex: number): boolean {
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    if (playerEid === null) return false
+    return tryVisitorPurchase(this.world, playerEid, offerIndex)
   }
 
   completeCamp(): void {

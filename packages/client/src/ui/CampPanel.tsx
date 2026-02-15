@@ -1,10 +1,36 @@
+import { useState } from 'react'
+import { VisitorShopPanel } from './VisitorShopPanel'
+import { ItemTooltip } from './ItemTooltip'
+
 interface CampPanelProps {
   stageNumber: number
   totalStages: number
   hasPendingPoints: boolean
   rideOutPending?: boolean
+  playerGold: number
+  campVisitor: {
+    visitorName: string
+    greeting: string
+    offers: Array<{
+      itemId: number
+      itemName: string
+      itemDescription: string
+      rarity: string
+      price: number
+      sold: boolean
+    }>
+  } | null
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
   onOpenSkillTree: () => void
   onRideOut: () => void
+  onVisitorPurchase: (index: number) => void
+}
+
+const RARITY_COLORS: Record<string, string> = {
+  brass: '#cc9944',
+  silver: '#aabbcc',
+  gold: '#ffcc00',
+  cursed: '#bb44ff',
 }
 
 export function CampPanel({
@@ -12,9 +38,15 @@ export function CampPanel({
   totalStages,
   hasPendingPoints,
   rideOutPending = false,
+  playerGold,
+  campVisitor,
+  items,
   onOpenSkillTree,
   onRideOut,
+  onVisitorPurchase,
 }: CampPanelProps) {
+  const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
+
   return (
     <div style={styles.overlay}>
       <div style={styles.panel}>
@@ -23,6 +55,54 @@ export function CampPanel({
           Stage {stageNumber} of {totalStages} complete
         </div>
         <div style={styles.healBadge}>HP RESTORED</div>
+
+        {/* Inventory display */}
+        {items.length > 0 && (
+          <div style={styles.inventorySection}>
+            <div style={styles.sectionLabel}>INVENTORY</div>
+            <div style={styles.inventoryGrid}>
+              {items.map(item => (
+                <div
+                  key={item.itemId}
+                  style={{
+                    ...styles.inventoryItem,
+                    borderColor: (RARITY_COLORS[item.rarity] ?? '#cc9944') + '44',
+                    position: 'relative' as const,
+                  }}
+                  onMouseEnter={() => setHoveredItemId(item.itemId)}
+                  onMouseLeave={() => setHoveredItemId(null)}
+                >
+                  <span style={{ color: RARITY_COLORS[item.rarity] ?? '#cc9944', fontSize: 10 }}>
+                    {item.name}
+                  </span>
+                  {item.stacks > 1 && (
+                    <span style={styles.stackCount}>x{item.stacks}</span>
+                  )}
+                  {hoveredItemId === item.itemId && (
+                    <ItemTooltip
+                      name={item.name}
+                      description={item.description}
+                      rarity={item.rarity}
+                      stacks={item.stacks}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Visitor shop */}
+        {campVisitor && (
+          <VisitorShopPanel
+            visitorName={campVisitor.visitorName}
+            greeting={campVisitor.greeting}
+            offers={campVisitor.offers}
+            playerGold={playerGold}
+            onPurchase={onVisitorPurchase}
+          />
+        )}
+
         <div style={styles.actions}>
           {hasPendingPoints && (
             <button
@@ -72,6 +152,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     zIndex: 55,
     fontFamily: 'monospace',
+    overflow: 'auto',
   },
   panel: {
     display: 'flex',
@@ -79,6 +160,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 16,
     padding: '32px 48px',
+    maxHeight: '90vh',
   },
   header: {
     fontSize: 28,
@@ -102,6 +184,38 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(68, 221, 68, 0.3)',
     borderRadius: 3,
     backgroundColor: 'rgba(68, 221, 68, 0.08)',
+  },
+  inventorySection: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#777777',
+    letterSpacing: '0.15em',
+  },
+  inventoryGrid: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    maxWidth: 400,
+  },
+  inventoryItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '3px 8px',
+    border: '1px solid',
+    borderRadius: 3,
+    backgroundColor: 'rgba(20, 12, 8, 0.6)',
+  },
+  stackCount: {
+    fontSize: 9,
+    color: '#888888',
   },
   actions: {
     display: 'flex',

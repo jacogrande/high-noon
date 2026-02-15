@@ -1,5 +1,6 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { HUDState, MinimapMarker } from '../scenes/types'
+import { ItemTooltip } from './ItemTooltip'
 
 function getStageDisplay(state: HUDState): string {
   if (state.stageStatus === 'completed') return 'RUN COMPLETE'
@@ -72,6 +73,7 @@ function getMinimapMarkerStyle(marker: MinimapMarker): React.CSSProperties {
 }
 
 export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
+  const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
   const hpPct = state.maxHP > 0 ? (state.hp / state.maxHP) * 100 : 0
   const xpRange = state.xpForNextLevel - state.xpForCurrentLevel
   const xpPct = xpRange > 0 ? ((state.xp - state.xpForCurrentLevel) / xpRange) * 100 : 100
@@ -224,10 +226,15 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       {state.items && state.items.length > 0 && (
         <div style={styles.itemStrip}>
           {state.items.map((item) => (
-            <div key={item.itemId} style={{
-              ...styles.itemBox,
-              borderColor: RARITY_BORDER_COLORS[item.rarity] ?? RARITY_BORDER_COLORS.brass,
-            }} title={item.name}>
+            <div
+              key={item.itemId}
+              style={{
+                ...styles.itemBox,
+                borderColor: RARITY_BORDER_COLORS[item.rarity] ?? RARITY_BORDER_COLORS.brass,
+              }}
+              onMouseEnter={() => setHoveredItemId(item.itemId)}
+              onMouseLeave={() => setHoveredItemId(null)}
+            >
               {item.key ? (
                 <img
                   src={`/assets/sprites/items/${item.key}.png`}
@@ -242,6 +249,14 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
               {item.stacks > 1 && (
                 <div style={styles.itemStackBadge}>x{item.stacks}</div>
               )}
+              {hoveredItemId === item.itemId && (
+                <ItemTooltip
+                  name={item.name}
+                  description={item.description}
+                  rarity={item.rarity}
+                  stacks={item.stacks}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -250,6 +265,9 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       {state.interactionPrompt && (
         <div style={styles.promptContainer}>
           <div style={styles.promptText}>{state.interactionPrompt}</div>
+          {state.interactionFeedbackDescription && (
+            <div style={styles.promptDescription}>{state.interactionFeedbackDescription}</div>
+          )}
         </div>
       )}
     </div>
@@ -532,6 +550,13 @@ const styles: Record<string, React.CSSProperties> = {
     textShadow: '0 0 4px rgba(0, 0, 0, 0.8)',
     whiteSpace: 'nowrap',
   },
+  promptDescription: {
+    fontSize: 9,
+    color: '#b0a080',
+    textAlign: 'center',
+    textShadow: '0 0 4px rgba(0, 0, 0, 0.8)',
+    marginTop: 2,
+  },
   xpBarOuter: {
     width: 120,
     height: 6,
@@ -595,6 +620,7 @@ const styles: Record<string, React.CSSProperties> = {
     transform: 'translateX(-50%)',
     display: 'flex',
     gap: 3,
+    pointerEvents: 'auto',
   },
   itemBox: {
     width: 22,

@@ -976,8 +976,10 @@ export class MultiplayerModeController implements SceneModeController {
       ...abilityHud,
       pendingPoints: hud?.pendingPoints ?? 0,
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
+      interactionFeedbackDescription: hud?.interactionFeedbackDescription ?? null,
       items: hud?.items ?? [],
       minimap,
+      campVisitor: hud?.campVisitor ?? null,
     }
   }
 
@@ -1021,6 +1023,11 @@ export class MultiplayerModeController implements SceneModeController {
 
   completeCamp(): void {
     this.net.sendCampReady(true)
+  }
+
+  handleVisitorPurchase(offerIndex: number): boolean {
+    this.net.sendCampPurchase(offerIndex)
+    return true // optimistic; server will confirm via HUD update
   }
 
   setWorldVisible(visible: boolean): void {

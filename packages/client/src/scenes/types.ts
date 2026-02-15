@@ -52,8 +52,15 @@ export interface HUDState {
   showdownDurationMax: number
   pendingPoints: number
   isDead: boolean
-  items: Array<{ itemId: number; key: string; name: string; rarity: string; stacks: number }>
+  interactionFeedbackDescription?: string | null
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
   minimap: MinimapState | null
+  campVisitor: {
+    visitorId: number
+    visitorName: string
+    greeting: string
+    offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean }>
+  } | null
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'
