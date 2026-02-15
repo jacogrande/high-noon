@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Enemy, Detection, Position, EnemyAI, Player, Dead } from '../components'
+import { Enemy, Detection, Position, EnemyAI, Player, Dead, ObjectiveRole, ObjRole } from '../components'
 import { NO_TARGET } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { worldToTile, isSolidAt } from '../tilemap'
@@ -80,6 +80,18 @@ function hasLineOfSight(
   return true
 }
 
+/**
+ * During an active duel, non-duelist enemies cannot target a player inside the ring.
+ */
+function duelBlocksTarget(world: GameWorld, enemyEid: number, playerEid: number): boolean {
+  const obj = world.objective
+  if (!obj || obj.type !== 'duel' || obj.status !== 'active') return false
+  if (enemyEid === obj.duelistEid) return false
+  const dx = Position.x[playerEid]! - obj.ringCenterX
+  const dy = Position.y[playerEid]! - obj.ringCenterY
+  return dx * dx + dy * dy <= obj.ringRadius * obj.ringRadius
+}
+
 export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
   const alivePlayers = getAlivePlayers(world)
   const enemies = enemyQuery(world)
@@ -95,6 +107,11 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
   const tilemap = world.tilemap
 
   for (const eid of enemies) {
+    // Skip detection for objective-role enemies — their targets are managed by the AI system
+    if (hasComponent(world, ObjectiveRole, eid) && ObjectiveRole.role[eid] !== ObjRole.NONE) {
+      continue
+    }
+
     const ex = Position.x[eid]!
     const ey = Position.y[eid]!
     const aggroRange = Detection.aggroRange[eid]!
@@ -108,6 +125,9 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
         !hasComponent(world, Position, currentTarget)
       ) {
         // Target dead, removed, or missing position → clear and fall through to acquire new one
+        EnemyAI.targetEid[eid] = NO_TARGET
+      } else if (duelBlocksTarget(world, eid, currentTarget)) {
+        // Player is inside duel ring and we're not the duelist → drop target
         EnemyAI.targetEid[eid] = NO_TARGET
       } else {
         // Leash check: lose target at 2× aggro range from *assigned target*
@@ -132,6 +152,8 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
     let bestDistSq = Infinity
 
     for (const pid of alivePlayers) {
+      // Skip players inside the duel ring if we're not the duelist
+      if (duelBlocksTarget(world, eid, pid)) continue
       const dx = Position.x[pid]! - ex
       const dy = Position.y[pid]! - ey
       const dSq = dx * dx + dy * dy

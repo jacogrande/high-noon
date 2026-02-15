@@ -81,6 +81,17 @@ export interface HudData {
   // Items
   items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
 
+  // Stage objective
+  objective: {
+    type: string
+    description: string
+    status: 'active' | 'success' | 'soft_failure'
+    /** Protect: target HP fraction (0-1). Intercept: runners escaped / threshold. Duel: duelist HP fraction. */
+    progress: number
+    /** Duel-only: forfeit warning timer (> 0 means player outside ring) */
+    forfeitTimer?: number
+  } | null
+
   // Camp visitor
   campVisitor: {
     visitorId: number

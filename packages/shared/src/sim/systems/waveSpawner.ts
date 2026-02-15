@@ -10,7 +10,7 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
-import { Enemy, EnemyType, EnemyTier, Position, Dead } from '../components'
+import { Enemy, EnemyType, EnemyTier, Position, Dead, ObjectiveRole } from '../components'
 import {
   spawnSwarmer,
   spawnGrunt,
@@ -192,6 +192,9 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
   let threatAlive = 0
   for (const eid of allEnemies) {
     if (hasComponent(world, Dead, eid)) continue
+    // Skip objective-spawned enemies (e.g. duelist) — they aren't wave-tracked
+    if (hasComponent(world, ObjectiveRole, eid)) continue
+    if (world.objective?.duelistEid === eid) continue
     if (Enemy.tier[eid] === EnemyTier.FODDER) {
       fodderAlive++
     } else {
@@ -255,6 +258,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
 
       enc.fodderAliveCount = fodderAlive
       enc.waveActive = true
+      world.hooks.fireWaveStart(world, enc.currentWave + 1)
     } else {
       return
     }

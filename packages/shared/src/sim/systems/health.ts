@@ -8,9 +8,11 @@
 
 import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Health, Player, Dead, Enemy, Position } from '../components'
+import { Health, Player, Dead, Enemy, EnemyTier, Position } from '../components'
 import { XP_VALUES } from '../content/xp'
 import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
+import { ENEMY_DROP_CHANCE, DROP_RARITY_WEIGHTS_FODDER, DROP_RARITY_WEIGHTS_THREAT } from '../content/enemies'
+import { getRandomItemByRarity, type ItemRarity } from '../content/items'
 
 const healthQuery = defineQuery([Health])
 const playerQuery = defineQuery([Player, Health])
@@ -46,6 +48,33 @@ export function healthSystem(world: GameWorld, dt: number): void {
             killerPlayerEid,
             wasMelee: killWasMelee,
           })
+
+          // Item drop roll
+          const enemyType = Enemy.type[eid]!
+          const dropChance = ENEMY_DROP_CHANCE[enemyType] ?? 0
+          if (dropChance > 0 && world.rng.next() < dropChance) {
+            const isFodder = Enemy.tier[eid] === EnemyTier.FODDER
+            const weights = isFodder ? DROP_RARITY_WEIGHTS_FODDER : DROP_RARITY_WEIGHTS_THREAT
+            let totalW = 0
+            for (const [, w] of weights) totalW += w
+            let roll = world.rng.next() * totalW
+            let droppedRarity: ItemRarity = 'brass'
+            for (const [rarity, w] of weights) {
+              roll -= w
+              if (roll <= 0) { droppedRarity = rarity; break }
+            }
+            const itemId = getRandomItemByRarity(world.rng, droppedRarity)
+            if (itemId !== null) {
+              world.itemPickups.push({
+                id: world.nextItemPickupId++,
+                itemId,
+                x: Position.x[eid]!,
+                y: Position.y[eid]!,
+                lifetime: 15,
+                collected: false,
+              })
+            }
+          }
         }
 
         // Queue death pulses for any active Last Rites zones that contain this kill.

@@ -35,6 +35,10 @@ import {
   NpcMovement,
   NpcMovementType,
   NpcDialogue,
+  ObjectiveTarget,
+  ObjTargetType,
+  ObjectiveRole,
+  ObjRole,
 } from './components'
 import {
   PLAYER_RADIUS,
@@ -77,6 +81,11 @@ import {
   GOBLIN_ROGUE_AGGRO_RANGE, GOBLIN_ROGUE_ATTACK_RANGE,
   GOBLIN_ROGUE_TELEGRAPH, GOBLIN_ROGUE_RECOVERY, GOBLIN_ROGUE_COOLDOWN,
   GOBLIN_ROGUE_DAMAGE, GOBLIN_ROGUE_SEPARATION_RADIUS, GOBLIN_ROGUE_TIER,
+  RUNNER_SPEED, RUNNER_RADIUS, RUNNER_HP, RUNNER_TIER,
+  DUELIST_SPEED, DUELIST_RADIUS, DUELIST_HP,
+  DUELIST_AGGRO_RANGE, DUELIST_ATTACK_RANGE,
+  DUELIST_TELEGRAPH, DUELIST_RECOVERY, DUELIST_COOLDOWN,
+  DUELIST_DAMAGE, DUELIST_SEPARATION_RADIUS, DUELIST_TIER,
 } from './content/enemies'
 
 /** Largest collider radius across all entity types (for spatial hash query padding) */
@@ -89,6 +98,7 @@ export const MAX_COLLIDER_RADIUS = Math.max(
   BOOMSTICK_RADIUS,
   GOBLIN_BARBARIAN_RADIUS,
   GOBLIN_ROGUE_RADIUS,
+  DUELIST_RADIUS,
 )
 
 /** Collision layers */
@@ -98,6 +108,8 @@ export const CollisionLayer = {
   PLAYER_BULLET: 1 << 2,
   ENEMY_BULLET: 1 << 3,
   WALL: 1 << 4,
+  /** Objective targets (buildings, etc.) — damageable by enemy bullets */
+  OBJECTIVE: 1 << 5,
 } as const
 
 /** Sentinel value for bullets with no owner entity */
@@ -583,6 +595,157 @@ export function spawnGoblinRogue(world: GameWorld, x: number, y: number): number
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = GOBLIN_ROGUE_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
+
+  return eid
+}
+
+/**
+ * Spawn a Duelist enemy — tough melee challenger for duel ring objective
+ */
+export function spawnDuelist(world: GameWorld, x: number, y: number, hp?: number, damage?: number): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.DUELIST
+  Enemy.tier[eid] = DUELIST_TIER
+  Speed.current[eid] = DUELIST_SPEED
+  Speed.max[eid] = DUELIST_SPEED
+  Collider.radius[eid] = DUELIST_RADIUS
+  Health.current[eid] = hp ?? DUELIST_HP
+  Health.max[eid] = hp ?? DUELIST_HP
+  Detection.aggroRange[eid] = DUELIST_AGGRO_RANGE
+  Detection.attackRange[eid] = DUELIST_ATTACK_RANGE
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = DUELIST_TELEGRAPH
+  AttackConfig.recoveryDuration[eid] = DUELIST_RECOVERY
+  AttackConfig.cooldown[eid] = DUELIST_COOLDOWN
+  AttackConfig.damage[eid] = damage ?? DUELIST_DAMAGE
+  AttackConfig.projectileSpeed[eid] = 0
+  AttackConfig.projectileCount[eid] = 0
+  AttackConfig.spreadAngle[eid] = 0
+  Steering.preferredRange[eid] = 0
+  Steering.separationRadius[eid] = DUELIST_SEPARATION_RADIUS
+  EnemyAI.initialDelay[eid] = 0.1
+
+  return eid
+}
+
+// ============================================================================
+// Objective Prefabs
+// ============================================================================
+
+/** Collider radius for protect target entities */
+const PROTECT_TARGET_RADIUS = 16
+
+/**
+ * Spawn a protect target — the entity players must defend.
+ */
+export function spawnProtectTarget(world: GameWorld, x: number, y: number, hp: number): number {
+  const eid = addEntity(world)
+
+  addComponent(world, Position, eid)
+  addComponent(world, Collider, eid)
+  addComponent(world, Health, eid)
+  addComponent(world, ObjectiveTarget, eid)
+
+  Position.x[eid] = x
+  Position.y[eid] = y
+  Position.prevX[eid] = x
+  Position.prevY[eid] = y
+
+  Collider.radius[eid] = PROTECT_TARGET_RADIUS
+  Collider.layer[eid] = CollisionLayer.OBJECTIVE
+
+  Health.current[eid] = hp
+  Health.max[eid] = hp
+  Health.iframes[eid] = 0
+  Health.iframeDuration[eid] = 0
+
+  ObjectiveTarget.type[eid] = ObjTargetType.PROTECT_ENTITY
+
+  return eid
+}
+
+/**
+ * Spawn an invisible destination marker for intercept objectives.
+ */
+export function spawnInterceptDest(world: GameWorld, x: number, y: number): number {
+  const eid = addEntity(world)
+
+  addComponent(world, Position, eid)
+  addComponent(world, ObjectiveTarget, eid)
+
+  Position.x[eid] = x
+  Position.y[eid] = y
+  Position.prevX[eid] = x
+  Position.prevY[eid] = y
+
+  ObjectiveTarget.type[eid] = ObjTargetType.INTERCEPT_DEST
+
+  return eid
+}
+
+/**
+ * Spawn an objective runner — fast fragile enemy heading to a destination.
+ */
+export function spawnObjectiveRunner(
+  world: GameWorld,
+  x: number,
+  y: number,
+  destEid: number,
+  speed: number,
+  hp: number,
+): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  addComponent(world, ObjectiveRole, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.RUNNER
+  Enemy.tier[eid] = RUNNER_TIER
+  Speed.current[eid] = speed
+  Speed.max[eid] = speed
+  Collider.radius[eid] = RUNNER_RADIUS
+  Health.current[eid] = hp
+  Health.max[eid] = hp
+
+  // No aggro, no attacks
+  Detection.aggroRange[eid] = 0
+  Detection.attackRange[eid] = 0
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = 0
+  AttackConfig.recoveryDuration[eid] = 0
+  AttackConfig.cooldown[eid] = 0
+  AttackConfig.damage[eid] = 0
+  AttackConfig.projectileSpeed[eid] = 0
+  AttackConfig.projectileCount[eid] = 0
+  AttackConfig.spreadAngle[eid] = 0
+  Steering.preferredRange[eid] = 0
+  Steering.separationRadius[eid] = 0
+
+  ObjectiveRole.role[eid] = ObjRole.RUNNER
+  ObjectiveRole.targetEid[eid] = destEid
+
+  // No initial delay — runners start moving immediately
+  EnemyAI.initialDelay[eid] = 0
+
+  return eid
+}
+
+/**
+ * Spawn an objective attacker — regular enemy that targets the objective entity.
+ * Uses GRUNT stats (ranged fodder).
+ */
+export function spawnObjectiveAttacker(world: GameWorld, x: number, y: number, targetEid: number): number {
+  const eid = spawnGrunt(world, x, y)
+
+  // Shorter spawn-in delay so attackers engage the objective quickly
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.1, 0.2)
+
+  addComponent(world, ObjectiveRole, eid)
+  ObjectiveRole.role[eid] = ObjRole.ATTACKER
+  ObjectiveRole.targetEid[eid] = targetEid
 
   return eid
 }

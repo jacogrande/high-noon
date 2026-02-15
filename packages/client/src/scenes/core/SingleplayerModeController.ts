@@ -67,6 +67,7 @@ import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
 import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
 import { NpcRenderer } from '../../render/NpcRenderer'
+import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import { GameplayEventBuffer } from './GameplayEvents'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { FullWorldSimulationDriver } from './SimulationDriver'
@@ -118,6 +119,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
   private readonly npcRenderer: NpcRenderer
+  private readonly objectiveRenderer: ObjectiveRenderer
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
@@ -175,6 +177,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
     this.npcRenderer = new NpcRenderer(this.spriteRegistry)
+    this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
@@ -342,6 +345,27 @@ export class SingleplayerModeController implements SceneModeController {
         }
       }),
       minimap: buildSingleplayerMinimapState(this.world, playerEid),
+      objective: this.world.objective
+        ? (() => {
+            const o = this.world.objective!
+            const base = {
+              type: o.type,
+              description: o.description,
+              status: o.status,
+              progress: o.type === 'protect'
+                ? (o.targetEids.length > 0
+                    ? Health.current[o.targetEids[0]!]! / (Health.max[o.targetEids[0]!]! || 1)
+                    : 1)
+                : o.type === 'duel'
+                  ? (o.duelistEid && Health.max[o.duelistEid]! > 0
+                      ? Health.current[o.duelistEid]! / Health.max[o.duelistEid]!
+                      : 0)
+                  : o.escapedCount / (o.escapeThreshold || 1),
+            }
+            if (o.type === 'duel') return { ...base, forfeitTimer: o.forfeitTimer }
+            return base
+          })()
+        : null,
       campVisitor: this.world.campVisitor
         ? (() => {
             const vDef = getVisitorDef(this.world.campVisitor!.visitorId)
@@ -501,6 +525,7 @@ export class SingleplayerModeController implements SceneModeController {
       bulletRenderer: this.bulletRenderer,
       events: this.gameplayEvents,
       npcRenderer: this.npcRenderer,
+      objectiveRenderer: this.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
     })
 
@@ -632,6 +657,9 @@ export class SingleplayerModeController implements SceneModeController {
     // Render NPCs with interpolation
     this.npcRenderer.render(this.world, alpha)
 
+    // Render objective targets
+    this.objectiveRenderer.render(this.world, alpha)
+
     // Render dynamite pixel-fuse telegraphs + throw arcs.
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
 
@@ -716,6 +744,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.interactableRenderer.destroy()
     this.playerRenderer.destroy()
     this.npcRenderer.destroy()
+    this.objectiveRenderer.destroy()
     this.chatBubblePool.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()

@@ -9,10 +9,18 @@
 import { defineQuery, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
-import { Enemy, Position, Bullet, Player, Health } from '../components'
+import { Enemy, Position, Bullet, Player, Health, ObjectiveRole } from '../components'
 import { removeBullet, spawnNpc } from '../prefabs'
+import { initObjective, cleanupObjective } from './objectiveSystem'
 import { generateArena } from '../content/maps/mapGenerator'
 import { STAGE_NPC_SPAWNS } from '../content/npcs'
+import {
+  selectCampVisitor,
+  generateVisitorOffers,
+  pickVisitorGreeting,
+} from './campVisitor'
+import { getUpgradeStateForPlayer } from '../upgrade'
+import { getAlivePlayers } from '../queries'
 
 const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
 
@@ -38,6 +46,8 @@ export function clearAllEnemies(world: GameWorld): void {
   for (const eid of bulletCleanupQuery(world)) {
     removeBullet(world, eid)
   }
+  // Clean up objective entities
+  cleanupObjective(world)
   // Remove all NPCs
   for (const eid of world.npcEntities) {
     removeEntity(world, eid)
@@ -89,14 +99,23 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
   // Reset per-tick flag
   world.stageCleared = false
 
-  // Spawn NPCs if a stage is active but none have been spawned yet (covers stage 0)
+  // Spawn NPCs and init objective if a stage is active but none have been spawned yet (covers stage 0)
   if (run.transition === 'none' && !enc.completed && !run.npcsSpawned) {
     spawnStageNpcs(world, run.currentStage)
     run.npcsSpawned = true
+    // Initialize objective if configured for this stage
+    const stageEnc = run.stages[run.currentStage]
+    if (stageEnc?.objective && !world.objective) {
+      initObjective(world, stageEnc.objective)
+    }
   }
 
   // Detect encounter completion -> begin clearing
   if (enc.completed && run.transition === 'none') {
+    // Promote active objective to success (player survived the encounter)
+    if (world.objective?.status === 'active') {
+      world.objective.status = 'success'
+    }
     run.transition = 'clearing'
     run.transitionTimer = CAMP_CLEAR_DELAY
     world.stageCleared = true
@@ -125,6 +144,22 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
         const nextStageIndex = run.currentStage + 1
         const nextStage = run.stages[nextStageIndex]!
         run.pendingTilemap = generateArena(nextStage.mapConfig, world.initialSeed, nextStageIndex)
+
+        // Generate camp visitor
+        const visitor = selectCampVisitor(world.rng, run.previousVisitorIds)
+        const alivePlayers = getAlivePlayers(world)
+        // Union all players' items for duplicate avoidance in co-op
+        const allPlayerItems = new Map<number, number>()
+        for (const pEid of alivePlayers) {
+          const state = getUpgradeStateForPlayer(world, pEid)
+          for (const [itemId, stacks] of state.items) {
+            allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
+          }
+        }
+        const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
+        const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
+        run.lastGreetingIndex = greetingIdx
+        world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers }
       }
     }
     return
@@ -134,6 +169,17 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
   if (run.transition === 'camp') {
     if (world.campComplete) {
       world.campComplete = false
+      // Clean up camp visitor
+      if (world.campVisitor) {
+        run.previousVisitorIds.push(world.campVisitor.visitorId)
+        world.campVisitor = null
+      }
+      // Reset per-stage item state for all alive players
+      for (const pEid of getAlivePlayers(world)) {
+        const us = getUpgradeStateForPlayer(world, pEid)
+        us.peacemakerLastTarget = 0xFFFF
+        us.peacemakerHitCount = 0
+      }
       run.currentStage++
       const nextStage = run.stages[run.currentStage]!
       // Use pre-generated map (built on camp entry), fall back to generating if missing
@@ -143,6 +189,10 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
       setEncounter(world, nextStage)
       spawnStageNpcs(world, run.currentStage)
       run.npcsSpawned = true
+      // Initialize objective if configured for this stage
+      if (nextStage.objective) {
+        initObjective(world, nextStage.objective)
+      }
       run.transition = 'none'
     }
   }

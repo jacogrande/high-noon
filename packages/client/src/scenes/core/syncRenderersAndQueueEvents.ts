@@ -3,6 +3,7 @@ import type { BulletRenderer } from '../../render/BulletRenderer'
 import type { EnemyRenderer } from '../../render/EnemyRenderer'
 import type { PlayerRenderer } from '../../render/PlayerRenderer'
 import type { NpcRenderer } from '../../render/NpcRenderer'
+import type { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import type { ChatBubblePool } from '../../fx/ChatBubblePool'
 import { GameplayEventBuffer } from './GameplayEvents'
 
@@ -13,6 +14,7 @@ export interface RendererSyncContext {
   bulletRenderer: BulletRenderer
   events: GameplayEventBuffer
   npcRenderer?: NpcRenderer
+  objectiveRenderer?: ObjectiveRenderer
   chatBubblePool?: ChatBubblePool
 }
 
@@ -42,6 +44,10 @@ export function syncRenderersAndQueueEvents(ctx: RendererSyncContext): void {
       type: 'bullet-removed',
       positions: bulletRenderer.removedPositions.map(p => ({ x: p.x, y: p.y })),
     })
+  }
+
+  if (ctx.objectiveRenderer) {
+    ctx.objectiveRenderer.sync(world)
   }
 
   if (ctx.npcRenderer) {

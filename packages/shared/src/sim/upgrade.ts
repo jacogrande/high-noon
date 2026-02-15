@@ -11,12 +11,16 @@ import {
   computeHyperbolicChance,
   TIN_STAR_COEFFICIENT,
   FOOLS_GOLD_PER_STACK,
+  PROSPECTORS_MAP_PER_STACK,
   MAX_ITEM_SLOTS,
 } from './content/items'
 
 // Resolve item IDs once at module load to avoid hardcoding
 const TIN_STAR_BADGE_ID = getItemDefByKey('tin_star_badge')!.id
 const FOOLS_GOLD_NUGGET_ID = getItemDefByKey('fools_gold_nugget')!.id
+const PROSPECTORS_MAP_ID = getItemDefByKey('prospectors_map')!.id
+const WORN_SADDLEBAG_ID = getItemDefByKey('worn_saddlebag')!.id
+const DEVILS_BARGAIN_ID = getItemDefByKey('devils_bargain')!.id
 
 export interface UpgradeState {
   characterDef: CharacterDef
@@ -113,6 +117,22 @@ export interface UpgradeState {
   openCasketAvailable: boolean
   openCasketCooldownTimer: number
   finalArrangementActive: boolean
+
+  // Camp expansion item state
+  /** Bandolier: damage multiplier for next shot after reload (0 = none) */
+  bandolierFirstShotBonus: number
+  /** Peacemaker: EID of last hit enemy */
+  peacemakerLastTarget: number
+  /** Peacemaker: consecutive hits on that target */
+  peacemakerHitCount: number
+  /** Witching Hour: whether double fire rate is active */
+  witchingHourActive: boolean
+  /** Witching Hour: remaining seconds of boost */
+  witchingHourTimer: number
+  /** Desert Rose: HP to heal at wave start */
+  desertRoseHealQueued: number
+  /** Computed max item slots (base + Worn Saddlebag stacks) */
+  maxItems: number
 }
 
 export function initUpgradeState(charDef: CharacterDef): UpgradeState {
@@ -181,6 +201,13 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     openCasketAvailable: true,
     openCasketCooldownTimer: 0,
     finalArrangementActive: false,
+    bandolierFirstShotBonus: 0,
+    peacemakerLastTarget: 0xFFFF,
+    peacemakerHitCount: 0,
+    witchingHourActive: false,
+    witchingHourTimer: 0,
+    desertRoseHealQueued: 0,
+    maxItems: MAX_ITEM_SLOTS,
   }
 }
 
@@ -294,7 +321,19 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.blockChance = computeHyperbolicChance(TIN_STAR_COEFFICIENT, tinStarStacks)
 
   const foolsGoldStacks = state.items.get(FOOLS_GOLD_NUGGET_ID) ?? 0
-  state.goldMultiplier = 1 + FOOLS_GOLD_PER_STACK * foolsGoldStacks
+  const prospectorsMapStacks = state.items.get(PROSPECTORS_MAP_ID) ?? 0
+  state.goldMultiplier = 1 + FOOLS_GOLD_PER_STACK * foolsGoldStacks + PROSPECTORS_MAP_PER_STACK * prospectorsMapStacks
+
+  // Worn Saddlebag: +1 item slot per stack
+  const saddlebagStacks = state.items.get(WORN_SADDLEBAG_ID) ?? 0
+  state.maxItems = MAX_ITEM_SLOTS + saddlebagStacks
+
+  // Devil's Bargain: +40% damage per stack, max HP halved per stack
+  const devilsStacks = state.items.get(DEVILS_BARGAIN_ID) ?? 0
+  if (devilsStacks > 0) {
+    state.bulletDamage *= (1 + 0.40 * devilsStacks)
+    state.maxHP = Math.ceil(state.maxHP / (1 + devilsStacks))
+  }
 }
 
 /**
@@ -447,8 +486,8 @@ export function addItem(state: UpgradeState, itemId: number): boolean {
     return true
   }
 
-  // New item — check slot cap
-  if (state.items.size >= MAX_ITEM_SLOTS) return false
+  // New item — check slot cap (dynamic via Worn Saddlebag)
+  if (state.items.size >= state.maxItems) return false
   state.items.set(itemId, 1)
   return true
 }

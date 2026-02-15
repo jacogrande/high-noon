@@ -9,12 +9,14 @@
 
 import type { GameWorld } from '../world'
 import type { BulletHitResult } from '../hooks'
-import { Health, Cylinder, Position } from '../components'
-import { hasComponent } from 'bitecs'
+import { Health, Cylinder, Position, Bullet, Enemy } from '../components'
+import { hasComponent, defineQuery } from 'bitecs'
 import { forEachAliveEnemyInRadius } from '../systems/damageHelpers'
 import { applyDamage } from '../systems/applyDamage'
+import { applySlow } from '../systems/slowDebuff'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { getItemDef } from './items'
+import { BONUS_GOLD_DROP_VALUE } from './gold'
 
 /** Build a per-player hook ID for an item effect */
 function itemHookId(key: string, playerEid: number): string {
@@ -163,6 +165,186 @@ function registerGrimHarvest(world: GameWorld, _stacks: number, ownerEid: number
   }, 20) // Run last so other kill effects fire first, then we re-fire them
 }
 
+/**
+ * Lightning Rod — 8% chance per stack: chain lightning to nearest enemy on kill.
+ * Deals 25 damage to nearest enemy within 128px.
+ */
+function registerLightningRod(world: GameWorld, stacks: number, ownerEid: number): void {
+  world.hooks.register('onKill', itemHookId('lightning_rod', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+    victimEid: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    const chance = Math.min(0.08 * stacks, 1.0)
+    if (w.rng.next() >= chance) return
+
+    const vx = Position.x[victimEid]!
+    const vy = Position.y[victimEid]!
+    let nearestEid = -1
+    let nearestDistSq = Infinity
+
+    forEachAliveEnemyInRadius(w, vx, vy, 128, (enemyEid, _dx, _dy, distSq) => {
+      if (enemyEid === victimEid) return
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq
+        nearestEid = enemyEid
+      }
+    })
+
+    if (nearestEid >= 0) {
+      applyDamage(w, nearestEid, {
+        amount: 25,
+        ownerPlayerEid: playerEid,
+      })
+    }
+  })
+}
+
+/**
+ * Cactus Spine — reflect 15 damage per stack to attacker when player takes damage.
+ */
+function registerCactusSpine(world: GameWorld, stacks: number, ownerEid: number): void {
+  world.hooks.register('onHealthChanged', itemHookId('cactus_spine', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+    oldHP: number,
+    newHP: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    if (newHP >= oldHP) return // only on damage
+
+    // Find the nearest enemy within melee range to reflect damage to
+    const px = Position.x[playerEid]!
+    const py = Position.y[playerEid]!
+    let nearestEid = -1
+    let nearestDistSq = Infinity
+    forEachAliveEnemyInRadius(w, px, py, 80, (enemyEid, _dx, _dy, distSq) => {
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq
+        nearestEid = enemyEid
+      }
+    })
+
+    if (nearestEid >= 0) {
+      applyDamage(w, nearestEid, {
+        amount: 15 * stacks,
+        ownerPlayerEid: playerEid,
+      })
+    }
+  })
+}
+
+/**
+ * Scorpion Stinger — bullets slow enemies by 12% per stack for 1.5s.
+ */
+function registerScorpionStinger(world: GameWorld, stacks: number, playerEid: number): void {
+  world.hooks.register('onBulletHit', itemHookId('scorpion_stinger', playerEid), (
+    w: GameWorld,
+    _bulletEid: number,
+    targetEid: number,
+    damage: number,
+  ): BulletHitResult => {
+    // Apply slow debuff (lower multiplier = more slow)
+    const slowMul = Math.max(0.2, 1 - 0.12 * stacks)
+    if (hasComponent(w, Enemy, targetEid)) {
+      applySlow(w, targetEid, slowMul, 1.5)
+    }
+    return { damage, pierce: false }
+  })
+}
+
+/**
+ * Bandolier — first shot after reload deals +50% damage per stack.
+ * Sets bonus on reload; consumed in weaponSystem.
+ */
+function registerBandolier(world: GameWorld, stacks: number, ownerEid: number): void {
+  world.hooks.register('onReload', itemHookId('bandolier', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    const us = getUpgradeStateForPlayer(w, playerEid)
+    us.bandolierFirstShotBonus = 0.5 * stacks
+  })
+}
+
+/**
+ * Bounty Notice — 10% chance per stack to drop bonus gold on kill.
+ */
+function registerBountyNotice(world: GameWorld, stacks: number, ownerEid: number): void {
+  world.hooks.register('onKill', itemHookId('bounty_notice', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+    victimEid: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    const chance = Math.min(0.10 * stacks, 1.0)
+    if (w.rng.next() < chance) {
+      w.goldNuggets.push({
+        x: Position.x[victimEid]!,
+        y: Position.y[victimEid]!,
+        value: BONUS_GOLD_DROP_VALUE,
+        lifetime: 10,
+      })
+    }
+  })
+}
+
+/**
+ * Peacemaker — consecutive hits on same target deal +10% damage per stack.
+ */
+function registerPeacemaker(world: GameWorld, stacks: number, playerEid: number): void {
+  world.hooks.register('onBulletHit', itemHookId('peacemaker', playerEid), (
+    w: GameWorld,
+    _bulletEid: number,
+    targetEid: number,
+    damage: number,
+  ): BulletHitResult => {
+    const us = getUpgradeStateForPlayer(w, playerEid)
+    if (targetEid === us.peacemakerLastTarget) {
+      us.peacemakerHitCount++
+    } else {
+      us.peacemakerLastTarget = targetEid
+      us.peacemakerHitCount = 1
+    }
+    const bonusMul = 1 + 0.10 * stacks * (us.peacemakerHitCount - 1)
+    return { damage: Math.round(damage * bonusMul), pierce: false }
+  })
+}
+
+/**
+ * Witching Hour — 3s of double fire rate when cylinder empties.
+ */
+function registerWitchingHour(world: GameWorld, _stacks: number, ownerEid: number): void {
+  world.hooks.register('onCylinderEmpty', itemHookId('witching_hour', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    const us = getUpgradeStateForPlayer(w, playerEid)
+    us.witchingHourActive = true
+    us.witchingHourTimer = 3.0
+  })
+}
+
+/**
+ * Desert Rose — heal 2 HP per stack at wave start.
+ */
+function registerDesertRose(world: GameWorld, stacks: number, ownerEid: number): void {
+  world.hooks.register('onWaveStart', itemHookId('desert_rose', ownerEid), (
+    w: GameWorld,
+    _waveNumber: number,
+  ) => {
+    const healAmount = 2 * stacks
+    const current = Health.current[ownerEid]!
+    const max = Health.max[ownerEid]!
+    if (current > 0 && current < max) {
+      Health.current[ownerEid] = Math.min(current + healAmount, max)
+    }
+  })
+}
+
 // ============================================================================
 // Effect Registry
 // ============================================================================
@@ -176,6 +358,14 @@ const ITEM_EFFECT_REGISTRY: Record<string, ItemEffectRegistrar> = {
   sidewinder_belt: registerSidewinderBelt,
   dead_mans_deed: registerDeadMansDeed,
   grim_harvest: registerGrimHarvest,
+  lightning_rod: registerLightningRod,
+  cactus_spine: registerCactusSpine,
+  scorpion_stinger: registerScorpionStinger,
+  bandolier: registerBandolier,
+  bounty_notice: registerBountyNotice,
+  peacemaker: registerPeacemaker,
+  witching_hour: registerWitchingHour,
+  desert_rose: registerDesertRose,
 }
 
 /**

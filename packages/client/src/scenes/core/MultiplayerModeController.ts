@@ -63,6 +63,7 @@ import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
 import { NpcRenderer } from '../../render/NpcRenderer'
+import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { ClockSync } from '../../net/ClockSync'
 import { InputBuffer } from '../../net/InputBuffer'
@@ -119,6 +120,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly bulletRenderer: BulletRenderer
   private readonly enemyRenderer: EnemyRenderer
   private readonly npcRenderer: NpcRenderer
+  private readonly objectiveRenderer: ObjectiveRenderer
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
@@ -227,6 +229,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
     this.npcRenderer = new NpcRenderer(this.spriteRegistry)
+    this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
 
     // Debug graphics in entity layer (world space)
@@ -759,6 +762,7 @@ export class MultiplayerModeController implements SceneModeController {
       bulletRenderer: this.bulletRenderer,
       events: this.gameplayEvents,
       npcRenderer: this.npcRenderer,
+      objectiveRenderer: this.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
     })
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
@@ -817,6 +821,7 @@ export class MultiplayerModeController implements SceneModeController {
     }
     this.enemyRenderer.render(this.world, alpha, realDt)
     this.npcRenderer.render(this.world, alpha)
+    this.objectiveRenderer.render(this.world, alpha)
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
     this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
@@ -979,6 +984,7 @@ export class MultiplayerModeController implements SceneModeController {
       interactionFeedbackDescription: hud?.interactionFeedbackDescription ?? null,
       items: hud?.items ?? [],
       minimap,
+      objective: hud?.objective ?? null,
       campVisitor: hud?.campVisitor ?? null,
     }
   }
@@ -1058,6 +1064,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.interactableRenderer.destroy()
     this.playerRenderer.destroy()
     this.npcRenderer.destroy()
+    this.objectiveRenderer.destroy()
     this.chatBubblePool.destroy()
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()

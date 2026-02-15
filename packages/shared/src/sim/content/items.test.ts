@@ -12,8 +12,8 @@ import {
 } from './items'
 
 describe('items', () => {
-  test('all 12 Wave 1 items are defined', () => {
-    expect(getAllItems().length).toBe(12)
+  test('all 24 items are defined', () => {
+    expect(getAllItems().length).toBe(24)
   })
 
   test('getItemDef returns correct item by id', () => {
@@ -31,9 +31,10 @@ describe('items', () => {
   })
 
   test('getItemsByRarity returns correct counts', () => {
-    expect(getItemsByRarity('brass').length).toBe(6)
-    expect(getItemsByRarity('silver').length).toBe(4)
-    expect(getItemsByRarity('gold').length).toBe(2)
+    expect(getItemsByRarity('brass').length).toBe(9)
+    expect(getItemsByRarity('silver').length).toBe(8)
+    expect(getItemsByRarity('gold').length).toBe(6)
+    expect(getItemsByRarity('cursed').length).toBe(1)
   })
 
   test('all item IDs are unique', () => {
@@ -46,10 +47,11 @@ describe('items', () => {
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  test('gold items have maxStack = 1', () => {
+  test('unique gold items have maxStack = 1', () => {
     for (const item of getItemsByRarity('gold')) {
-      expect(item.maxStack).toBe(1)
-      expect(item.stackFormula).toBe('unique')
+      if (item.stackFormula === 'unique') {
+        expect(item.maxStack).toBe(1)
+      }
     }
   })
 

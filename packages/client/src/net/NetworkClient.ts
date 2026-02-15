@@ -142,6 +142,10 @@ export class NetworkClient {
     this.room?.send('set-camp-ready', { ready })
   }
 
+  sendCampPurchase(offerIndex: number): void {
+    this.room?.send('camp-purchase', { offerIndex })
+  }
+
   sendCharacter(characterId: CharacterId): void {
     this.room?.send('set-character', { characterId })
   }

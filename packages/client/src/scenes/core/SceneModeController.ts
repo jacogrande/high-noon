@@ -9,6 +9,7 @@ export interface SceneModeController {
   getSkillTreeData(): SkillTreeUIData | null
   selectNode(nodeId: string): boolean
   completeCamp(): void
+  handleVisitorPurchase?(offerIndex: number): boolean
   setWorldVisible(visible: boolean): void
   isDisconnected(): boolean
   destroy(): void

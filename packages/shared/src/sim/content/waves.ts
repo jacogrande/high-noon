@@ -9,6 +9,7 @@
 import { EnemyType } from '../components'
 import type { MapConfig } from './maps/mapConfig'
 import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './maps/mapConfig'
+import { STAGE_1_DUEL, STAGE_2_PROTECT, STAGE_3_INTERCEPT } from './objectives'
 
 export interface FodderPool {
   type: number       // EnemyType
@@ -29,14 +30,36 @@ export interface WaveDefinition {
   threatClearRatio: number // fraction of threats to kill for wave advance (0-1)
 }
 
+export interface ObjectiveConfig {
+  type: 'protect' | 'intercept' | 'duel'
+  description: string
+  // Protect
+  protectHP?: number
+  protectPosition?: 'center' | 'random'
+  attackerSpawnInterval?: number
+  maxAttackersAlive?: number
+  // Intercept
+  runnerSpawnInterval?: number
+  runnerSpeed?: number
+  runnerHP?: number
+  escapeThreshold?: number
+  totalRunners?: number
+  // Duel
+  duelistHP?: number
+  duelistDamage?: number
+  ringRadius?: number
+}
+
 export interface StageEncounter {
   waves: WaveDefinition[]
   mapConfig: MapConfig
+  objective?: ObjectiveConfig
 }
 
 /** Stage 1: Town Outskirts — easy intro (2 waves) */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_1_MAP_CONFIG,
+  objective: STAGE_1_DUEL,
   waves: [
     // Wave 1: Swarmers + 1 shooter
     {
@@ -73,6 +96,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
 /** Stage 2: Badlands — medium pressure (2 waves) */
 export const STAGE_2_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_2_MAP_CONFIG,
+  objective: STAGE_2_PROTECT,
   waves: [
     // Wave 1: Mixed fodder + 1 shooter + 1 charger
     {
@@ -113,6 +137,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
 /** Stage 3: Devil's Canyon — hard finish (2 waves) */
 export const STAGE_3_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_3_MAP_CONFIG,
+  objective: STAGE_3_INTERCEPT,
   waves: [
     // Wave 1: Pressure + 1 shooter + 1 charger
     {

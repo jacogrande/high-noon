@@ -55,6 +55,14 @@ export interface HUDState {
   interactionFeedbackDescription?: string | null
   items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
   minimap: MinimapState | null
+  objective: {
+    type: string
+    description: string
+    status: 'active' | 'success' | 'soft_failure'
+    progress: number
+    /** Duel-only: forfeit warning timer (> 0 means player outside ring) */
+    forfeitTimer?: number
+  } | null
   campVisitor: {
     visitorId: number
     visitorName: string

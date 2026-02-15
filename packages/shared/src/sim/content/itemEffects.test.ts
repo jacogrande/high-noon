@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
-import { addComponent, addEntity } from 'bitecs'
+import { addComponent, addEntity, hasComponent } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import {
@@ -14,10 +14,12 @@ import {
   Enemy,
   Dead,
   Collider,
+  SlowDebuff,
 } from '../components'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { spatialHashSystem } from '../systems/spatialHash'
 import { getItemDefByKey } from './items'
+import { BONUS_GOLD_DROP_VALUE } from './gold'
 
 /**
  * Helper to spawn a minimal enemy entity for testing
@@ -633,5 +635,396 @@ describe('reapplyAllItemEffects', () => {
     const result = world.hooks.fireBulletHit(world, bulletEid, enemyEid, 10)
 
     expect(result.damage).toBe(10) // Effect cleared
+  })
+})
+
+// ============================================================================
+// Wave 2 Item Effects
+// ============================================================================
+
+describe('Lightning Rod', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('at 13 stacks (100%), chains 25 damage to nearest enemy', () => {
+    applyItemEffect(world, 'lightning_rod', 13, playerEid)
+
+    const victim = spawnEnemy(world, 200, 200, 10)
+    const nearby = spawnEnemy(world, 250, 200, 50) // within 128px of victim
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireKill(world, playerEid, victim)
+
+    expect(Health.current[nearby]).toBe(25) // 50 - 25
+  })
+
+  test('does not chain to enemies outside 128px', () => {
+    applyItemEffect(world, 'lightning_rod', 13, playerEid)
+
+    const victim = spawnEnemy(world, 200, 200, 10)
+    const far = spawnEnemy(world, 500, 500, 50) // > 128px away
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireKill(world, playerEid, victim)
+
+    expect(Health.current[far]).toBe(50) // untouched
+  })
+
+  test('does not trigger for other players', () => {
+    const player2 = spawnPlayer(world, 300, 300)
+    applyItemEffect(world, 'lightning_rod', 13, playerEid)
+
+    const victim = spawnEnemy(world, 200, 200, 10)
+    const nearby = spawnEnemy(world, 250, 200, 50)
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireKill(world, player2, victim)
+
+    expect(Health.current[nearby]).toBe(50) // no chain
+  })
+})
+
+describe('Cactus Spine', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('reflects 15 damage per stack to nearest enemy on damage', () => {
+    applyItemEffect(world, 'cactus_spine', 2, playerEid)
+
+    const enemy = spawnEnemy(world, 130, 100, 50) // within 80px
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireHealthChanged(world, playerEid, 10, 7) // took 3 damage
+
+    expect(Health.current[enemy]).toBe(20) // 50 - 15*2 = 20
+  })
+
+  test('does not reflect on heal', () => {
+    applyItemEffect(world, 'cactus_spine', 1, playerEid)
+
+    const enemy = spawnEnemy(world, 130, 100, 50)
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireHealthChanged(world, playerEid, 5, 8) // heal
+
+    expect(Health.current[enemy]).toBe(50) // no reflection
+  })
+
+  test('does nothing if no enemies nearby', () => {
+    applyItemEffect(world, 'cactus_spine', 1, playerEid)
+
+    const enemy = spawnEnemy(world, 500, 500, 50) // far away
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireHealthChanged(world, playerEid, 10, 7)
+
+    expect(Health.current[enemy]).toBe(50) // untouched
+  })
+})
+
+describe('Scorpion Stinger', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('applies slow debuff on bullet hit', () => {
+    applyItemEffect(world, 'scorpion_stinger', 1, playerEid)
+
+    const bullet = spawnBullet(world, playerEid)
+    const enemy = spawnEnemy(world, 150, 150, 20)
+
+    const result = world.hooks.fireBulletHit(world, bullet, enemy, 10)
+
+    expect(result.damage).toBe(10) // damage unchanged
+    expect(hasComponent(world, SlowDebuff, enemy)).toBe(true)
+    expect(SlowDebuff.multiplier[enemy]).toBeCloseTo(0.88, 2) // 1 - 0.12*1
+    expect(SlowDebuff.duration[enemy]).toBeCloseTo(1.5, 2)
+  })
+
+  test('slow scales with stacks, capped at 0.2', () => {
+    applyItemEffect(world, 'scorpion_stinger', 5, playerEid)
+
+    const bullet = spawnBullet(world, playerEid)
+    const enemy = spawnEnemy(world, 150, 150, 20)
+
+    world.hooks.fireBulletHit(world, bullet, enemy, 10)
+
+    expect(SlowDebuff.multiplier[enemy]).toBeCloseTo(0.40, 2) // 1 - 0.12*5
+  })
+
+  test('slow minimum is 0.2 (never reaches 0)', () => {
+    applyItemEffect(world, 'scorpion_stinger', 10, playerEid)
+
+    const bullet = spawnBullet(world, playerEid)
+    const enemy = spawnEnemy(world, 150, 150, 20)
+
+    world.hooks.fireBulletHit(world, bullet, enemy, 10)
+
+    expect(SlowDebuff.multiplier[enemy]).toBeCloseTo(0.2, 2) // clamped
+  })
+})
+
+describe('Bandolier', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('sets first-shot bonus on reload', () => {
+    applyItemEffect(world, 'bandolier', 2, playerEid)
+
+    world.hooks.fireReload(world, playerEid)
+
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.bandolierFirstShotBonus).toBeCloseTo(1.0, 2) // 0.5 * 2
+  })
+
+  test('does not trigger for other players', () => {
+    const player2 = spawnPlayer(world, 300, 300)
+    applyItemEffect(world, 'bandolier', 2, playerEid)
+
+    world.hooks.fireReload(world, player2)
+
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.bandolierFirstShotBonus).toBe(0)
+  })
+
+  test('overwrites previous bonus on re-reload', () => {
+    applyItemEffect(world, 'bandolier', 1, playerEid)
+
+    world.hooks.fireReload(world, playerEid)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.bandolierFirstShotBonus).toBeCloseTo(0.5)
+
+    // Second reload refreshes it
+    world.hooks.fireReload(world, playerEid)
+    expect(us.bandolierFirstShotBonus).toBeCloseTo(0.5)
+  })
+})
+
+describe('Bounty Notice', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('at 10 stacks (100%), always drops gold nugget', () => {
+    applyItemEffect(world, 'bounty_notice', 10, playerEid)
+
+    const enemy = spawnEnemy(world, 200, 200, 10)
+    const nuggetsBefore = world.goldNuggets.length
+
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(world.goldNuggets.length).toBe(nuggetsBefore + 1)
+    const nugget = world.goldNuggets[world.goldNuggets.length - 1]!
+    expect(nugget.value).toBe(BONUS_GOLD_DROP_VALUE)
+    expect(nugget.x).toBe(Position.x[enemy])
+    expect(nugget.y).toBe(Position.y[enemy])
+  })
+
+  test('does not trigger for other players', () => {
+    const player2 = spawnPlayer(world, 300, 300)
+    applyItemEffect(world, 'bounty_notice', 10, playerEid)
+
+    const enemy = spawnEnemy(world, 200, 200, 10)
+    const nuggetsBefore = world.goldNuggets.length
+
+    world.hooks.fireKill(world, player2, enemy)
+
+    expect(world.goldNuggets.length).toBe(nuggetsBefore)
+  })
+
+  test('at 0 stacks, never drops', () => {
+    applyItemEffect(world, 'bounty_notice', 0, playerEid)
+
+    const enemy = spawnEnemy(world, 200, 200, 10)
+    const nuggetsBefore = world.goldNuggets.length
+
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(world.goldNuggets.length).toBe(nuggetsBefore)
+  })
+})
+
+describe('Peacemaker', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('first hit on target does base damage', () => {
+    applyItemEffect(world, 'peacemaker', 1, playerEid)
+
+    const bullet = spawnBullet(world, playerEid)
+    const enemy = spawnEnemy(world, 150, 150, 100)
+
+    const result = world.hooks.fireBulletHit(world, bullet, enemy, 10)
+
+    // First hit: bonusMul = 1 + 0.10 * 1 * (1-1) = 1.0
+    expect(result.damage).toBe(10)
+  })
+
+  test('consecutive hits on same target ramp up', () => {
+    applyItemEffect(world, 'peacemaker', 1, playerEid)
+
+    const enemy = spawnEnemy(world, 150, 150, 100)
+
+    const b1 = spawnBullet(world, playerEid)
+    const r1 = world.hooks.fireBulletHit(world, b1, enemy, 10)
+    expect(r1.damage).toBe(10) // hit 1: mul = 1.0
+
+    const b2 = spawnBullet(world, playerEid)
+    const r2 = world.hooks.fireBulletHit(world, b2, enemy, 10)
+    expect(r2.damage).toBe(11) // hit 2: mul = 1 + 0.10*1*1 = 1.1
+
+    const b3 = spawnBullet(world, playerEid)
+    const r3 = world.hooks.fireBulletHit(world, b3, enemy, 10)
+    expect(r3.damage).toBe(12) // hit 3: mul = 1 + 0.10*1*2 = 1.2
+  })
+
+  test('switching targets resets counter', () => {
+    applyItemEffect(world, 'peacemaker', 1, playerEid)
+
+    const enemy1 = spawnEnemy(world, 150, 150, 100)
+    const enemy2 = spawnEnemy(world, 200, 200, 100)
+
+    // Hit enemy1 twice
+    world.hooks.fireBulletHit(world, spawnBullet(world, playerEid), enemy1, 10)
+    world.hooks.fireBulletHit(world, spawnBullet(world, playerEid), enemy1, 10)
+
+    // Switch to enemy2 — resets
+    const result = world.hooks.fireBulletHit(world, spawnBullet(world, playerEid), enemy2, 10)
+    expect(result.damage).toBe(10) // first hit on new target
+  })
+
+  test('stacks multiply the per-hit bonus', () => {
+    applyItemEffect(world, 'peacemaker', 3, playerEid)
+
+    const enemy = spawnEnemy(world, 150, 150, 100)
+
+    world.hooks.fireBulletHit(world, spawnBullet(world, playerEid), enemy, 10)
+    const r2 = world.hooks.fireBulletHit(world, spawnBullet(world, playerEid), enemy, 10)
+
+    // hit 2: mul = 1 + 0.10*3*1 = 1.3
+    expect(r2.damage).toBe(13)
+  })
+})
+
+describe('Witching Hour', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('activates 3s timer on cylinder empty', () => {
+    applyItemEffect(world, 'witching_hour', 1, playerEid)
+
+    world.hooks.fireCylinderEmpty(world, playerEid)
+
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.witchingHourActive).toBe(true)
+    expect(us.witchingHourTimer).toBeCloseTo(3.0)
+  })
+
+  test('does not trigger for other players', () => {
+    const player2 = spawnPlayer(world, 300, 300)
+    applyItemEffect(world, 'witching_hour', 1, playerEid)
+
+    world.hooks.fireCylinderEmpty(world, player2)
+
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.witchingHourActive).toBe(false)
+  })
+
+  test('refreshes timer if already active', () => {
+    applyItemEffect(world, 'witching_hour', 1, playerEid)
+
+    world.hooks.fireCylinderEmpty(world, playerEid)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.witchingHourTimer = 1.0 // simulate partial decay
+
+    world.hooks.fireCylinderEmpty(world, playerEid)
+    expect(us.witchingHourTimer).toBeCloseTo(3.0)
+  })
+})
+
+describe('Desert Rose', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('heals 2 HP per stack on wave start', () => {
+    applyItemEffect(world, 'desert_rose', 2, playerEid)
+
+    Health.current[playerEid] = 5
+    Health.max[playerEid] = 20
+
+    world.hooks.fireWaveStart(world, 1)
+
+    expect(Health.current[playerEid]).toBe(9) // 5 + 2*2
+  })
+
+  test('does not exceed max HP', () => {
+    applyItemEffect(world, 'desert_rose', 5, playerEid)
+
+    Health.current[playerEid] = 18
+    Health.max[playerEid] = 20
+
+    world.hooks.fireWaveStart(world, 1)
+
+    expect(Health.current[playerEid]).toBe(20) // capped at max
+  })
+
+  test('does not heal at full HP', () => {
+    applyItemEffect(world, 'desert_rose', 1, playerEid)
+
+    Health.current[playerEid] = 20
+    Health.max[playerEid] = 20
+
+    world.hooks.fireWaveStart(world, 1)
+
+    expect(Health.current[playerEid]).toBe(20)
+  })
+
+  test('does not heal dead players (HP = 0)', () => {
+    applyItemEffect(world, 'desert_rose', 1, playerEid)
+
+    Health.current[playerEid] = 0
+    Health.max[playerEid] = 20
+
+    world.hooks.fireWaveStart(world, 1)
+
+    expect(Health.current[playerEid]).toBe(0) // still dead
   })
 })

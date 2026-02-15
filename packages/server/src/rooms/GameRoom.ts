@@ -900,6 +900,29 @@ export class GameRoom extends Room<GameRoomState> {
           })()
         : null
 
+      // Objective data (global, same for all players)
+      const obj = this.world.objective
+      let objectiveHud: HudData['objective'] = null
+      if (obj) {
+        const baseObj = {
+          type: obj.type,
+          description: obj.description,
+          status: obj.status,
+          progress: obj.type === 'protect'
+            ? (obj.targetEids.length > 0
+                ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
+                : 1)
+            : obj.type === 'duel'
+              ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
+                  ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
+                  : 0)
+              : obj.escapedCount / (obj.escapeThreshold || 1),
+        }
+        objectiveHud = obj.type === 'duel'
+          ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
+          : baseObj
+      }
+
       const hud: HudData = {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
@@ -928,6 +951,7 @@ export class GameRoom extends Room<GameRoomState> {
         totalStages,
         stageStatus,
         items,
+        objective: objectiveHud,
         campVisitor: campVisitorHud,
       }
       slot.client.send('hud', hud)

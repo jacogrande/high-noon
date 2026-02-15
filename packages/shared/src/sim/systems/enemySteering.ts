@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy } from '../components'
+import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole } from '../components'
 import { NO_TARGET } from '../prefabs'
 import { getFloorTileTypeAt, isSolidAt, TileType, worldToTile } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -101,6 +101,28 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
   const enemies = steeringQuery(world)
 
   for (const eid of enemies) {
+    // Objective-role enemies: direct seek toward their assigned target
+    // (flow field points at players, not objective entities)
+    if (hasComponent(world, ObjectiveRole, eid) && ObjectiveRole.role[eid] !== ObjRole.NONE) {
+      const destEid = ObjectiveRole.targetEid[eid]!
+      const ex = Position.x[eid]!
+      const ey = Position.y[eid]!
+      const tx = Position.x[destEid]!
+      const ty = Position.y[destEid]!
+      const dx = tx - ex
+      const dy = ty - ey
+      const len = Math.sqrt(dx * dx + dy * dy)
+      const speed = Speed.current[eid]!
+      if (len > 0) {
+        Velocity.x[eid] = (dx / len) * speed
+        Velocity.y[eid] = (dy / len) * speed
+      } else {
+        Velocity.x[eid] = 0
+        Velocity.y[eid] = 0
+      }
+      continue
+    }
+
     const state = EnemyAI.state[eid]!
 
     // Non-CHASE states: stop movement (except ATTACK, managed by enemyAttackSystem)
@@ -237,6 +259,23 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
             desiredX = reroute.x
             desiredY = reroute.y
           }
+        }
+      }
+    }
+
+    // Duel ring boundary: non-duelist enemies are pushed out of the ring
+    const obj = world.objective
+    if (obj && obj.type === 'duel' && obj.status === 'active' && eid !== obj.duelistEid) {
+      const rdx = ex - obj.ringCenterX
+      const rdy = ey - obj.ringCenterY
+      const rDistSq = rdx * rdx + rdy * rdy
+      const ringR = obj.ringRadius
+      if (rDistSq < ringR * ringR) {
+        // Inside ring — override to push outward
+        const rDist = Math.sqrt(rDistSq)
+        if (rDist > 0) {
+          desiredX = rdx / rDist
+          desiredY = rdy / rDist
         }
       }
     }

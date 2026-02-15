@@ -26,6 +26,9 @@ export const GOLD_TIME_COEFF_PER_MINUTE = 0.1012
 export const GOLD_STAGE_COEFF_PER_STAGE = 0.3
 export const GOLD_MELEE_BONUS_MULTIPLIER = 2
 
+/** Bonus gold value dropped by Bounty Notice item effect */
+export const BONUS_GOLD_DROP_VALUE = 5
+
 function getStagesCleared(world: Pick<GameWorld, 'run'>): number {
   if (!world.run) return 0
   if (world.run.completed) return Math.max(0, world.run.totalStages)

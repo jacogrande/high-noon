@@ -132,6 +132,12 @@ export function weaponSystem(
       us.deadweightBuffTimer = 0
     }
 
+    // Bandolier: first shot after reload deals bonus damage
+    if (us.bandolierFirstShotBonus > 0 && hasCylinder && Cylinder.firstShotAfterReload[eid] === 1) {
+      bulletDamage = clampDamage(bulletDamage * (1 + us.bandolierFirstShotBonus))
+      us.bandolierFirstShotBonus = 0
+    }
+
     // Last round bonus: if cylinder has exactly 1 round, apply multiplier
     if (hasCylinder && Cylinder.rounds[eid] === 1) {
       const multiplier = us.lastRoundMultiplier
@@ -195,7 +201,12 @@ export function weaponSystem(
 
       // Always set hold-rate cooldown. Click-to-fire advantage is at the
       // gate (rising edge can fire through remaining cooldown early).
-      Cylinder.fireCooldown[eid] = 1 / us.holdFireRate
+      let fireCooldown = 1 / us.holdFireRate
+      // Witching Hour: double fire rate (halve cooldown)
+      if (us.witchingHourActive) {
+        fireCooldown *= 0.5
+      }
+      Cylinder.fireCooldown[eid] = fireCooldown
     }
   }
 }

@@ -13,7 +13,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player } from '../components'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET, removeBullet } from '../prefabs'
 import { clampDamage } from '../damage'
 import { isSolidAt } from '../tilemap'
@@ -32,7 +32,8 @@ const damageableQuery = defineQuery([Health, Position, Collider])
 function canBulletHitTarget(bulletLayer: number, targetLayer: number): boolean {
   return (
     (bulletLayer === CollisionLayer.PLAYER_BULLET && targetLayer === CollisionLayer.ENEMY) ||
-    (bulletLayer === CollisionLayer.ENEMY_BULLET && targetLayer === CollisionLayer.PLAYER)
+    (bulletLayer === CollisionLayer.ENEMY_BULLET && targetLayer === CollisionLayer.PLAYER) ||
+    (bulletLayer === CollisionLayer.ENEMY_BULLET && targetLayer === CollisionLayer.OBJECTIVE)
   )
 }
 
@@ -164,6 +165,15 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
       // Layer check
       if (!canBulletHitTarget(Collider.layer[eid]!, Collider.layer[targetEid]!)) return
+
+      // Duel zone filtering: only player ↔ duelist damage works during active duel
+      const obj = world.objective
+      if (obj && obj.type === 'duel' && obj.status === 'active') {
+        const bulletIsPlayerBullet = Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET
+        const bulletIsEnemyBullet = Collider.layer[eid]! === CollisionLayer.ENEMY_BULLET
+        if (bulletIsPlayerBullet && hasComponent(world, Enemy, targetEid) && targetEid !== obj.duelistEid) return
+        if (bulletIsEnemyBullet && hasComponent(world, Player, targetEid) && Bullet.ownerId[eid]! !== obj.duelistEid) return
+      }
 
       // Skip already-pierced entities
       const pierceHits = world.bulletPierceHits.get(eid)

@@ -17,6 +17,49 @@ import { HookRegistry } from './hooks'
 import type { CampVisitorState } from './systems/campVisitor'
 import { Player, Position, Velocity } from './components'
 
+export type ObjectiveType = 'protect' | 'intercept' | 'duel'
+
+/**
+ * Runtime state for a stage objective (protect or intercept)
+ */
+export interface ObjectiveState {
+  type: ObjectiveType
+  status: 'active' | 'success' | 'soft_failure'
+  description: string
+  /** For protect: protected entity EIDs. For intercept: destination marker EID. */
+  targetEids: number[]
+  /** Intercept-only: how many runners have reached the destination */
+  escapedCount: number
+  /** Intercept-only: max escapes before soft failure */
+  escapeThreshold: number
+  /** Spawn timer accumulator (seconds since last objective spawn) */
+  spawnTimer: number
+  /** How many objective enemies have been spawned total */
+  totalSpawned: number
+  /** Max total to spawn (intercept totalRunners, protect unlimited=Infinity) */
+  maxSpawns: number
+  /** Spawn interval in seconds */
+  spawnInterval: number
+  /** Max alive at once (protect only) */
+  maxAlive: number
+  /** Runner speed (intercept only) */
+  runnerSpeed: number
+  /** Runner HP (intercept only) */
+  runnerHP: number
+  /** Duel-only: ring center X */
+  ringCenterX: number
+  /** Duel-only: ring center Y */
+  ringCenterY: number
+  /** Duel-only: ring boundary radius */
+  ringRadius: number
+  /** Duel-only: the challenger entity ID */
+  duelistEid: number
+  /** Duel-only: time player has been outside ring */
+  forfeitTimer: number
+  /** Duel-only: grace seconds before forfeit */
+  forfeitGrace: number
+}
+
 const playerQuery = defineQuery([Player, Position])
 
 /**
@@ -392,6 +435,8 @@ export interface GameWorld extends IWorld {
   nextItemPickupId: number
   /** Active discovery NPC entity IDs (for cleanup between stages) */
   npcEntities: Set<number>
+  /** Current stage objective state (null = no side objective) */
+  objective: ObjectiveState | null
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -477,6 +522,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     itemPickups: [],
     nextItemPickupId: 1,
     npcEntities: new Set(),
+    objective: null,
   }
 }
 
@@ -561,6 +607,7 @@ export function resetWorld(world: GameWorld): void {
   world.itemPickups = []
   world.nextItemPickupId = 1
   world.npcEntities.clear()
+  world.objective = null
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

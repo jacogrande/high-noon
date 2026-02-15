@@ -48,6 +48,7 @@ export function cylinderSystem(
         Cylinder.firstShotAfterReload[eid] = 1  // Used by Steady Hand upgrade (Phase 7)
         Cylinder.reloading[eid] = 0
         Cylinder.reloadTimer[eid] = 0
+        world.hooks.fireReload(world, eid)
       }
       continue
     }

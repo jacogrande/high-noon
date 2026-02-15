@@ -59,6 +59,8 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.BOOMSTICK]: 0xffcc33,       // showman gold
   [EnemyType.GOBLIN_BARBARIAN]: 0x44aa44, // forest green
   [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
+  [EnemyType.RUNNER]: 0x44ddff,           // bright cyan (fast, urgent)
+  [EnemyType.DUELIST]: 0xddaa33,         // dark amber/gold (duel challenger)
 }
 
 /** Enemy type → sprite sheet ID (only for sprite-based enemies) */

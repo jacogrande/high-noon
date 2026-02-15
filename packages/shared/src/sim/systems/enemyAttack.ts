@@ -13,7 +13,7 @@ import { addComponent, defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import {
   EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
-  Position, Velocity, Collider, Health, Invincible, Dead, Bullet, Knockback, BossPhase,
+  Position, Velocity, Collider, Health, Invincible, Dead, Bullet, Knockback, BossPhase, Player,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
@@ -34,18 +34,22 @@ import {
   GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_ATTACK_DURATION,
   GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_ATTACK_DURATION,
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
+  DUELIST_MELEE_REACH, DUELIST_ATTACK_DURATION,
+  DUELIST_MELEE_KB_SPEED, DUELIST_MELEE_KB_DURATION,
 } from '../content/enemies'
 import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK } from '../content/weapons'
 import { applyDamage } from './applyDamage'
 
-function isGoblinMelee(type: number): boolean {
-  return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE
+function isMeleeEnemy(type: number): boolean {
+  return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE || type === EnemyType.DUELIST
 }
 
-const BARBARIAN_MELEE_CFG = { meleeReach: GOBLIN_BARBARIAN_MELEE_REACH, attackDuration: GOBLIN_BARBARIAN_ATTACK_DURATION }
-const ROGUE_MELEE_CFG = { meleeReach: GOBLIN_ROGUE_MELEE_REACH, attackDuration: GOBLIN_ROGUE_ATTACK_DURATION }
+const BARBARIAN_MELEE_CFG = { meleeReach: GOBLIN_BARBARIAN_MELEE_REACH, attackDuration: GOBLIN_BARBARIAN_ATTACK_DURATION, kbSpeed: GOBLIN_MELEE_KB_SPEED, kbDuration: GOBLIN_MELEE_KB_DURATION }
+const ROGUE_MELEE_CFG = { meleeReach: GOBLIN_ROGUE_MELEE_REACH, attackDuration: GOBLIN_ROGUE_ATTACK_DURATION, kbSpeed: GOBLIN_MELEE_KB_SPEED, kbDuration: GOBLIN_MELEE_KB_DURATION }
+const DUELIST_MELEE_CFG = { meleeReach: DUELIST_MELEE_REACH, attackDuration: DUELIST_ATTACK_DURATION, kbSpeed: DUELIST_MELEE_KB_SPEED, kbDuration: DUELIST_MELEE_KB_DURATION }
 
-function getGoblinMeleeConfig(type: number) {
+function getMeleeConfig(type: number) {
+  if (type === EnemyType.DUELIST) return DUELIST_MELEE_CFG
   return type === EnemyType.GOBLIN_BARBARIAN ? BARBARIAN_MELEE_CFG : ROGUE_MELEE_CFG
 }
 
@@ -109,7 +113,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   for (const eid of enemies) {
     const state = EnemyAI.state[eid]!
     const targetEid = EnemyAI.targetEid[eid]!
-    const hasTarget = targetEid !== NO_TARGET && !hasComponent(world, Dead, targetEid)
+    const hasTarget = targetEid !== NO_TARGET && hasComponent(world, Position, targetEid) && !hasComponent(world, Dead, targetEid)
 
     // Lock charger aim direction on first tick of TELEGRAPH
     if (
@@ -164,7 +168,13 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       const distSq = cdx * cdx + cdy * cdy
       const minDist = chargerR + targetR
 
+      // Duel guard: non-duelist chargers can't damage player during active duel
+      const chargerObj = world.objective
+      const chargerDuelActive = chargerObj && chargerObj.type === 'duel' && chargerObj.status === 'active'
+      const chargerBlockedByDuel = chargerDuelActive && eid !== chargerObj!.duelistEid && hasComponent(world, Player, targetEid)
+
       if (
+        !chargerBlockedByDuel &&
         distSq <= minDist * minDist &&
         Health.iframes[targetEid]! <= 0 &&
         !hasComponent(world, Invincible, targetEid)
@@ -186,17 +196,23 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       if (EnemyAI.stateTimer[eid]! >= CHARGER_CHARGE_DURATION) {
         transition(eid, AIState.RECOVERY)
       }
-    } else if (isGoblinMelee(type)) {
-      // Goblin melee: proximity check + contact damage
-      const { meleeReach, attackDuration } = getGoblinMeleeConfig(type)
-      const goblinR = Collider.radius[eid]!
+    } else if (isMeleeEnemy(type)) {
+      // Melee enemy: proximity check + contact damage
+      const meleeCfg = getMeleeConfig(type)
+      const meleeR = Collider.radius[eid]!
       const targetR = Collider.radius[targetEid]!
       const mdx = targetX - ex
       const mdy = targetY - ey
       const distSq = mdx * mdx + mdy * mdy
-      const hitDist = goblinR + targetR + meleeReach
+      const hitDist = meleeR + targetR + meleeCfg.meleeReach
+
+      // Duel guard: non-duelist melee enemies can't damage a player during active duel
+      const obj = world.objective
+      const duelActive = obj && obj.type === 'duel' && obj.status === 'active'
+      const blockedByDuel = duelActive && eid !== obj!.duelistEid && hasComponent(world, Player, targetEid)
 
       if (
+        !blockedByDuel &&
         distSq <= hitDist * hitDist &&
         Health.iframes[targetEid]! <= 0 &&
         !hasComponent(world, Invincible, targetEid)
@@ -216,12 +232,12 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
 
         // Apply knockback to player
         addComponent(world, Knockback, targetEid)
-        Knockback.vx[targetEid] = nx * GOBLIN_MELEE_KB_SPEED
-        Knockback.vy[targetEid] = ny * GOBLIN_MELEE_KB_SPEED
-        Knockback.duration[targetEid] = GOBLIN_MELEE_KB_DURATION
+        Knockback.vx[targetEid] = nx * meleeCfg.kbSpeed
+        Knockback.vy[targetEid] = ny * meleeCfg.kbSpeed
+        Knockback.duration[targetEid] = meleeCfg.kbDuration
 
         transition(eid, AIState.RECOVERY)
-      } else if (EnemyAI.stateTimer[eid]! >= attackDuration) {
+      } else if (EnemyAI.stateTimer[eid]! >= meleeCfg.attackDuration) {
         // Whiffed — transition to recovery
         transition(eid, AIState.RECOVERY)
       }

@@ -29,6 +29,7 @@ import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'
 import { spatialHashSystem } from './spatialHash'
 import { waveSpawnerSystem } from './waveSpawner'
+import { objectiveSystem, initObjective, cleanupObjective } from './objectiveSystem'
 import { stageProgressionSystem, clearAllEnemies, spawnStageNpcs } from './stageProgression'
 import { npcMovementSystem } from './npcMovement'
 import { npcDialogueSystem } from './npcDialogue'
@@ -43,6 +44,7 @@ import { hazardTileSystem } from './hazardTile'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
+import { tryVisitorPurchase, type CampVisitorState } from './campVisitor'
 
 export {
   movementSystem,
@@ -66,6 +68,9 @@ export {
   enemyAttackSystem,
   spatialHashSystem,
   waveSpawnerSystem,
+  objectiveSystem,
+  initObjective,
+  cleanupObjective,
   stageProgressionSystem,
   clearAllEnemies,
   spawnStageNpcs,
@@ -82,7 +87,10 @@ export {
   interactionSystem,
   stashRewardSystem,
   itemPickupSystem,
+  tryVisitorPurchase,
 }
+
+export type { CampVisitorState }
 
 /**
  * Register prediction systems for client-side forward ticks.
@@ -152,6 +160,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   // -- Spawning & progression --
   systems.register(debugSpawnSystem)
   systems.register(waveSpawnerSystem)
+  systems.register(objectiveSystem)
   systems.register(stageProgressionSystem)
   // -- NPC systems --
   systems.register(npcMovementSystem)

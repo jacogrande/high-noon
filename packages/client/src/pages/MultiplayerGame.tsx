@@ -401,8 +401,14 @@ export function MultiplayerGame() {
           totalStages={hudState.totalStages}
           hasPendingPoints={hudState.pendingPoints > 0}
           rideOutPending={campReadySent}
+          playerGold={hudState.goldCollected}
+          campVisitor={hudState.campVisitor}
+          items={hudState.items}
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
+          onVisitorPurchase={(index) => {
+            sceneRef.current?.handleVisitorPurchase(index)
+          }}
         />
       )}
       {showSkillTree && skillTreeData && (

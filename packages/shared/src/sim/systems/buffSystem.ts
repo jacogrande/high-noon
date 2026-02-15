@@ -64,6 +64,15 @@ export function buffSystem(world: GameWorld, dt: number): void {
       }
     }
 
+    // --- Witching Hour timer (Item) ---
+    if (us.witchingHourActive) {
+      us.witchingHourTimer -= dt
+      if (us.witchingHourTimer <= 0) {
+        us.witchingHourActive = false
+        us.witchingHourTimer = 0
+      }
+    }
+
     // --- Open Casket cooldown timer (Undertaker) ---
     if (us.openCasketCooldownTimer > 0) {
       us.openCasketCooldownTimer -= dt

@@ -295,6 +295,8 @@ export const EnemyType = {
   GOBLIN_BARBARIAN: 4,
   GOBLIN_ROGUE: 5,
   BOOMSTICK: 6,
+  RUNNER: 7,
+  DUELIST: 8,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
@@ -355,6 +357,30 @@ export const Steering = {
   separationWeight: new Float32Array(MAX_ENTITIES),
   preferredRange: new Float32Array(MAX_ENTITIES),
   separationRadius: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
+// Objective Components
+// ============================================================================
+
+/** Objective target type enum */
+export const ObjTargetType = { PROTECT_ENTITY: 1, INTERCEPT_DEST: 2 } as const
+
+/** Objective role enum for enemies */
+export const ObjRole = { NONE: 0, ATTACKER: 1, RUNNER: 2 } as const
+
+/** Objective-relevant entity marker */
+export const ObjectiveTarget = {
+  /** 1 = PROTECT_ENTITY, 2 = INTERCEPT_DEST */
+  type: new Uint8Array(MAX_ENTITIES),
+}
+
+/** Enemy role override for objective behavior */
+export const ObjectiveRole = {
+  /** 1 = ATTACKER (targets objective entity), 2 = RUNNER (beelines to destination) */
+  role: new Uint8Array(MAX_ENTITIES),
+  /** Which objective target entity this enemy is assigned to */
+  targetEid: new Uint16Array(MAX_ENTITIES),
 }
 
 // ============================================================================
@@ -450,4 +476,6 @@ export const AllComponents = [
   Npc,
   NpcMovement,
   NpcDialogue,
+  ObjectiveTarget,
+  ObjectiveRole,
 ] as const

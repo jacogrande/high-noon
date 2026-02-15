@@ -205,3 +205,68 @@ export const GOBLIN_ROGUE_TIER = EnemyTier.FODDER
 export const GOBLIN_MELEE_KB_SPEED = 200
 /** Knockback duration for goblin melee hit (seconds) */
 export const GOBLIN_MELEE_KB_DURATION = 0.12
+
+// ============================================================================
+// Runner — fast fragile objective enemy (intercept)
+// ============================================================================
+
+export const RUNNER_SPEED = 140
+export const RUNNER_RADIUS = 8
+export const RUNNER_HP = 2
+export const RUNNER_TIER = EnemyTier.FODDER
+
+// ============================================================================
+// Duelist — tough melee challenger for duel ring objective
+// ============================================================================
+
+export const DUELIST_SPEED = 85
+export const DUELIST_RADIUS = 12
+export const DUELIST_HP = 60
+export const DUELIST_AGGRO_RANGE = 300
+export const DUELIST_ATTACK_RANGE = 40
+export const DUELIST_TELEGRAPH = 0.45
+export const DUELIST_RECOVERY = 0.5
+export const DUELIST_COOLDOWN = 1.8
+export const DUELIST_DAMAGE = 8
+export const DUELIST_MELEE_REACH = 14
+export const DUELIST_ATTACK_DURATION = 0.3
+export const DUELIST_MELEE_KB_SPEED = 250
+export const DUELIST_MELEE_KB_DURATION = 0.15
+export const DUELIST_SEPARATION_RADIUS = 28
+export const DUELIST_TIER = EnemyTier.THREAT
+export const DUEL_RING_RADIUS = 120
+export const DUEL_FORFEIT_GRACE = 1.0
+
+// ============================================================================
+// Item Drop Chances (per enemy type)
+// ============================================================================
+
+import { EnemyType } from '../components'
+import type { ItemRarity } from './items'
+
+/** Probability of dropping an item on death, by EnemyType */
+export const ENEMY_DROP_CHANCE: Record<number, number> = {
+  [EnemyType.SWARMER]: 0.02,
+  [EnemyType.GRUNT]: 0.03,
+  [EnemyType.SHOOTER]: 0.05,
+  [EnemyType.CHARGER]: 0.08,
+  [EnemyType.GOBLIN_BARBARIAN]: 0.03,
+  [EnemyType.GOBLIN_ROGUE]: 0.02,
+  [EnemyType.BOOMSTICK]: 0.50,
+  [EnemyType.RUNNER]: 0,
+  [EnemyType.DUELIST]: 0.30,
+}
+
+/** Rarity weights for enemy item drops, by tier */
+export const DROP_RARITY_WEIGHTS_FODDER: [ItemRarity, number][] = [
+  ['brass', 70],
+  ['silver', 25],
+  ['gold', 5],
+]
+
+export const DROP_RARITY_WEIGHTS_THREAT: [ItemRarity, number][] = [
+  ['brass', 30],
+  ['silver', 45],
+  ['gold', 20],
+  ['cursed', 5],
+]

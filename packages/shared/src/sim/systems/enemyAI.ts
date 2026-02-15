@@ -5,9 +5,9 @@
  * ATTACK is a 1-tick pass-through in Phase 3; Phase 4 adds attack execution.
  */
 
-import { defineQuery } from 'bitecs'
+import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Enemy, Detection, AttackConfig, Position } from '../components'
+import { EnemyAI, AIState, Enemy, Detection, AttackConfig, Position, ObjectiveRole, ObjRole } from '../components'
 import { NO_TARGET } from '../prefabs'
 
 const aiQuery = defineQuery([EnemyAI, Enemy, Detection, AttackConfig, Position])
@@ -24,6 +24,20 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
   const enemies = aiQuery(world)
 
   for (const eid of enemies) {
+    // Runners skip normal AI entirely — movement handled by steering
+    if (hasComponent(world, ObjectiveRole, eid) && ObjectiveRole.role[eid] === ObjRole.RUNNER) {
+      // Keep runner in CHASE state so steering applies velocity
+      if (EnemyAI.state[eid] !== AIState.CHASE) {
+        transition(eid, AIState.CHASE)
+      }
+      continue
+    }
+
+    // Attackers override their target to the objective entity
+    if (hasComponent(world, ObjectiveRole, eid) && ObjectiveRole.role[eid] === ObjRole.ATTACKER) {
+      EnemyAI.targetEid[eid] = ObjectiveRole.targetEid[eid]!
+    }
+
     // Decrement cooldown
     const cd = AttackConfig.cooldownRemaining[eid]! - dt
     AttackConfig.cooldownRemaining[eid] = cd > 0 ? cd : 0

@@ -91,6 +91,49 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       {/* Stage + Wave indicator — top-center */}
       <div style={styles.waveContainer}>{getStageDisplay(state)}</div>
 
+      {/* Objective indicator — below wave display */}
+      {state.objective && state.stageStatus === 'active' && (
+        <div style={styles.objectiveContainer}>
+          <div style={{
+            ...styles.objectiveLabel,
+            color: state.objective.status === 'active'
+              ? (state.objective.type === 'duel' ? '#ffcc44' : '#66aaff')
+              : state.objective.status === 'success'
+                ? '#44ff88'
+                : '#ff4444',
+          }}>
+            {state.objective.description}
+            {state.objective.status === 'success' && ' — COMPLETE'}
+            {state.objective.status === 'soft_failure' && (state.objective.type === 'duel' ? ' — FORFEIT' : ' — FAILED')}
+          </div>
+          {state.objective.status === 'active' && (
+            <div style={styles.objectiveBarOuter}>
+              <div style={{
+                ...styles.objectiveBarFill,
+                width: `${Math.max(0, Math.min(100, state.objective.progress * 100))}%`,
+                backgroundColor: state.objective.type === 'protect'
+                  ? '#66aaff'
+                  : state.objective.type === 'duel'
+                    ? '#ffcc44'
+                    : '#ff6644',
+              }} />
+            </div>
+          )}
+          {state.objective.status === 'active' && (
+            <div style={styles.objectiveSubtext}>
+              {state.objective.type === 'protect'
+                ? `${Math.round(state.objective.progress * 100)}% HP`
+                : state.objective.type === 'duel'
+                  ? `${Math.round(state.objective.progress * 100)}% HP`
+                  : `${Math.round(state.objective.progress * 100)}% escaped`}
+            </div>
+          )}
+          {state.objective.status === 'active' && state.objective.type === 'duel' && (state.objective.forfeitTimer ?? 0) > 0 && (
+            <div style={styles.duelForfeitWarning}>LEAVING THE RING!</div>
+          )}
+        </div>
+      )}
+
       {state.minimap && (
         <div style={styles.minimapContainer}>
           <div style={styles.minimapTitle}>SCOUT MAP</div>
@@ -281,6 +324,49 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: 'none',
     fontFamily: 'monospace',
     zIndex: 50,
+  },
+  // Objective indicator — below wave display
+  objectiveContainer: {
+    position: 'absolute',
+    top: 30,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 3,
+  },
+  objectiveLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: '0.08em',
+    textShadow: '0 0 6px rgba(0,0,0,0.8)',
+    whiteSpace: 'nowrap',
+  },
+  objectiveBarOuter: {
+    width: 120,
+    height: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  objectiveBarFill: {
+    height: '100%',
+    borderRadius: 2,
+    transition: 'width 0.15s ease-out',
+  },
+  objectiveSubtext: {
+    fontSize: 9,
+    color: '#888888',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+  },
+  duelForfeitWarning: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#ff4444',
+    textShadow: '0 0 8px rgba(255, 68, 68, 0.8)',
+    letterSpacing: '0.1em',
+    animation: 'hud-pulse 0.4s ease-in-out infinite',
   },
   // Wave indicator — top-center
   waveContainer: {

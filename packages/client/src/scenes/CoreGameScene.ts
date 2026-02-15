@@ -63,6 +63,10 @@ export class CoreGameScene {
     this.controller.completeCamp()
   }
 
+  handleVisitorPurchase(offerIndex: number): boolean {
+    return this.controller.handleVisitorPurchase?.(offerIndex) ?? false
+  }
+
   setWorldVisible(visible: boolean): void {
     this.controller.setWorldVisible(visible)
   }

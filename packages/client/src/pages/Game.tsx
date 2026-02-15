@@ -172,6 +172,12 @@ export function Game() {
     setSkillTreeData(null)
   }, [])
 
+  const handleVisitorPurchase = useCallback((offerIndex: number) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.handleVisitorPurchase(offerIndex)
+  }, [])
+
   const handleRetry = () => {
     setLoading(true)
     setLoadProgress(0)
@@ -243,8 +249,12 @@ export function Game() {
           stageNumber={hudState.stageNumber}
           totalStages={hudState.totalStages}
           hasPendingPoints={hudState.pendingPoints > 0}
+          playerGold={hudState.goldCollected}
+          campVisitor={hudState.campVisitor}
+          items={hudState.items}
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
+          onVisitorPurchase={handleVisitorPurchase}
         />
       )}
       {showSkillTree && skillTreeData && (
