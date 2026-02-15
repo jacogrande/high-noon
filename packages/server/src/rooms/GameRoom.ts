@@ -1,5 +1,5 @@
 import { Room, type Client } from 'colyseus'
-import { hasComponent } from 'bitecs'
+import { hasComponent, defineQuery } from 'bitecs'
 import {
   createGameWorld,
   setWorldTilemap,
@@ -16,6 +16,9 @@ import {
   Cylinder,
   Showdown,
   Health,
+  Enemy,
+  EnemyType,
+  BossPhase,
   getCharacterDef,
   getUpgradeStateForPlayer,
   deriveAbilityHudState,
@@ -95,6 +98,12 @@ const REWIND_VIEW_DELAY_WEIGHT = 0.35
  */
 const TRANSIENT_ACTION_BUTTONS =
   Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
+
+const bossQuery = defineQuery([Enemy, BossPhase, Health])
+
+const BOSS_DISPLAY_NAMES: Partial<Record<number, string>> = {
+  [EnemyType.BOOMSTICK]: 'REVEREND BOOMSTICK',
+}
 
 function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): number {
   let merged = baseButtons
@@ -923,6 +932,20 @@ export class GameRoom extends Room<GameRoomState> {
           : baseObj
       }
 
+      // Boss HP bar (computed per-iteration but could hoist — only one boss)
+      let bossHud: HudData['boss'] = null
+      const bosses = bossQuery(this.world)
+      if (bosses.length > 0) {
+        const beid = bosses[0]!
+        if (Health.current[beid]! > 0) {
+          bossHud = {
+            name: BOSS_DISPLAY_NAMES[Enemy.type[beid]!] ?? 'BOSS',
+            hp: Health.current[beid]!,
+            maxHP: Health.max[beid]!,
+          }
+        }
+      }
+
       const hud: HudData = {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
@@ -953,6 +976,7 @@ export class GameRoom extends Room<GameRoomState> {
         items,
         objective: objectiveHud,
         campVisitor: campVisitorHud,
+        boss: bossHud,
       }
       slot.client.send('hud', hud)
     }

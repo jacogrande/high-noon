@@ -10,7 +10,7 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
-  AttackConfig, Health, NO_TARGET,
+  AttackConfig, Health, BossPhase, NO_TARGET,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
@@ -197,17 +197,21 @@ export class EnemyRenderer {
           this.registry.createCircle(eid, radius, color)
         }
 
-        const radius = Collider.radius[eid]!
-        const barWidth = getEnemyBarWidth(type, radius)
-        const barHeight = getEnemyBarHeight(type)
-        const barYOffset = getEnemyBarYOffset(type, radius)
-        const bgId = getEnemyBarBgId(eid)
-        const fillId = getEnemyBarFillId(eid)
-        this.registry.createRect(bgId, barWidth, barHeight, 0x111111)
-        this.registry.createRect(fillId, barWidth, barHeight, getHealthBarColor(1))
-        this.healthBars.add(eid)
-        this.healthBarWidths.set(eid, barWidth)
-        this.healthBarYOffsets.set(eid, barYOffset)
+        // Skip world-space health bar for boss entities (rendered in HUD instead)
+        const isBoss = hasComponent(world, BossPhase, eid)
+        if (!isBoss) {
+          const radius = Collider.radius[eid]!
+          const barWidth = getEnemyBarWidth(type, radius)
+          const barHeight = getEnemyBarHeight(type)
+          const barYOffset = getEnemyBarYOffset(type, radius)
+          const bgId = getEnemyBarBgId(eid)
+          const fillId = getEnemyBarFillId(eid)
+          this.registry.createRect(bgId, barWidth, barHeight, 0x111111)
+          this.registry.createRect(fillId, barWidth, barHeight, getHealthBarColor(1))
+          this.healthBars.add(eid)
+          this.healthBarWidths.set(eid, barWidth)
+          this.healthBarYOffsets.set(eid, barYOffset)
+        }
 
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)

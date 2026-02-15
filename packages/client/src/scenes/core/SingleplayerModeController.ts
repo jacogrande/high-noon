@@ -33,6 +33,8 @@ import {
   Showdown,
   NO_TARGET,
   Bullet,
+  BossPhase,
+  EnemyType,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -96,6 +98,11 @@ const GAME_ZOOM = 2
 
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
+const bossQuery = defineQuery([Enemy, BossPhase, Health])
+
+const BOSS_DISPLAY_NAMES: Partial<Record<number, string>> = {
+  [EnemyType.BOOMSTICK]: 'REVEREND BOOMSTICK',
+}
 const STATE_LABELS = ['IDL', 'CHS', 'TEL', 'ATK', 'REC', 'STN', 'FLE']
 
 const PLAYER_STATE_NAMES: Record<number, string> = {
@@ -366,6 +373,17 @@ export class SingleplayerModeController implements SceneModeController {
             return base
           })()
         : null,
+      boss: (() => {
+        const bosses = bossQuery(this.world)
+        if (bosses.length === 0) return null
+        const beid = bosses[0]!
+        if (Health.current[beid]! <= 0) return null
+        return {
+          name: BOSS_DISPLAY_NAMES[Enemy.type[beid]!] ?? 'BOSS',
+          hp: Health.current[beid]!,
+          maxHP: Health.max[beid]!,
+        }
+      })(),
       campVisitor: this.world.campVisitor
         ? (() => {
             const vDef = getVisitorDef(this.world.campVisitor!.visitorId)

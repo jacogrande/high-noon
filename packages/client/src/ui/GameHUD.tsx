@@ -91,6 +91,19 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
       {/* Stage + Wave indicator — top-center */}
       <div style={styles.waveContainer}>{getStageDisplay(state)}</div>
 
+      {/* Boss HP bar — top-center, below wave display */}
+      {state.boss && (
+        <div style={styles.bossContainer}>
+          <div style={styles.bossName}>{state.boss.name}</div>
+          <div style={styles.bossBarOuter}>
+            <div style={{
+              ...styles.bossBarFill,
+              width: `${state.boss.maxHP > 0 ? Math.max(0, Math.min(100, (state.boss.hp / state.boss.maxHP) * 100)) : 0}%`,
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* Objective indicator — below wave display */}
       {state.objective && state.stageStatus === 'active' && (
         <div style={styles.objectiveContainer}>
@@ -325,10 +338,44 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     zIndex: 50,
   },
+  // Boss HP bar — top-center
+  bossContainer: {
+    position: 'absolute',
+    top: 28,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 3,
+  },
+  bossName: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#ff4444',
+    letterSpacing: '0.12em',
+    textShadow: '0 0 8px rgba(255, 68, 68, 0.6)',
+    whiteSpace: 'nowrap',
+  },
+  bossBarOuter: {
+    width: 200,
+    height: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    border: '1px solid rgba(255, 68, 68, 0.4)',
+  },
+  bossBarFill: {
+    height: '100%',
+    backgroundColor: '#dd2222',
+    borderRadius: 2,
+    transition: 'width 0.15s ease-out',
+    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+  },
   // Objective indicator — below wave display
   objectiveContainer: {
     position: 'absolute',
-    top: 30,
+    top: 56,
     left: '50%',
     transform: 'translateX(-50%)',
     display: 'flex',

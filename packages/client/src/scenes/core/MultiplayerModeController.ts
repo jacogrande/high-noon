@@ -986,6 +986,7 @@ export class MultiplayerModeController implements SceneModeController {
       minimap,
       objective: hud?.objective ?? null,
       campVisitor: hud?.campVisitor ?? null,
+      boss: hud?.boss ?? null,
     }
   }
 

@@ -69,6 +69,11 @@ export interface HUDState {
     greeting: string
     offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean }>
   } | null
+  boss: {
+    name: string
+    hp: number
+    maxHP: number
+  } | null
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'

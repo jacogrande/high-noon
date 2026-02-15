@@ -99,6 +99,13 @@ export interface HudData {
     greeting: string
     offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean }>
   } | null
+
+  // Boss HP bar (top-of-screen)
+  boss: {
+    name: string
+    hp: number
+    maxHP: number
+  } | null
 }
 
 export interface SelectNodeRequest { nodeId: string }
