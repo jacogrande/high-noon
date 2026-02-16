@@ -17,8 +17,8 @@ import {
   Showdown,
   Health,
   Enemy,
-  EnemyType,
   BossPhase,
+  getBoss,
   getCharacterDef,
   getUpgradeStateForPlayer,
   deriveAbilityHudState,
@@ -100,10 +100,6 @@ const TRANSIENT_ACTION_BUTTONS =
   Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
 
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
-
-const BOSS_DISPLAY_NAMES: Partial<Record<number, string>> = {
-  [EnemyType.BOOMSTICK]: 'REVEREND BOOMSTICK',
-}
 
 function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): number {
   let merged = baseButtons
@@ -939,7 +935,7 @@ export class GameRoom extends Room<GameRoomState> {
         const beid = bosses[0]!
         if (Health.current[beid]! > 0) {
           bossHud = {
-            name: BOSS_DISPLAY_NAMES[Enemy.type[beid]!] ?? 'BOSS',
+            name: getBoss(Enemy.type[beid]!)?.displayName ?? 'BOSS',
             hp: Health.current[beid]!,
             maxHP: Health.max[beid]!,
           }

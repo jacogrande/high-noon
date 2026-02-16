@@ -440,7 +440,7 @@ describe('waveSpawnerSystem', () => {
       expect(world.encounter!.currentWave).toBe(1)
     })
 
-    test('stage 1 final wave includes the boomstick test boss', () => {
+    test('stage 1 final wave includes a boss from the pool', () => {
       setEncounter(world, STAGE_1_ENCOUNTER)
 
       // Wave 1 activate + clear
@@ -452,7 +452,9 @@ describe('waveSpawnerSystem', () => {
       waveSpawnerSystem(world, 3.1)
       const types = countByType(world)
       expect(world.encounter!.currentWave).toBe(1)
-      expect(types[EnemyType.BOOMSTICK] ?? 0).toBe(1)
+      // Boss pool randomization picks one of Boomstick or Mad Dog
+      const bossCount = (types[EnemyType.BOOMSTICK] ?? 0) + (types[EnemyType.MAD_DOG] ?? 0)
+      expect(bossCount).toBe(1)
     })
   })
 

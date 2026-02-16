@@ -68,11 +68,6 @@ import {
   CHARGER_SPEED, CHARGER_RADIUS, CHARGER_HP, CHARGER_AGGRO_RANGE, CHARGER_ATTACK_RANGE,
   CHARGER_TELEGRAPH, CHARGER_RECOVERY, CHARGER_COOLDOWN, CHARGER_DAMAGE,
   CHARGER_SEPARATION_RADIUS, CHARGER_TIER,
-  BOOMSTICK_SPEED, BOOMSTICK_RADIUS, BOOMSTICK_HP, BOOMSTICK_AGGRO_RANGE, BOOMSTICK_ATTACK_RANGE,
-  BOOMSTICK_TELEGRAPH, BOOMSTICK_RECOVERY, BOOMSTICK_COOLDOWN, BOOMSTICK_DAMAGE,
-  BOOMSTICK_BULLET_SPEED, BOOMSTICK_BULLET_ACCEL, BOOMSTICK_BULLET_DRAG,
-  BOOMSTICK_BULLET_COUNT, BOOMSTICK_SPREAD_ANGLE,
-  BOOMSTICK_PREFERRED_RANGE, BOOMSTICK_SEPARATION_RADIUS, BOOMSTICK_TIER,
   GOBLIN_BARBARIAN_SPEED, GOBLIN_BARBARIAN_RADIUS, GOBLIN_BARBARIAN_HP,
   GOBLIN_BARBARIAN_AGGRO_RANGE, GOBLIN_BARBARIAN_ATTACK_RANGE,
   GOBLIN_BARBARIAN_TELEGRAPH, GOBLIN_BARBARIAN_RECOVERY, GOBLIN_BARBARIAN_COOLDOWN,
@@ -87,6 +82,10 @@ import {
   DUELIST_TELEGRAPH, DUELIST_RECOVERY, DUELIST_COOLDOWN,
   DUELIST_DAMAGE, DUELIST_SEPARATION_RADIUS, DUELIST_TIER,
 } from './content/enemies'
+import { BOOMSTICK_RADIUS } from './content/bosses/boomstick'
+
+/** Mad Dog Maguire radius (largest humanoid) */
+const MAD_DOG_RADIUS = 20
 
 /** Largest collider radius across all entity types (for spatial hash query padding) */
 export const MAX_COLLIDER_RADIUS = Math.max(
@@ -99,6 +98,7 @@ export const MAX_COLLIDER_RADIUS = Math.max(
   GOBLIN_BARBARIAN_RADIUS,
   GOBLIN_ROGUE_RADIUS,
   DUELIST_RADIUS,
+  MAD_DOG_RADIUS,
 )
 
 /** Collision layers */
@@ -491,46 +491,6 @@ export function spawnCharger(world: GameWorld, x: number, y: number): number {
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = CHARGER_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
-
-  return eid
-}
-
-/**
- * Spawn a Boomstick enemy — Stage 1 test boss threat
- */
-export function spawnBoomstick(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  addComponent(world, BossPhase, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.BOOMSTICK
-  Enemy.tier[eid] = BOOMSTICK_TIER
-  BossPhase.phase[eid] = 1
-  Speed.current[eid] = BOOMSTICK_SPEED
-  Speed.max[eid] = BOOMSTICK_SPEED
-  Collider.radius[eid] = BOOMSTICK_RADIUS
-  Health.current[eid] = BOOMSTICK_HP
-  Health.max[eid] = BOOMSTICK_HP
-  Detection.aggroRange[eid] = BOOMSTICK_AGGRO_RANGE
-  Detection.attackRange[eid] = BOOMSTICK_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = BOOMSTICK_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = BOOMSTICK_RECOVERY
-  AttackConfig.cooldown[eid] = BOOMSTICK_COOLDOWN
-  AttackConfig.damage[eid] = BOOMSTICK_DAMAGE
-  AttackConfig.projectileSpeed[eid] = BOOMSTICK_BULLET_SPEED
-  AttackConfig.projectileAccel[eid] = BOOMSTICK_BULLET_ACCEL
-  AttackConfig.projectileDrag[eid] = BOOMSTICK_BULLET_DRAG
-  AttackConfig.projectileCount[eid] = BOOMSTICK_BULLET_COUNT
-  AttackConfig.spreadAngle[eid] = BOOMSTICK_SPREAD_ANGLE
-  // Boomstick uses AttackConfig.aimX as "attacks until next halo" cadence state.
-  AttackConfig.aimX[eid] = world.rng.nextInt(2) + 1
-  // Boomstick uses AttackConfig.aimY as "attacks until next boom throw" cadence state.
-  AttackConfig.aimY[eid] = 0
-  Steering.preferredRange[eid] = BOOMSTICK_PREFERRED_RANGE
-  Steering.separationRadius[eid] = BOOMSTICK_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.8, 1.2)
 
   return eid
 }

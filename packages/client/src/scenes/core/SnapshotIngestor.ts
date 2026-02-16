@@ -35,6 +35,8 @@ import {
   CHARGER_HP,
   BOOMSTICK_RADIUS,
   BOOMSTICK_HP,
+  MAD_DOG_RADIUS,
+  MAD_DOG_HP,
   GOBLIN_BARBARIAN_RADIUS,
   GOBLIN_BARBARIAN_HP,
   GOBLIN_ROGUE_RADIUS,
@@ -64,6 +66,7 @@ const ENEMY_RADIUS: Record<number, number> = {
   [EnemyType.BOOMSTICK]: BOOMSTICK_RADIUS,
   [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_RADIUS,
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_RADIUS,
+  [EnemyType.MAD_DOG]: MAD_DOG_RADIUS,
 }
 
 /** Enemy max HP lookup by EnemyType value */
@@ -75,6 +78,7 @@ const ENEMY_MAX_HP: Record<number, number> = {
   [EnemyType.BOOMSTICK]: BOOMSTICK_HP,
   [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_HP,
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_HP,
+  [EnemyType.MAD_DOG]: MAD_DOG_HP,
 }
 
 /** Enemy tier lookup by EnemyType value */
@@ -86,6 +90,7 @@ const ENEMY_TIER: Record<number, number> = {
   [EnemyType.BOOMSTICK]: EnemyTier.THREAT,
   [EnemyType.GOBLIN_BARBARIAN]: EnemyTier.FODDER,
   [EnemyType.GOBLIN_ROGUE]: EnemyTier.FODDER,
+  [EnemyType.MAD_DOG]: EnemyTier.THREAT,
 }
 
 export interface SnapshotIngestContext extends ISimStateSource, ILocalIdentityState, ILocalIdentityBinding {

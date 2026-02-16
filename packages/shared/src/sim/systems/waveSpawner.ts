@@ -16,15 +16,15 @@ import {
   spawnGrunt,
   spawnShooter,
   spawnCharger,
-  spawnBoomstick,
   spawnGoblinBarbarian,
   spawnGoblinRogue,
 } from '../prefabs'
+import { getBoss } from '../content/bosses'
 import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
 import {
   SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
-  BOOMSTICK_BUDGET_COST, GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
+  GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
 } from '../content/enemies'
 import type { FodderPool } from '../content/waves'
 
@@ -39,7 +39,6 @@ const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => numbe
   [EnemyType.GRUNT]: spawnGrunt,
   [EnemyType.SHOOTER]: spawnShooter,
   [EnemyType.CHARGER]: spawnCharger,
-  [EnemyType.BOOMSTICK]: spawnBoomstick,
   [EnemyType.GOBLIN_BARBARIAN]: spawnGoblinBarbarian,
   [EnemyType.GOBLIN_ROGUE]: spawnGoblinRogue,
 }
@@ -48,7 +47,6 @@ const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => numbe
 const BUDGET_COST: Record<number, number> = {
   [EnemyType.SWARMER]: SWARMER_BUDGET_COST,
   [EnemyType.GRUNT]: GRUNT_BUDGET_COST,
-  [EnemyType.BOOMSTICK]: BOOMSTICK_BUDGET_COST,
   [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_BUDGET_COST,
   [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_BUDGET_COST,
 }
@@ -161,6 +159,10 @@ function pickFromPool(rng: SeededRng, pool: FodderPool[]): number {
  * Spawn an enemy of the given type at the given position
  */
 function spawnEnemy(world: GameWorld, type: number, x: number, y: number): number {
+  // Check boss registry first
+  const bossMod = getBoss(type)
+  if (bossMod) return bossMod.spawn(world, x, y)
+
   const fn = SPAWN_FN[type]
   if (!fn) throw new Error(`Unknown enemy type: ${type}`)
   return fn(world, x, y)

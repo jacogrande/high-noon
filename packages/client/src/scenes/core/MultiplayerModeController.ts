@@ -59,6 +59,8 @@ import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
+import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer } from '../../render/TilemapRenderer'
 import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
@@ -124,6 +126,8 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly groundCrackRenderer: GroundCrackRenderer
+  private readonly bossShockwaveRenderer: BossShockwaveRenderer
   private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
@@ -225,6 +229,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
     this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
     this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
+    this.groundCrackRenderer = new GroundCrackRenderer(this.gameApp.layers.entities)
+    this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -822,6 +828,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.enemyRenderer.render(this.world, alpha, realDt)
     this.npcRenderer.render(this.world, alpha)
     this.objectiveRenderer.render(this.world, alpha)
+    this.groundCrackRenderer.render(this.world)
+    this.bossShockwaveRenderer.render(this.world)
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
     this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
@@ -1070,6 +1078,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()
     this.dynamiteRenderer.destroy()
+    this.groundCrackRenderer.destroy()
+    this.bossShockwaveRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()

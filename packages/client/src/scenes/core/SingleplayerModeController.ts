@@ -35,6 +35,7 @@ import {
   Bullet,
   BossPhase,
   EnemyType,
+  getBoss,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -62,6 +63,8 @@ import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
+import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
@@ -100,9 +103,6 @@ const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
 
-const BOSS_DISPLAY_NAMES: Partial<Record<number, string>> = {
-  [EnemyType.BOOMSTICK]: 'REVEREND BOOMSTICK',
-}
 const STATE_LABELS = ['IDL', 'CHS', 'TEL', 'ATK', 'REC', 'STN', 'FLE']
 
 const PLAYER_STATE_NAMES: Record<number, string> = {
@@ -130,6 +130,8 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly showdownRenderer: ShowdownRenderer
   private readonly lastRitesRenderer: LastRitesRenderer
   private readonly dynamiteRenderer: DynamiteRenderer
+  private readonly groundCrackRenderer: GroundCrackRenderer
+  private readonly bossShockwaveRenderer: BossShockwaveRenderer
   private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
@@ -180,6 +182,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
     this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
     this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
+    this.groundCrackRenderer = new GroundCrackRenderer(this.gameApp.layers.entities)
+    this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -379,7 +383,7 @@ export class SingleplayerModeController implements SceneModeController {
         const beid = bosses[0]!
         if (Health.current[beid]! <= 0) return null
         return {
-          name: BOSS_DISPLAY_NAMES[Enemy.type[beid]!] ?? 'BOSS',
+          name: getBoss(Enemy.type[beid]!)?.displayName ?? 'BOSS',
           hp: Health.current[beid]!,
           maxHP: Health.max[beid]!,
         }
@@ -678,6 +682,12 @@ export class SingleplayerModeController implements SceneModeController {
     // Render objective targets
     this.objectiveRenderer.render(this.world, alpha)
 
+    // Render ground cracks (below entities)
+    this.groundCrackRenderer.render(this.world)
+
+    // Render boss shockwave rings
+    this.bossShockwaveRenderer.render(this.world)
+
     // Render dynamite pixel-fuse telegraphs + throw arcs.
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
 
@@ -767,6 +777,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.enemyRenderer.destroy()
     this.lastRitesRenderer.destroy()
     this.dynamiteRenderer.destroy()
+    this.groundCrackRenderer.destroy()
+    this.bossShockwaveRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()

@@ -54,12 +54,16 @@ export interface StageEncounter {
   waves: WaveDefinition[]
   mapConfig: MapConfig
   objective?: ObjectiveConfig
+  /** Pool of EnemyType values eligible as boss for this stage. Encounter
+   *  builder picks one at random via world.rng when the stage starts. */
+  bossPool?: number[]
 }
 
 /** Stage 1: Town Outskirts — easy intro (2 waves) */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_1_MAP_CONFIG,
   objective: STAGE_1_DUEL,
+  bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG],
   waves: [
     // Wave 1: Swarmers + 1 shooter
     {

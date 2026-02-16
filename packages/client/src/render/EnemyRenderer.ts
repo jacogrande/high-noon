@@ -11,6 +11,7 @@ import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
   AttackConfig, Health, BossPhase, NO_TARGET,
+  isBoss, allBosses,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
@@ -56,11 +57,15 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.GRUNT]: 0xff6633,            // red-orange
   [EnemyType.SHOOTER]: 0xaa44dd,          // purple
   [EnemyType.CHARGER]: 0xaa1111,          // dark red
-  [EnemyType.BOOMSTICK]: 0xffcc33,       // showman gold
   [EnemyType.GOBLIN_BARBARIAN]: 0x44aa44, // forest green
   [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
   [EnemyType.RUNNER]: 0x44ddff,           // bright cyan (fast, urgent)
   [EnemyType.DUELIST]: 0xddaa33,         // dark amber/gold (duel challenger)
+}
+
+// Populate boss colors from registry
+for (const boss of allBosses()) {
+  ENEMY_COLORS[boss.type] = boss.color
 }
 
 /** Enemy type → sprite sheet ID (only for sprite-based enemies) */
@@ -82,16 +87,16 @@ function getEnemyBarFillId(eid: number): number {
 }
 
 function getEnemyBarWidth(type: number, radius: number): number {
-  if (type === EnemyType.BOOMSTICK) return BOSS_BAR_WIDTH
+  if (isBoss(type)) return BOSS_BAR_WIDTH
   return Math.max(ENEMY_BAR_MIN_WIDTH, radius * 2 + 6)
 }
 
 function getEnemyBarHeight(type: number): number {
-  return type === EnemyType.BOOMSTICK ? BOSS_BAR_HEIGHT : ENEMY_BAR_HEIGHT
+  return isBoss(type) ? BOSS_BAR_HEIGHT : ENEMY_BAR_HEIGHT
 }
 
 function getEnemyBarYOffset(type: number, radius: number): number {
-  if (type === EnemyType.BOOMSTICK) return BOSS_BAR_Y_OFFSET
+  if (isBoss(type)) return BOSS_BAR_Y_OFFSET
   if (isSpriteEnemy(type)) return radius * GOBLIN_SPRITE_SCALE + ENEMY_BAR_Y_PADDING
   return radius + ENEMY_BAR_Y_PADDING
 }

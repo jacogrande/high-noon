@@ -2,9 +2,10 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import {
-  spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger, spawnBoomstick,
+  spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
   spawnGoblinBarbarian, spawnGoblinRogue,
 } from '../prefabs'
+import { getBoss } from '../content/bosses'
 import { createTestArena } from '../content/maps/testArena'
 import { enemyAttackSystem } from './enemyAttack'
 import {
@@ -13,14 +14,16 @@ import {
 } from '../components'
 import {
   CHARGER_CHARGE_DURATION, CHARGER_CHARGE_SPEED,
-  BOOMSTICK_BULLET_COUNT, BOOMSTICK_RING_BULLET_COUNT,
-  BOOMSTICK_PHASE_3_FAN_BULLETS, BOOMSTICK_PHASE_3_RING_BULLETS,
-  BOOMSTICK_BOOM_DAMAGE, BOOMSTICK_BOOM_RADIUS, BOOMSTICK_BOOM_FUSE,
   GOBLIN_BARBARIAN_ATTACK_DURATION, GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_DAMAGE,
   GOBLIN_ROGUE_ATTACK_DURATION, GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_DAMAGE,
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
   GOBLIN_BARBARIAN_RADIUS, GOBLIN_ROGUE_RADIUS,
 } from '../content/enemies'
+import {
+  BOOMSTICK_BULLET_COUNT, BOOMSTICK_RING_BULLET_COUNT,
+  BOOMSTICK_PHASE_3_FAN_BULLETS, BOOMSTICK_PHASE_3_RING_BULLETS,
+  BOOMSTICK_BOOM_DAMAGE, BOOMSTICK_BOOM_RADIUS, BOOMSTICK_BOOM_FUSE,
+} from '../content/bosses/boomstick'
 import { PLAYER_RADIUS } from '../content/player'
 import { transition } from './enemyAI'
 
@@ -75,16 +78,19 @@ describe('enemyAttackSystem', () => {
     })
 
     test('boomstick fan volley and halo are offset across attacks', () => {
-      const eid = spawnBoomstick(world, 100, 100)
+      const eid = getBoss(EnemyType.BOOMSTICK)!.spawn(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
-      AttackConfig.aimX[eid] = 1
+      // Set ringDelay to 1 so first attack fires fan, second fires ring
+      const st = world.bossState.get(eid) as { ringDelay: number; boomDelay: number }
+      st.ringDelay = 1
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
       expect(countBullets()).toBe(BOOMSTICK_BULLET_COUNT)
       expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
 
+      st.ringDelay = 0
       transition(eid, AIState.ATTACK)
       enemyAttackSystem(world, 1 / 60)
 
@@ -93,12 +99,13 @@ describe('enemyAttackSystem', () => {
     })
 
     test('boomstick phase 3 uses denser halo pattern', () => {
-      const eid = spawnBoomstick(world, 100, 100)
+      const eid = getBoss(EnemyType.BOOMSTICK)!.spawn(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
       BossPhase.phase[eid] = 3
       AttackConfig.projectileCount[eid] = BOOMSTICK_PHASE_3_FAN_BULLETS
-      AttackConfig.aimX[eid] = 0
+      const st = world.bossState.get(eid) as { ringDelay: number; boomDelay: number }
+      st.ringDelay = 0
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
@@ -107,11 +114,12 @@ describe('enemyAttackSystem', () => {
     })
 
     test('boomstick phase 1 does not throw booms', () => {
-      const eid = spawnBoomstick(world, 100, 100)
+      const eid = getBoss(EnemyType.BOOMSTICK)!.spawn(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
       BossPhase.phase[eid] = 1
-      AttackConfig.aimY[eid] = 0
+      const st = world.bossState.get(eid) as { ringDelay: number; boomDelay: number }
+      st.boomDelay = 0
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)
@@ -120,11 +128,12 @@ describe('enemyAttackSystem', () => {
     })
 
     test('boomstick phase 2 throws a boom with expected payload', () => {
-      const eid = spawnBoomstick(world, 100, 100)
+      const eid = getBoss(EnemyType.BOOMSTICK)!.spawn(world, 100, 100)
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
       BossPhase.phase[eid] = 2
-      AttackConfig.aimY[eid] = 0
+      const st = world.bossState.get(eid) as { ringDelay: number; boomDelay: number }
+      st.boomDelay = 0
       transition(eid, AIState.ATTACK)
 
       enemyAttackSystem(world, 1 / 60)

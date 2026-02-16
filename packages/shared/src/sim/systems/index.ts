@@ -23,7 +23,9 @@ import { healthSystem } from './health'
 import { debugSpawnSystem } from './debugSpawn'
 import { flowFieldSystem } from './flowField'
 import { enemyDetectionSystem } from './enemyDetection'
-import { boomstickBossSystem } from './boomstickBoss'
+import { bossPhaseSystem } from './bossPhase'
+// Trigger boss module registration
+import '../content/bosses'
 import { enemyAISystem } from './enemyAI'
 import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'
@@ -41,6 +43,8 @@ import { dynamiteSystem } from './dynamite'
 import { goldRewardSystem } from './goldReward'
 import { goldRushSystem } from './goldRush'
 import { hazardTileSystem } from './hazardTile'
+import { groundCrackSystem } from './groundCrackSystem'
+import { bossShockwaveSystem } from './bossShockwaveSystem'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
@@ -62,7 +66,7 @@ export {
   debugSpawnSystem,
   flowFieldSystem,
   enemyDetectionSystem,
-  boomstickBossSystem,
+  bossPhaseSystem,
   enemyAISystem,
   enemySteeringSystem,
   enemyAttackSystem,
@@ -84,6 +88,8 @@ export {
   goldRewardSystem,
   goldRushSystem,
   hazardTileSystem,
+  groundCrackSystem,
+  bossShockwaveSystem,
   interactionSystem,
   stashRewardSystem,
   itemPickupSystem,
@@ -114,6 +120,7 @@ export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(bulletCollisionSystem)
   systems.register(collisionSystem)
   systems.register(hazardTileSystem)
+  systems.register(groundCrackSystem)
 }
 
 /**
@@ -127,6 +134,7 @@ export function registerReplaySystems(systems: SystemRegistry): void {
   systems.register(movementSystem)
   systems.register(collisionSystem)
   systems.register(hazardTileSystem)
+  systems.register(groundCrackSystem)
 }
 
 /**
@@ -170,7 +178,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(flowFieldSystem)
   // -- Enemy AI & steering (read floorSpeedMul from previous tick) --
   systems.register(enemyDetectionSystem)
-  systems.register(boomstickBossSystem)
+  systems.register(bossPhaseSystem)
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)
@@ -181,6 +189,9 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(bulletCollisionSystem)
   // -- Tile hazards (writes floorSpeedMul for next tick's consumers) --
   systems.register(hazardTileSystem)
+  // -- Boss hazards (composes with tile hazards via Math.min on floorSpeedMul) --
+  systems.register(groundCrackSystem)
+  systems.register(bossShockwaveSystem)
   // -- Post-movement --
   systems.register(healthSystem)
   systems.register(goldRewardSystem)

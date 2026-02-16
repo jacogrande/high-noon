@@ -8,11 +8,12 @@
 
 import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Health, Player, Dead, Enemy, EnemyTier, Position } from '../components'
+import { Health, Player, Dead, Enemy, EnemyTier, Position, BossPhase } from '../components'
 import { XP_VALUES } from '../content/xp'
 import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
 import { ENEMY_DROP_CHANCE, DROP_RARITY_WEIGHTS_FODDER, DROP_RARITY_WEIGHTS_THREAT } from '../content/enemies'
 import { getRandomItemByRarity, type ItemRarity } from '../content/items'
+import { getBoss } from '../content/bosses'
 
 const healthQuery = defineQuery([Health])
 const playerQuery = defineQuery([Player, Health])
@@ -49,9 +50,9 @@ export function healthSystem(world: GameWorld, dt: number): void {
             wasMelee: killWasMelee,
           })
 
-          // Item drop roll
+          // Item drop roll (check boss registry, then ENEMY_DROP_CHANCE table)
           const enemyType = Enemy.type[eid]!
-          const dropChance = ENEMY_DROP_CHANCE[enemyType] ?? 0
+          const dropChance = ENEMY_DROP_CHANCE[enemyType] ?? getBoss(enemyType)?.dropChance ?? 0
           if (dropChance > 0 && world.rng.next() < dropChance) {
             const isFodder = Enemy.tier[eid] === EnemyTier.FODDER
             const weights = isFodder ? DROP_RARITY_WEIGHTS_FODDER : DROP_RARITY_WEIGHTS_THREAT
@@ -108,6 +109,10 @@ export function healthSystem(world: GameWorld, dt: number): void {
         world.bulletPierceHits.delete(eid)
         world.hookPierceCount.delete(eid)
         world.lastDamageByEntity.delete(eid)
+        // Clean up boss-specific state
+        if (hasComponent(world, BossPhase, eid)) {
+          world.bossState.delete(eid)
+        }
         removeEntity(world, eid)
       }
     }

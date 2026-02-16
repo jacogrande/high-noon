@@ -91,75 +91,6 @@ export const CHARGER_BUDGET_COST = 3
 export const CHARGER_TIER = EnemyTier.THREAT
 
 // ============================================================================
-// Boomstick — stage boss-style ranged threat
-// ============================================================================
-
-export const BOOMSTICK_SPEED = 55
-export const BOOMSTICK_RADIUS = 18
-export const BOOMSTICK_HP = 220
-export const BOOMSTICK_AGGRO_RANGE = 450
-export const BOOMSTICK_ATTACK_RANGE = 340
-export const BOOMSTICK_TELEGRAPH = 0.65
-export const BOOMSTICK_RECOVERY = 0.85
-export const BOOMSTICK_COOLDOWN = 1.8
-export const BOOMSTICK_DAMAGE = 8
-export const BOOMSTICK_BULLET_SPEED = 520
-export const BOOMSTICK_BULLET_ACCEL = 140
-export const BOOMSTICK_BULLET_DRAG = 0.10
-export const BOOMSTICK_BULLET_COUNT = 5
-export const BOOMSTICK_SPREAD_ANGLE = 1.0
-export const BOOMSTICK_RING_BULLET_COUNT = 8
-export const BOOMSTICK_PREFERRED_RANGE = 250
-export const BOOMSTICK_SEPARATION_RADIUS = 36
-export const BOOMSTICK_BUDGET_COST = 8
-export const BOOMSTICK_TIER = EnemyTier.THREAT
-
-/** HP ratio threshold: <= 70% enters phase 2 */
-export const BOOMSTICK_PHASE_2_THRESHOLD = 0.70
-/** HP ratio threshold: <= 35% enters phase 3 */
-export const BOOMSTICK_PHASE_3_THRESHOLD = 0.35
-/** Brief invulnerability during phase transitions */
-export const BOOMSTICK_TRANSITION_IFRAMES = 0.45
-
-// Boomstick phase tuning (Phase 1 mirrors base values)
-export const BOOMSTICK_PHASE_1_TELEGRAPH = BOOMSTICK_TELEGRAPH
-export const BOOMSTICK_PHASE_1_RECOVERY = BOOMSTICK_RECOVERY
-export const BOOMSTICK_PHASE_1_COOLDOWN = BOOMSTICK_COOLDOWN
-export const BOOMSTICK_PHASE_1_FAN_BULLETS = BOOMSTICK_BULLET_COUNT
-export const BOOMSTICK_PHASE_1_RING_BULLETS = BOOMSTICK_RING_BULLET_COUNT
-
-export const BOOMSTICK_PHASE_2_TELEGRAPH = 0.55
-export const BOOMSTICK_PHASE_2_RECOVERY = 0.70
-export const BOOMSTICK_PHASE_2_COOLDOWN = 1.35
-export const BOOMSTICK_PHASE_2_FAN_BULLETS = 6
-export const BOOMSTICK_PHASE_2_RING_BULLETS = 8
-
-export const BOOMSTICK_PHASE_3_TELEGRAPH = 0.45
-export const BOOMSTICK_PHASE_3_RECOVERY = 0.55
-export const BOOMSTICK_PHASE_3_COOLDOWN = 1.00
-export const BOOMSTICK_PHASE_3_FAN_BULLETS = 7
-export const BOOMSTICK_PHASE_3_RING_BULLETS = 10
-
-// Boom throw ("booms") — enabled in phases 2+
-export const BOOMSTICK_BOOM_DAMAGE = 12
-export const BOOMSTICK_BOOM_RADIUS = 88
-export const BOOMSTICK_BOOM_FUSE = 1.05
-export const BOOMSTICK_BOOM_THROW_RANGE = 320
-export const BOOMSTICK_BOOM_AIM_JITTER = 40
-/** Number of ATTACK executions until next boom throw (phase 2). */
-export const BOOMSTICK_BOOM_DELAY_PHASE_2_MIN = 1
-export const BOOMSTICK_BOOM_DELAY_PHASE_2_MAX = 2
-/** Number of ATTACK executions until next boom throw (phase 3). */
-export const BOOMSTICK_BOOM_DELAY_PHASE_3_MIN = 0
-export const BOOMSTICK_BOOM_DELAY_PHASE_3_MAX = 1
-
-// One-time add burst counts at phase transitions
-export const BOOMSTICK_PHASE_2_SUMMON_SWARMERS = 3
-export const BOOMSTICK_PHASE_2_SUMMON_ROGUES = 1
-export const BOOMSTICK_PHASE_3_SUMMON_SWARMERS = 4
-export const BOOMSTICK_PHASE_3_SUMMON_ROGUES = 2
-
-// ============================================================================
 // Goblin Barbarian — heavy melee fodder
 // ============================================================================
 
@@ -252,7 +183,6 @@ export const ENEMY_DROP_CHANCE: Record<number, number> = {
   [EnemyType.CHARGER]: 0.08,
   [EnemyType.GOBLIN_BARBARIAN]: 0.03,
   [EnemyType.GOBLIN_ROGUE]: 0.02,
-  [EnemyType.BOOMSTICK]: 0.50,
   [EnemyType.RUNNER]: 0,
   [EnemyType.DUELIST]: 0.30,
 }

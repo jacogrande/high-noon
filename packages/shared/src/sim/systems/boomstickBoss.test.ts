@@ -2,8 +2,9 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import { createTestArena } from '../content/maps/testArena'
-import { spawnPlayer, spawnBoomstick } from '../prefabs'
-import { boomstickBossSystem } from './boomstickBoss'
+import { spawnPlayer } from '../prefabs'
+import { getBoss } from '../content/bosses'
+import { bossPhaseSystem } from './bossPhase'
 import { Enemy, EnemyAI, AIState, AttackConfig, BossPhase, EnemyType, EnemyTier, Health } from '../components'
 import {
   BOOMSTICK_TRANSITION_IFRAMES,
@@ -19,7 +20,7 @@ import {
   BOOMSTICK_PHASE_3_FAN_BULLETS,
   BOOMSTICK_PHASE_3_SUMMON_SWARMERS,
   BOOMSTICK_PHASE_3_SUMMON_ROGUES,
-} from '../content/enemies'
+} from '../content/bosses/boomstick'
 
 const enemyQuery = defineQuery([Enemy])
 
@@ -32,7 +33,11 @@ function countByType(world: GameWorld): Record<number, number> {
   return counts
 }
 
-describe('boomstickBossSystem', () => {
+function spawnBoomstick(world: GameWorld, x: number, y: number): number {
+  return getBoss(EnemyType.BOOMSTICK)!.spawn(world, x, y)
+}
+
+describe('bossPhaseSystem (Boomstick)', () => {
   let world: GameWorld
   let boomstickEid: number
 
@@ -50,7 +55,7 @@ describe('boomstickBossSystem', () => {
   test('phase 2 transition updates tuning, telegraphs, and spawns burst once', () => {
     Health.current[boomstickEid] = Health.max[boomstickEid]! * 0.69
 
-    boomstickBossSystem(world, 1 / 60)
+    bossPhaseSystem(world, 1 / 60)
 
     expect(BossPhase.phase[boomstickEid]!).toBe(2)
     expect(AttackConfig.telegraphDuration[boomstickEid]!).toBeCloseTo(BOOMSTICK_PHASE_2_TELEGRAPH)
@@ -66,7 +71,7 @@ describe('boomstickBossSystem', () => {
     expect(afterFirst[EnemyType.GOBLIN_ROGUE] ?? 0).toBe(BOOMSTICK_PHASE_2_SUMMON_ROGUES)
 
     // Re-running in the same phase should not respawn adds.
-    boomstickBossSystem(world, 1 / 60)
+    bossPhaseSystem(world, 1 / 60)
     const afterSecond = countByType(world)
     expect(afterSecond[EnemyType.SWARMER] ?? 0).toBe(BOOMSTICK_PHASE_2_SUMMON_SWARMERS)
     expect(afterSecond[EnemyType.GOBLIN_ROGUE] ?? 0).toBe(BOOMSTICK_PHASE_2_SUMMON_ROGUES)
@@ -82,11 +87,11 @@ describe('boomstickBossSystem', () => {
   test('phase 3 transition from phase 2 applies phase 3 tuning and burst delta', () => {
     // Enter phase 2 first
     Health.current[boomstickEid] = Health.max[boomstickEid]! * 0.69
-    boomstickBossSystem(world, 1 / 60)
+    bossPhaseSystem(world, 1 / 60)
     const beforePhase3 = countByType(world)
 
     Health.current[boomstickEid] = Health.max[boomstickEid]! * 0.34
-    boomstickBossSystem(world, 1 / 60)
+    bossPhaseSystem(world, 1 / 60)
 
     expect(BossPhase.phase[boomstickEid]!).toBe(3)
     expect(AttackConfig.telegraphDuration[boomstickEid]!).toBeCloseTo(BOOMSTICK_PHASE_3_TELEGRAPH)
@@ -104,7 +109,7 @@ describe('boomstickBossSystem', () => {
   test('large HP drop to phase 3 in one tick triggers both phase bursts', () => {
     Health.current[boomstickEid] = Health.max[boomstickEid]! * 0.20
 
-    boomstickBossSystem(world, 1 / 60)
+    bossPhaseSystem(world, 1 / 60)
 
     expect(BossPhase.phase[boomstickEid]!).toBe(3)
     const counts = countByType(world)

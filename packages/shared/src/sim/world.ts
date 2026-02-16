@@ -290,6 +290,29 @@ export interface RewindEnemyState {
 }
 
 /**
+ * Ground crack zone left by boss Ground Pound attacks
+ */
+export interface GroundCrack {
+  x: number
+  y: number
+  radius: number
+}
+
+/**
+ * Expanding shockwave ring from boss Ground Pound
+ */
+export interface BossShockwave {
+  x: number
+  y: number
+  currentRadius: number
+  maxRadius: number
+  speed: number
+  ringWidth: number
+  damage: number
+  hitEntities: Set<number>
+}
+
+/**
  * Game world containing all ECS state
  */
 export interface GameWorld extends IWorld {
@@ -437,6 +460,12 @@ export interface GameWorld extends IWorld {
   npcEntities: Set<number>
   /** Current stage objective state (null = no side objective) */
   objective: ObjectiveState | null
+  /** Per-boss typed state (boss eid → module-specific state object) */
+  bossState: Map<number, unknown>
+  /** Ground crack zones from boss Ground Pound attacks */
+  groundCracks: GroundCrack[]
+  /** Active expanding shockwave rings */
+  bossShockwaves: BossShockwave[]
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -523,6 +552,9 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     nextItemPickupId: 1,
     npcEntities: new Set(),
     objective: null,
+    bossState: new Map(),
+    groundCracks: [],
+    bossShockwaves: [],
   }
 }
 
@@ -608,6 +640,9 @@ export function resetWorld(world: GameWorld): void {
   world.nextItemPickupId = 1
   world.npcEntities.clear()
   world.objective = null
+  world.bossState.clear()
+  world.groundCracks = []
+  world.bossShockwaves = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 
@@ -615,10 +650,32 @@ export function resetWorld(world: GameWorld): void {
  * Initialize an encounter on the world
  */
 export function setEncounter(world: GameWorld, encounter: StageEncounter): void {
+  // If the encounter has a boss pool, pick a random boss and substitute it
+  // into any wave threat entries that reference a pool member.
+  let resolved = encounter
+  if (encounter.bossPool && encounter.bossPool.length >= 1) {
+    const pool = encounter.bossPool
+    const poolSet = new Set(pool)
+    const selected = pool[Math.floor(world.rng.next() * pool.length)]!
+    resolved = {
+      ...encounter,
+      waves: encounter.waves.map(wave => {
+        const hasPoolBoss = wave.threats.some(t => poolSet.has(t.type))
+        if (!hasPoolBoss) return wave
+        return {
+          ...wave,
+          threats: wave.threats.map(t =>
+            poolSet.has(t.type) ? { ...t, type: selected } : t,
+          ),
+        }
+      }),
+    }
+  }
+
   world.encounter = {
-    definition: encounter,
+    definition: resolved,
     currentWave: 0,
-    waveTimer: encounter.waves[0]!.spawnDelay,
+    waveTimer: resolved.waves[0]!.spawnDelay,
     waveActive: false,
     completed: false,
     fodderBudgetRemaining: 0,
@@ -630,6 +687,9 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
     threatKilledThisWave: 0,
     activeWaveThreatEids: new Set(),
   }
+  // Clear ground cracks from previous encounter
+  world.groundCracks = []
+  world.bossShockwaves = []
 }
 
 /**
