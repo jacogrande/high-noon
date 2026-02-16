@@ -66,6 +66,7 @@ import { DynamiteRenderer } from '../../render/DynamiteRenderer'
 import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
 import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { BossAttackRenderer } from '../../render/BossAttackRenderer'
+import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
@@ -134,6 +135,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly groundCrackRenderer: GroundCrackRenderer
   private readonly bossShockwaveRenderer: BossShockwaveRenderer
   private readonly bossAttackRenderer: BossAttackRenderer
+  private readonly trapZoneRenderer: TrapZoneRenderer
   private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
@@ -187,6 +189,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.groundCrackRenderer = new GroundCrackRenderer(this.gameApp.layers.entities)
     this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
     this.bossAttackRenderer = new BossAttackRenderer(this.gameApp.layers.entities)
+    this.trapZoneRenderer = new TrapZoneRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -696,6 +699,9 @@ export class SingleplayerModeController implements SceneModeController {
     // Render boss shockwave rings
     this.bossShockwaveRenderer.render(this.world)
 
+    // Render trap zones (bear traps, caltrops)
+    this.trapZoneRenderer.render(this.world)
+
     // Render dynamite pixel-fuse telegraphs + throw arcs.
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
 
@@ -788,6 +794,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.groundCrackRenderer.destroy()
     this.bossShockwaveRenderer.destroy()
     this.bossAttackRenderer.destroy()
+    this.trapZoneRenderer.destroy()
     this.showdownRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()

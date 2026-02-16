@@ -101,6 +101,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
 export const STAGE_2_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_2_MAP_CONFIG,
   objective: STAGE_2_PROTECT,
+  bossPool: [EnemyType.COYOTE_JANE],
   waves: [
     // Wave 1: Mixed fodder + 1 shooter + 1 charger
     {
@@ -118,7 +119,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
       spawnDelay: 0,
       threatClearRatio: 1.0,
     },
-    // Wave 2: Heavier mix + shooter + charger
+    // Wave 2: Heavier mix + stage boss
     {
       fodderBudget: 16,
       fodderPool: [
@@ -129,8 +130,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
       ],
       maxFodderAlive: 7,
       threats: [
-        { type: EnemyType.SHOOTER, count: 1 },
-        { type: EnemyType.CHARGER, count: 1 },
+        { type: EnemyType.COYOTE_JANE, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,

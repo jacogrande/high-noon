@@ -283,6 +283,28 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
     if (hitEntity) continue // skip wall check for this bullet
 
+    // --- Destructible trap collision (player bullets only) ---
+    if (Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET && world.trapZones.length > 0) {
+      let hitTrap = false
+      for (let ti = world.trapZones.length - 1; ti >= 0; ti--) {
+        const trap = world.trapZones[ti]!
+        if (trap.hp === undefined || trap.hp <= 0) continue
+        const tdx = x - trap.x
+        const tdy = y - trap.y
+        const hitDist = radius + trap.radius
+        if (tdx * tdx + tdy * tdy > hitDist * hitDist) continue
+
+        trap.hp--
+        if (trap.hp <= 0) {
+          world.trapZones.splice(ti, 1)
+        }
+        bulletsToRemove.push(eid)
+        hitTrap = true
+        break
+      }
+      if (hitTrap) continue
+    }
+
     // --- Wall collision ---
     // Check if bullet center or edges hit a solid tile
     const hitWall =

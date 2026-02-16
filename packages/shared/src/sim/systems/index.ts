@@ -45,6 +45,7 @@ import { goldRushSystem } from './goldRush'
 import { hazardTileSystem } from './hazardTile'
 import { groundCrackSystem } from './groundCrackSystem'
 import { bossShockwaveSystem } from './bossShockwaveSystem'
+import { trapZoneSystem } from './trapZoneSystem'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
@@ -94,6 +95,7 @@ export {
   stashRewardSystem,
   itemPickupSystem,
   tryVisitorPurchase,
+  trapZoneSystem,
 }
 
 export type { CampVisitorState }
@@ -192,6 +194,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   // -- Boss hazards (composes with tile hazards via Math.min on floorSpeedMul) --
   systems.register(groundCrackSystem)
   systems.register(bossShockwaveSystem)
+  systems.register(trapZoneSystem)
   // -- Post-movement --
   systems.register(healthSystem)
   systems.register(goldRewardSystem)

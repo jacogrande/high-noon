@@ -80,6 +80,7 @@ const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
   [EnemyType.GOBLIN_ROGUE]: 'goblin_rogue',
   [EnemyType.MAD_DOG]: 'mad_dog',
   [EnemyType.BOOMSTICK]: 'boomstick',
+  [EnemyType.COYOTE_JANE]: 'coyote_jane',
 }
 
 /** Per-type sprite scale overrides (defaults to GOBLIN_SPRITE_SCALE) */
@@ -91,6 +92,7 @@ const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.MAD_DOG]: 2.5,
   [EnemyType.BOOMSTICK]: 2.5,
   [EnemyType.DALTON]: 2.5,
+  [EnemyType.COYOTE_JANE]: 2.5,
 }
 
 function isSpriteEnemy(type: number): boolean {

@@ -291,6 +291,39 @@ export interface RewindEnemyState {
 }
 
 /**
+ * Generic trap zone placed by bosses or characters.
+ * Type-discriminated: each `kind` carries its own relevant fields.
+ */
+export interface TrapZone {
+  kind: 'bearTrap' | 'caltrop'
+  x: number
+  y: number
+  /** Trigger/effect radius */
+  radius: number
+  damage: number
+  /** Lifetime remaining (caltrops) */
+  duration?: number
+  /** Speed multiplier (caltrops: 0.3 = 70% slow) */
+  slowMultiplier?: number
+  /** Bear trap freeze time */
+  immobilizeDuration?: number
+  /** Destructible trap HP (undefined = indestructible) */
+  hp?: number
+  /** Boss or entity that placed it */
+  ownerEid: number
+}
+
+/**
+ * Per-tick trap detonation event for client VFX
+ */
+export interface TrapDetonation {
+  kind: 'bearTrap'
+  x: number
+  y: number
+  radius: number
+}
+
+/**
  * Ground crack zone left by boss Ground Pound attacks
  */
 export interface GroundCrack {
@@ -487,6 +520,10 @@ export interface GameWorld extends IWorld {
   bossShockwaves: BossShockwave[]
   /** Per-tick boss telegraph shapes (cleared each tick by bossPhaseSystem) */
   bossTelegraphs: BossTelegraph[]
+  /** Active trap zones (bear traps, caltrops) from bosses */
+  trapZones: TrapZone[]
+  /** Per-tick trap detonation events for client VFX */
+  trapDetonations: TrapDetonation[]
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -577,6 +614,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     groundCracks: [],
     bossShockwaves: [],
     bossTelegraphs: [],
+    trapZones: [],
+    trapDetonations: [],
   }
 }
 
@@ -666,6 +705,8 @@ export function resetWorld(world: GameWorld): void {
   world.groundCracks = []
   world.bossShockwaves = []
   world.bossTelegraphs = []
+  world.trapZones = []
+  world.trapDetonations = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 
@@ -711,9 +752,11 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
     threatKilledThisWave: 0,
     activeWaveThreatEids: new Set(),
   }
-  // Clear ground cracks from previous encounter
+  // Clear ground cracks and traps from previous encounter
   world.groundCracks = []
   world.bossShockwaves = []
+  world.trapZones = []
+  world.trapDetonations = []
 }
 
 /**
