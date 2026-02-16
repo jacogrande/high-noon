@@ -63,7 +63,7 @@ export interface StageEncounter {
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_1_MAP_CONFIG,
   objective: STAGE_1_DUEL,
-  bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG],
+  bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG, EnemyType.DALTON],
   waves: [
     // Wave 1: Swarmers + 1 shooter
     {

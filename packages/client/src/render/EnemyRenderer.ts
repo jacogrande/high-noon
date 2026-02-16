@@ -11,7 +11,7 @@ import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
   AttackConfig, Health, BossPhase, NO_TARGET,
-  isBoss, allBosses,
+  isBoss, allBosses, getBoss,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
@@ -80,10 +80,20 @@ const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
 const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.MAD_DOG]: 2.5,
   [EnemyType.BOOMSTICK]: 2.5,
+  [EnemyType.DALTON]: 2.5,
 }
 
 function isSpriteEnemy(type: number): boolean {
-  return ENEMY_SPRITE_ID[type] !== undefined
+  return ENEMY_SPRITE_ID[type] !== undefined || type === EnemyType.DALTON
+}
+
+/** Resolve sprite ID per entity. DALTON brothers share one EnemyType but use
+ *  different sprite sheets — differentiate by Collider.radius (Emmett=14, Bob=12). */
+function resolveSpriteId(type: number, eid: number): string {
+  if (type === EnemyType.DALTON) {
+    return Collider.radius[eid]! >= 14 ? 'dalton_emmett' : 'dalton_bob'
+  }
+  return ENEMY_SPRITE_ID[type]!
 }
 
 function getSpriteScale(type: number): number {
@@ -204,7 +214,7 @@ export class EnemyRenderer {
         const color = ENEMY_COLORS[type] ?? 0xff0000
 
         if (isSpriteEnemy(type)) {
-          const spriteId = ENEMY_SPRITE_ID[type]!
+          const spriteId = resolveSpriteId(type, eid)
           const texture = AssetLoader.getEnemyTexture(spriteId, 'idle', 'S', 0)
           const initScale = getSpriteScale(type)
           this.registry.createSprite(eid, texture)
@@ -215,9 +225,10 @@ export class EnemyRenderer {
           this.registry.createCircle(eid, radius, color)
         }
 
-        // Skip world-space health bar for boss entities (rendered in HUD instead)
-        const isBoss = hasComponent(world, BossPhase, eid)
-        if (!isBoss) {
+        // Show world-space health bar: always for non-bosses, also for multi-entity bosses with showIndividualBars
+        const isBossEntity = hasComponent(world, BossPhase, eid)
+        const showWorldBar = !isBossEntity || (getBoss(type)?.showIndividualBars === true)
+        if (showWorldBar) {
           const radius = Collider.radius[eid]!
           const barWidth = getEnemyBarWidth(type, radius)
           const barHeight = getEnemyBarHeight(type)
@@ -298,7 +309,7 @@ export class EnemyRenderer {
         }
 
         const isSprite = cachedType !== undefined && isSpriteEnemy(cachedType)
-        const spriteId = cachedType !== undefined ? (ENEMY_SPRITE_ID[cachedType] ?? '') : ''
+        const spriteId = cachedType !== undefined && isSpriteEnemy(cachedType) ? resolveSpriteId(cachedType, eid) : ''
         const dir = this.lastDirection.get(eid) ?? 'S'
 
         // Start death effect instead of immediate removal
@@ -404,7 +415,7 @@ export class EnemyRenderer {
 
       // Sprite-based enemy rendering
       if (isSprite) {
-        const spriteId = ENEMY_SPRITE_ID[type]!
+        const spriteId = resolveSpriteId(type, eid)
         const vx = Velocity.x[eid]!
         const vy = Velocity.y[eid]!
 

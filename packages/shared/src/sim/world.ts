@@ -9,6 +9,7 @@ import type { Tilemap } from './tilemap'
 import { getArenaCenterFromTilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
+import { getBoss } from './content/bosses'
 import type { InputState } from '../net/input'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
@@ -684,10 +685,11 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
       waves: encounter.waves.map(wave => {
         const hasPoolBoss = wave.threats.some(t => poolSet.has(t.type))
         if (!hasPoolBoss) return wave
+        const mod = getBoss(selected)
         return {
           ...wave,
           threats: wave.threats.map(t =>
-            poolSet.has(t.type) ? { ...t, type: selected } : t,
+            poolSet.has(t.type) ? { ...t, type: selected, count: mod?.spawnCount ?? t.count } : t,
           ),
         }
       }),

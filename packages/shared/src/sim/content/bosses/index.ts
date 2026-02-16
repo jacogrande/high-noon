@@ -7,6 +7,7 @@
 // Side-effect imports — register boss modules
 import './boomstick'
 import './madDog'
+import './daltonBoys'
 
 // Re-export registry API
 export { getBoss, isBoss, allBosses, registerBoss } from './registry'
@@ -38,6 +39,21 @@ export {
   BOOMSTICK_BOOM_RADIUS,
   BOOMSTICK_BOOM_FUSE,
 } from './boomstick'
+
+export {
+  DALTON_EMMETT_HP,
+  DALTON_BOB_HP,
+  DALTON_EMMETT_SPEED,
+  DALTON_BOB_SPEED,
+  DALTON_BUCKSHOT_DAMAGE,
+  DALTON_DEADSHOT_DAMAGE,
+  DALTON_BULL_RUSH_DAMAGE,
+  DALTON_COVERING_FIRE_DAMAGE,
+  DALTON_ENRAGE_SPEED_MUL,
+  DALTON_ENRAGE_COOLDOWN_MUL,
+  DALTON_GROUP_KEY,
+  DALTON_TRANSITION_IFRAMES,
+} from './daltonBoys'
 
 export {
   MAD_DOG_HP,

@@ -383,13 +383,15 @@ export class SingleplayerModeController implements SceneModeController {
       boss: (() => {
         const bosses = bossQuery(this.world)
         if (bosses.length === 0) return null
-        const beid = bosses[0]!
-        if (Health.current[beid]! <= 0) return null
-        return {
-          name: getBoss(Enemy.type[beid]!)?.displayName ?? 'BOSS',
-          hp: Health.current[beid]!,
-          maxHP: Health.max[beid]!,
+        let totalHP = 0, totalMaxHP = 0, name = 'BOSS', anyAlive = false
+        for (const beid of bosses) {
+          totalMaxHP += Health.max[beid]!
+          const hp = Health.current[beid]!
+          if (hp > 0) { anyAlive = true; totalHP += hp }
+          name = getBoss(Enemy.type[beid]!)?.displayName ?? name
         }
+        if (!anyAlive) return null
+        return { name, hp: totalHP, maxHP: totalMaxHP }
       })(),
       campVisitor: this.world.campVisitor
         ? (() => {

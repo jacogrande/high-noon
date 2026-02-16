@@ -53,6 +53,8 @@ export function clearAllEnemies(world: GameWorld): void {
     removeEntity(world, eid)
   }
   world.npcEntities.clear()
+  // Clean up boss group state (multi-entity bosses use sentinel keys)
+  world.bossState.clear()
   // Reset derived/cached spatial state — will rebuild on next tick
   world.flowField = null
   world.spatialHash = null

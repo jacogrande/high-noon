@@ -82,7 +82,8 @@ import {
   DUELIST_TELEGRAPH, DUELIST_RECOVERY, DUELIST_COOLDOWN,
   DUELIST_DAMAGE, DUELIST_SEPARATION_RADIUS, DUELIST_TIER,
 } from './content/enemies'
-import { BOOMSTICK_RADIUS } from './content/bosses/boomstick'
+/** Boss radii inlined here to avoid circular dep (bosses → prefabs → bosses) */
+const BOOMSTICK_RADIUS = 18
 
 /** Mad Dog Maguire radius (largest humanoid) */
 const MAD_DOG_RADIUS = 20

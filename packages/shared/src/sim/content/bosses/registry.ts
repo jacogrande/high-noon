@@ -18,6 +18,10 @@ export interface BossModule {
   readonly radius: number
   /** Item drop chance on death (0-1) */
   readonly dropChance: number
+  /** Show world-space health bars per entity (for multi-entity bosses) */
+  readonly showIndividualBars?: boolean
+  /** How many entities this boss spawns. Default 1. Used by setEncounter for threat count. */
+  readonly spawnCount?: number
 
   /** Create the boss entity at (x, y) */
   spawn(world: GameWorld, x: number, y: number): number

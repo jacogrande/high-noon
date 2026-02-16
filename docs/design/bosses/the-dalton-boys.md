@@ -19,7 +19,7 @@ This is the "Theseus and Asterius" of High Noon's Stage 1 boss pool: a fight tha
 
 ### Why a Duo Boss?
 
-Every other boss in the Stage 1 pool is a single entity. Boomstick tests pattern-reading against one source of projectiles. Duo fights test a fundamentally different skill: **divided attention**. The player must track two enemies with different behavior profiles, decide which to prioritize moment-to-moment, and position themselves in the space *between* two threat zones rather than relative to one.
+Every other boss in the Stage 1 pool is a single entity. Boomstick tests pattern-reading against one source of projectiles. Duo fights test a fundamentally different skill: **divided attention**. The player must track two enemies with different behavior profiles, decide which to prioritize moment-to-moment, and position themselves in the space _between_ two threat zones rather than relative to one.
 
 Duo bosses are among the most celebrated encounters in the roguelite canon. Hades' Theseus and Asterius is the gold standard — an aggressive melee bull and a ranged chariot champion who individually are manageable but together create emergent pressure that's greater than the sum of their parts. The Dalton Boys aim to capture that same dynamic through a Western lens.
 
@@ -61,22 +61,26 @@ They're not evil in a grandiose way. They're not on some mission. They rob towns
 ### Sample Bark Lines
 
 **Buck (frequent, loud):**
+
 - "Hold 'em steady, Clyde — I'll finish this close!"
 - "You shoot like my dead grandmother, and she didn't have thumbs!"
 - "That all you got? I've taken worse from a mule!"
 
 **Clyde (rare, quiet — only during transitions or key moments):**
-- "Buck. Move." *(phase 2 transition — one word commands)*
-- "Don't get cocky. Aim." *(if Buck is taking heavy damage)*
-- "...Left side." *(calling out the player's position to Buck)*
+
+- "Buck. Move." _(phase 2 transition — one word commands)_
+- "Don't get cocky. Aim." _(if Buck is taking heavy damage)_
+- "...Left side." _(calling out the player's position to Buck)_
 
 **Together (phase 3 — the back-to-back moment):**
+
 - Buck: "Just like Abilene, brother?"
 - Clyde: "Just like Abilene."
 
 ### Visual Design
 
 **Buck Dalton:**
+
 - Massive frame, barrel chest, rolled sleeves, suspenders over a sweat-stained undershirt
 - Wide-brimmed hat, pushed back, showing a scarred forehead
 - Carries a hatchet in one hand, sometimes two
@@ -84,6 +88,7 @@ They're not evil in a grandiose way. They're not on some mission. They rob towns
 - Expressions: grinning, snarling, laughing — always animated
 
 **Clyde Dalton:**
+
 - Lean, angular, dark duster coat, hat pulled low over his eyes
 - Lever-action rifle, always held. Never puts it down.
 - Moves in quick, efficient bursts — crouches, repositions, never wastes motion
@@ -100,13 +105,14 @@ They're not evil in a grandiose way. They're not on some mission. They rob towns
 
 The player navigates the space between two overlapping threat zones: Buck's close-range melee pressure and Clyde's long-range aimed shots. Engaging one brother always means turning your back to the other. The core decision every second is: **which brother do I deal with right now, and how do I position to minimize the other's threat?**
 
-This is not a fight you can solve by standing in one spot and dodging. It's a fight you solve by *moving through the arena* — using the space between the brothers, using cover to break Clyde's sightline, using distance to escape Buck's range.
+This is not a fight you can solve by standing in one spot and dodging. It's a fight you solve by _moving through the arena_ — using the space between the brothers, using cover to break Clyde's sightline, using distance to escape Buck's range.
 
 ### Attack Patterns
 
 #### Buck's Moveset
 
 **1. Hatchet Combo (Primary — all phases)**
+
 - Telegraph: Raises hatchet overhead (0.45s wind-up), flash on blade
 - Attack: Two-swing combo — wide horizontal arc, then overhead chop
 - Horizontal arc: 140° cone in front of Buck, ~50px range
@@ -115,6 +121,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 - Intent: Forces lateral dodge on swing one, positional dodge on swing two. The combo has a rhythm: dodge-dodge-shoot.
 
 **2. Bull Rush (Phase 1+)**
+
 - Telegraph: Lowers head, scrapes ground with foot (0.5s wind-up), ground indicator shows charge direction
 - Attack: Charges in a locked straight line at 280 units/sec for up to 200px
 - If Buck hits a wall or arena edge: stunned for 1.0s (big punish)
@@ -123,6 +130,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 - Intent: Creates large punish windows if the player baits the charge into a wall. Tests dodge roll timing. Also moves Buck across the arena, creating positional variety.
 
 **3. Hatchet Hurl (Phase 2+ — new attack)**
+
 - Telegraph: Draws arm back (0.4s), hatchet glints
 - Attack: Throws hatchet in a line at the player's position. Travels 300px, then returns to Buck like a boomerang (can hit on the way back)
 - Damage: 8 on hit (outgoing or return)
@@ -131,6 +139,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 #### Clyde's Moveset
 
 **1. Aimed Shot (Primary — all phases)**
+
 - Telegraph: Red laser sight appears from Clyde's position to the player (0.6s charge), accompanied by a charging audio cue (rising whine)
 - Attack: Single high-damage rifle bullet along the laser line
 - Damage: 14 (high — meant to punish)
@@ -138,6 +147,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 - Intent: Heavy single shot with a long, readable telegraph. The laser sight gives the player clear information and time to dodge. The long recovery is the primary punish window for damaging Clyde. Teaches players to read and react rather than panic.
 
 **2. Reposition Dash (Utility — all phases)**
+
 - Behavior: Clyde dashes between 3-4 fixed elevated positions around the arena perimeter (rooftop corners, balcony, water tower)
 - Dash is fast (0.3s travel time) with a brief dust-puff telegraph at the destination before he arrives
 - Clyde is **vulnerable during the dash** — he's in the open, moving between perches. This is the secondary window to hit him.
@@ -145,6 +155,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 - Intent: Keeps Clyde mobile so the player can't just stand behind cover permanently. The dash vulnerability rewards players who track Clyde's pattern and pre-aim at his next perch.
 
 **3. Covering Fire (Phase 2+ — new attack)**
+
 - Telegraph: Clyde braces rifle with both hands (0.4s), wider muzzle glow
 - Attack: Rapid 3-shot burst in a tight spread aimed at the player
 - Damage: 6 per bullet (less than aimed shot, but harder to dodge all three)
@@ -156,6 +167,7 @@ This is not a fight you can solve by standing in one spot and dodging. It's a fi
 The brothers don't have scripted combination attacks in Phases 1-2. Their synergy is **emergent**: Buck forces movement, Clyde punishes movement. Dodging Buck's hatchet combo repositions you into Clyde's sightline. Chasing Clyde during his reposition dash exposes you to Buck closing distance.
 
 In Phase 2, the **Back to Back** maneuver is the one scripted combination:
+
 - Both brothers move to arena center
 - Buck swings in a 360° hatchet arc (must roll through or be outside radius)
 - Simultaneously, Clyde rapid-fires outward in the player's direction
@@ -191,6 +203,7 @@ Transition: This is the emotional peak. Whichever brother has taken more recent 
 Two variants depending on which brother is "injured" (determined by which brother took the last hit that crossed the 35% threshold):
 
 **Variant A — Buck is hurt:**
+
 - Buck slows down (movement speed -30%), attacks less frequently, visually limping
 - Clyde drops from his perch and fights on the ground alongside Buck — close-range rifle shots, faster repositioning, more aggressive
 - Clyde stops using his perches entirely. Both brothers are now ground-level threats.
@@ -198,6 +211,7 @@ Two variants depending on which brother is "injured" (determined by which brothe
 - The fight becomes a close-range scramble with two ground threats
 
 **Variant B — Clyde is hurt:**
+
 - Clyde retreats to his most distant perch, fires less frequently, visually clutching his side
 - Buck goes berserk: movement speed +30%, attack cooldown drops to 1.0s, starts throwing dynamite (area denial, 80px radius, 1.0s fuse)
 - Buck actively body-blocks sightlines to Clyde, trying to protect his brother
@@ -209,18 +223,18 @@ The variant system means Phase 3 plays differently depending on how the player a
 
 ### Tuning Reference
 
-| Parameter | Phase 1 | Phase 2 | Phase 3 |
-|---|---|---|---|
-| Buck telegraph | 0.45-0.50s | 0.40-0.45s | 0.35-0.40s |
-| Buck recovery | 0.70s | 0.60s | 0.50s |
-| Buck cooldown | 1.8s | 1.4s | 1.0s |
-| Buck move speed | 70 | 75 | 60 (A) / 90 (B) |
-| Clyde telegraph | 0.60s | 0.55s | 0.50s |
-| Clyde recovery | 0.90s | 0.70s | 0.60s |
-| Clyde fire rate | 4.0s | 3.0s | 3.5s (A) / 4.0s (B) |
-| Shared HP | ~250 | | |
-| Phase thresholds | 70% | 35% | 0% |
-| Transition i-frames | 0.45s | 0.45s | — |
+| Parameter           | Phase 1    | Phase 2    | Phase 3             |
+| ------------------- | ---------- | ---------- | ------------------- |
+| Buck telegraph      | 0.45-0.50s | 0.40-0.45s | 0.35-0.40s          |
+| Buck recovery       | 0.70s      | 0.60s      | 0.50s               |
+| Buck cooldown       | 1.8s       | 1.4s       | 1.0s                |
+| Buck move speed     | 70         | 75         | 60 (A) / 90 (B)     |
+| Clyde telegraph     | 0.60s      | 0.55s      | 0.50s               |
+| Clyde recovery      | 0.90s      | 0.70s      | 0.60s               |
+| Clyde fire rate     | 4.0s       | 3.0s       | 3.5s (A) / 4.0s (B) |
+| Shared HP           | ~250       |            |                     |
+| Phase thresholds    | 70%        | 35%        | 0%                  |
+| Transition i-frames | 0.45s      | 0.45s      | —                   |
 
 ---
 
@@ -228,14 +242,14 @@ The variant system means Phase 3 plays differently depending on how the player a
 
 ### What Skills Are Tested?
 
-| Player Skill | How the Daltons Test It |
-|---|---|
-| **Target prioritization** | Two targets, one shared HP bar. Shoot whoever is vulnerable *right now*. |
-| **Split attention** | Must track Buck's position (melee threat) AND Clyde's laser sight (ranged threat) simultaneously. |
-| **Spatial positioning** | Optimal position is one where Buck can't reach you AND you have cover from Clyde. That position shifts constantly. |
-| **Dodge roll timing** | Buck's combos and Clyde's aimed shot both require precise dodge timing, but at different rhythms. |
+| Player Skill                | How the Daltons Test It                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Target prioritization**   | Two targets, one shared HP bar. Shoot whoever is vulnerable _right now_.                                              |
+| **Split attention**         | Must track Buck's position (melee threat) AND Clyde's laser sight (ranged threat) simultaneously.                     |
+| **Spatial positioning**     | Optimal position is one where Buck can't reach you AND you have cover from Clyde. That position shifts constantly.    |
+| **Dodge roll timing**       | Buck's combos and Clyde's aimed shot both require precise dodge timing, but at different rhythms.                     |
 | **Opportunity recognition** | Clyde's post-shot recovery and dash, Buck's post-charge stun — both are fleeting windows that reward aggressive play. |
-| **Adaptability** | Phase 3 variant changes the fight dynamics. The player must read the new situation and adjust. |
+| **Adaptability**            | Phase 3 variant changes the fight dynamics. The player must read the new situation and adjust.                        |
 
 ### Difficulty Curve Within the Fight
 
@@ -262,7 +276,7 @@ Every second of this fight is a spatial puzzle. "Where do I stand so Buck can't 
 
 ### The Brothers' Dynamic
 
-The fight has *character*. Buck charging in while Clyde coolly lines up a shot tells a story without a single word. The Phase 3 moment where one brother goes down and the other reacts is an emotional beat embedded in gameplay. Players will remember "the time Buck went berserk because I hurt Clyde" as a narrative moment, not just a phase transition.
+The fight has _character_. Buck charging in while Clyde coolly lines up a shot tells a story without a single word. The Phase 3 moment where one brother goes down and the other reacts is an emotional beat embedded in gameplay. Players will remember "the time Buck went berserk because I hurt Clyde" as a narrative moment, not just a phase transition.
 
 ### Readable Mastery Curve
 
@@ -270,7 +284,7 @@ New players can survive by focusing on one brother at a time — dodge Buck, the
 
 ### The "I Did It" Feeling
 
-Duo fights have a uniquely satisfying victory moment because the player managed something that felt overwhelming. Juggling two threats feels harder than it mechanically is, which means the victory feels *more earned* than single-target fights of equivalent difficulty. This is the Theseus/Asterius effect.
+Duo fights have a uniquely satisfying victory moment because the player managed something that felt overwhelming. Juggling two threats feels harder than it mechanically is, which means the victory feels _more earned_ than single-target fights of equivalent difficulty. This is the Theseus/Asterius effect.
 
 ### Emergent Stories
 
@@ -312,11 +326,11 @@ The arena should feel like a real town street — not a featureless rectangle. T
 
 The Dalton Boys are natural fits for:
 
-| Plot Thread | Role | Narrative Context |
-|---|---|---|
-| **The Raid** | Raid champions | The Daltons are leading the raid on town. Buck's the battering ram, Clyde's covering the operation from the rooftops. |
-| **The Heist** | Security obstacle | The Daltons are guarding something. Buck patrols the ground floor, Clyde watches from above. You walked into their turf. |
-| **The Bounty** | Bounty targets | Both brothers have prices on their heads. Bringing them in is the job. The question is whether you can take them both. |
+| Plot Thread    | Role              | Narrative Context                                                                                                        |
+| -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **The Raid**   | Raid champions    | The Daltons are leading the raid on town. Buck's the battering ram, Clyde's covering the operation from the rooftops.    |
+| **The Heist**  | Security obstacle | The Daltons are guarding something. Buck patrols the ground floor, Clyde watches from above. You walked into their turf. |
+| **The Bounty** | Bounty targets    | Both brothers have prices on their heads. Bringing them in is the job. The question is whether you can take them both.   |
 
 They fit less naturally into "The Corruption" or "The Stranger" threads, which lean supernatural or mysterious. The Daltons are grounded and human — they work in action and crime stories.
 
@@ -345,20 +359,23 @@ They fit less naturally into "The Corruption" or "The Stranger" threads, which l
 The Daltons support the priority-weighted dialogue pool:
 
 **Tier 1 (Essential — first encounter):**
+
 - Buck: "Well well. Someone with a backbone in this dust pile."
-- Clyde: *(silence — he just raises his rifle)*
+- Clyde: _(silence — he just raises his rifle)_
 
 **Tier 2 (Contextual):**
+
 - If player has a damage-boosting upgrade: Clyde: "Buck. This one's packing. Watch yourself."
 - If player is low HP entering the fight: Buck: "Ha! Barely standing and still picking fights? I like that."
 - On phase 2 transition: Buck: "Alright, enough playing around."
-- On phase 3 (Buck hurt): Clyde: "That's my brother." *(said flatly, but the shift to ground-level aggression speaks louder)*
-- On phase 3 (Clyde hurt): Buck: "NOBODY touches Clyde!" *(followed by the berserk behavior)*
+- On phase 3 (Buck hurt): Clyde: "That's my brother." _(said flatly, but the shift to ground-level aggression speaks louder)_
+- On phase 3 (Clyde hurt): Buck: "NOBODY touches Clyde!" _(followed by the berserk behavior)_
 
 **Tier 3 (General pool):**
+
 - Buck: "Stand still so I can split you proper!"
 - Buck: "Clyde, are you just gonna watch?!"
-- Clyde: "...Reloading." *(during recovery window — tells the player this is a punish window)*
+- Clyde: "...Reloading." _(during recovery window — tells the player this is a punish window)_
 
 ---
 
@@ -374,6 +391,7 @@ The Daltons support the priority-weighted dialogue pool:
 ## Best-Practice Alignment
 
 This design follows principles from:
+
 - `docs/research/boss-design.md`
 - `docs/research/narrative-boss-design.md`
 - `docs/mechanics/stage-objectives.md`

@@ -298,6 +298,7 @@ export const EnemyType = {
   RUNNER: 7,
   DUELIST: 8,
   MAD_DOG: 9,
+  DALTON: 10,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */

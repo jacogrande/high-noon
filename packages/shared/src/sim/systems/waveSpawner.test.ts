@@ -452,9 +452,11 @@ describe('waveSpawnerSystem', () => {
       waveSpawnerSystem(world, 3.1)
       const types = countByType(world)
       expect(world.encounter!.currentWave).toBe(1)
-      // Boss pool randomization picks one of Boomstick or Mad Dog
-      const bossCount = (types[EnemyType.BOOMSTICK] ?? 0) + (types[EnemyType.MAD_DOG] ?? 0)
-      expect(bossCount).toBe(1)
+      // Boss pool randomization picks one of Boomstick, Mad Dog, or Dalton (2 entities)
+      const bossCount = (types[EnemyType.BOOMSTICK] ?? 0)
+        + (types[EnemyType.MAD_DOG] ?? 0)
+        + (types[EnemyType.DALTON] ?? 0)
+      expect(bossCount).toBeGreaterThanOrEqual(1)
     })
   })
 

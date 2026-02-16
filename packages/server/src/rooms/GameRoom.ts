@@ -928,17 +928,19 @@ export class GameRoom extends Room<GameRoomState> {
           : baseObj
       }
 
-      // Boss HP bar (computed per-iteration but could hoist — only one boss)
+      // Boss HP bar — aggregate across all boss entities (multi-entity support)
       let bossHud: HudData['boss'] = null
       const bosses = bossQuery(this.world)
       if (bosses.length > 0) {
-        const beid = bosses[0]!
-        if (Health.current[beid]! > 0) {
-          bossHud = {
-            name: getBoss(Enemy.type[beid]!)?.displayName ?? 'BOSS',
-            hp: Health.current[beid]!,
-            maxHP: Health.max[beid]!,
-          }
+        let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
+        for (const beid of bosses) {
+          totalMaxHP += Health.max[beid]!
+          const hp = Health.current[beid]!
+          if (hp > 0) { anyAlive = true; totalHP += hp }
+          bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
+        }
+        if (anyAlive) {
+          bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
         }
       }
 
