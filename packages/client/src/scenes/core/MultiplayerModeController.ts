@@ -87,11 +87,13 @@ import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { MULTIPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
 import {
+  emitBossPhaseTransitionEvents,
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
   emitLastRitesCueEvents,
   emitMeleeSwingEvents,
   emitShowdownCueEvents,
+  emitTrapDetonationEvents,
 } from './PlayerPresentationEvents'
 import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
@@ -715,6 +717,8 @@ export class MultiplayerModeController implements SceneModeController {
     emitShowdownCueEvents(this.gameplayEvents, this.world)
     emitLastRitesCueEvents(this.gameplayEvents, this.world)
     emitDynamiteCueEvents(this.gameplayEvents, this.world, this.myClientEid >= 0 ? this.myClientEid : null)
+    emitTrapDetonationEvents(this.gameplayEvents, this.world)
+    emitBossPhaseTransitionEvents(this.gameplayEvents, this.world)
 
     // Showdown target tinting for enemies
     this.enemyRenderer.showdownTargetEid =

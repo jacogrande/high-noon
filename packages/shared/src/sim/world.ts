@@ -532,6 +532,8 @@ export interface GameWorld extends IWorld {
   trapZones: TrapZone[]
   /** Per-tick trap detonation events for client VFX */
   trapDetonations: TrapDetonation[]
+  /** Per-tick boss phase change events for client VFX */
+  bossPhaseChanges: Array<{ eid: number; newPhase: number; x: number; y: number }>
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -624,6 +626,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     bossTelegraphs: [],
     trapZones: [],
     trapDetonations: [],
+    bossPhaseChanges: [],
   }
 }
 

@@ -87,12 +87,14 @@ import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { SINGLEPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
 import {
+  emitBossPhaseTransitionEvents,
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
   emitLastRitesCueEvents,
   emitMeleeSwingEvents,
   emitPlayerHitEvent,
   emitShowdownCueEvents,
+  emitTrapDetonationEvents,
 } from './PlayerPresentationEvents'
 import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
 import { seedHazardLights } from './SceneLighting'
@@ -528,6 +530,8 @@ export class SingleplayerModeController implements SceneModeController {
     emitShowdownCueEvents(this.gameplayEvents, this.world)
     emitLastRitesCueEvents(this.gameplayEvents, this.world)
     emitDynamiteCueEvents(this.gameplayEvents, this.world, playerEid)
+    emitTrapDetonationEvents(this.gameplayEvents, this.world)
+    emitBossPhaseTransitionEvents(this.gameplayEvents, this.world)
 
     // Set showdown target for enemy tinting
     this.enemyRenderer.showdownTargetEid =

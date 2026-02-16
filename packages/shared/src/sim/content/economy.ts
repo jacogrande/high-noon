@@ -2,9 +2,9 @@ import type { SeededRng } from '../../math/rng'
 import { getItemsByRarity, type ItemRarity } from './items'
 
 /** Base shovel price. */
-export const SHOVEL_BASE_PRICE = 2  // TODO: restore to 18 after testing
+export const SHOVEL_BASE_PRICE = 18
 /** Flat shovel price increment per stage index. */
-export const SHOVEL_STAGE_PRICE_STEP = 0  // TODO: restore to 8 after testing
+export const SHOVEL_STAGE_PRICE_STEP = 8
 /** Hard carry cap to avoid runaway inventory. */
 export const SHOVEL_MAX_STACK = 5
 

@@ -140,6 +140,35 @@ export function emitDynamiteCueEvents(
 }
 
 /**
+ * Emit trap detonation presentation cues from world state.
+ */
+export function emitTrapDetonationEvents(events: GameplayEventBuffer, world: GameWorld): void {
+  for (const det of world.trapDetonations) {
+    events.push({
+      type: 'trap-detonation',
+      kind: det.kind,
+      x: det.x,
+      y: det.y,
+      radius: det.radius,
+    })
+  }
+}
+
+/**
+ * Emit boss phase transition presentation cues from world state.
+ */
+export function emitBossPhaseTransitionEvents(events: GameplayEventBuffer, world: GameWorld): void {
+  for (const pt of world.bossPhaseChanges) {
+    events.push({
+      type: 'boss-phase-transition',
+      x: pt.x,
+      y: pt.y,
+      newPhase: pt.newPhase,
+    })
+  }
+}
+
+/**
  * Emit Prospector melee swing presentation cues.
  */
 export function emitMeleeSwingEvents(

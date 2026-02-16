@@ -167,6 +167,18 @@ export class GameplayEventProcessor {
           this.sound.play('level_up')
           emitLevelUpSparkle(this.particles, event.x, event.y)
           break
+
+        case 'trap-detonation':
+          this.camera.addTrauma(event.kind === 'tripwire' ? 0.25 : 0.15)
+          this.sound.play('enemy_die')
+          emitExplosion(this.particles, event.x, event.y, event.radius)
+          break
+
+        case 'boss-phase-transition':
+          this.camera.addTrauma(0.4)
+          this.sound.play('showdown_activate')
+          emitDeathPulse(this.particles, event.x, event.y, 80)
+          break
       }
     }
   }
