@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole } from '../components'
+import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole, BossPhase } from '../components'
 import { NO_TARGET } from '../prefabs'
 import { getFloorTileTypeAt, isSolidAt, TileType, worldToTile } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -127,6 +127,8 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
 
     // Non-CHASE states: stop movement (except ATTACK, managed by enemyAttackSystem)
     if (state !== AIState.CHASE && state !== AIState.ATTACK) {
+      // Bosses manage their own velocity during TELEGRAPH (set by tick())
+      if (state === AIState.TELEGRAPH && hasComponent(world, BossPhase, eid)) continue
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
       continue

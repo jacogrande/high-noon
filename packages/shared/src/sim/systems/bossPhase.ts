@@ -13,6 +13,7 @@ import { getBoss } from '../content/bosses'
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
 
 export function bossPhaseSystem(world: GameWorld, dt: number): void {
+  world.bossTelegraphs.length = 0
   const entities = bossQuery(world)
   for (const eid of entities) {
     const type = Enemy.type[eid]!

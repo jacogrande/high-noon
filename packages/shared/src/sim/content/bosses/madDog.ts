@@ -31,7 +31,7 @@ const playerQuery = defineQuery([Player, Position, Health])
 const HP = 200
 const RADIUS = 20
 const AGGRO_RANGE = 450
-const ATTACK_RANGE = 70
+const ATTACK_RANGE = 150
 const DROP_CHANCE = 0.50
 
 // Phase thresholds (HP ratio)
@@ -39,28 +39,28 @@ const P2_THRESHOLD = 0.70
 const P3_THRESHOLD = 0.35
 
 // Phase 1 tuning
-const P1_SPEED = 65
-const P1_COOLDOWN = 1.6
-const P1_SWEEP_TELEGRAPH = 0.50
-const P1_SWEEP_RECOVERY = 0.70
-const P1_SLAM_TELEGRAPH = 0.60
-const P1_SLAM_RECOVERY = 0.90
+const P1_SPEED = 140
+const P1_COOLDOWN = 0.9
+const P1_SWEEP_TELEGRAPH = 0.40
+const P1_SWEEP_RECOVERY = 0.50
+const P1_SLAM_TELEGRAPH = 0.50
+const P1_SLAM_RECOVERY = 0.65
 
 // Phase 2 tuning
-const P2_SPEED = 75
-const P2_COOLDOWN = 1.2
-const P2_SWEEP_TELEGRAPH = 0.45
-const P2_SWEEP_RECOVERY = 0.70
-const P2_SLAM_TELEGRAPH = 0.55
-const P2_SLAM_RECOVERY = 0.80
+const P2_SPEED = 170
+const P2_COOLDOWN = 0.6
+const P2_SWEEP_TELEGRAPH = 0.35
+const P2_SWEEP_RECOVERY = 0.50
+const P2_SLAM_TELEGRAPH = 0.45
+const P2_SLAM_RECOVERY = 0.55
 
 // Phase 3 tuning
-const P3_SPEED = 60
-const P3_COOLDOWN = 0.8
-const P3_SWEEP_TELEGRAPH = 0.40
-const P3_SWEEP_RECOVERY = 0.70
-const P3_SLAM_TELEGRAPH = 0.50
-const P3_SLAM_RECOVERY = 0.70
+const P3_SPEED = 130
+const P3_COOLDOWN = 0.4
+const P3_SWEEP_TELEGRAPH = 0.30
+const P3_SWEEP_RECOVERY = 0.50
+const P3_SLAM_TELEGRAPH = 0.40
+const P3_SLAM_RECOVERY = 0.50
 
 // Transition i-frames
 const TRANSITION_IFRAMES = 0.45
@@ -68,38 +68,38 @@ const TRANSITION_IFRAMES = 0.45
 const P3_SUMMON_SWARMERS = 2
 
 // Attack constants
-const SWEEP_RANGE = 70
+const SWEEP_RANGE = 110
 const SWEEP_DAMAGE = 10
 const SWEEP_ARC_P1P2 = Math.PI       // 180°
 const SWEEP_ARC_P3 = Math.PI * 2     // 360°
 const SWEEP_KB_SPEED = 200
 const SWEEP_KB_DURATION = 0.12
 
-const SLAM_RADIUS = 40
+const SLAM_RADIUS = 55
 const SLAM_DAMAGE = 14
 
-const WHIRLWIND_TELEGRAPH = 0.40
-const WHIRLWIND_RECOVERY = 0.60
+const WHIRLWIND_TELEGRAPH = 0.35
+const WHIRLWIND_RECOVERY = 0.45
 const WHIRLWIND_DURATION = 1.5
-const WHIRLWIND_RADIUS = 60
+const WHIRLWIND_RADIUS = 75
 const WHIRLWIND_DAMAGE = 8
 const WHIRLWIND_HIT_COOLDOWN = 0.75
 const WHIRLWIND_SPEED_MUL = 0.50
 
-const LUNGE_TELEGRAPH = 0.40
-const LUNGE_RECOVERY = 0.50
+const LUNGE_TELEGRAPH = 0.35
+const LUNGE_RECOVERY = 0.35
 const LUNGE_DURATION = 0.3
 const LUNGE_SPEED = 400
 const LUNGE_DAMAGE = 10
 const LUNGE_KB_SPEED = 250
 const LUNGE_KB_DURATION = 0.15
 const LUNGE_MIN_DIST = 80
-const LUNGE_MAX_DIST = 140
+const LUNGE_MAX_DIST = 200
 
-const GROUND_POUND_TELEGRAPH = 0.50
-const GROUND_POUND_RECOVERY = 0.80
+const GROUND_POUND_TELEGRAPH = 0.45
+const GROUND_POUND_RECOVERY = 0.60
 const GROUND_POUND_DAMAGE = 10
-const GROUND_POUND_AOE_RADIUS = 30
+const GROUND_POUND_AOE_RADIUS = 45
 const GROUND_POUND_CRACK_RADIUS = 30
 /** Speed multiplier applied to players standing in a ground crack zone */
 const GROUND_CRACK_SPEED_MUL = 0.8
@@ -395,6 +395,96 @@ function tick(world: GameWorld, eid: number, _dt: number): void {
 
     // Clear whirlwind hit timers at start of any new attack
     state.whirlwindHitTimers.clear()
+  }
+
+  // --- Telegraph movement ---
+  // Allow Mad Dog to advance during telegraph for melee attacks
+  if (EnemyAI.state[eid] === AIState.TELEGRAPH) {
+    const attack = state.selectedAttack
+    if (attack === MadDogAttack.CHAIN_SWEEP || attack === MadDogAttack.CHAIN_WHIRLWIND) {
+      // Melee attacks: advance toward target at 40% speed
+      const targetEid = EnemyAI.targetEid[eid]!
+      if (targetEid !== NO_TARGET && hasComponent(world, Position, targetEid)) {
+        const dx = Position.x[targetEid]! - Position.x[eid]!
+        const dy = Position.y[targetEid]! - Position.y[eid]!
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 0) {
+          const spd = Speed.current[eid]! * 0.4
+          Velocity.x[eid] = (dx / dist) * spd
+          Velocity.y[eid] = (dy / dist) * spd
+        }
+      }
+    } else {
+      // Positional attacks: lock in place
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+    }
+  }
+
+  // --- Boss telegraph shapes ---
+  if (EnemyAI.state[eid] === AIState.TELEGRAPH || EnemyAI.state[eid] === AIState.ATTACK) {
+    const attack = state.selectedAttack
+    const ex = Position.x[eid]!
+    const ey = Position.y[eid]!
+    const telegraphDur = AttackConfig.telegraphDuration[eid]!
+    const progress = telegraphDur > 0 ? Math.min(1, EnemyAI.stateTimer[eid]! / telegraphDur) : 1
+    const targetEid = EnemyAI.targetEid[eid]!
+    const color = 0xff4422
+
+    if (EnemyAI.state[eid] === AIState.TELEGRAPH) {
+      switch (attack) {
+        case MadDogAttack.CHAIN_SWEEP: {
+          let aimAngle = 0
+          if (targetEid !== NO_TARGET && hasComponent(world, Position, targetEid)) {
+            aimAngle = Math.atan2(Position.y[targetEid]! - ey, Position.x[targetEid]! - ex)
+          }
+          const phase = BossPhase.phase[eid]!
+          const arcHalf = phase >= 3 ? SWEEP_ARC_P3 / 2 : SWEEP_ARC_P1P2 / 2
+          world.bossTelegraphs.push({
+            kind: 'arc', x: ex, y: ey, radius: SWEEP_RANGE,
+            angle: aimAngle, arcHalf,
+            color, alpha: 0.3, progress,
+          })
+          break
+        }
+        case MadDogAttack.OVERHEAD_SLAM:
+          world.bossTelegraphs.push({
+            kind: 'circle', x: state.slamTargetX, y: state.slamTargetY, radius: SLAM_RADIUS,
+            color, alpha: 0.3, progress,
+          })
+          break
+        case MadDogAttack.CHAIN_WHIRLWIND:
+          world.bossTelegraphs.push({
+            kind: 'ring', x: ex, y: ey, radius: WHIRLWIND_RADIUS,
+            color, alpha: 0.3, progress,
+          })
+          break
+        case MadDogAttack.SHACKLE_LUNGE: {
+          const endX = ex + state.lungeAimX * LUNGE_SPEED * LUNGE_DURATION
+          const endY = ey + state.lungeAimY * LUNGE_SPEED * LUNGE_DURATION
+          world.bossTelegraphs.push({
+            kind: 'line', x: ex, y: ey, radius: 0,
+            endX, endY,
+            color, alpha: 0.3, progress,
+          })
+          break
+        }
+        case MadDogAttack.GROUND_POUND:
+          world.bossTelegraphs.push({
+            kind: 'circle', x: ex, y: ey, radius: GROUND_POUND_AOE_RADIUS,
+            color, alpha: 0.3, progress,
+          })
+          break
+      }
+    }
+
+    // Whirlwind active ring during ATTACK
+    if (EnemyAI.state[eid] === AIState.ATTACK && attack === MadDogAttack.CHAIN_WHIRLWIND) {
+      world.bossTelegraphs.push({
+        kind: 'ring', x: ex, y: ey, radius: WHIRLWIND_RADIUS,
+        color, alpha: 0.4, progress: 1,
+      })
+    }
   }
 }
 

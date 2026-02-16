@@ -299,6 +299,24 @@ export interface GroundCrack {
 }
 
 /**
+ * Generic boss telegraph shape descriptor.
+ * Boss modules populate these each tick; client renderers read them.
+ */
+export interface BossTelegraph {
+  kind: 'arc' | 'circle' | 'line' | 'ring'
+  x: number
+  y: number
+  radius: number
+  angle?: number       // aim direction (arcs)
+  arcHalf?: number     // half-width of arc
+  endX?: number        // line endpoint
+  endY?: number
+  color: number
+  alpha: number
+  progress: number     // 0-1 for pulsing
+}
+
+/**
  * Expanding shockwave ring from boss Ground Pound
  */
 export interface BossShockwave {
@@ -466,6 +484,8 @@ export interface GameWorld extends IWorld {
   groundCracks: GroundCrack[]
   /** Active expanding shockwave rings */
   bossShockwaves: BossShockwave[]
+  /** Per-tick boss telegraph shapes (cleared each tick by bossPhaseSystem) */
+  bossTelegraphs: BossTelegraph[]
   /** Resolve historical player position for a rewind tick */
   lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
   /** Resolve historical enemy state for a rewind tick */
@@ -555,6 +575,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     bossState: new Map(),
     groundCracks: [],
     bossShockwaves: [],
+    bossTelegraphs: [],
   }
 }
 
@@ -643,6 +664,7 @@ export function resetWorld(world: GameWorld): void {
   world.bossState.clear()
   world.groundCracks = []
   world.bossShockwaves = []
+  world.bossTelegraphs = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

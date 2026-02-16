@@ -271,6 +271,12 @@ const boomstickModule: BossModule = {
   tick(world: GameWorld, eid: number, _dt: number): void {
     if (Health.current[eid]! <= 0 || Health.max[eid]! <= 0) return
 
+    // Ranged boss: stand still during telegraph
+    if (EnemyAI.state[eid] === AIState.TELEGRAPH) {
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+    }
+
     const currentPhase = Math.max(1, BossPhase.phase[eid]!)
     const hpRatio = Health.current[eid]! / Health.max[eid]!
     const desiredPhase = getDesiredPhase(hpRatio)
