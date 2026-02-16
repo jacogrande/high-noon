@@ -359,6 +359,10 @@ export function MultiplayerGame() {
     })
   }, [])
 
+  const handleRunIntroComplete = useCallback(() => setRunIntro(null), [])
+
+  const handleBossIntroComplete = useCallback(() => setBossIntro(null), [])
+
   const handleLeaveMatch = useCallback(() => {
     navigate('/')
   }, [navigate])
@@ -491,8 +495,8 @@ export function MultiplayerGame() {
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
-        onRunIntroComplete={() => setRunIntro(null)}
-        onBossIntroComplete={() => setBossIntro(null)}
+        onRunIntroComplete={handleRunIntroComplete}
+        onBossIntroComplete={handleBossIntroComplete}
       />
       {showCamp && hudState && (
         <CampPanel

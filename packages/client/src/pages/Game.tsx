@@ -130,6 +130,7 @@ export function Game() {
             lastSeenRunIntroSequenceRef.current = runIntroUpdate.nextLastSeenSequence
             if (runIntroUpdate.runIntro) {
               setRunIntro(runIntroUpdate.runIntro)
+              scene!.setPaused(true)
             }
             // Detect camp entry/exit
             const isCamp = hud.stageStatus === 'camp'
@@ -229,6 +230,13 @@ export function Game() {
       return currentVolume
     })
   }, [])
+
+  const handleRunIntroComplete = useCallback(() => {
+    sceneRef.current?.setPaused(false)
+    setRunIntro(null)
+  }, [])
+
+  const handleBossIntroComplete = useCallback(() => setBossIntro(null), [])
 
   const handleQuitToMenu = useCallback(() => {
     sceneRef.current?.setPaused(false)
@@ -330,8 +338,8 @@ export function Game() {
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
-        onRunIntroComplete={() => setRunIntro(null)}
-        onBossIntroComplete={() => setBossIntro(null)}
+        onRunIntroComplete={handleRunIntroComplete}
+        onBossIntroComplete={handleBossIntroComplete}
       />
       {showCamp && hudState && (
         <CampPanel
