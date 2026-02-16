@@ -90,6 +90,9 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
     <div style={styles.root}>
       {/* Stage + Wave indicator — top-center */}
       <div style={styles.waveContainer}>{getStageDisplay(state)}</div>
+      {state.stageStatus === 'completed' && state.resolutionText && (
+        <div style={styles.resolutionText}>{state.resolutionText}</div>
+      )}
 
       {/* Boss HP bar — top-center, below wave display */}
       {state.boss && (
@@ -426,6 +429,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#aaaaaa',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     letterSpacing: '0.1em',
+  },
+  resolutionText: {
+    position: 'absolute',
+    top: 34,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    fontSize: 13,
+    color: '#d6c7a1',
+    fontStyle: 'italic',
+    letterSpacing: '0.04em',
+    textShadow: '0 0 8px rgba(0,0,0,0.9)',
+    maxWidth: 720,
+    textAlign: 'center',
   },
   minimapContainer: {
     position: 'absolute',

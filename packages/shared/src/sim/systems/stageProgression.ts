@@ -21,6 +21,8 @@ import {
 } from './campVisitor'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { getAlivePlayers } from '../queries'
+import { getThread, pickNarrativeLine } from '../content/narrative'
+import type { ObjectiveConfig } from '../content/waves'
 
 const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
 
@@ -91,6 +93,97 @@ export function healAllPlayers(world: GameWorld): void {
   }
 }
 
+function recordStageOutcome(world: GameWorld): void {
+  if (!world.narrative) return
+  const outcome = world.objective?.status === 'soft_failure' ? 'soft_failure' : 'success'
+  world.narrative.outcomes.push(outcome)
+}
+
+function selectCampNarrativeLine(world: GameWorld): void {
+  world.campNarrativeLine = null
+  const run = world.run
+  const narrative = world.narrative
+  if (!run || !narrative) return
+
+  const thread = getThread(narrative.threadId)
+  const pool = thread?.campDialogue.find(entry => entry.campIndex === run.currentStage)
+  if (!pool) return
+
+  const line = pickNarrativeLine(narrative, pool.lines)
+  if (!line) return
+
+  narrative.shownDialogue.add(line.key)
+  world.campNarrativeLine = line.text
+}
+
+function applySoftFailureBranch(world: GameWorld, completedStage: number, nextStageIndex: number): void {
+  const narrative = world.narrative
+  const run = world.run
+  if (!narrative || !run) return
+
+  const thread = getThread(narrative.threadId)
+  const prevStageConfig = thread?.stages[completedStage]
+  if (!prevStageConfig?.softFailureNext) return
+  if (narrative.outcomes[completedStage] !== 'soft_failure') return
+
+  const nextStage = run.stages[nextStageIndex]
+  if (!nextStage) return
+
+  const mod = prevStageConfig.softFailureNext
+  if (mod.bossPool && mod.bossPool.length > 0) {
+    nextStage.bossPool = [...mod.bossPool]
+  }
+  if (mod.unlockDialogue) {
+    narrative.unlockedKeys.add(mod.unlockDialogue)
+  }
+}
+
+function computeResolutionText(world: GameWorld): string | null {
+  const narrative = world.narrative
+  if (!narrative) return null
+
+  const thread = getThread(narrative.threadId)
+  if (!thread) return null
+  const allSuccess = narrative.outcomes.length > 0 && narrative.outcomes.every(outcome => outcome === 'success')
+  return allSuccess ? thread.resolution.success : thread.resolution.softFailure
+}
+
+function getObjectiveConfigForStage(
+  world: GameWorld,
+  stageIndex: number,
+  baseObjective: ObjectiveConfig,
+): ObjectiveConfig {
+  const narrative = world.narrative
+  if (!narrative) return baseObjective
+
+  const stageConfig = getThread(narrative.threadId)?.stages[stageIndex]
+  if (!stageConfig) return baseObjective
+
+  const prevStage = stageIndex - 1
+  const prevStageConfig = prevStage >= 0 ? getThread(narrative.threadId)?.stages[prevStage] : undefined
+  const softFailureDescription = prevStage >= 0 &&
+    narrative.outcomes[prevStage] === 'soft_failure'
+    ? prevStageConfig?.softFailureNext?.objectiveDescription
+    : undefined
+
+  // Avoid forcing objective-type changes onto arbitrary custom encounters.
+  if (stageConfig.objectiveType && stageConfig.objectiveType !== baseObjective.type) {
+    return baseObjective
+  }
+
+  if (!stageConfig.objectiveType && !stageConfig.objectiveDescription && !softFailureDescription) {
+    return baseObjective
+  }
+
+  return {
+    ...baseObjective,
+    ...(stageConfig.objectiveType ? { type: stageConfig.objectiveType } : {}),
+    ...((softFailureDescription ?? stageConfig.objectiveDescription)
+      ? { description: softFailureDescription ?? stageConfig.objectiveDescription! }
+      : {}),
+  }
+}
+
 export function stageProgressionSystem(world: GameWorld, dt: number): void {
   const run = world.run
   if (!run || run.completed) return
@@ -108,7 +201,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
     // Initialize objective if configured for this stage
     const stageEnc = run.stages[run.currentStage]
     if (stageEnc?.objective && !world.objective) {
-      initObjective(world, stageEnc.objective)
+      initObjective(world, getObjectiveConfigForStage(world, run.currentStage, stageEnc.objective))
     }
   }
 
@@ -118,6 +211,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
     if (world.objective?.status === 'active') {
       world.objective.status = 'success'
     }
+    recordStageOutcome(world)
     run.transition = 'clearing'
     run.transitionTimer = CAMP_CLEAR_DELAY
     world.stageCleared = true
@@ -132,6 +226,8 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
       const isLastStage = run.currentStage + 1 >= run.totalStages
       if (isLastStage) {
         // Final stage — skip camp, go straight to completed
+        world.resolutionText = computeResolutionText(world)
+        world.campNarrativeLine = null
         run.currentStage++
         run.completed = true
         run.transition = 'none'
@@ -162,6 +258,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
         const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
         run.lastGreetingIndex = greetingIdx
         world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers }
+        selectCampNarrativeLine(world)
       }
     }
     return
@@ -176,13 +273,16 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
         run.previousVisitorIds.push(world.campVisitor.visitorId)
         world.campVisitor = null
       }
+      world.campNarrativeLine = null
       // Reset per-stage item state for all alive players
       for (const pEid of getAlivePlayers(world)) {
         const us = getUpgradeStateForPlayer(world, pEid)
         us.peacemakerLastTarget = 0xFFFF
         us.peacemakerHitCount = 0
       }
+      const completedStage = run.currentStage
       run.currentStage++
+      applySoftFailureBranch(world, completedStage, run.currentStage)
       const nextStage = run.stages[run.currentStage]!
       // Use pre-generated map (built on camp entry), fall back to generating if missing
       const newMap = run.pendingTilemap ?? generateArena(nextStage.mapConfig, world.initialSeed, run.currentStage)
@@ -193,7 +293,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
       run.npcsSpawned = true
       // Initialize objective if configured for this stage
       if (nextStage.objective) {
-        initObjective(world, nextStage.objective)
+        initObjective(world, getObjectiveConfigForStage(world, run.currentStage, nextStage.objective))
       }
       run.transition = 'none'
     }

@@ -47,6 +47,10 @@ export class CoreGameScene {
     return this.controller.getHUDState()
   }
 
+  consumePendingBossIntro(): { bossName: string; taunt: string } | null {
+    return this.controller.consumePendingBossIntro()
+  }
+
   hasPendingPoints(): boolean {
     return this.controller.hasPendingPoints()
   }

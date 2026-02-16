@@ -5,6 +5,7 @@ export interface SceneModeController {
   update(dt: number): void
   render(alpha: number, fps: number): void
   getHUDState(): HUDState
+  consumePendingBossIntro(): { bossName: string; taunt: string } | null
   hasPendingPoints(): boolean
   getSkillTreeData(): SkillTreeUIData | null
   selectNode(nodeId: string): boolean

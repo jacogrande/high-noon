@@ -37,6 +37,7 @@ export class GameplayEventProcessor {
   private readonly hitStop: HitStop | undefined
   private readonly renderPause: HitStop | undefined
   private readonly spawnMuzzleLight: ((x: number, y: number) => void) | undefined
+  private pendingBossIntro: { bossName: string; taunt: string } | null = null
 
   constructor(deps: GameplayEventProcessorDeps) {
     this.camera = deps.camera
@@ -168,6 +169,11 @@ export class GameplayEventProcessor {
           emitLevelUpSparkle(this.particles, event.x, event.y)
           break
 
+        case 'boss-intro':
+          this.camera.addTrauma(0.2)
+          this.pendingBossIntro = { bossName: event.bossName, taunt: event.taunt }
+          break
+
         case 'trap-detonation':
           this.camera.addTrauma(event.kind === 'tripwire' ? 0.25 : 0.15)
           this.sound.play('enemy_die')
@@ -181,5 +187,11 @@ export class GameplayEventProcessor {
           break
       }
     }
+  }
+
+  consumePendingBossIntro(): { bossName: string; taunt: string } | null {
+    const pending = this.pendingBossIntro
+    this.pendingBossIntro = null
+    return pending
   }
 }

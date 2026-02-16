@@ -65,6 +65,7 @@ export type GameplayEvent =
   | { type: 'dynamite-detonation'; x: number; y: number; radius: number }
   | { type: 'dynamite-fuse-sparks'; x: number; y: number; intensity: number }
   | { type: 'level-up'; x: number; y: number }
+  | { type: 'boss-intro'; bossName: string; taunt: string; x: number; y: number }
   | { type: 'trap-detonation'; kind: string; x: number; y: number; radius: number }
   | { type: 'boss-phase-transition'; x: number; y: number; newPhase: number }
 
