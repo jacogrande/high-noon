@@ -1,6 +1,6 @@
 # Sprint 11: Narrative Foundation — Plot Threads, Dialogue, and Boss Intros
 
-**Goal**: Give each run a story. A plot thread is selected at run start, driving which bosses appear, what objectives mean, and what NPCs say at camp. Bosses get a pre-fight staredown. Camp visitors speak in context. The run ends with a resolution line. One fully-fleshed thread ("The Raid") proves the system; a second thread ("The Stranger") proves it scales.
+**Goal**: Give each run a story. A plot thread is selected at run start, driving which bosses appear, what objectives mean, and what NPCs say at camp. Runs open with a cinematic scrolling intro crawl (multiple variants per thread). Bosses get a pre-fight staredown. Camp visitors speak in context. The run ends with a resolution line. One fully-fleshed thread ("The Raid") proves the system; a second thread ("The Stranger") proves it scales.
 
 **Depends on**: Current main (camp visitor system, chat bubbles, boss registry, stage progression, objective system, wave spawner)
 
@@ -26,6 +26,7 @@
 - Narrative-driven boss selection (boss pool filtered by thread)
 - Outcome tracking across stages (success/soft-failure not persisted between stages)
 - Camp visitor dialogue that references the plot
+- Run-start scrolling intro crawl text (with per-thread variants)
 - Resolution text at run end
 - Boss name/title display on encounter start
 
@@ -41,6 +42,7 @@
 6. **No new ECS components** — Narrative state lives on `GameWorld` as a plain object, not in the ECS. It's metadata about the run, not per-entity state.
 7. **Boss intro is presentation-only** — The shared sim spawns the boss normally. The client detects the boss spawn and plays a camera ritual + text overlay. No simulation pause or special boss state.
 8. **Two threads this sprint** — "The Raid" and "The Stranger". More threads are pure content additions in future sprints.
+9. **Run intro crawl is presentation-only** — No gameplay lockups, no simulation branching. It is skippable and purely visual.
 
 ---
 
@@ -56,7 +58,8 @@
 | 6 | Resolution screen | client | P1 | Small |
 | 7 | "The Raid" thread content | shared | P0 | Medium |
 | 8 | "The Stranger" thread content | shared | P1 | Medium |
-| 9 | Tests | shared | P0 | Medium |
+| 9 | Run-start scrolling crawl intro | shared, client | P1 | Medium |
+| 10 | Tests | shared | P0 | Medium |
 
 ---
 
@@ -281,6 +284,8 @@ Extend `PlotThread`:
 ```typescript
 export interface PlotThread {
   // ... existing fields
+  /** Run-start intro crawl variants (2-4 per thread, deterministic pick) */
+  introCrawls: string[]
   /** Dialogue pools for camp phases */
   campDialogue: CampDialoguePool[]
   /** One-line boss taunt per boss type (shown during intro) */
@@ -459,6 +464,11 @@ The first complete plot thread — proving the narrative system works end-to-end
 
 **Premise**: "A gang is raiding the town. Stop them before they burn it all down."
 
+**Run intro crawl variants** (pick one at run start):
+- "Smoke over Main Street. The gang rode in before dawn and took the town hall."
+- "A bell rang twice, then gunfire answered. By sunrise, the mayor was missing."
+- "They came with torches and long guns. If you ride now, maybe the town still stands."
+
 **Stage 1 — "First Blood"**
 - Boss pool: Reverend Boomstick, Mad Dog Maguire (melee/ranged raid leaders)
 - Objective: Protect (defend the town hall)
@@ -508,6 +518,11 @@ A second thread with a different tone — proves the system supports variety.
 
 **Premise**: "A stranger rode into town with a warning. Something's coming from the canyon."
 
+**Run intro crawl variants** (pick one at run start):
+- "A lone rider came at dusk, eyes on the canyon and ash on his coat."
+- "He left one warning on the saloon wall: don't follow the tracks after dark."
+- "By morning the stranger was gone, but the badlands were suddenly too quiet."
+
 **Stage 1 — "The Warning"**
 - Boss pool: Mad Dog Maguire (wild, uncontrolled aggression)
 - Objective: Duel (stranger challenges you to prove your worth)
@@ -527,20 +542,75 @@ A second thread with a different tone — proves the system supports variety.
 
 ---
 
-## Epic 9: Tests
+## Epic 9: Run-Start Scrolling Intro Crawl
 
-### Ticket 9.1 — Narrative state unit tests
+Add a cinematic opening crawl at the start of each run, with multiple variants per thread.
+
+### Ticket 9.1 — Add intro crawl payload to run state + HUD
+
+**Files**:
+- `packages/shared/src/sim/world.ts`
+- `packages/shared/src/net/hud.ts`
+- `packages/server/src/rooms/GameRoom.ts`
+- `packages/client/src/scenes/types.ts`
+- `packages/client/src/scenes/core/SingleplayerModeController.ts`
+- `packages/client/src/scenes/core/MultiplayerModeController.ts`
+
+Add fields:
+- `runIntroText: string | null` — selected crawl text for the active run
+- `runIntroSequence: number` — increments each run start so clients can show once per run
+
+Include both fields in HUD sync so multiplayer clients receive the same intro.
+
+### Ticket 9.2 — Select deterministic intro crawl variant at run start
+
+**File**: `packages/shared/src/sim/systems/stageProgression.ts` (or run-init path)
+
+At run initialization:
+1. Read `thread.introCrawls`
+2. Pick one variant with `world.rng`
+3. Store it on `world.runIntroText`
+4. Increment `world.runIntroSequence`
+
+Fallback to `thread.premise` if `introCrawls` is empty (backward compatibility for old threads/tests).
+
+### Ticket 9.3 — Create `RunIntroCrawlOverlay` component
+
+**File**: `packages/client/src/ui/RunIntroCrawlOverlay.tsx`
+
+Visual behavior:
+- Full-screen dark backdrop with subtle stars/noise
+- Perspective text crawl (bottom to top)
+- Thread title + selected crawl text
+- 6–8 second playback with fade-in/out
+- "Press any key to skip" hint
+
+Style: Western-space hybrid feel, readable serif headline + monospace body, high contrast.
+
+### Ticket 9.4 — Wire intro crawl into `Game.tsx` and `MultiplayerGame.tsx`
+
+Show overlay when `runIntroSequence` changes and `runIntroText` is non-empty.
+- Track `lastSeenRunIntroSequence` in page state
+- Play once per sequence
+- Dismiss on timer or user skip
+- Do not pause simulation
+
+## Epic 10: Tests
+
+### Ticket 10.1 — Narrative state unit tests
 
 **File**: `packages/shared/src/sim/content/narrative/narrative.test.ts`
 
 - `selectThread()` returns a valid thread
 - `selectThread()` with same seed returns same thread
+- Intro crawl variant selection is deterministic for same seed/thread
+- Intro crawl fallback uses `premise` when `introCrawls` is empty
 - `pickNarrativeLine()` skips already-shown lines
 - `pickNarrativeLine()` respects `requiresKey` conditions
 - `pickNarrativeLine()` respects `requiresOutcome` conditions
 - `pickNarrativeLine()` returns null when all lines exhausted
 
-### Ticket 9.2 — Boss selection integration tests
+### Ticket 10.2 — Boss selection integration tests
 
 **File**: `packages/shared/src/sim/systems/waveSpawner.test.ts` (or new file)
 
@@ -548,7 +618,7 @@ A second thread with a different tone — proves the system supports variety.
 - Empty intersection falls back to full encounter pool
 - Null narrative state uses default behavior
 
-### Ticket 9.3 — Outcome tracking tests
+### Ticket 10.3 — Outcome tracking tests
 
 **File**: `packages/shared/src/sim/systems/stageProgression.test.ts` (or new file)
 
@@ -557,12 +627,13 @@ A second thread with a different tone — proves the system supports variety.
 - Branch modifier unlocks dialogue key on soft failure
 - Resolution text computed correctly for all-success vs mixed paths
 
-### Ticket 9.4 — Thread content tests
+### Ticket 10.4 — Thread content tests
 
 **File**: `packages/shared/src/sim/content/narrative/theRaid.test.ts`
 
 - Thread has valid boss pools (all boss types exist in registry)
 - Thread has 3 stage configs matching 3-stage run
+- Thread has at least 2 intro crawl variants
 - Camp dialogue pools cover both camp indices
 - Resolution text exists for both outcomes
 - Boss taunts exist for all bosses in all stage pools
@@ -575,7 +646,9 @@ A second thread with a different tone — proves the system supports variety.
 2. `bun test packages/shared/` — all tests pass including new narrative tests
 3. `bun run build` — builds cleanly
 4. Manual test (singleplayer):
-   - Start a new run → thread premise text appears briefly
+   - Start a new run → scrolling intro crawl appears before normal HUD flow
+   - Intro can be skipped with key press/click
+   - Re-running with same seed picks same thread + same crawl variant
    - Stage 1 boss matches thread's pool (not random from all bosses)
    - Boss spawns → letterbox + name card + taunt plays for ~3 seconds
    - Clear Stage 1 → camp shows narrative line matching your outcome
@@ -583,6 +656,7 @@ A second thread with a different tone — proves the system supports variety.
    - Clear Stage 3 → resolution text appears below "RUN COMPLETE"
    - Same seed → same thread → same bosses → same dialogue (deterministic)
 5. Manual test (multiplayer):
+   - All players see the same intro crawl variant at run start
    - Boss intro plays for all connected clients
    - Camp narrative line visible to all players
    - Thread selection is server-authoritative (same thread for all players)

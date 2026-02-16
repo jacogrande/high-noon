@@ -47,6 +47,7 @@ import {
   deriveAbilityHudState,
   getItemDef,
   getVisitorDef,
+  getThread,
   tryVisitorPurchase,
   type CharacterId,
 } from '@high-noon/shared'
@@ -87,6 +88,7 @@ import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { SINGLEPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
 import {
+  emitBossIntroEvents,
   emitBossPhaseTransitionEvents,
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
@@ -315,6 +317,9 @@ export class SingleplayerModeController implements SceneModeController {
     )
 
     const run = this.world.run
+    const narrativeThread = this.world.narrative
+      ? getThread(this.world.narrative.threadId)
+      : undefined
     const shovelCount = this.world.shovelCount
     const interactionPrompt = playerEid !== null
       ? (this.world.interactionPromptByPlayer.get(playerEid) ?? null)
@@ -338,6 +343,13 @@ export class SingleplayerModeController implements SceneModeController {
       stageStatus: run
         ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
         : 'none',
+      narrativeThreadId: this.world.narrative?.threadId ?? null,
+      narrativeThreadName: narrativeThread?.name ?? null,
+      campNarrativeLine: this.world.campNarrativeLine,
+      resolutionText: this.world.resolutionText,
+      runIntroTitle: this.world.runIntroTitle,
+      runIntroText: this.world.runIntroText,
+      runIntroSequence: this.world.runIntroSequence,
       cylinderRounds: hasCylinder ? Cylinder.rounds[playerEid!]! : 0,
       cylinderMax: hasCylinder ? Cylinder.maxRounds[playerEid!]! : 0,
       isReloading: hasCylinder ? Cylinder.reloading[playerEid!]! === 1 : false,
@@ -421,6 +433,10 @@ export class SingleplayerModeController implements SceneModeController {
           })()
         : null,
     }
+  }
+
+  consumePendingBossIntro(): { bossName: string; taunt: string } | null {
+    return this.gameplayEventProcessor.consumePendingBossIntro()
   }
 
   hasPendingPoints(): boolean {
@@ -577,6 +593,11 @@ export class SingleplayerModeController implements SceneModeController {
       npcRenderer: this.npcRenderer,
       objectiveRenderer: this.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
+    })
+    emitBossIntroEvents({
+      events: this.gameplayEvents,
+      enemyRenderer: this.enemyRenderer,
+      narrativeThreadId: this.world.narrative?.threadId ?? null,
     })
 
     this.dryFireCooldown = Math.max(0, this.dryFireCooldown - dt)

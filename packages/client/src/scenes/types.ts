@@ -32,6 +32,13 @@ export interface HUDState {
   stageNumber: number
   totalStages: number
   stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
+  narrativeThreadId: string | null
+  narrativeThreadName: string | null
+  campNarrativeLine: string | null
+  resolutionText: string | null
+  runIntroTitle: string | null
+  runIntroText: string | null
+  runIntroSequence: number
   cylinderRounds: number
   cylinderMax: number
   isReloading: boolean

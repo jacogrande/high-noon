@@ -164,6 +164,13 @@ export interface EnemySyncResult {
   hits: Array<{ x: number; y: number; color: number; amount: number }>
 }
 
+export interface PendingBossIntro {
+  eid: number
+  type: number
+  x: number
+  y: number
+}
+
 // Define query for enemy entities with rendering components
 const enemyRenderQuery = defineQuery([Enemy, Position, Collider])
 
@@ -197,6 +204,8 @@ export class EnemyRenderer {
   showdownTargetEid: number = NO_TARGET
   /** Active Last Rites zone for enemy tinting (set by scene controller each tick). */
   lastRitesZone: { x: number; y: number; radius: number } | null = null
+  /** Set when a boss entity is first seen; consumed by presentation layer. */
+  private pendingBossIntro: PendingBossIntro | null = null
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
     this.registry = registry
@@ -260,6 +269,14 @@ export class EnemyRenderer {
         this.enemyEntities.add(eid)
         this.enemyTiers.set(eid, Enemy.tier[eid]!)
         this.enemyTypes.set(eid, type)
+        if (isBoss(type) && this.pendingBossIntro === null) {
+          this.pendingBossIntro = {
+            eid,
+            type,
+            x: Position.x[eid]!,
+            y: Position.y[eid]!,
+          }
+        }
         const spawnHP = Health.current[eid]!
         this.lastHP.set(eid, spawnHP)
         this.hpWatermark.set(eid, spawnHP)
@@ -654,6 +671,12 @@ export class EnemyRenderer {
     return this.enemyEntities.size
   }
 
+  consumePendingBossIntro(): PendingBossIntro | null {
+    const pending = this.pendingBossIntro
+    this.pendingBossIntro = null
+    return pending
+  }
+
   /**
    * Clean up all enemy sprites
    */
@@ -684,5 +707,6 @@ export class EnemyRenderer {
     this.healthBars.clear()
     this.healthBarWidths.clear()
     this.healthBarYOffsets.clear()
+    this.pendingBossIntro = null
   }
 }

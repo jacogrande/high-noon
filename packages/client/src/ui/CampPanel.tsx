@@ -5,6 +5,7 @@ import { ItemTooltip } from './ItemTooltip'
 interface CampPanelProps {
   stageNumber: number
   totalStages: number
+  narrativeLine?: string | null
   hasPendingPoints: boolean
   rideOutPending?: boolean
   playerGold: number
@@ -36,6 +37,7 @@ const RARITY_COLORS: Record<string, string> = {
 export function CampPanel({
   stageNumber,
   totalStages,
+  narrativeLine = null,
   hasPendingPoints,
   rideOutPending = false,
   playerGold,
@@ -54,6 +56,7 @@ export function CampPanel({
         <div style={styles.info}>
           Stage {stageNumber} of {totalStages} complete
         </div>
+        {narrativeLine && <div style={styles.narrativeLine}>{narrativeLine}</div>}
         <div style={styles.healBadge}>HP RESTORED</div>
 
         {/* Inventory display */}
@@ -173,6 +176,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#aaaaaa',
     letterSpacing: '0.05em',
+  },
+  narrativeLine: {
+    fontSize: 13,
+    color: '#d7bf8a',
+    textAlign: 'center',
+    maxWidth: 600,
+    fontStyle: 'italic',
+    letterSpacing: '0.03em',
+    textShadow: '0 0 8px rgba(0, 0, 0, 0.8)',
   },
   healBadge: {
     fontSize: 11,

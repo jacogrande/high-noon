@@ -10,12 +10,18 @@ import { getArenaCenterFromTilemap } from './tilemap'
 import type { SpatialHash } from './SpatialHash'
 import type { StageEncounter } from './content/waves'
 import { getBoss } from './content/bosses'
+import { type NarrativeState } from './content/narrative'
 import type { InputState } from '../net/input'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
 import type { CampVisitorState } from './systems/campVisitor'
+import {
+  cloneRunStages,
+  createRunNarrativeSetup,
+  selectBossFromEncounterPool,
+} from './runLifecycle'
 import { Player, Position, Velocity } from './components'
 
 export type ObjectiveType = 'protect' | 'intercept' | 'duel'
@@ -394,6 +400,18 @@ export interface GameWorld extends IWorld {
   encounter: EncounterState | null
   /** Multi-stage run state (null = no run active) */
   run: RunState | null
+  /** Story metadata for the active run (null = default non-narrative behavior) */
+  narrative: NarrativeState | null
+  /** Narrative line shown in camp (null when no line is selected) */
+  campNarrativeLine: string | null
+  /** Run-complete resolution text derived from outcomes */
+  resolutionText: string | null
+  /** Run intro title shown by the crawl overlay */
+  runIntroTitle: string | null
+  /** Run intro crawl text */
+  runIntroText: string | null
+  /** Monotonic sequence incremented each time a new run starts */
+  runIntroSequence: number
   /** Per-tick flag: true on the tick a stage is cleared */
   stageCleared: boolean
   /** Maximum enemy projectiles before fodder stops firing */
@@ -559,6 +577,12 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     debugSpawnWasDown: false,
     encounter: null,
     run: null,
+    narrative: null,
+    campNarrativeLine: null,
+    resolutionText: null,
+    runIntroTitle: null,
+    runIntroText: null,
+    runIntroSequence: 0,
     stageCleared: false,
     maxProjectiles: 80,
     initialSeed: resolvedSeed,
@@ -651,6 +675,12 @@ export function resetWorld(world: GameWorld): void {
   world.debugSpawnWasDown = false
   world.encounter = null
   world.run = null
+  world.narrative = null
+  world.campNarrativeLine = null
+  world.resolutionText = null
+  world.runIntroTitle = null
+  world.runIntroText = null
+  world.runIntroSequence = 0
   world.stageCleared = false
   world.maxProjectiles = 80
   world.lastPlayerHitDir.clear()
@@ -731,7 +761,12 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
   if (encounter.bossPool && encounter.bossPool.length >= 1) {
     const pool = encounter.bossPool
     const poolSet = new Set(pool)
-    const selected = pool[Math.floor(world.rng.next() * pool.length)]!
+    const selected = selectBossFromEncounterPool({
+      rng: world.rng,
+      encounterPool: pool,
+      narrative: world.narrative,
+      currentStage: world.run?.currentStage ?? null,
+    })
     resolved = {
       ...encounter,
       waves: encounter.waves.map(wave => {
@@ -774,10 +809,19 @@ export function setEncounter(world: GameWorld, encounter: StageEncounter): void 
  * Start a multi-stage run with the given stage encounters.
  */
 export function startRun(world: GameWorld, stages: StageEncounter[]): void {
+  const runStages = cloneRunStages(stages)
+  const narrativeSetup = createRunNarrativeSetup(world.rng)
+  world.narrative = narrativeSetup.narrative
+  world.campNarrativeLine = null
+  world.resolutionText = null
+  world.runIntroTitle = narrativeSetup.runIntroTitle
+  world.runIntroText = narrativeSetup.runIntroText
+  world.runIntroSequence += 1
+
   world.run = {
     currentStage: 0,
-    totalStages: stages.length,
-    stages,
+    totalStages: runStages.length,
+    stages: runStages,
     completed: false,
     transition: 'none',
     transitionTimer: 0,
@@ -797,7 +841,7 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
   world.interactionLastInputSeqByPlayer.clear()
   world.interactionPromptByPlayer.clear()
   world.interactionFeedbackByPlayer.clear()
-  setEncounter(world, stages[0]!)
+  setEncounter(world, runStages[0]!)
 }
 
 /**

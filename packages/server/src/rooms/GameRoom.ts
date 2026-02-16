@@ -22,6 +22,7 @@ import {
   getCharacterDef,
   getUpgradeStateForPlayer,
   deriveAbilityHudState,
+  getThread,
   initUpgradeState,
   getShovelPrice,
   takeNode,
@@ -838,6 +839,13 @@ export class GameRoom extends Room<GameRoomState> {
     const stageStatus: HudData['stageStatus'] = run
       ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
       : 'none'
+    const narrativeThreadId = this.world.narrative?.threadId ?? null
+    const narrativeThreadName = narrativeThreadId ? (getThread(narrativeThreadId)?.name ?? null) : null
+    const campNarrativeLine = this.world.campNarrativeLine
+    const resolutionText = this.world.resolutionText
+    const runIntroTitle = this.world.runIntroTitle
+    const runIntroText = this.world.runIntroText
+    const runIntroSequence = this.world.runIntroSequence
     const goldCollected = this.world.goldCollected
 
     for (const [, slot] of this.slots) {
@@ -971,6 +979,13 @@ export class GameRoom extends Room<GameRoomState> {
         stageNumber,
         totalStages,
         stageStatus,
+        narrativeThreadId,
+        narrativeThreadName,
+        campNarrativeLine,
+        resolutionText,
+        runIntroTitle,
+        runIntroText,
+        runIntroSequence,
         items,
         objective: objectiveHud,
         campVisitor: campVisitorHud,

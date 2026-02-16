@@ -2,11 +2,14 @@ import {
   MeleeWeapon,
   PICKAXE_CHARGE_ARC,
   Position,
+  getBoss,
+  getThread,
   type GameWorld,
   type InputState,
 } from '@high-noon/shared'
 import type { GameplayEventBuffer } from './GameplayEvents'
 import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
+import type { EnemyRenderer } from '../../render/EnemyRenderer'
 import {
   didCompleteReload,
   didFireRound,
@@ -35,6 +38,12 @@ export interface EmitShowdownCueFlags {
   showdownActivatedThisTick: boolean
   showdownKillThisTick: boolean
   showdownExpiredThisTick: boolean
+}
+
+export interface EmitBossIntroEventsArgs {
+  events: GameplayEventBuffer
+  enemyRenderer: EnemyRenderer
+  narrativeThreadId: string | null
 }
 
 export function emitPlayerHitEvent(
@@ -91,6 +100,24 @@ export function emitShowdownCueEvents(events: GameplayEventBuffer, flags: EmitSh
   if (flags.showdownActivatedThisTick) events.push({ type: 'showdown-activate' })
   if (flags.showdownKillThisTick) events.push({ type: 'showdown-kill' })
   if (flags.showdownExpiredThisTick) events.push({ type: 'showdown-expire' })
+}
+
+export function emitBossIntroEvents(args: EmitBossIntroEventsArgs): void {
+  const pending = args.enemyRenderer.consumePendingBossIntro()
+  if (!pending) return
+
+  const bossName = getBoss(pending.type)?.displayName ?? 'BOSS'
+  const taunt = args.narrativeThreadId
+    ? (getThread(args.narrativeThreadId)?.bossTaunts[pending.type] ?? '')
+    : ''
+
+  args.events.push({
+    type: 'boss-intro',
+    bossName,
+    taunt,
+    x: pending.x,
+    y: pending.y,
+  })
 }
 
 /**

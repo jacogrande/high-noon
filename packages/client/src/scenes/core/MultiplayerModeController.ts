@@ -87,6 +87,7 @@ import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { MULTIPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
 import {
+  emitBossIntroEvents,
   emitBossPhaseTransitionEvents,
   emitCylinderPresentationEvents,
   emitDynamiteCueEvents,
@@ -793,6 +794,11 @@ export class MultiplayerModeController implements SceneModeController {
       objectiveRenderer: this.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
     })
+    emitBossIntroEvents({
+      events: this.gameplayEvents,
+      enemyRenderer: this.enemyRenderer,
+      narrativeThreadId: this.latestHud?.narrativeThreadId ?? null,
+    })
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
 
     // Update camera viewport (handles resize)
@@ -1004,6 +1010,13 @@ export class MultiplayerModeController implements SceneModeController {
       stageNumber: hud?.stageNumber ?? 0,
       totalStages: hud?.totalStages ?? 0,
       stageStatus: hud?.stageStatus ?? 'none',
+      narrativeThreadId: hud?.narrativeThreadId ?? null,
+      narrativeThreadName: hud?.narrativeThreadName ?? null,
+      campNarrativeLine: hud?.campNarrativeLine ?? null,
+      resolutionText: hud?.resolutionText ?? null,
+      runIntroTitle: hud?.runIntroTitle ?? null,
+      runIntroText: hud?.runIntroText ?? null,
+      runIntroSequence: hud?.runIntroSequence ?? 0,
       cylinderRounds,
       cylinderMax,
       isReloading,
@@ -1019,6 +1032,10 @@ export class MultiplayerModeController implements SceneModeController {
       campVisitor: hud?.campVisitor ?? null,
       boss: hud?.boss ?? null,
     }
+  }
+
+  consumePendingBossIntro(): { bossName: string; taunt: string } | null {
+    return this.gameplayEventProcessor.consumePendingBossIntro()
   }
 
   hasPendingPoints(): boolean {

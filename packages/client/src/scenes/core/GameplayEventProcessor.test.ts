@@ -126,4 +126,36 @@ describe('GameplayEventProcessor', () => {
     expect(recoils).toEqual([7])
     expect(emissions.length).toBeGreaterThan(0)
   })
+
+  test('boss-intro stores pending overlay payload', () => {
+    const traumas: number[] = []
+
+    const processor = new GameplayEventProcessor({
+      camera: {
+        addTrauma: (v: number) => { traumas.push(v) },
+        applyKick: () => {},
+      } as never,
+      sound: {
+        play: () => {},
+      } as never,
+      particles: {} as never,
+      floatingText: {} as never,
+      playerRenderer: {} as never,
+    })
+
+    processor.processAll([{
+      type: 'boss-intro',
+      bossName: 'Mad Dog',
+      taunt: 'No law out here.',
+      x: 100,
+      y: 200,
+    }])
+
+    expect(traumas).toEqual([0.2])
+    expect(processor.consumePendingBossIntro()).toEqual({
+      bossName: 'Mad Dog',
+      taunt: 'No law out here.',
+    })
+    expect(processor.consumePendingBossIntro()).toBeNull()
+  })
 })

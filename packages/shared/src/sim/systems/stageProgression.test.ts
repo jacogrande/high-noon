@@ -9,6 +9,8 @@ import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import type { StageEncounter, WaveDefinition } from '../content/waves'
 import { STAGE_1_MAP_CONFIG } from '../content/maps/mapConfig'
+import { getThread } from '../content/narrative'
+import { THE_RAID } from '../content/narrative'
 
 const TEST_SEED = 54321
 const DT = 1 / 60
@@ -341,6 +343,160 @@ describe('stageProgressionSystem', () => {
 
     // Run complete
     expect(world.run!.completed).toBe(true)
+  })
+
+  test('records success outcome when stage is cleared', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT)
+
+    expect(world.narrative?.outcomes).toEqual(['success'])
+  })
+
+  test('records soft-failure outcome when objective failed', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    world.objective = {
+      type: 'protect',
+      status: 'soft_failure',
+      description: 'test',
+      targetEids: [],
+      escapedCount: 0,
+      escapeThreshold: 1,
+      spawnTimer: 0,
+      totalSpawned: 0,
+      maxSpawns: 0,
+      spawnInterval: 1,
+      maxAlive: 0,
+      runnerSpeed: 0,
+      runnerHP: 0,
+      ringCenterX: 0,
+      ringCenterY: 0,
+      ringRadius: 0,
+      duelistEid: 0,
+      forfeitTimer: 0,
+      forfeitGrace: 0,
+    }
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT)
+
+    expect(world.narrative?.outcomes).toEqual(['soft_failure'])
+  })
+
+  test('final-stage completion computes success resolution text', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // -> clearing
+    stageProgressionSystem(world, 1.0) // -> completed
+
+    const thread = world.narrative ? getThread(world.narrative.threadId) : undefined
+    expect(world.resolutionText).toBe(thread?.resolution.success ?? null)
+  })
+
+  test('final-stage completion computes soft-failure resolution text', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    world.objective = {
+      type: 'protect',
+      status: 'soft_failure',
+      description: 'test',
+      targetEids: [],
+      escapedCount: 0,
+      escapeThreshold: 1,
+      spawnTimer: 0,
+      totalSpawned: 0,
+      maxSpawns: 0,
+      spawnInterval: 1,
+      maxAlive: 0,
+      runnerSpeed: 0,
+      runnerHP: 0,
+      ringCenterX: 0,
+      ringCenterY: 0,
+      ringRadius: 0,
+      duelistEid: 0,
+      forfeitTimer: 0,
+      forfeitGrace: 0,
+    }
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // -> clearing
+    stageProgressionSystem(world, 1.0) // -> completed
+
+    const thread = world.narrative ? getThread(world.narrative.threadId) : undefined
+    expect(world.resolutionText).toBe(thread?.resolution.softFailure ?? null)
+  })
+
+  test('soft-failure branch description is applied to next stage objective', () => {
+    const stages = [
+      {
+        ...makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+        objective: {
+          type: 'protect',
+          description: 'Stage 1 objective',
+          protectHP: 100,
+          protectPosition: 'center' as const,
+        },
+      },
+      {
+        ...makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+        objective: {
+          type: 'protect',
+          description: 'Stage 2 objective',
+          protectHP: 100,
+          protectPosition: 'center' as const,
+        },
+      },
+    ]
+    startRun(world, stages)
+    if (!world.narrative) throw new Error('Expected narrative state')
+    world.narrative.threadId = THE_RAID.id
+
+    world.objective = {
+      type: 'protect',
+      status: 'soft_failure',
+      description: 'failed',
+      targetEids: [],
+      escapedCount: 0,
+      escapeThreshold: 1,
+      spawnTimer: 0,
+      totalSpawned: 0,
+      maxSpawns: 0,
+      spawnInterval: 1,
+      maxAlive: 0,
+      runnerSpeed: 0,
+      runnerHP: 0,
+      ringCenterX: 0,
+      ringCenterY: 0,
+      ringRadius: 0,
+      duelistEid: 0,
+      forfeitTimer: 0,
+      forfeitGrace: 0,
+    }
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // clearing
+    stageProgressionSystem(world, 1.0) // camp
+    world.campComplete = true
+    stageProgressionSystem(world, DT) // next stage
+
+    expect(world.objective?.description).toBe(
+      THE_RAID.stages[0]?.softFailureNext?.objectiveDescription,
+    )
   })
 
   test('clearAllEnemies removes enemies and bullets', () => {
