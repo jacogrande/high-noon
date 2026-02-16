@@ -169,24 +169,24 @@ export const DUEL_RING_RADIUS = 120
 export const DUEL_FORFEIT_GRACE = 1.0
 
 // ============================================================================
-// Coyote — fast, fragile pack animal (summoned by Coyote Jane)
+// Coyote — tough, fast pack predator (summoned by Coyote Jane)
 // ============================================================================
 
-export const COYOTE_SPEED = 120
-export const COYOTE_RADIUS = 8
-export const COYOTE_HP = 6
-export const COYOTE_AGGRO_RANGE = 350
-export const COYOTE_ATTACK_RANGE = 60
-export const COYOTE_PREFERRED_RANGE = 100
-export const COYOTE_TELEGRAPH = 0.20
-export const COYOTE_RECOVERY = 0.5
-export const COYOTE_COOLDOWN = 2.5
-export const COYOTE_DAMAGE = 4
+export const COYOTE_SPEED = 160
+export const COYOTE_RADIUS = 10
+export const COYOTE_HP = 18
+export const COYOTE_AGGRO_RANGE = 400
+export const COYOTE_ATTACK_RANGE = 70
+export const COYOTE_PREFERRED_RANGE = 80
+export const COYOTE_TELEGRAPH = 0.15
+export const COYOTE_RECOVERY = 0.35
+export const COYOTE_COOLDOWN = 1.8
+export const COYOTE_DAMAGE = 8
 export const COYOTE_SEPARATION_RADIUS = 16
-export const COYOTE_DART_SPEED = 250
-export const COYOTE_DART_DURATION = 0.2
+export const COYOTE_DART_SPEED = 320
+export const COYOTE_DART_DURATION = 0.25
 export const COYOTE_BUDGET_COST = 1
-export const COYOTE_TIER = EnemyTier.FODDER
+export const COYOTE_TIER = EnemyTier.THREAT
 
 // ============================================================================
 // Item Drop Chances (per enemy type)
