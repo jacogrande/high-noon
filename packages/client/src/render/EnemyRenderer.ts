@@ -70,6 +70,12 @@ for (const boss of allBosses()) {
 
 /** Enemy type → sprite sheet ID (only for sprite-based enemies) */
 const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
+  [EnemyType.SWARMER]: 'swarmer',
+  [EnemyType.GRUNT]: 'grunt',
+  [EnemyType.SHOOTER]: 'shooter',
+  [EnemyType.CHARGER]: 'charger',
+  [EnemyType.RUNNER]: 'runner',
+  [EnemyType.DUELIST]: 'duelist',
   [EnemyType.GOBLIN_BARBARIAN]: 'goblin_barbarian',
   [EnemyType.GOBLIN_ROGUE]: 'goblin_rogue',
   [EnemyType.MAD_DOG]: 'mad_dog',
@@ -78,6 +84,10 @@ const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
 
 /** Per-type sprite scale overrides (defaults to GOBLIN_SPRITE_SCALE) */
 const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
+  [EnemyType.SWARMER]: 1.5,
+  [EnemyType.CHARGER]: 2.5,
+  [EnemyType.RUNNER]: 1.5,
+  [EnemyType.DUELIST]: 2.5,
   [EnemyType.MAD_DOG]: 2.5,
   [EnemyType.BOOMSTICK]: 2.5,
   [EnemyType.DALTON]: 2.5,

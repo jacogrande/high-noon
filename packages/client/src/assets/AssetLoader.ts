@@ -46,6 +46,12 @@ const WEAPON_SPRITES: Record<string, string> = {
 
 /** Enemy sprite manifest: enemyId → path */
 const ENEMY_SPRITES: Record<string, string> = {
+  swarmer: '/assets/sprites/enemies/swarmer.png',
+  grunt: '/assets/sprites/enemies/grunt.png',
+  shooter: '/assets/sprites/enemies/shooter.png',
+  charger: '/assets/sprites/enemies/charger.png',
+  runner: '/assets/sprites/enemies/runner.png',
+  duelist: '/assets/sprites/enemies/duelist.png',
   goblin_barbarian: '/assets/sprites/enemies/goblin_barbarian.png',
   goblin_rogue: '/assets/sprites/enemies/goblin_rogue.png',
   mad_dog: '/assets/sprites/enemies/mad_dog.png',
