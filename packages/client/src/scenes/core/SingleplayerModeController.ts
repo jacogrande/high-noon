@@ -154,6 +154,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
+  private paused = false
 
   constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
@@ -430,6 +431,18 @@ export class SingleplayerModeController implements SceneModeController {
     return false
   }
 
+  setPaused(paused: boolean): void {
+    this.paused = paused
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
+  getSoundManager(): SoundManager {
+    return this.sound
+  }
+
   getSkillTreeData(): SkillTreeUIData {
     const state = this.world.upgradeState
     return {
@@ -490,6 +503,9 @@ export class SingleplayerModeController implements SceneModeController {
   update(dt: number): void {
     // Stop simulation when local player is dead
     if (this.isPlayerDead()) return
+
+    // Stop simulation when paused
+    if (this.paused) return
 
     // Skip sim tick if hit-stopped
     if (this.hitStop.isFrozen) return

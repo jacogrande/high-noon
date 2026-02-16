@@ -1,3 +1,4 @@
+import type { SoundManager } from '../../audio/SoundManager'
 import type { HUDState, SkillTreeUIData } from '../types'
 
 export interface SceneModeController {
@@ -12,5 +13,8 @@ export interface SceneModeController {
   handleVisitorPurchase?(offerIndex: number): boolean
   setWorldVisible(visible: boolean): void
   isDisconnected(): boolean
+  setPaused(paused: boolean): void
+  isPaused(): boolean
+  getSoundManager(): SoundManager
   destroy(): void
 }

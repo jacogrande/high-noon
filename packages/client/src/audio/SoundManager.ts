@@ -1,9 +1,25 @@
 import { Howl, Howler } from 'howler'
 import type { SoundDef } from './sounds'
+import { loadAudioPrefs } from './audioPrefs'
 
 export class SoundManager {
   private howls = new Map<string, { howl: Howl; pitchVariance: number }>()
   private _muted = false
+
+  constructor() {
+    this.applyPrefs()
+  }
+
+  applyPrefs(): void {
+    const prefs = loadAudioPrefs()
+    Howler.volume(prefs.volume / 100)
+    this._muted = prefs.muted
+    Howler.mute(prefs.muted)
+  }
+
+  getMasterVolume(): number {
+    return Howler.volume() * 100
+  }
 
   loadAll(defs: Record<string, SoundDef>): void {
     for (const [name, def] of Object.entries(defs)) {

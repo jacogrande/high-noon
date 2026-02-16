@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { CharacterId } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
+import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { CharacterSelect } from '../ui/CharacterSelect'
+import { PauseMenu } from '../ui/PauseMenu'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -23,6 +25,9 @@ export function Game() {
   const [showCamp, setShowCamp] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
+  const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const lastHudUpdateRef = useRef(0)
@@ -178,6 +183,65 @@ export function Game() {
     scene.handleVisitorPurchase(offerIndex)
   }, [])
 
+  const navigate = useNavigate()
+
+  const handleResume = useCallback(() => {
+    sceneRef.current?.setPaused(false)
+    setShowPauseMenu(false)
+  }, [])
+
+  const handleVolumeChange = useCallback((v: number) => {
+    setVolume(v)
+    sceneRef.current?.getSoundManager().setMasterVolume(v / 100)
+    setMuted(currentMuted => {
+      saveAudioPrefs(v, currentMuted)
+      return currentMuted
+    })
+  }, [])
+
+  const handleMutedChange = useCallback((m: boolean) => {
+    setMuted(m)
+    const sm = sceneRef.current?.getSoundManager()
+    if (sm) sm.muted = m
+    setVolume(currentVolume => {
+      saveAudioPrefs(currentVolume, m)
+      return currentVolume
+    })
+  }, [])
+
+  const handleQuitToMenu = useCallback(() => {
+    sceneRef.current?.setPaused(false)
+    navigate('/')
+  }, [navigate])
+
+  // Escape key handler
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      // Priority 1: close skill tree
+      if (showingTreeRef.current) {
+        showingTreeRef.current = false
+        setShowSkillTree(false)
+        setSkillTreeData(null)
+        return
+      }
+      // Priority 2: ignore during camp
+      if (showCamp) return
+      // Priority 3: ignore when dead
+      if (hudState?.isDead) return
+      // Priority 4: toggle pause menu
+      if (showPauseMenu) {
+        sceneRef.current?.setPaused(false)
+        setShowPauseMenu(false)
+      } else if (sceneRef.current) {
+        sceneRef.current.setPaused(true)
+        setShowPauseMenu(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showCamp, showPauseMenu, hudState?.isDead])
+
   const handleRetry = () => {
     setLoading(true)
     setLoadProgress(0)
@@ -237,13 +301,8 @@ export function Game() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <Link to="/" style={styles.backButton}>
-          ← Back
-        </Link>
-      </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && <GameHUD state={hudState} />}
       {showCamp && hudState && (
         <CampPanel
           stageNumber={hudState.stageNumber}
@@ -263,6 +322,17 @@ export function Game() {
           setShowSkillTree(false)
           setSkillTreeData(null)
         }} />
+      )}
+      {showPauseMenu && (
+        <PauseMenu
+          mode="singleplayer"
+          volume={volume}
+          muted={muted}
+          onResume={handleResume}
+          onVolumeChange={handleVolumeChange}
+          onMutedChange={handleMutedChange}
+          onQuitToMenu={handleQuitToMenu}
+        />
       )}
     </div>
   )

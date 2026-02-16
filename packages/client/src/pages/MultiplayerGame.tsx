@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { CharacterId, LobbyState } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
 import { AssetLoader } from '../assets'
+import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
 import { NetworkClient } from '../net/NetworkClient'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
+import { PauseMenu } from '../ui/PauseMenu'
 
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
@@ -28,6 +30,9 @@ export function MultiplayerGame() {
   const [campReadySent, setCampReadySent] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
+  const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
@@ -296,6 +301,62 @@ export function MultiplayerGame() {
     setSkillTreeData(null)
   }, [campReadySent])
 
+  const navigate = useNavigate()
+
+  const handleClosePauseMenu = useCallback(() => {
+    setShowPauseMenu(false)
+  }, [])
+
+  const handleVolumeChange = useCallback((v: number) => {
+    setVolume(v)
+    sceneRef.current?.getSoundManager().setMasterVolume(v / 100)
+    setMuted(currentMuted => {
+      saveAudioPrefs(v, currentMuted)
+      return currentMuted
+    })
+  }, [])
+
+  const handleMutedChange = useCallback((m: boolean) => {
+    setMuted(m)
+    const sm = sceneRef.current?.getSoundManager()
+    if (sm) sm.muted = m
+    setVolume(currentVolume => {
+      saveAudioPrefs(currentVolume, m)
+      return currentVolume
+    })
+  }, [])
+
+  const handleLeaveMatch = useCallback(() => {
+    navigate('/')
+  }, [navigate])
+
+  // Escape key handler
+  useEffect(() => {
+    if (phase !== 'playing') return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      // Priority 1: close skill tree
+      if (showingTreeRef.current) {
+        showingTreeRef.current = false
+        setShowSkillTree(false)
+        setSkillTreeData(null)
+        return
+      }
+      // Priority 2: ignore during camp
+      if (showCamp) return
+      // Priority 3: ignore when dead
+      if (hudState?.isDead) return
+      // Priority 4: toggle pause menu
+      if (showPauseMenu) {
+        setShowPauseMenu(false)
+      } else {
+        setShowPauseMenu(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [phase, showCamp, showPauseMenu, hudState?.isDead])
+
   const handleRetry = () => {
     destroyGame()
     disconnectNetwork()
@@ -388,13 +449,8 @@ export function MultiplayerGame() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <Link to="/" style={styles.backButton}>
-          ← Back
-        </Link>
-      </div>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && <GameHUD state={hudState} />}
       {showCamp && hudState && (
         <CampPanel
           stageNumber={hudState.stageNumber}
@@ -417,6 +473,17 @@ export function MultiplayerGame() {
           setShowSkillTree(false)
           setSkillTreeData(null)
         }} />
+      )}
+      {showPauseMenu && (
+        <PauseMenu
+          mode="multiplayer"
+          volume={volume}
+          muted={muted}
+          onResume={handleClosePauseMenu}
+          onVolumeChange={handleVolumeChange}
+          onMutedChange={handleMutedChange}
+          onQuitToMenu={handleLeaveMatch}
+        />
       )}
     </div>
   )

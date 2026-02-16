@@ -1,5 +1,6 @@
 import type { GameApp } from '../engine/GameApp'
 import type { CharacterId } from '@high-noon/shared'
+import type { SoundManager } from '../audio/SoundManager'
 import type { HUDState, SkillTreeUIData } from './types'
 import type { SceneModeController } from './core/SceneModeController'
 import { SingleplayerModeController } from './core/SingleplayerModeController'
@@ -73,6 +74,18 @@ export class CoreGameScene {
 
   isDisconnected(): boolean {
     return this.controller.isDisconnected()
+  }
+
+  setPaused(paused: boolean): void {
+    this.controller.setPaused(paused)
+  }
+
+  isPaused(): boolean {
+    return this.controller.isPaused()
+  }
+
+  getSoundManager(): SoundManager {
+    return this.controller.getSoundManager()
   }
 
   destroy(): void {

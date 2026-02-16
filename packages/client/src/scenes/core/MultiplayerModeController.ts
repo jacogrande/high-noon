@@ -193,6 +193,9 @@ export class MultiplayerModeController implements SceneModeController {
   /** Disconnect flag for UX overlay */
   private disconnected = false
 
+  /** Pause/settings overlay flag (does NOT gate simulation in multiplayer) */
+  private paused = false
+
   /** Monotonic tick for local player animation (decoupled from snapshot tick) */
   private predictionTick = 0
 
@@ -317,6 +320,18 @@ export class MultiplayerModeController implements SceneModeController {
   }
 
   isDisconnected(): boolean { return this.disconnected }
+
+  setPaused(paused: boolean): void {
+    this.paused = paused
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
+  getSoundManager(): SoundManager {
+    return this.sound
+  }
 
   /** Connect to server — resolves once game-config is received */
   async initialize(options?: Record<string, unknown>): Promise<void> {
