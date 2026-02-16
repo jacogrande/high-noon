@@ -59,6 +59,7 @@ const ENEMY_SPRITES: Record<string, string> = {
   dalton_emmett: '/assets/sprites/enemies/dalton_emmett.png',
   dalton_bob: '/assets/sprites/enemies/dalton_bob.png',
   coyote_jane: '/assets/sprites/enemies/coyote_jane.png',
+  coyote: '/assets/sprites/enemies/coyote.png',
 }
 
 /** Item icon manifest: itemKey → path */

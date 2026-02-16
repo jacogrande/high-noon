@@ -104,6 +104,87 @@ export function trapZoneSystem(world: GameWorld, dt: number): void {
         }
         break
       }
+
+      case 'tripwire': {
+        // Point-to-line-segment distance collision
+        const x1 = trap.x
+        const y1 = trap.y
+        const x2 = trap.x2 ?? trap.x
+        const y2 = trap.y2 ?? trap.y
+        const wireThickness = trap.wireThickness ?? 6
+
+        let triggered = false
+        for (const peid of players) {
+          if (hasComponent(world, Dead, peid)) continue
+          if (hasComponent(world, Invincible, peid)) continue
+          if (Health.iframes[peid]! > 0) continue
+
+          const px = Position.x[peid]!
+          const py = Position.y[peid]!
+          const pr = Collider.radius[peid]!
+
+          // Project player center onto line segment, clamp t to [0,1]
+          const segDx = x2 - x1
+          const segDy = y2 - y1
+          const segLenSq = segDx * segDx + segDy * segDy
+          let t = 0
+          if (segLenSq > 0) {
+            t = Math.max(0, Math.min(1, ((px - x1) * segDx + (py - y1) * segDy) / segLenSq))
+          }
+          const closestX = x1 + t * segDx
+          const closestY = y1 + t * segDy
+          const dx = px - closestX
+          const dy = py - closestY
+          const dist = Math.sqrt(dx * dx + dy * dy)
+
+          if (dist > wireThickness + pr) continue
+
+          // Tripwire triggered! Explosion at midpoint
+          const midX = (x1 + x2) / 2
+          const midY = (y1 + y2) / 2
+          const explosionR = trap.explosionRadius ?? 60
+
+          // Damage all players in explosion radius
+          for (const hitPeid of players) {
+            if (hasComponent(world, Dead, hitPeid)) continue
+            if (hasComponent(world, Invincible, hitPeid)) continue
+            if (Health.iframes[hitPeid]! > 0) continue
+
+            const hdx = Position.x[hitPeid]! - midX
+            const hdy = Position.y[hitPeid]! - midY
+            const hpr = Collider.radius[hitPeid]!
+            const hDist2 = hdx * hdx + hdy * hdy
+            const hitDist = explosionR + hpr
+            if (hDist2 > hitDist * hitDist) continue
+
+            applyDamage(world, hitPeid, {
+              amount: trap.damage,
+              attackerEid: trap.ownerEid,
+              setIframes: true,
+            })
+
+            const hDist = Math.sqrt(hDist2)
+            if (hDist > 0) {
+              world.lastPlayerHitDir.set(hitPeid, { x: hdx / hDist, y: hdy / hDist })
+            }
+          }
+
+          world.trapDetonations.push({
+            kind: 'tripwire',
+            x: midX,
+            y: midY,
+            radius: explosionR,
+          })
+
+          triggered = true
+          break
+        }
+
+        if (triggered) {
+          world.trapZones.splice(i, 1)
+        }
+        break
+      }
     }
   }
 }

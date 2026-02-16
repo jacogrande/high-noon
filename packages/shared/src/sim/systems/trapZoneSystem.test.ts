@@ -136,6 +136,65 @@ describe('trapZoneSystem', () => {
     expect(trap.hp).toBe(0)
   })
 
+  function addTripwire(x1: number, y1: number, x2: number, y2: number): void {
+    world.trapZones.push({
+      kind: 'tripwire',
+      x: x1,
+      y: y1,
+      x2,
+      y2,
+      radius: 0,
+      damage: 8,
+      explosionRadius: 60,
+      hp: 2,
+      ownerEid: 999,
+    })
+  }
+
+  test('tripwire triggers when player crosses line segment', () => {
+    // Place a tripwire with player right on top of it
+    addTripwire(790, 600, 810, 600) // horizontal line through player at 800,600
+    const initialHP = Health.current[playerEid]!
+
+    trapZoneSystem(world, 1 / 60)
+
+    expect(Health.current[playerEid]!).toBe(initialHP - 8)
+    expect(world.trapZones.length).toBe(0) // tripwire removed
+  })
+
+  test('tripwire does not trigger when player is far from line', () => {
+    addTripwire(100, 100, 200, 100) // far from player at 800,600
+    const initialHP = Health.current[playerEid]!
+
+    trapZoneSystem(world, 1 / 60)
+
+    expect(Health.current[playerEid]!).toBe(initialHP)
+    expect(world.trapZones.length).toBe(1) // tripwire still exists
+  })
+
+  test('tripwire explosion damages in radius', () => {
+    // Place tripwire at player position; explosion radius = 60
+    addTripwire(795, 600, 805, 600)
+
+    // Spawn a second player nearby (within explosion radius)
+    const player2 = spawnPlayer(world, 830, 600) // ~30px from midpoint (800, 600)
+    const hp2Before = Health.current[player2]!
+
+    trapZoneSystem(world, 1 / 60)
+
+    // Both players should take damage from the explosion
+    expect(Health.current[player2]!).toBe(hp2Before - 8)
+  })
+
+  test('tripwire emits detonation event', () => {
+    addTripwire(795, 600, 805, 600)
+
+    trapZoneSystem(world, 1 / 60)
+
+    expect(world.trapDetonations.length).toBe(1)
+    expect(world.trapDetonations[0]!.kind).toBe('tripwire')
+  })
+
   test('traps cleared on encounter reset', () => {
     addBearTrap(100, 100)
     addCaltrop(200, 200)

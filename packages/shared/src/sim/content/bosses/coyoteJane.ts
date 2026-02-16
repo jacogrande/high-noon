@@ -2,10 +2,10 @@
  * Coyote Jane Boss Module
  *
  * Stage 2 trapper boss — a cunning huntress with a bolt-action rifle,
- * bear traps, and caltrops. Three-phase escalation:
- * - Phase 1: Rifle shots + bear trap placement (FLEE behavior)
- * - Phase 2: Adds caltrop scatter + faster fire rate (FLEE behavior)
- * - Phase 3: Switches to hip shots, advances on player, caltrops while moving
+ * bear traps, caltrops, tripwires, and coyote companions. Three-phase escalation:
+ * - Phase 1: Rifle shots + reposition dash + bear traps
+ * - Phase 2: Adds caltrops, tripwires, coyote whistle, faster fire rate
+ * - Phase 3: Hip shots, advances on player, coyotes active, no dashing/bear traps
  */
 
 import { addEntity, addComponent, hasComponent, defineQuery } from 'bitecs'
@@ -18,13 +18,14 @@ import {
   EnemyAI, AIState, Detection, AttackConfig, Steering,
   Player, Dead,
 } from '../../components'
-import { CollisionLayer, spawnBullet, spawnSwarmer } from '../../prefabs'
+import { CollisionLayer, spawnBullet, spawnCoyote } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { ENEMY_BULLET_RANGE } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
-import { isSolidAt } from '../../tilemap'
+import { isSolidAt, getPlayableBoundsFromTilemap } from '../../tilemap'
 
 const playerQuery = defineQuery([Player, Position, Health])
+const enemyQuery = defineQuery([Enemy])
 
 // ============================================================================
 // Constants
@@ -57,8 +58,8 @@ const P2_RECOVERY = 0.50
 // Phase 3 tuning (hip shot mode)
 const P3_SPEED = 130
 const P3_COOLDOWN = 0.65
-const P3_TELEGRAPH = 0.25   // hip shot (fast, short telegraph)
-const P3_RECOVERY = 0.30
+const P3_TELEGRAPH = 0.30   // hip shot (matches design doc)
+const P3_RECOVERY = 0.50    // matches design doc
 
 // Transition i-frames
 const TRANSITION_IFRAMES = 0.45
@@ -85,19 +86,37 @@ const BEAR_TRAP_HP = 3
 const BEAR_TRAP_COOLDOWN = 4.5   // seconds between placements
 const BEAR_TRAP_MAX = 4          // max active bear traps
 
-// Caltrop tuning
+// Caltrop tuning (reduced from original 3.5s/3.0s for visibility)
 const CALTROP_RADIUS = 40
 const CALTROP_SLOW = 0.3        // 70% slow
 const CALTROP_DURATION = 8.0    // seconds
-const CALTROP_COOLDOWN = 3.5    // seconds between placements
+const CALTROP_COOLDOWN = 2.5    // seconds between placements
 const CALTROP_MAX = 3           // max active caltrops
 const CALTROP_DAMAGE = 0
+
+// Tripwire tuning
+const TRIPWIRE_DAMAGE = 8
+const TRIPWIRE_EXPLOSION_RADIUS = 60
+const TRIPWIRE_LENGTH = 120
+const TRIPWIRE_HP = 2
+const TRIPWIRE_MAX = 2
+
+// Reposition dash tuning
+const DASH_SPEED = 400
+const DASH_DURATION = 0.3
+const P1_REPOSITION_COOLDOWN = 8.0
+const P2_REPOSITION_COOLDOWN = 4.0
+
+// Coyote whistle tuning
+const WHISTLE_INITIAL_COOLDOWN = 3.0
+const WHISTLE_RESET_COOLDOWN = 12.0
+const WHISTLE_SUMMON_COUNT = 2
 
 // Rifle telegraph line length for laser indicator
 const RIFLE_TELEGRAPH_LENGTH = 400
 
-// P3 spawns
-const P3_SUMMON_SWARMERS = 2
+// P3 spawns (coyotes, not swarmers)
+const P3_SUMMON_COYOTES = 2
 
 // Summon placement
 const SUMMON_MIN_RADIUS = 64
@@ -129,6 +148,20 @@ interface CoyoteJaneState {
   phaseTransitionDone: Set<number>
   /** Whether attack has executed its single-tick damage */
   attackExecuted: boolean
+  /** Whether Jane is currently dashing */
+  isDashing: boolean
+  /** Timer for dash duration */
+  dashTimer: number
+  /** Dash target X */
+  dashTargetX: number
+  /** Dash target Y */
+  dashTargetY: number
+  /** Reposition cooldown remaining */
+  repositionCooldown: number
+  /** Counter for tripwire placement (place every 2 repositions in P2+) */
+  tripwirePlacementCounter: number
+  /** Coyote whistle cooldown */
+  whistleCooldown: number
 }
 
 function createState(): CoyoteJaneState {
@@ -136,9 +169,16 @@ function createState(): CoyoteJaneState {
     selectedAttack: CoyoteJaneAttack.RIFLE_SHOT,
     aimAngle: 0,
     trapCooldown: 2.0, // slight initial delay before first trap
-    caltropCooldown: 3.0,
+    caltropCooldown: 1.5, // reduced initial delay for caltrops
     phaseTransitionDone: new Set(),
     attackExecuted: false,
+    isDashing: false,
+    dashTimer: 0,
+    dashTargetX: 0,
+    dashTargetY: 0,
+    repositionCooldown: P1_REPOSITION_COOLDOWN,
+    tripwirePlacementCounter: 0,
+    whistleCooldown: WHISTLE_INITIAL_COOLDOWN,
   }
 }
 
@@ -173,11 +213,63 @@ function pickSummonPosition(
   return { x: centerX + SUMMON_MIN_RADIUS, y: centerY }
 }
 
+/**
+ * Pick a point on the arena perimeter far from the player.
+ * Used for dash targets so Jane repositions to the opposite side.
+ */
+function pickPerimeterPoint(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  bossX: number,
+  bossY: number,
+): { x: number; y: number } {
+  const tilemap = world.tilemap
+  if (!tilemap) return { x: bossX + 200, y: bossY }
+
+  const bounds = getPlayableBoundsFromTilemap(tilemap)
+  const margin = 32
+  const minX = bounds.minX + margin
+  const maxX = bounds.maxX - margin
+  const minY = bounds.minY + margin
+  const maxY = bounds.maxY - margin
+  const centerX = (minX + maxX) / 2
+  const centerY = (minY + maxY) / 2
+
+  // Base angle: opposite the player relative to arena center
+  const baseAngle = Math.atan2(centerY - playerY, centerX - playerX)
+  // Add some randomness
+  const angle = baseAngle + (world.rng.next() - 0.5) * 1.2
+
+  // Project to arena edge
+  const halfW = (maxX - minX) / 2
+  const halfH = (maxY - minY) / 2
+  const cosA = Math.cos(angle)
+  const sinA = Math.sin(angle)
+  const tX = cosA !== 0 ? halfW / Math.abs(cosA) : Infinity
+  const tY = sinA !== 0 ? halfH / Math.abs(sinA) : Infinity
+  const t = Math.min(tX, tY) * 0.85 // stay slightly inside wall
+
+  const x = Math.max(minX, Math.min(maxX, centerX + cosA * t))
+  const y = Math.max(minY, Math.min(maxY, centerY + sinA * t))
+
+  return { x, y }
+}
+
 /** Count active traps of a specific kind owned by this boss */
 function countTraps(world: GameWorld, ownerEid: number, kind: TrapZone['kind']): number {
   let count = 0
   for (const trap of world.trapZones) {
     if (trap.ownerEid === ownerEid && trap.kind === kind) count++
+  }
+  return count
+}
+
+/** Count alive coyotes in the world. O(n) on enemy count but only called when whistle cooldown expires (~every 12s). */
+function countAliveCoyotes(world: GameWorld): number {
+  let count = 0
+  for (const eid of enemyQuery(world)) {
+    if (Enemy.type[eid] === EnemyType.COYOTE && !hasComponent(world, Dead, eid)) count++
   }
   return count
 }
@@ -212,6 +304,57 @@ function placeCaltrops(world: GameWorld, ownerEid: number, x: number, y: number)
     damage: CALTROP_DAMAGE,
     duration: CALTROP_DURATION,
     slowMultiplier: CALTROP_SLOW,
+    ownerEid,
+  })
+}
+
+/** Place a tripwire between two points, clamped to playable bounds */
+function placeTripwire(
+  world: GameWorld,
+  ownerEid: number,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): void {
+  if (countTraps(world, ownerEid, 'tripwire') >= TRIPWIRE_MAX) return
+
+  // Compute tripwire endpoints: perpendicular to travel direction, centered at fromX/fromY
+  const dx = toX - fromX
+  const dy = toY - fromY
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist === 0) return
+
+  // Perpendicular direction
+  const perpX = -dy / dist
+  const perpY = dx / dist
+  const halfLen = TRIPWIRE_LENGTH / 2
+
+  let x1 = fromX + perpX * halfLen
+  let y1 = fromY + perpY * halfLen
+  let x2 = fromX - perpX * halfLen
+  let y2 = fromY - perpY * halfLen
+
+  // Clamp endpoints to playable bounds so tripwires don't extend into walls
+  const tilemap = world.tilemap
+  if (tilemap) {
+    const bounds = getPlayableBoundsFromTilemap(tilemap)
+    x1 = Math.max(bounds.minX, Math.min(bounds.maxX, x1))
+    y1 = Math.max(bounds.minY, Math.min(bounds.maxY, y1))
+    x2 = Math.max(bounds.minX, Math.min(bounds.maxX, x2))
+    y2 = Math.max(bounds.minY, Math.min(bounds.maxY, y2))
+  }
+
+  world.trapZones.push({
+    kind: 'tripwire',
+    x: x1,
+    y: y1,
+    x2,
+    y2,
+    radius: 0, // not used for tripwire collision (uses line-segment distance)
+    damage: TRIPWIRE_DAMAGE,
+    explosionRadius: TRIPWIRE_EXPLOSION_RADIUS,
+    hp: TRIPWIRE_HP,
     ownerEid,
   })
 }
@@ -284,6 +427,8 @@ function tick(world: GameWorld, eid: number, dt: number): void {
       AttackConfig.cooldownRemaining[eid] = 0
       EnemyAI.state[eid] = AIState.TELEGRAPH
       EnemyAI.stateTimer[eid] = 0
+      // Reset reposition cooldown for P2
+      state.repositionCooldown = P2_REPOSITION_COOLDOWN
     }
 
     if (p === 3) {
@@ -305,17 +450,38 @@ function tick(world: GameWorld, eid: number, dt: number): void {
       // Change preferred range: advance instead of flee
       Steering.preferredRange[eid] = 80
 
-      // Spawn swarmers on P3
+      // Cancel any active dash
+      state.isDashing = false
+
+      // Spawn coyotes on P3 (not swarmers)
       const cx = Position.x[eid]!
       const cy = Position.y[eid]!
-      for (let i = 0; i < P3_SUMMON_SWARMERS; i++) {
+      for (let i = 0; i < P3_SUMMON_COYOTES; i++) {
         const pos = pickSummonPosition(world, cx, cy)
-        spawnSwarmer(world, pos.x, pos.y)
+        spawnCoyote(world, pos.x, pos.y)
       }
     }
   }
 
   BossPhase.phase[eid] = desired
+
+  // --- Dash logic ---
+  if (state.isDashing) {
+    state.dashTimer += dt
+    if (state.dashTimer >= DASH_DURATION) {
+      // End dash
+      state.isDashing = false
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+      // Brief recovery after dash
+      transition(eid, AIState.RECOVERY)
+      // Reset cooldown for current phase
+      const phase = BossPhase.phase[eid]!
+      state.repositionCooldown = phase >= 2 ? P2_REPOSITION_COOLDOWN : P1_REPOSITION_COOLDOWN
+    }
+    // While dashing, skip all other tick logic (velocity is set, movement happens in movementSystem)
+    return
+  }
 
   // Select attack on first tick of TELEGRAPH
   if (EnemyAI.state[eid] === AIState.TELEGRAPH && EnemyAI.stateTimer[eid]! === 0) {
@@ -347,19 +513,20 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     Velocity.y[eid] = 0
   }
 
-  // --- Trap placement during CHASE / FLEE / RECOVERY ---
+  // --- Trap placement + reposition dash + whistle during CHASE / FLEE / RECOVERY ---
   const aiState = EnemyAI.state[eid]!
   if (aiState === AIState.CHASE || aiState === AIState.FLEE || aiState === AIState.RECOVERY || aiState === AIState.IDLE) {
     const phase = BossPhase.phase[eid]!
     const bx = Position.x[eid]!
     const by = Position.y[eid]!
 
-    // Bear trap placement
-    state.trapCooldown -= dt
-    if (state.trapCooldown <= 0) {
-      // Place trap at current position (leave behind while repositioning)
-      placeBearTrap(world, eid, bx, by)
-      state.trapCooldown = BEAR_TRAP_COOLDOWN
+    // Bear trap placement (Phase 1-2 only — P3 stops placing bear traps)
+    if (phase < 3) {
+      state.trapCooldown -= dt
+      if (state.trapCooldown <= 0) {
+        placeBearTrap(world, eid, bx, by)
+        state.trapCooldown = BEAR_TRAP_COOLDOWN
+      }
     }
 
     // Caltrop placement (Phase 2+)
@@ -375,7 +542,6 @@ function tick(world: GameWorld, eid: number, dt: number): void {
           const dy = Position.y[targetEid]! - by
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist > 0) {
-            // Place caltrops partway between boss and player
             const placeDist = Math.min(dist * 0.5, 120)
             cx = bx + (dx / dist) * placeDist
             cy = by + (dy / dist) * placeDist
@@ -383,6 +549,70 @@ function tick(world: GameWorld, eid: number, dt: number): void {
         }
         placeCaltrops(world, eid, cx, cy)
         state.caltropCooldown = CALTROP_COOLDOWN
+      }
+    }
+
+    // Reposition dash (Phase 1-2 only — Phase 3 advances continuously)
+    if (phase < 3 && aiState === AIState.CHASE) {
+      state.repositionCooldown -= dt
+      if (state.repositionCooldown <= 0) {
+        // Find player position for perimeter targeting
+        const targetEid = EnemyAI.targetEid[eid]!
+        let playerX = bx
+        let playerY = by
+        if (targetEid !== 0xFFFF && hasComponent(world, Position, targetEid)) {
+          playerX = Position.x[targetEid]!
+          playerY = Position.y[targetEid]!
+        }
+
+        const target = pickPerimeterPoint(world, playerX, playerY, bx, by)
+
+        // Place bear trap at current position before dashing (Phase < 3)
+        placeBearTrap(world, eid, bx, by)
+
+        // Place tripwire every 2nd reposition (Phase 2+ only)
+        if (phase >= 2) {
+          state.tripwirePlacementCounter++
+          if (state.tripwirePlacementCounter >= 2) {
+            state.tripwirePlacementCounter = 0
+            placeTripwire(world, eid, bx, by, target.x, target.y)
+          }
+        }
+
+        // Start dash
+        state.isDashing = true
+        state.dashTimer = 0
+        state.dashTargetX = target.x
+        state.dashTargetY = target.y
+
+        // Set velocity toward target
+        const dx = target.x - bx
+        const dy = target.y - by
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 0) {
+          Velocity.x[eid] = (dx / dist) * DASH_SPEED
+          Velocity.y[eid] = (dy / dist) * DASH_SPEED
+        }
+
+        // Use ATTACK state so enemySteeringSystem skips velocity override
+        EnemyAI.state[eid] = AIState.ATTACK
+        EnemyAI.stateTimer[eid] = 0
+        return // dash started, skip rest of tick
+      }
+    }
+
+    // Coyote whistle (Phase 2+): summon coyotes when none alive
+    if (phase >= 2) {
+      state.whistleCooldown -= dt
+      if (state.whistleCooldown <= 0) {
+        const aliveCoyotes = countAliveCoyotes(world)
+        if (aliveCoyotes === 0) {
+          for (let i = 0; i < WHISTLE_SUMMON_COUNT; i++) {
+            const pos = pickSummonPosition(world, bx, by)
+            spawnCoyote(world, pos.x, pos.y)
+          }
+        }
+        state.whistleCooldown = WHISTLE_RESET_COOLDOWN
       }
     }
   }
@@ -409,7 +639,7 @@ function tick(world: GameWorld, eid: number, dt: number): void {
         progress,
       })
     } else if (attack === CoyoteJaneAttack.HIP_SHOT) {
-      // Short arc telegraph for hip shot
+      // Short arc telegraph for hip shot — tracks player (unlike rifle which locks aim at telegraph start)
       const targetEid = EnemyAI.targetEid[eid]!
       let aimAngle = state.aimAngle
       if (targetEid !== 0xFFFF && hasComponent(world, Position, targetEid)) {
@@ -439,6 +669,9 @@ function tick(world: GameWorld, eid: number, dt: number): void {
 function attack(world: GameWorld, eid: number, _dt: number): void {
   const state = getState(world, eid)
 
+  // If dashing, skip attack logic (attack state is used to prevent steering override)
+  if (state.isDashing) return
+
   if (state.attackExecuted) {
     transition(eid, AIState.RECOVERY)
     return
@@ -447,7 +680,6 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
 
   const ex = Position.x[eid]!
   const ey = Position.y[eid]!
-  const phase = BossPhase.phase[eid]!
 
   if (state.selectedAttack === CoyoteJaneAttack.RIFLE_SHOT) {
     // Single high-damage rifle bullet along locked aim direction
@@ -465,7 +697,7 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       layer: CollisionLayer.ENEMY_BULLET,
     })
   } else if (state.selectedAttack === CoyoteJaneAttack.HIP_SHOT) {
-    // Fast multi-bullet hip shot (Phase 3)
+    // Fast multi-bullet hip shot (Phase 3) — re-aims at attack time (tracks player, unlike rifle)
     const targetEid = EnemyAI.targetEid[eid]!
     let baseAngle = state.aimAngle
     if (targetEid !== 0xFFFF && hasComponent(world, Position, targetEid)) {
@@ -531,6 +763,7 @@ export const COYOTE_JANE_P3_COOLDOWN = P3_COOLDOWN
 export const COYOTE_JANE_P1_TELEGRAPH = P1_TELEGRAPH
 export const COYOTE_JANE_P2_TELEGRAPH = P2_TELEGRAPH
 export const COYOTE_JANE_P3_TELEGRAPH = P3_TELEGRAPH
+export const COYOTE_JANE_P3_RECOVERY = P3_RECOVERY
 export const COYOTE_JANE_TRANSITION_IFRAMES = TRANSITION_IFRAMES
 export const COYOTE_JANE_RIFLE_DAMAGE = RIFLE_DAMAGE
 export const COYOTE_JANE_HIP_DAMAGE = HIP_DAMAGE
@@ -543,4 +776,14 @@ export const COYOTE_JANE_BEAR_TRAP_MAX = BEAR_TRAP_MAX
 export const COYOTE_JANE_CALTROP_RADIUS = CALTROP_RADIUS
 export const COYOTE_JANE_CALTROP_SLOW = CALTROP_SLOW
 export const COYOTE_JANE_CALTROP_DURATION = CALTROP_DURATION
-export const COYOTE_JANE_P3_SUMMON_SWARMERS = P3_SUMMON_SWARMERS
+export const COYOTE_JANE_CALTROP_COOLDOWN = CALTROP_COOLDOWN
+export const COYOTE_JANE_P3_SUMMON_COYOTES = P3_SUMMON_COYOTES
+export const COYOTE_JANE_DASH_SPEED = DASH_SPEED
+export const COYOTE_JANE_DASH_DURATION = DASH_DURATION
+export const COYOTE_JANE_P1_REPOSITION_COOLDOWN = P1_REPOSITION_COOLDOWN
+export const COYOTE_JANE_P2_REPOSITION_COOLDOWN = P2_REPOSITION_COOLDOWN
+export const COYOTE_JANE_WHISTLE_INITIAL_COOLDOWN = WHISTLE_INITIAL_COOLDOWN
+export const COYOTE_JANE_WHISTLE_RESET_COOLDOWN = WHISTLE_RESET_COOLDOWN
+export const COYOTE_JANE_WHISTLE_SUMMON_COUNT = WHISTLE_SUMMON_COUNT
+export const COYOTE_JANE_TRIPWIRE_DAMAGE = TRIPWIRE_DAMAGE
+export const COYOTE_JANE_TRIPWIRE_EXPLOSION_RADIUS = TRIPWIRE_EXPLOSION_RADIUS

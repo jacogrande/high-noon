@@ -3,7 +3,8 @@
  *
  * Handles attack execution for enemies in the ATTACK state:
  * - Projectile enemies (Swarmer, Grunt, Shooter): spawn bullets aimed at player
- * - Charger: rush in locked direction with contact damage
+ * - Rush enemies (Charger, Coyote): dash in locked direction with contact damage
+ * - Melee enemies (Goblin Barbarian/Rogue, Duelist): proximity hit with knockback
  *
  * Runs after enemySteeringSystem (which zeros velocity for non-CHASE states)
  * and before movementSystem (which applies velocity).
@@ -24,10 +25,57 @@ import {
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
   DUELIST_MELEE_REACH, DUELIST_ATTACK_DURATION,
   DUELIST_MELEE_KB_SPEED, DUELIST_MELEE_KB_DURATION,
+  COYOTE_DART_SPEED, COYOTE_DART_DURATION,
 } from '../content/enemies'
 import { ENEMY_BULLET_RANGE } from '../content/weapons'
 import { applyDamage } from './applyDamage'
 import { isBoss, getBoss } from '../content/bosses'
+
+/**
+ * Shared rush-attack handler for charger and coyote (dart-and-bite).
+ * Sets velocity on first tick, checks contact damage, transitions to RECOVERY after duration.
+ */
+function handleRushAttack(
+  world: GameWorld,
+  eid: number,
+  targetEid: number,
+  rushSpeed: number,
+  rushDuration: number,
+  blockedByDuel: boolean,
+): void {
+  if (EnemyAI.stateTimer[eid]! === 0) {
+    Velocity.x[eid] = AttackConfig.aimX[eid]! * rushSpeed
+    Velocity.y[eid] = AttackConfig.aimY[eid]! * rushSpeed
+  }
+
+  const attackerR = Collider.radius[eid]!
+  const targetR = Collider.radius[targetEid]!
+  const dx = Position.x[targetEid]! - Position.x[eid]!
+  const dy = Position.y[targetEid]! - Position.y[eid]!
+  const distSq = dx * dx + dy * dy
+  const minDist = attackerR + targetR
+
+  if (
+    !blockedByDuel &&
+    distSq <= minDist * minDist &&
+    Health.iframes[targetEid]! <= 0 &&
+    !hasComponent(world, Invincible, targetEid)
+  ) {
+    applyDamage(world, targetEid, {
+      amount: AttackConfig.damage[eid]!,
+      attackerEid: eid,
+      setIframes: true,
+    })
+    world.lastPlayerHitDir.set(targetEid, {
+      x: AttackConfig.aimX[eid]!,
+      y: AttackConfig.aimY[eid]!,
+    })
+  }
+
+  if (EnemyAI.stateTimer[eid]! >= rushDuration) {
+    transition(eid, AIState.RECOVERY)
+  }
+}
 
 function isMeleeEnemy(type: number): boolean {
   return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE || type === EnemyType.DUELIST
@@ -56,11 +104,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const targetEid = EnemyAI.targetEid[eid]!
     const hasTarget = targetEid !== NO_TARGET && hasComponent(world, Position, targetEid) && !hasComponent(world, Dead, targetEid)
 
-    // Lock charger aim direction on first tick of TELEGRAPH
+    // Lock charger/coyote aim direction on first tick of TELEGRAPH
     if (
       state === AIState.TELEGRAPH &&
       EnemyAI.stateTimer[eid]! === 0 &&
-      Enemy.type[eid] === EnemyType.CHARGER &&
+      (Enemy.type[eid] === EnemyType.CHARGER || Enemy.type[eid] === EnemyType.COYOTE) &&
       hasTarget
     ) {
       const dx = Position.x[targetEid]! - Position.x[eid]!
@@ -88,55 +136,20 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
 
     const type = Enemy.type[eid]!
 
-    // Zero velocity for non-charger, non-boss attackers (bosses manage their own velocity)
-    if (type !== EnemyType.CHARGER && !isBoss(type)) {
+    // Zero velocity for non-charger, non-coyote, non-boss attackers (bosses manage their own velocity)
+    if (type !== EnemyType.CHARGER && type !== EnemyType.COYOTE && !isBoss(type)) {
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
     }
 
-    if (type === EnemyType.CHARGER) {
-      // Charger: set rush velocity once on ATTACK entry (aimX/aimY locked at TELEGRAPH)
-      if (EnemyAI.stateTimer[eid]! === 0) {
-        Velocity.x[eid] = AttackConfig.aimX[eid]! * CHARGER_CHARGE_SPEED
-        Velocity.y[eid] = AttackConfig.aimY[eid]! * CHARGER_CHARGE_SPEED
-      }
-
-      // Contact damage check against assigned target
-      const chargerR = Collider.radius[eid]!
-      const targetR = Collider.radius[targetEid]!
-      const cdx = targetX - ex
-      const cdy = targetY - ey
-      const distSq = cdx * cdx + cdy * cdy
-      const minDist = chargerR + targetR
-
+    if (type === EnemyType.COYOTE) {
+      handleRushAttack(world, eid, targetEid, COYOTE_DART_SPEED, COYOTE_DART_DURATION, false)
+    } else if (type === EnemyType.CHARGER) {
       // Duel guard: non-duelist chargers can't damage player during active duel
-      const chargerObj = world.objective
-      const chargerDuelActive = chargerObj && chargerObj.type === 'duel' && chargerObj.status === 'active'
-      const chargerBlockedByDuel = chargerDuelActive && eid !== chargerObj!.duelistEid && hasComponent(world, Player, targetEid)
-
-      if (
-        !chargerBlockedByDuel &&
-        distSq <= minDist * minDist &&
-        Health.iframes[targetEid]! <= 0 &&
-        !hasComponent(world, Invincible, targetEid)
-      ) {
-        applyDamage(world, targetEid, {
-          amount: AttackConfig.damage[eid]!,
-          attackerEid: eid,
-          setIframes: true,
-        })
-
-        // Store hit direction per-player for camera kick (charger charge direction)
-        world.lastPlayerHitDir.set(targetEid, {
-          x: AttackConfig.aimX[eid]!,
-          y: AttackConfig.aimY[eid]!,
-        })
-      }
-
-      // Check charge duration
-      if (EnemyAI.stateTimer[eid]! >= CHARGER_CHARGE_DURATION) {
-        transition(eid, AIState.RECOVERY)
-      }
+      const obj = world.objective
+      const duelActive = obj && obj.type === 'duel' && obj.status === 'active'
+      const blockedByDuel = !!duelActive && eid !== obj!.duelistEid && hasComponent(world, Player, targetEid)
+      handleRushAttack(world, eid, targetEid, CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION, blockedByDuel)
     } else if (isMeleeEnemy(type)) {
       // Melee enemy: proximity check + contact damage
       const meleeCfg = getMeleeConfig(type)

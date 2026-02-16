@@ -295,7 +295,7 @@ export interface RewindEnemyState {
  * Type-discriminated: each `kind` carries its own relevant fields.
  */
 export interface TrapZone {
-  kind: 'bearTrap' | 'caltrop'
+  kind: 'bearTrap' | 'caltrop' | 'tripwire'
   x: number
   y: number
   /** Trigger/effect radius */
@@ -311,13 +311,21 @@ export interface TrapZone {
   hp?: number
   /** Boss or entity that placed it */
   ownerEid: number
+  /** Tripwire endpoint X */
+  x2?: number
+  /** Tripwire endpoint Y */
+  y2?: number
+  /** Tripwire explosion radius */
+  explosionRadius?: number
+  /** Tripwire collision half-thickness (default: 6) */
+  wireThickness?: number
 }
 
 /**
  * Per-tick trap detonation event for client VFX
  */
 export interface TrapDetonation {
-  kind: 'bearTrap'
+  kind: 'bearTrap' | 'tripwire'
   x: number
   y: number
   radius: number

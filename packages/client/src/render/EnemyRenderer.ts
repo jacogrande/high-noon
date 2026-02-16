@@ -61,6 +61,7 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
   [EnemyType.RUNNER]: 0x44ddff,           // bright cyan (fast, urgent)
   [EnemyType.DUELIST]: 0xddaa33,         // dark amber/gold (duel challenger)
+  [EnemyType.COYOTE]: 0xc4a35a,          // sandy tan (desert coyote)
 }
 
 // Populate boss colors from registry
@@ -81,6 +82,7 @@ const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
   [EnemyType.MAD_DOG]: 'mad_dog',
   [EnemyType.BOOMSTICK]: 'boomstick',
   [EnemyType.COYOTE_JANE]: 'coyote_jane',
+  [EnemyType.COYOTE]: 'coyote',
 }
 
 /** Per-type sprite scale overrides (defaults to GOBLIN_SPRITE_SCALE) */
@@ -93,6 +95,7 @@ const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.BOOMSTICK]: 2.5,
   [EnemyType.DALTON]: 2.5,
   [EnemyType.COYOTE_JANE]: 2.5,
+  [EnemyType.COYOTE]: 1.5,
 }
 
 function isSpriteEnemy(type: number): boolean {

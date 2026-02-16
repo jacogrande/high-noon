@@ -81,6 +81,10 @@ import {
   DUELIST_AGGRO_RANGE, DUELIST_ATTACK_RANGE,
   DUELIST_TELEGRAPH, DUELIST_RECOVERY, DUELIST_COOLDOWN,
   DUELIST_DAMAGE, DUELIST_SEPARATION_RADIUS, DUELIST_TIER,
+  COYOTE_SPEED, COYOTE_RADIUS, COYOTE_HP,
+  COYOTE_AGGRO_RANGE, COYOTE_ATTACK_RANGE, COYOTE_PREFERRED_RANGE,
+  COYOTE_TELEGRAPH, COYOTE_RECOVERY, COYOTE_COOLDOWN,
+  COYOTE_DAMAGE, COYOTE_SEPARATION_RADIUS, COYOTE_TIER,
 } from './content/enemies'
 /** Boss radii inlined here to avoid circular dep (bosses → prefabs → bosses) */
 const BOOMSTICK_RADIUS = 18
@@ -588,6 +592,35 @@ export function spawnDuelist(world: GameWorld, x: number, y: number, hp?: number
   Steering.preferredRange[eid] = 0
   Steering.separationRadius[eid] = DUELIST_SEPARATION_RADIUS
   EnemyAI.initialDelay[eid] = 0.1
+
+  return eid
+}
+
+/**
+ * Spawn a Coyote enemy — fast, fragile pack animal (summoned by Coyote Jane)
+ */
+export function spawnCoyote(world: GameWorld, x: number, y: number): number {
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  setEnemyDefaults(world, eid, x, y)
+
+  Enemy.type[eid] = EnemyType.COYOTE
+  Enemy.tier[eid] = COYOTE_TIER
+  Speed.current[eid] = COYOTE_SPEED
+  Speed.max[eid] = COYOTE_SPEED
+  Collider.radius[eid] = COYOTE_RADIUS
+  Health.current[eid] = COYOTE_HP
+  Health.max[eid] = COYOTE_HP
+  Detection.aggroRange[eid] = COYOTE_AGGRO_RANGE
+  Detection.attackRange[eid] = COYOTE_ATTACK_RANGE
+  Detection.losRequired[eid] = 0
+  AttackConfig.telegraphDuration[eid] = COYOTE_TELEGRAPH
+  AttackConfig.recoveryDuration[eid] = COYOTE_RECOVERY
+  AttackConfig.cooldown[eid] = COYOTE_COOLDOWN
+  AttackConfig.damage[eid] = COYOTE_DAMAGE
+  Steering.preferredRange[eid] = COYOTE_PREFERRED_RANGE
+  Steering.separationRadius[eid] = COYOTE_SEPARATION_RADIUS
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
 
   return eid
 }

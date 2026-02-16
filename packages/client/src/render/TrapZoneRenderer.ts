@@ -4,6 +4,7 @@
  * Draws visual feedback for active trap zones:
  * - Bear traps: copper/iron circles with jaw lines
  * - Caltrops: scattered dot patterns with translucent slow-zone fill
+ * - Tripwires: red line between endpoints with anchor dots
  *
  * Redraws when trapZones array length changes or caltrop durations tick.
  */
@@ -18,14 +19,21 @@ const BEAR_TRAP_FILL_ALPHA = 0.35
 const BEAR_TRAP_STROKE_ALPHA = 0.6
 const BEAR_TRAP_JAW_COUNT = 6
 
-// Caltrop visuals
-const CALTROP_FILL = 0x556b2f
-const CALTROP_STROKE = 0x6b8e23
-const CALTROP_FILL_ALPHA = 0.15
-const CALTROP_STROKE_ALPHA = 0.3
-const CALTROP_DOT_COLOR = 0x808080
-const CALTROP_DOT_ALPHA = 0.5
+// Caltrop visuals (brighter for better visibility)
+const CALTROP_FILL = 0x8b6914
+const CALTROP_STROKE = 0xb8860b
+const CALTROP_FILL_ALPHA = 0.25
+const CALTROP_STROKE_ALPHA = 0.5
+const CALTROP_DOT_COLOR = 0xa0a0a0
+const CALTROP_DOT_ALPHA = 0.7
 const CALTROP_DOT_COUNT = 8
+
+// Tripwire visuals
+const TRIPWIRE_STROKE = 0xff3333
+const TRIPWIRE_STROKE_ALPHA = 0.6
+const TRIPWIRE_DOT_COLOR = 0xff2222
+const TRIPWIRE_DOT_ALPHA = 0.8
+const TRIPWIRE_DOT_RADIUS = 3
 
 export class TrapZoneRenderer {
   private readonly graphics: Graphics
@@ -55,6 +63,7 @@ export class TrapZoneRenderer {
     let key = `${traps.length}`
     for (const t of traps) {
       key += `|${t.kind}:${t.x | 0},${t.y | 0}`
+      if (t.kind === 'tripwire') key += `:${(t.x2 ?? 0) | 0},${(t.y2 ?? 0) | 0}`
     }
 
     if (key === this.cachedKey) return
@@ -112,6 +121,26 @@ export class TrapZoneRenderer {
             .circle(dotX, dotY, 1.5)
             .fill({ color: CALTROP_DOT_COLOR, alpha: CALTROP_DOT_ALPHA })
         }
+
+      } else if (trap.kind === 'tripwire') {
+        const x1 = trap.x
+        const y1 = trap.y
+        const x2 = trap.x2 ?? trap.x
+        const y2 = trap.y2 ?? trap.y
+
+        // Wire line
+        this.graphics
+          .moveTo(x1, y1)
+          .lineTo(x2, y2)
+          .stroke({ color: TRIPWIRE_STROKE, width: 2, alpha: TRIPWIRE_STROKE_ALPHA })
+
+        // Anchor dots at endpoints
+        this.graphics
+          .circle(x1, y1, TRIPWIRE_DOT_RADIUS)
+          .fill({ color: TRIPWIRE_DOT_COLOR, alpha: TRIPWIRE_DOT_ALPHA })
+        this.graphics
+          .circle(x2, y2, TRIPWIRE_DOT_RADIUS)
+          .fill({ color: TRIPWIRE_DOT_COLOR, alpha: TRIPWIRE_DOT_ALPHA })
       }
     }
 
