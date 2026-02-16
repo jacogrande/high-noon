@@ -5,12 +5,18 @@ import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
+import { getMultiplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
 import { NetworkClient } from '../net/NetworkClient'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
+import {
+  GameplayOverlays,
+  type GameplayBossIntroState,
+  type GameplayRunIntroState,
+} from '../ui/GameplayOverlays'
 
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
@@ -28,10 +34,14 @@ export function MultiplayerGame() {
   const [campReadySent, setCampReadySent] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
+  const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
   const lastHudUpdateRef = useRef(0)
+  const lastSeenRunIntroSequenceRef = useRef(0)
+  const sawPrePlayingLobbyRef = useRef(false)
   const netRef = useRef<NetworkClient | null>(null)
   const gameRef = useRef<{
     gameApp: GameApp
@@ -94,6 +104,9 @@ export function MultiplayerGame() {
 
     net.on('lobby-state', (state) => {
       if (netRef.current !== net) return
+      if (state.phase !== 'playing') {
+        sawPrePlayingLobbyRef.current = true
+      }
       setLobbyState(state)
       if (state.phase === 'playing') {
         setPhase(current => (current === 'connecting' || current === 'lobby') ? 'starting' : current)
@@ -145,6 +158,12 @@ export function MultiplayerGame() {
     setSelectedCharacter(me.characterId)
   }, [lobbyState, localSessionId])
 
+  useEffect(() => {
+    if (phase === 'lobby') {
+      sawPrePlayingLobbyRef.current = true
+    }
+  }, [phase])
+
   // Phase 3: Start gameplay scene after lobby phase flips to playing.
   useEffect(() => {
     if (phase !== 'starting') return
@@ -189,12 +208,26 @@ export function MultiplayerGame() {
         (dt) => scene.update(dt),
         (alpha) => {
           scene.render(alpha, gameLoop.fps)
+          const pendingBossIntro = scene.consumePendingBossIntro()
+          if (pendingBossIntro) {
+            setBossIntro(pendingBossIntro)
+          }
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
             const hud = scene.getHUDState()
             setHudState(hud)
+            const runIntroUpdate = getMultiplayerRunIntroUpdate(
+              hud,
+              lastSeenRunIntroSequenceRef.current,
+              sawPrePlayingLobbyRef.current,
+            )
+            lastSeenRunIntroSequenceRef.current = runIntroUpdate.nextLastSeenSequence
+            sawPrePlayingLobbyRef.current = runIntroUpdate.nextSawPrePlayingLobby
+            if (runIntroUpdate.runIntro) {
+              setRunIntro(runIntroUpdate.runIntro)
+            }
             if (scene.isDisconnected()) {
               destroyGame()
               setError('Connection lost')
@@ -305,6 +338,10 @@ export function MultiplayerGame() {
     setLocalSessionId(null)
     setLobbyState(null)
     setHudState(null)
+    setBossIntro(null)
+    setRunIntro(null)
+    lastSeenRunIntroSequenceRef.current = 0
+    sawPrePlayingLobbyRef.current = false
     setCampReadySent(false)
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
@@ -395,10 +432,17 @@ export function MultiplayerGame() {
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
       {hudState && !showCamp && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      <GameplayOverlays
+        runIntro={runIntro}
+        bossIntro={bossIntro}
+        onRunIntroComplete={() => setRunIntro(null)}
+        onBossIntroComplete={() => setBossIntro(null)}
+      />
       {showCamp && hudState && (
         <CampPanel
           stageNumber={hudState.stageNumber}
           totalStages={hudState.totalStages}
+          narrativeLine={hudState.campNarrativeLine}
           hasPendingPoints={hudState.pendingPoints > 0}
           rideOutPending={campReadySent}
           playerGold={hudState.goldCollected}

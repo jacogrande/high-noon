@@ -5,11 +5,17 @@ import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
 import { CoreGameScene } from '../scenes/CoreGameScene'
+import { getSingleplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { CharacterSelect } from '../ui/CharacterSelect'
+import {
+  GameplayOverlays,
+  type GameplayBossIntroState,
+  type GameplayRunIntroState,
+} from '../ui/GameplayOverlays'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -23,9 +29,12 @@ export function Game() {
   const [showCamp, setShowCamp] = useState(false)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
+  const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
+  const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const lastHudUpdateRef = useRef(0)
+  const lastSeenRunIntroSequenceRef = useRef(0)
 
   // First effect: Load assets (doesn't need container)
   useEffect(() => {
@@ -99,12 +108,24 @@ export function Game() {
         (dt) => scene!.update(dt),
         (alpha) => {
           scene!.render(alpha, gameLoop!.fps)
+          const pendingBossIntro = scene!.consumePendingBossIntro()
+          if (pendingBossIntro) {
+            setBossIntro(pendingBossIntro)
+          }
           // Throttled HUD polling (~10 Hz)
           const now = performance.now()
           if (now - lastHudUpdateRef.current >= 100) {
             lastHudUpdateRef.current = now
             const hud = scene!.getHUDState()
             setHudState(hud)
+            const runIntroUpdate = getSingleplayerRunIntroUpdate(
+              hud,
+              lastSeenRunIntroSequenceRef.current,
+            )
+            lastSeenRunIntroSequenceRef.current = runIntroUpdate.nextLastSeenSequence
+            if (runIntroUpdate.runIntro) {
+              setRunIntro(runIntroUpdate.runIntro)
+            }
             // Detect camp entry/exit
             const isCamp = hud.stageStatus === 'camp'
             setShowCamp(isCamp)
@@ -182,6 +203,9 @@ export function Game() {
     setLoading(true)
     setLoadProgress(0)
     setSelectedCharacter(null)
+    setBossIntro(null)
+    setRunIntro(null)
+    lastSeenRunIntroSequenceRef.current = 0
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -244,10 +268,17 @@ export function Game() {
       </div>
       <div ref={containerRef} style={styles.gameContainer} />
       {hudState && !showCamp && !showSkillTree && !hudState.isDead && <GameHUD state={hudState} />}
+      <GameplayOverlays
+        runIntro={runIntro}
+        bossIntro={bossIntro}
+        onRunIntroComplete={() => setRunIntro(null)}
+        onBossIntroComplete={() => setBossIntro(null)}
+      />
       {showCamp && hudState && (
         <CampPanel
           stageNumber={hudState.stageNumber}
           totalStages={hudState.totalStages}
+          narrativeLine={hudState.campNarrativeLine}
           hasPendingPoints={hudState.pendingPoints > 0}
           playerGold={hudState.goldCollected}
           campVisitor={hudState.campVisitor}
