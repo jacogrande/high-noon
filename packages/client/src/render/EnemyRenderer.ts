@@ -72,10 +72,20 @@ for (const boss of allBosses()) {
 const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
   [EnemyType.GOBLIN_BARBARIAN]: 'goblin_barbarian',
   [EnemyType.GOBLIN_ROGUE]: 'goblin_rogue',
+  [EnemyType.MAD_DOG]: 'mad_dog',
+}
+
+/** Per-type sprite scale overrides (defaults to GOBLIN_SPRITE_SCALE) */
+const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
+  [EnemyType.MAD_DOG]: 2.5,
 }
 
 function isSpriteEnemy(type: number): boolean {
   return ENEMY_SPRITE_ID[type] !== undefined
+}
+
+function getSpriteScale(type: number): number {
+  return ENEMY_SPRITE_SCALE[type] ?? GOBLIN_SPRITE_SCALE
 }
 
 function getEnemyBarBgId(eid: number): number {
@@ -97,7 +107,7 @@ function getEnemyBarHeight(type: number): number {
 
 function getEnemyBarYOffset(type: number, radius: number): number {
   if (isBoss(type)) return BOSS_BAR_Y_OFFSET
-  if (isSpriteEnemy(type)) return radius * GOBLIN_SPRITE_SCALE + ENEMY_BAR_Y_PADDING
+  if (isSpriteEnemy(type)) return radius * getSpriteScale(type) + ENEMY_BAR_Y_PADDING
   return radius + ENEMY_BAR_Y_PADDING
 }
 
@@ -194,8 +204,9 @@ export class EnemyRenderer {
         if (isSpriteEnemy(type)) {
           const spriteId = ENEMY_SPRITE_ID[type]!
           const texture = AssetLoader.getEnemyTexture(spriteId, 'idle', 'S', 0)
+          const initScale = getSpriteScale(type)
           this.registry.createSprite(eid, texture)
-          this.registry.setScale(eid, GOBLIN_SPRITE_SCALE, GOBLIN_SPRITE_SCALE)
+          this.registry.setScale(eid, initScale, initScale)
           this.lastDirection.set(eid, 'S')
         } else {
           const radius = Collider.radius[eid]!
@@ -445,10 +456,11 @@ export class EnemyRenderer {
         this.registry.setTexture(eid, texture)
 
         // Handle mirroring and scale
-        let scaleX = GOBLIN_SPRITE_SCALE
-        const scaleY = GOBLIN_SPRITE_SCALE
+        const spriteScale = getSpriteScale(type)
+        let scaleX = spriteScale
+        const scaleY = spriteScale
         if (dir === 'W') {
-          scaleX = -GOBLIN_SPRITE_SCALE // flip horizontally
+          scaleX = -spriteScale // flip horizontally
         }
 
         // Spawn effect: scale up + white flash over 0.5s

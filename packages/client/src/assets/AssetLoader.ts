@@ -48,6 +48,7 @@ const WEAPON_SPRITES: Record<string, string> = {
 const ENEMY_SPRITES: Record<string, string> = {
   goblin_barbarian: '/assets/sprites/enemies/goblin_barbarian.png',
   goblin_rogue: '/assets/sprites/enemies/goblin_rogue.png',
+  mad_dog: '/assets/sprites/enemies/mad_dog.png',
 }
 
 /** Item icon manifest: itemKey → path */
