@@ -7,24 +7,32 @@ interface BossIntroOverlayProps {
 }
 
 const DURATION_MS = 3000
+const EXIT_MS = 300
 
 export function BossIntroOverlay({ bossName, taunt, onComplete }: BossIntroOverlayProps) {
   const [active, setActive] = useState(false)
+  const [exiting, setExiting] = useState(false)
 
   useEffect(() => {
-    const activate = requestAnimationFrame(() => setActive(true))
-    const timer = window.setTimeout(onComplete, DURATION_MS)
+    const raf = requestAnimationFrame(() => setActive(true))
+    const holdTimer = window.setTimeout(() => setExiting(true), DURATION_MS - EXIT_MS)
     return () => {
-      cancelAnimationFrame(activate)
-      window.clearTimeout(timer)
+      cancelAnimationFrame(raf)
+      clearTimeout(holdTimer)
     }
-  }, [onComplete])
+  }, [])
+
+  useEffect(() => {
+    if (!exiting) return
+    const exitTimer = window.setTimeout(onComplete, EXIT_MS)
+    return () => clearTimeout(exitTimer)
+  }, [exiting, onComplete])
 
   return (
     <div style={styles.root}>
-      <div style={{ ...styles.letterboxTop, transform: active ? 'translateY(0)' : 'translateY(-100%)' }} />
-      <div style={{ ...styles.letterboxBottom, transform: active ? 'translateY(0)' : 'translateY(100%)' }} />
-      <div style={{ ...styles.content, opacity: active ? 1 : 0 }}>
+      <div style={{ ...styles.letterboxTop, transform: active && !exiting ? 'translateY(0)' : 'translateY(-100%)' }} />
+      <div style={{ ...styles.letterboxBottom, transform: active && !exiting ? 'translateY(0)' : 'translateY(100%)' }} />
+      <div style={{ ...styles.content, opacity: active && !exiting ? 1 : 0 }}>
         <div style={styles.bossName}>{bossName}</div>
         {taunt.length > 0 && <div style={styles.taunt}>"{taunt}"</div>}
       </div>
