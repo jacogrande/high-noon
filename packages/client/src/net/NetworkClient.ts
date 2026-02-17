@@ -42,6 +42,12 @@ export interface JoinOptions {
   [key: string]: unknown
 }
 
+export interface ReconnectState {
+  status: 'attempting' | 'failed' | 'succeeded'
+  attempt: number
+  maxAttempts: number
+}
+
 export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
   'lobby-state': (state: LobbyState) => void
@@ -55,6 +61,9 @@ export type NetworkEventMap = {
   'select-node-result': (result: SelectNodeResponse) => void
   'state-hash': (data: { tick: number; hash: number }) => void
   'incompatible-protocol': (reason: string) => void
+  'reconnect-state': (state: ReconnectState) => void
+  'server-shutdown': (data: { reason: string; countdownMs: number }) => void
+  'input-warning': (data: { dropped: number; queueDepth: number }) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
 }
@@ -174,6 +183,9 @@ export class NetworkClient {
     return this.latestGameConfig
   }
 
+  /** Whether auto-reconnect should be suppressed (e.g. server shutdown). */
+  private suppressReconnect = false
+
   disconnect(): void {
     this.intentionalLeave = true
     sessionStorage.removeItem('hn-reconnect-token')
@@ -182,6 +194,22 @@ export class NetworkClient {
     this.room = null
     this.latestGameConfig = null
     this.listeners = {}
+  }
+
+  /** Retry reconnection manually after all automatic attempts failed. */
+  manualReconnect(): void {
+    if (this.reconnecting) return
+    const storedToken = sessionStorage.getItem('hn-reconnect-token')
+    if (!storedToken && !this.reconnectionToken) return
+    if (storedToken && !this.reconnectionToken) {
+      this.reconnectionToken = storedToken
+    }
+    this.attemptReconnect()
+  }
+
+  /** Suppress auto-reconnect (used when server sends shutdown notice). */
+  setSuppressReconnect(suppress: boolean): void {
+    this.suppressReconnect = suppress
   }
 
   private emit<K extends keyof NetworkEventMap>(
@@ -265,6 +293,15 @@ export class NetworkClient {
 
     cleanup.push(room.onMessage('state-hash', (data: { tick: number; hash: number }) => {
       this.emit('state-hash', data)
+    }))
+
+    cleanup.push(room.onMessage('server-shutdown', (data: { reason: string; countdownMs: number }) => {
+      this.suppressReconnect = true
+      this.emit('server-shutdown', data)
+    }))
+
+    cleanup.push(room.onMessage('input-warning', (data: { dropped: number; queueDepth: number }) => {
+      this.emit('input-warning', data)
     }))
 
     const onLeave = () => {
@@ -396,7 +433,7 @@ export class NetworkClient {
 
   /** Attempt reconnection with exponential backoff */
   private async attemptReconnect(): Promise<void> {
-    if (this.reconnecting || !this.reconnectionToken) {
+    if (this.reconnecting || !this.reconnectionToken || this.suppressReconnect) {
       this.emit('disconnect')
       return
     }
@@ -405,6 +442,7 @@ export class NetworkClient {
     this.clearRoomHandlers()
     this.room = null
     console.log('[NetworkClient] Connection lost, attempting reconnect...')
+    this.emit('reconnect-state', { status: 'attempting', attempt: 0, maxAttempts: RECONNECT_MAX_ATTEMPTS })
 
     for (let attempt = 0; attempt < RECONNECT_MAX_ATTEMPTS; attempt++) {
       const delay = Math.min(
@@ -419,6 +457,8 @@ export class NetworkClient {
         return
       }
 
+      this.emit('reconnect-state', { status: 'attempting', attempt: attempt + 1, maxAttempts: RECONNECT_MAX_ATTEMPTS })
+
       try {
         this.room = await this.client.reconnect(this.reconnectionToken!)
         this.reconnectionToken = this.room.reconnectionToken
@@ -426,6 +466,7 @@ export class NetworkClient {
         this.registerRoomHandlers(this.room)
         this.requestGameConfigFromRoom(this.room)
         this.reconnecting = false
+        this.emit('reconnect-state', { status: 'succeeded', attempt: attempt + 1, maxAttempts: RECONNECT_MAX_ATTEMPTS })
         console.log(`[NetworkClient] Reconnected on attempt ${attempt + 1}`)
         return
       } catch {
@@ -435,6 +476,7 @@ export class NetworkClient {
 
     // All attempts exhausted
     this.reconnecting = false
+    this.emit('reconnect-state', { status: 'failed', attempt: RECONNECT_MAX_ATTEMPTS, maxAttempts: RECONNECT_MAX_ATTEMPTS })
     this.reconnectionToken = null
     sessionStorage.removeItem('hn-reconnect-token')
     this.room = null

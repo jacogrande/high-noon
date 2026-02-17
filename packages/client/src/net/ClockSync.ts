@@ -77,4 +77,13 @@ export class ClockSync {
       this.intervalId = null
     }
   }
+
+  /** Full reset — clears all samples and offset. Use on reconnect. */
+  reset(): void {
+    this.stop()
+    this.offset = 0
+    this.latestRTT = 0
+    this.samples = []
+    this.converged = false
+  }
 }

@@ -50,6 +50,15 @@ export class MultiplayerReconciler {
     return { x: this.errorX, y: this.errorY }
   }
 
+  /** Zero out all error state. Use on reconnect to prevent stale offset. */
+  reset(): void {
+    this.prevHP = -1
+    this.errorX = 0
+    this.errorY = 0
+    this.errorVelX = 0
+    this.errorVelY = 0
+  }
+
   decayError(rawDt: number, correctionSpeed: number): void {
     if (this.errorX !== 0 || this.errorY !== 0) {
       const smoothDt = Math.min(rawDt, 0.1)

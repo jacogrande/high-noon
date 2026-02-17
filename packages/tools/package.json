@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@high-noon/shared": "workspace:*"
+    "@high-noon/shared": "workspace:*",
+    "colyseus.js": "^0.16.0"
   }
 }

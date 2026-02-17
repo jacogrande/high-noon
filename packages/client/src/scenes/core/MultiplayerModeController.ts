@@ -239,6 +239,14 @@ export class MultiplayerModeController implements SceneModeController {
   /** Disconnect flag for UX overlay */
   private disconnected = false
 
+  /** When true, the next snapshot is treated as a full position reset (no replay). */
+  private awaitingReconnectSnapshot = false
+
+  /** Timestamp of the last received snapshot (for timeout detection). */
+  private lastSnapshotTime = 0
+  /** True when no snapshot has been received for > 3 seconds. */
+  private snapshotTimedOut = false
+
   /** Pause/settings overlay flag (does NOT gate simulation in multiplayer) */
   private paused = false
 
@@ -401,6 +409,14 @@ export class MultiplayerModeController implements SceneModeController {
       this.net = initOptions.net
     }
 
+    this.net.on('server-shutdown', () => {
+      this.net.setSuppressReconnect(true)
+    })
+
+    this.net.on('input-warning', (data) => {
+      console.warn(`[MP] Server input warning — dropped ${data.dropped} inputs (queue depth: ${data.queueDepth})`)
+    })
+
     this.net.on('disconnect', () => {
       this.connected = false
       this.disconnected = true
@@ -490,6 +506,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.net.on('snapshot', (snapshot: WorldSnapshot) => {
       // Defer heavy decode/apply/reconcile work to fixed update, so socket
       // callbacks stay lightweight and don't preempt rendering.
+      this.lastSnapshotTime = performance.now()
+      this.snapshotTimedOut = false
       this.telemetry.onSnapshotReceived(this.pendingSnapshots.length > 0)
       this.telemetry.onSnapshotReceivedTimed()
       if (this.pendingSnapshots.length >= MAX_PENDING_SNAPSHOTS) {
@@ -580,9 +598,13 @@ export class MultiplayerModeController implements SceneModeController {
     this.connected = true
     this.disconnected = false
     this.shootWasDown = false
+    this.inputSeq = 0
+    this.shootSeq = 0
+    this.reconciler.reset()
+    this.awaitingReconnectSnapshot = true
     this.replayRecorder.start(config.seed, config.characterId)
     console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
-    this.clockSync.stop()
+    this.clockSync.reset()
     this.snapshotBuffer.clear()
     this.inputBuffer.clear()
     this.pendingSnapshots.length = 0
@@ -611,8 +633,24 @@ export class MultiplayerModeController implements SceneModeController {
       // prediction/replay ticks (local-player scope skips per-tick rebuilds).
       spatialHashSystem(this.world, TICK_S)
 
-      // Reconcile local player prediction against server authority
-      if (this.myClientEid >= 0) {
+      if (this.awaitingReconnectSnapshot) {
+        // First snapshot after reconnect: snap player to server position, skip replay
+        this.awaitingReconnectSnapshot = false
+        if (this.myClientEid >= 0) {
+          const serverPlayer = snapshot.players.find(p => p.eid === this.myServerEid)
+          if (serverPlayer) {
+            Position.x[this.myClientEid] = serverPlayer.x
+            Position.y[this.myClientEid] = serverPlayer.y
+            Position.prevX[this.myClientEid] = serverPlayer.x
+            Position.prevY[this.myClientEid] = serverPlayer.y
+            Velocity.x[this.myClientEid] = 0
+            Velocity.y[this.myClientEid] = 0
+          }
+          this.reconciler.reset()
+          this.inputBuffer.clear()
+        }
+      } else if (this.myClientEid >= 0) {
+        // Normal reconciliation
         this.reconcileLocalPlayer(snapshot)
       }
 
@@ -908,6 +946,14 @@ export class MultiplayerModeController implements SceneModeController {
 
   update(_dt: number): void {
     if (!this.connected) return
+
+    // Snapshot timeout detection
+    if (this.lastSnapshotTime > 0 && performance.now() - this.lastSnapshotTime > 3000) {
+      if (!this.snapshotTimedOut) {
+        this.snapshotTimedOut = true
+        console.warn('[MP] Snapshot timeout — no snapshot received for 3+ seconds')
+      }
+    }
 
     // Apply pending authoritative snapshots on the fixed tick (bounded catch-up).
     this.processPendingSnapshots()

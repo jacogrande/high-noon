@@ -1,5 +1,5 @@
 import { Room, type Client } from 'colyseus'
-import { hasComponent, defineQuery } from 'bitecs'
+import { hasComponent, defineQuery, removeEntity } from 'bitecs'
 import {
   createGameWorld,
   setWorldTilemap,
@@ -278,6 +278,9 @@ export class GameRoom extends Room<GameRoomState> {
   private systems!: SystemRegistry
   private rewindHistory!: RewindHistory
   private slots = new Map<string, PlayerSlot>()
+  private pendingReconnects = new Set<string>()
+  private consecutiveTickErrors = 0
+  private createdAtMs = Date.now()
   private accumulator = 0
   private readonly playerSeqs = new Map<number, number>()
   private lastRateLimitLogTick = 0
@@ -302,6 +305,17 @@ export class GameRoom extends Room<GameRoomState> {
   private lastTickDurationMs = 0
   private tickTimingSamples: number[] = []
   private metricsLogTick = 0
+
+  private logLifecycle(event: string, data?: Record<string, unknown>): void {
+    console.log(JSON.stringify({
+      event: `room:${event}`,
+      roomId: this.roomId,
+      playerCount: this.slots.size,
+      pendingReconnects: this.pendingReconnects.size,
+      uptimeMs: Date.now() - this.createdAtMs,
+      ...data,
+    }))
+  }
 
   override onAuth(_client: Client, options?: JoinOptions): boolean {
     if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
@@ -475,7 +489,10 @@ export class GameRoom extends Room<GameRoomState> {
     // Fixed-timestep simulation loop
     this.setSimulationInterval((deltaMs) => this.update(deltaMs), TICK_MS)
 
-    console.log(`[GameRoom] Created with seed ${seed}`)
+    // Periodic stale entity audit (safety net)
+    this.clock.setInterval(() => this.auditEntities(), 60_000)
+
+    this.logLifecycle('create', { seed })
   }
 
   override onJoin(client: Client, options?: JoinOptions) {
@@ -512,14 +529,17 @@ export class GameRoom extends Room<GameRoomState> {
     this.sendCurrentBullets(client)
     this.broadcastPlayerRoster()
 
-    console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, character=${characterId}, players=${this.slots.size})`)
+    this.logLifecycle('join', { sessionId: client.sessionId, eid, characterId })
   }
 
   override async onLeave(client: Client, consented?: boolean) {
+    this.logLifecycle('leave-start', { sessionId: client.sessionId, consented: !!consented })
     if (!consented) {
+      this.pendingReconnects.add(client.sessionId)
       try {
         const reconnectedClient = await this.allowReconnection(client, 30)
-        console.log(`[GameRoom] ${client.sessionId} reconnected`)
+        this.pendingReconnects.delete(client.sessionId)
+        this.logLifecycle('reconnect-success', { sessionId: client.sessionId })
 
         // Send game-config to the reconnected client (new page load needs config)
         const slot = this.slots.get(client.sessionId)
@@ -533,18 +553,40 @@ export class GameRoom extends Room<GameRoomState> {
           slot.rateLimitedDrops = 0
           slot.tickMapper = new ClientTickMapper()
           slot.lastShootSeq = 0
+          slot.lastProcessedSeq = 0
           slot.protocolMismatchNotified = false
           this.sendGameConfig(reconnectedClient, slot)
           this.sendCurrentBullets(reconnectedClient)
+
+          // Send immediate snapshot so client doesn't wait for next 20Hz broadcast
+          this.playerSeqs.clear()
+          for (const [, s] of this.slots) {
+            this.playerSeqs.set(s.eid, s.lastProcessedSeq)
+          }
+          const snapshot = encodeSnapshot(this.world, performance.now(), this.playerSeqs)
+          reconnectedClient.sendBytes('snapshot', snapshot)
+
+          // Send HUD and interactables immediately
+          this.sendHudToClient(slot)
+          this.sendInteractablesToClient(reconnectedClient)
         }
         return // Slot preserved
       } catch {
+        this.pendingReconnects.delete(client.sessionId)
+        this.logLifecycle('reconnect-timeout', { sessionId: client.sessionId })
         // Timed out — fall through to cleanup
       }
     }
 
     const leavingSlot = this.slots.get(client.sessionId)
     if (leavingSlot) {
+      // Sweep owned bullets so they don't linger as ghosts
+      for (const [eid, bulletId] of this.bulletNetIdByEid) {
+        if (Bullet.ownerId[eid] === leavingSlot.eid) {
+          removeEntity(this.world, eid)
+          // broadcastBulletEvents() will detect removal and send despawn next tick
+        }
+      }
       this.rewindClampedByPlayer.delete(leavingSlot.eid)
     }
     removePlayer(this.world, client.sessionId)
@@ -554,11 +596,19 @@ export class GameRoom extends Room<GameRoomState> {
     this.maybeCompleteCamp()
     this.broadcastPlayerRoster()
 
-    console.log(`[GameRoom] ${client.sessionId} left (players=${this.slots.size})`)
+    this.logLifecycle('leave-complete', { sessionId: client.sessionId })
+
+    // Auto-dispose empty rooms when all players have permanently left
+    if (this.slots.size === 0 && this.pendingReconnects.size === 0) {
+      this.logLifecycle('auto-dispose', { reason: 'all players gone' })
+      this.disconnect()
+    }
   }
 
   override onDispose() {
+    this.logLifecycle('dispose')
     this.slots.clear()
+    this.pendingReconnects.clear()
     this.rewindHistory.clear()
     this.world.lagCompShotTickByPlayer.clear()
     this.world.lagCompBulletShotTick.clear()
@@ -573,7 +623,6 @@ export class GameRoom extends Room<GameRoomState> {
     this.bulletNetIdByEid.clear()
     this.nextBulletNetId = 1
     this.campReadySessions.clear()
-    console.log('[GameRoom] Disposed')
   }
 
   private ensureShotResultState(): void {
@@ -812,7 +861,19 @@ export class GameRoom extends Room<GameRoomState> {
     let ticks = 0
 
     while (this.accumulator >= TICK_MS && ticks < MAX_CATCHUP_TICKS) {
-      this.serverTick()
+      try {
+        this.serverTick()
+        this.consecutiveTickErrors = 0
+      } catch (err) {
+        this.consecutiveTickErrors++
+        this.logLifecycle('tick-error', { consecutiveErrors: this.consecutiveTickErrors, error: String(err) })
+        console.error(`[GameRoom] ${this.roomId} tick error (${this.consecutiveTickErrors}):`, err)
+        if (this.consecutiveTickErrors > 10) {
+          this.logLifecycle('tick-error-dispose', { reason: 'too many consecutive tick errors' })
+          this.disconnect()
+          return
+        }
+      }
       ticks++
       this.accumulator -= TICK_MS
     }
@@ -935,6 +996,7 @@ export class GameRoom extends Room<GameRoomState> {
         const trimTo = Math.max(1, Math.min(INPUT_QUEUE_TRIM_TO, INPUT_QUEUE_TRIM_THRESHOLD))
         const dropCount = Math.max(0, slot.inputQueue.length - trimTo)
         if (dropCount > 0) {
+          slot.client.send('input-warning', { dropped: dropCount, queueDepth: slot.inputQueue.length })
           const dropped = slot.inputQueue.splice(0, dropCount)
           const next = slot.inputQueue[0]
           if (next) {
@@ -1336,6 +1398,214 @@ export class GameRoom extends Room<GameRoomState> {
     for (const [, slot] of this.slots) {
       slot.client.send('interactables', payload)
     }
+  }
+
+  /** Periodic safety net — detect entities that have no matching slot. */
+  private auditEntities(): void {
+    if (this.state.phase !== 'playing') return
+
+    // Check Schema players
+    for (const [sessionId] of this.state.players) {
+      if (!this.slots.has(sessionId) && !this.pendingReconnects.has(sessionId)) {
+        this.logLifecycle('audit-orphan-schema', { sessionId })
+        this.state.players.delete(sessionId)
+      }
+    }
+  }
+
+  /** Broadcast a shutdown warning to all clients. */
+  broadcastShutdown(reason: string, countdownMs: number): void {
+    this.broadcast('server-shutdown', { reason, countdownMs })
+    this.logLifecycle('shutdown-broadcast', { reason, countdownMs })
+    this.clock.setTimeout(() => this.disconnect(), countdownMs)
+  }
+
+  /** Send HUD to a single client (used on reconnect). */
+  private sendHudToClient(slot: PlayerSlot): void {
+    const eid = slot.eid
+    const state = getUpgradeStateForPlayer(this.world, eid)
+    const enc = this.world.encounter
+    const run = this.world.run
+
+    const hasCylinder = hasComponent(this.world, Cylinder, eid)
+    const hasShowdownComp = hasComponent(this.world, Showdown, eid)
+    const abilityHud = deriveAbilityHudState(
+      slot.characterId,
+      {
+        showdownCooldown: state.showdownCooldown,
+        showdownDuration: state.showdownDuration,
+        dynamiteCooldown: state.dynamiteCooldown,
+        dynamiteFuse: state.dynamiteFuse,
+        dynamiteCooking: state.dynamiteCooking,
+        dynamiteCookTimer: state.dynamiteCookTimer,
+      },
+      hasShowdownComp
+        ? {
+            showdownActive: Showdown.active[eid]! === 1,
+            showdownCooldown: Showdown.cooldown[eid]!,
+            showdownDuration: Showdown.duration[eid]!,
+          }
+        : undefined,
+    )
+
+    const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
+    const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
+
+    const items: HudData['items'] = []
+    for (const [itemId, stacks] of state.items) {
+      const def = getItemDef(itemId)
+      if (def) {
+        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks })
+      }
+    }
+
+    const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
+
+    const cv = this.world.campVisitor
+    const campVisitorHud: HudData['campVisitor'] = cv
+      ? (() => {
+          const vDef = getVisitorDef(cv.visitorId)
+          return {
+            visitorId: cv.visitorId,
+            visitorName: vDef?.name ?? 'Visitor',
+            greeting: cv.greeting,
+            offers: cv.offers.map(o => {
+              const oDef = getItemDef(o.itemId)
+              return {
+                itemId: o.itemId,
+                itemName: oDef?.name ?? '???',
+                itemDescription: oDef?.description ?? '',
+                rarity: oDef?.rarity ?? 'brass',
+                price: o.price,
+                sold: o.sold,
+              }
+            }),
+          }
+        })()
+      : null
+
+    const obj = this.world.objective
+    let objectiveHud: HudData['objective'] = null
+    if (obj) {
+      const baseObj = {
+        type: obj.type,
+        description: obj.description,
+        status: obj.status,
+        progress: obj.type === 'protect'
+          ? (obj.targetEids.length > 0
+              ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
+              : 1)
+          : obj.type === 'duel'
+            ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
+                ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
+                : 0)
+            : obj.escapedCount / (obj.escapeThreshold || 1),
+      }
+      objectiveHud = obj.type === 'duel'
+        ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
+        : baseObj
+    }
+
+    let bossHud: HudData['boss'] = null
+    const bosses = bossQuery(this.world)
+    if (bosses.length > 0) {
+      let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
+      for (const beid of bosses) {
+        totalMaxHP += Health.max[beid]!
+        const hp = Health.current[beid]!
+        if (hp > 0) { anyAlive = true; totalHP += hp }
+        bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
+      }
+      if (anyAlive) {
+        bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
+      }
+    }
+
+    const stageNumber = run ? run.currentStage + 1 : 0
+    const stageStatus: HudData['stageStatus'] = run
+      ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
+      : 'none'
+
+    const hud: HudData = {
+      characterId: slot.characterId,
+      hp: Health.current[eid]!,
+      maxHp: Health.max[eid]!,
+      cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
+      cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
+      isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
+      reloadProgress: hasCylinder && Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
+        ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
+        : 0,
+      showCylinder: hasCylinder,
+      ...abilityHud,
+      xp: state.xp,
+      level: state.level,
+      goldCollected: this.world.goldCollected,
+      killCount: this.world.killCount,
+      shovelCount: this.world.shovelCount,
+      interactionPrompt: this.world.interactionPromptByPlayer.get(eid) ?? null,
+      interactionFeedbackDescription: feedbackDesc,
+      pendingPoints: state.pendingPoints,
+      xpForCurrentLevel: xpForCurrent,
+      xpForNextLevel: xpForNext,
+      waveNumber: enc ? enc.currentWave + 1 : 0,
+      totalWaves: enc ? enc.definition.waves.length : 0,
+      waveStatus: enc
+        ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
+        : 'none',
+      stageNumber,
+      totalStages: run ? run.totalStages : 0,
+      stageStatus,
+      narrativeThreadId: this.world.narrative?.threadId ?? null,
+      narrativeThreadName: this.world.narrative?.threadId ? (getThread(this.world.narrative.threadId)?.name ?? null) : null,
+      campNarrativeLine: this.world.campNarrativeLine,
+      resolutionText: this.world.resolutionText,
+      runIntroTitle: this.world.runIntroTitle,
+      runIntroText: this.world.runIntroText,
+      runIntroSequence: this.world.runIntroSequence,
+      items,
+      objective: objectiveHud,
+      campVisitor: campVisitorHud,
+      boss: bossHud,
+    }
+    slot.client.send('hud', hud)
+  }
+
+  /** Send interactables to a single client (used on reconnect). */
+  private sendInteractablesToClient(client: Client): void {
+    const salesman = this.world.salesman
+    const payload: InteractablesData = {
+      salesman: salesman
+        ? {
+            x: salesman.x,
+            y: salesman.y,
+            stageIndex: salesman.stageIndex,
+            camp: salesman.camp,
+            active: salesman.active,
+            shovelPrice: getShovelPrice(salesman.stageIndex),
+          }
+        : null,
+      stashes: this.world.stashes.map((stash) => ({
+        id: stash.id,
+        x: stash.x,
+        y: stash.y,
+        stageIndex: stash.stageIndex,
+        opened: stash.opened,
+      })),
+      itemPickups: this.world.itemPickups
+        .filter(p => !p.collected)
+        .map(p => {
+          const def = getItemDef(p.itemId)
+          return {
+            id: p.id,
+            itemId: p.itemId,
+            x: p.x,
+            y: p.y,
+            rarity: def?.rarity ?? 'brass',
+          }
+        }),
+    }
+    client.send('interactables', payload)
   }
 
   private broadcastSnapshot() {

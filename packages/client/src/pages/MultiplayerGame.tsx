@@ -10,7 +10,8 @@ import { AssetLoader } from '../assets'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
-import { NetworkClient } from '../net/NetworkClient'
+import { NetworkClient, type ReconnectState } from '../net/NetworkClient'
+import { ReconnectOverlay } from '../ui/ReconnectOverlay'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { PauseMenu } from '../ui/PauseMenu'
@@ -44,6 +45,9 @@ export function MultiplayerGame() {
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
+  const [reconnectState, setReconnectState] = useState<ReconnectState | null>(null)
+  const [shutdownCountdown, setShutdownCountdown] = useState<number | null>(null)
+  const reconnectStateRef = useRef<ReconnectState | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
@@ -121,9 +125,36 @@ export function MultiplayerGame() {
       }
     })
 
+    net.on('reconnect-state', (state) => {
+      if (netRef.current !== net) return
+      if (state.status === 'succeeded') {
+        reconnectStateRef.current = null
+        setReconnectState(null)
+      } else {
+        reconnectStateRef.current = state
+        setReconnectState(state)
+      }
+    })
+
+    net.on('server-shutdown', (data) => {
+      if (netRef.current !== net) return
+      setShutdownCountdown(Math.ceil(data.countdownMs / 1000))
+      const interval = setInterval(() => {
+        setShutdownCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    })
+
     net.on('disconnect', () => {
       if (netRef.current !== net) return
       disconnectNetwork()
+      reconnectStateRef.current = null
+      setReconnectState(null)
       setError('Connection lost')
       setPhase('error')
     })
@@ -237,9 +268,16 @@ export function MultiplayerGame() {
               setRunIntro(runIntroUpdate.runIntro)
             }
             if (scene.isDisconnected()) {
-              destroyGame()
-              setError('Connection lost')
-              setPhase('error')
+              // Don't tear down game during reconnection — the overlay handles UX
+              if (reconnectStateRef.current?.status === 'attempting') {
+                // Reconnect in progress — let the overlay handle it
+              } else {
+                destroyGame()
+                setError('Connection lost')
+                setPhase('error')
+                setReconnectState(null)
+                reconnectStateRef.current = null
+              }
             }
             // Detect camp entry/exit
             const isCamp = hud.stageStatus === 'camp'
@@ -339,6 +377,18 @@ export function MultiplayerGame() {
 
   const navigate = useNavigate()
 
+  const handleReconnectRetry = useCallback(() => {
+    netRef.current?.manualReconnect()
+  }, [])
+
+  const handleReconnectQuit = useCallback(() => {
+    destroyGame()
+    disconnectNetwork()
+    reconnectStateRef.current = null
+    setReconnectState(null)
+    navigate('/')
+  }, [navigate])
+
   const handleClosePauseMenu = useCallback(() => {
     setShowPauseMenu(false)
   }, [])
@@ -413,6 +463,9 @@ export function MultiplayerGame() {
     setHudState(null)
     setBossIntro(null)
     setRunIntro(null)
+    reconnectStateRef.current = null
+    setReconnectState(null)
+    setShutdownCountdown(null)
     lastSeenRunIntroSequenceRef.current = 0
     sawPrePlayingLobbyRef.current = false
     setCampReadySent(false)
@@ -555,6 +608,22 @@ export function MultiplayerGame() {
           }}
         />
       )}
+      {reconnectState && reconnectState.status !== 'succeeded' && (
+        <ReconnectOverlay
+          attempt={reconnectState.attempt}
+          maxAttempts={reconnectState.maxAttempts}
+          status={reconnectState.status === 'failed' ? 'failed' : 'reconnecting'}
+          onRetry={reconnectState.status === 'failed' ? handleReconnectRetry : undefined}
+          onQuit={handleReconnectQuit}
+        />
+      )}
+      {shutdownCountdown !== null && (
+        <div style={styles.shutdownBanner}>
+          {shutdownCountdown > 0
+            ? `Server shutting down in ${shutdownCountdown}s...`
+            : 'Server has shut down.'}
+        </div>
+      )}
     </div>
   )
 }
@@ -657,5 +726,18 @@ const styles: Record<string, React.CSSProperties> = {
     textDecoration: 'none',
     fontSize: '0.9rem',
     fontFamily: 'monospace',
+  },
+  shutdownBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: '0.5rem',
+    backgroundColor: 'rgba(204, 0, 0, 0.85)',
+    color: '#ffffff',
+    fontFamily: 'monospace',
+    fontSize: '0.9rem',
+    textAlign: 'center',
+    zIndex: 90,
   },
 }
