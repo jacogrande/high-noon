@@ -42,6 +42,12 @@ export type GameplayEvent =
       kickStrength: number
     }
   | {
+      type: 'shot-confirmed'
+      x: number
+      y: number
+      hit: boolean
+    }
+  | {
       type: 'player-melee-swing'
       eid: number
       x: number

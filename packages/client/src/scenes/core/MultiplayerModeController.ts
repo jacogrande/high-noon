@@ -38,11 +38,12 @@ import {
   type Tilemap,
   type GameWorld,
   type InputState,
-    type NetworkInput,
-    type WorldSnapshot,
-    type BulletSpawnMessage,
-    type BulletDespawnMessage,
-    type HudData,
+  type NetworkInput,
+  type WorldSnapshot,
+  type BulletSpawnMessage,
+  type BulletDespawnMessage,
+  type ShotResultMessage,
+  type HudData,
   type InteractablesData,
   type CharacterId,
   type PlayerRosterEntry,
@@ -101,6 +102,7 @@ import {
 import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
 import { buildMultiplayerMinimapState } from './minimap'
+import { didFireRound } from './feedbackSignals'
 
 const GAME_ZOOM = 2
 
@@ -111,7 +113,16 @@ const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
 const MAX_PENDING_SNAPSHOTS = 6
 const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 4
 const MAX_PENDING_BULLET_EVENTS = 128
+const MAX_PENDING_SHOT_RESULTS = 128
 const REMOTE_BULLET_MAX_AGE_TICKS = 30
+const VISUAL_PLAYER_BULLET_SPEED = 2400
+const VISUAL_PLAYER_BULLET_MAX_LIFETIME = 0.65
+const MAX_PENDING_VISUAL_SHOTS = 256
+
+interface PendingVisualShot {
+  shootSeq: number
+  visualBulletId: number
+}
 
 interface MultiplayerInitializeOptions extends Record<string, unknown> {
   net?: NetworkClient
@@ -193,6 +204,8 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly pendingSnapshots: WorldSnapshot[] = []
   private readonly pendingBulletSpawns: BulletSpawnMessage[] = []
   private readonly pendingBulletDespawns: BulletDespawnMessage[] = []
+  private readonly pendingShotResults: ShotResultMessage[] = []
+  private readonly pendingVisualShots: PendingVisualShot[] = []
   private readonly remoteBulletSpawnTickByClientEid = new Map<number, number>()
 
   /** Dry fire debounce cooldown (seconds) */
@@ -226,6 +239,7 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Shadow world — local player is predicted, remote entities populated from snapshots
     this.world = createGameWorld(0, getCharacterDef(selectedCharacterId))
+    this.world.playerFireMode = 'hitscan'
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
     const tilemap = generateArena(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, tilemap)
@@ -356,6 +370,8 @@ export class MultiplayerModeController implements SceneModeController {
       this.pendingSnapshots.length = 0
       this.pendingBulletSpawns.length = 0
       this.pendingBulletDespawns.length = 0
+      this.pendingShotResults.length = 0
+      this.pendingVisualShots.length = 0
       this.clockSync.stop()
       this.snapshotBuffer.clear()
       this.inputBuffer.clear()
@@ -453,6 +469,13 @@ export class MultiplayerModeController implements SceneModeController {
       this.pendingBulletDespawns.push(event)
     })
 
+    this.net.on('shot-result', (event: ShotResultMessage) => {
+      if (this.pendingShotResults.length >= MAX_PENDING_SHOT_RESULTS) {
+        this.pendingShotResults.shift()
+      }
+      this.pendingShotResults.push(event)
+    })
+
     if (initOptions.preconnected) {
       const config = this.net.getLatestGameConfig()
       if (!config) {
@@ -514,6 +537,11 @@ export class MultiplayerModeController implements SceneModeController {
     this.clockSync.stop()
     this.snapshotBuffer.clear()
     this.inputBuffer.clear()
+    this.pendingSnapshots.length = 0
+    this.pendingBulletSpawns.length = 0
+    this.pendingBulletDespawns.length = 0
+    this.pendingShotResults.length = 0
+    this.pendingVisualShots.length = 0
     this.remoteBulletSpawnTickByClientEid.clear()
     this.snapshotIngestor.resetSessionState()
     this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
@@ -599,6 +627,67 @@ export class MultiplayerModeController implements SceneModeController {
         this.remoteBulletSpawnTickByClientEid.delete(clientEid)
       }
     }
+  }
+
+  private processPendingShotResults(): void {
+    if (this.pendingShotResults.length === 0) return
+    const fallbackEvents: Array<{ type: 'shot-confirmed'; x: number; y: number; hit: boolean }> = []
+    while (this.pendingShotResults.length > 0) {
+      const result = this.pendingShotResults.shift()!
+      if (result.shooterServerEid !== this.myServerEid) continue
+
+      const visualBulletId = this.takePendingVisualShot(result.shootSeq)
+      if (
+        visualBulletId !== null &&
+        this.bulletRenderer.resolveVisualBulletImpact(
+          visualBulletId,
+          result.hitX,
+          result.hitY,
+          result.hit ? 'entity' : 'wall',
+        )
+      ) {
+        continue
+      }
+
+      fallbackEvents.push({
+        type: 'shot-confirmed',
+        x: result.hitX,
+        y: result.hitY,
+        hit: result.hit,
+      })
+    }
+
+    if (fallbackEvents.length > 0) {
+      this.gameplayEventProcessor.processAll(fallbackEvents)
+    }
+  }
+
+  private queuePendingVisualShot(shootSeq: number, visualBulletId: number): void {
+    if (this.pendingVisualShots.length >= MAX_PENDING_VISUAL_SHOTS) {
+      this.pendingVisualShots.shift()
+    }
+    this.pendingVisualShots.push({ shootSeq, visualBulletId })
+  }
+
+  private takePendingVisualShot(shootSeq: number): number | null {
+    const index = this.pendingVisualShots.findIndex((shot) => shot.shootSeq === shootSeq)
+    if (index < 0) return null
+    const [shot] = this.pendingVisualShots.splice(index, 1)
+    return shot?.visualBulletId ?? null
+  }
+
+  private processVisualBulletImpacts(): void {
+    const impacts = this.bulletRenderer.consumeVisualImpacts()
+    if (impacts.length === 0) return
+
+    this.gameplayEventProcessor.processAll(
+      impacts.map((impact) => ({
+        type: 'shot-confirmed' as const,
+        x: impact.x,
+        y: impact.y,
+        hit: impact.kind === 'entity',
+      })),
+    )
   }
 
   private advanceRemoteBullets(): void {
@@ -719,6 +808,7 @@ export class MultiplayerModeController implements SceneModeController {
     // Apply pending authoritative snapshots on the fixed tick (bounded catch-up).
     this.processPendingSnapshots()
     this.processPendingBulletEvents()
+    this.processPendingShotResults()
     this.prepareSimulationStateFromLatestSnapshot()
     this.advanceRemoteBullets()
     this.tickPlayerHitIframes(TICK_S)
@@ -802,6 +892,20 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.dryFireCooldown = Math.max(0, this.dryFireCooldown - TICK_S)
     if (hasCylinder) {
+      const firedRound = this.world.playerFireMode === 'hitscan' && didFireRound(prevRounds, newRounds)
+      if (firedRound) {
+        const muzzleX = barrelTip?.x ?? Position.x[this.myClientEid]!
+        const muzzleY = barrelTip?.y ?? Position.y[this.myClientEid]!
+        const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+          muzzleX,
+          muzzleY,
+          angle,
+          VISUAL_PLAYER_BULLET_SPEED,
+          VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+        )
+        this.queuePendingVisualShot(this.shootSeq, visualBulletId)
+      }
+
       this.dryFireCooldown = emitCylinderPresentationEvents({
         events: this.gameplayEvents,
         actorEid: this.myClientEid,
@@ -933,6 +1037,8 @@ export class MultiplayerModeController implements SceneModeController {
       this.playerRenderer.clearRenderPositionOverride(this.myClientEid)
     }
 
+    this.bulletRenderer.updateVisualBullets(realDt)
+    this.processVisualBulletImpacts()
     if (this.myClientEid >= 0 && (error.x !== 0 || error.y !== 0)) {
       this.bulletRenderer.renderWithLocalOffset(
         this.world,
@@ -1189,6 +1295,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.pendingSnapshots.length = 0
     this.pendingBulletSpawns.length = 0
     this.pendingBulletDespawns.length = 0
+    this.pendingShotResults.length = 0
+    this.pendingVisualShots.length = 0
     this.remoteBulletSpawnTickByClientEid.clear()
     this.gameplayEvents.clear()
     this.inputBuffer.clear()

@@ -6,6 +6,7 @@ import {
   emitFuseSparks,
   emitLevelUpSparkle,
   emitMuzzleFlash,
+  emitShotTracer,
   emitSwingArc,
   emitWallImpact,
   FloatingTextPool,
@@ -96,7 +97,18 @@ export class GameplayEventProcessor {
           this.sound.play('fire')
           this.playerRenderer.triggerRecoil(event.eid)
           emitMuzzleFlash(this.particles, event.muzzleX, event.muzzleY, event.angle)
+          emitShotTracer(this.particles, event.muzzleX, event.muzzleY, event.angle)
           this.spawnMuzzleLight?.(event.muzzleX, event.muzzleY)
+          break
+        }
+
+        case 'shot-confirmed': {
+          if (event.hit) {
+            emitEntityImpact(this.particles, event.x, event.y, 0xffd67a)
+            this.sound.play('hit')
+          } else {
+            emitWallImpact(this.particles, event.x, event.y)
+          }
           break
         }
 

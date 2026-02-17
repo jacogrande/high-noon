@@ -14,6 +14,31 @@ import { AssetLoader } from '../assets'
 // Define query for bullet entities with rendering components
 const bulletRenderQuery = defineQuery([Bullet, Position, Collider])
 
+interface CosmeticBullet {
+  x: number
+  y: number
+  prevX: number
+  prevY: number
+  vx: number
+  vy: number
+  age: number
+  maxLifetime: number
+  hasTarget: boolean
+  targetX: number
+  targetY: number
+  impactKind: 'entity' | 'wall'
+}
+
+export interface VisualBulletImpact {
+  x: number
+  y: number
+  kind: 'entity' | 'wall'
+}
+
+const VISUAL_BULLET_DEFAULT_SPEED = 2400
+const VISUAL_BULLET_DEFAULT_LIFETIME = 0.65
+const VISUAL_BULLET_TARGET_EPSILON = 2
+
 /**
  * Bullet renderer - manages bullet visual representation
  */
@@ -22,6 +47,9 @@ export class BulletRenderer {
   private readonly bulletEntities = new Set<number>()
   private readonly playerBullets = new Set<number>()
   private readonly currentEntities = new Set<number>()
+  private readonly cosmeticBullets = new Map<number, CosmeticBullet>()
+  private readonly pendingVisualImpacts: VisualBulletImpact[] = []
+  private nextCosmeticId = -1
   readonly removedPositions: Array<{ x: number; y: number }> = []
 
   constructor(registry: SpriteRegistry) {
@@ -110,6 +138,12 @@ export class BulletRenderer {
 
       this.registry.setPosition(eid, renderX, renderY)
     }
+
+    for (const [eid, bullet] of this.cosmeticBullets) {
+      const renderX = bullet.prevX + (bullet.x - bullet.prevX) * alpha
+      const renderY = bullet.prevY + (bullet.y - bullet.prevY) * alpha
+      this.registry.setPosition(eid, renderX, renderY)
+    }
   }
 
   /**
@@ -142,6 +176,128 @@ export class BulletRenderer {
 
       this.registry.setPosition(eid, renderX, renderY)
     }
+
+    for (const [eid, bullet] of this.cosmeticBullets) {
+      const renderX = bullet.prevX + (bullet.x - bullet.prevX) * alpha
+      const renderY = bullet.prevY + (bullet.y - bullet.prevY) * alpha
+      this.registry.setPosition(eid, renderX, renderY)
+    }
+  }
+
+  /**
+   * Spawn a short-lived local-only visual bullet (no simulation/collision).
+   */
+  spawnVisualBullet(
+    x: number,
+    y: number,
+    angle: number,
+    speed = VISUAL_BULLET_DEFAULT_SPEED,
+    maxLifetime = VISUAL_BULLET_DEFAULT_LIFETIME,
+  ): number {
+    const eid = this.nextCosmeticId--
+    const texture = AssetLoader.getBulletTexture()
+    const sprite = this.registry.createSprite(eid, texture)
+    sprite.tint = 0xfff5cf
+    sprite.scale.set(0.95, 0.95)
+    this.registry.setRotation(eid, angle)
+    this.registry.setPosition(eid, x, y)
+
+    this.cosmeticBullets.set(eid, {
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      age: 0,
+      maxLifetime,
+      hasTarget: false,
+      targetX: x,
+      targetY: y,
+      impactKind: 'wall',
+    })
+    return eid
+  }
+
+  /**
+   * Bind a local-only visual bullet to an authoritative endpoint.
+   * Returns false when the visual bullet was already removed.
+   */
+  resolveVisualBulletImpact(
+    visualBulletId: number,
+    targetX: number,
+    targetY: number,
+    kind: 'entity' | 'wall',
+  ): boolean {
+    const bullet = this.cosmeticBullets.get(visualBulletId)
+    if (!bullet) return false
+
+    bullet.hasTarget = true
+    bullet.targetX = targetX
+    bullet.targetY = targetY
+    bullet.impactKind = kind
+
+    const dx = targetX - bullet.x
+    const dy = targetY - bullet.y
+    const distance = Math.hypot(dx, dy)
+    if (distance > 1e-6) {
+      const speed = Math.hypot(bullet.vx, bullet.vy)
+      bullet.vx = (dx / distance) * speed
+      bullet.vy = (dy / distance) * speed
+      this.registry.setRotation(visualBulletId, Math.atan2(bullet.vy, bullet.vx))
+    }
+
+    return true
+  }
+
+  consumeVisualImpacts(): VisualBulletImpact[] {
+    if (this.pendingVisualImpacts.length === 0) return []
+    return this.pendingVisualImpacts.splice(0, this.pendingVisualImpacts.length)
+  }
+
+  /**
+   * Advance local-only visual bullets.
+   */
+  updateVisualBullets(dt: number): void {
+    if (this.cosmeticBullets.size === 0) return
+
+    const toRemove: number[] = []
+    for (const [eid, bullet] of this.cosmeticBullets) {
+      bullet.prevX = bullet.x
+      bullet.prevY = bullet.y
+      const speed = Math.hypot(bullet.vx, bullet.vy)
+      const stepDistance = speed * dt
+
+      if (bullet.hasTarget) {
+        const toTargetX = bullet.targetX - bullet.x
+        const toTargetY = bullet.targetY - bullet.y
+        const distanceToTarget = Math.hypot(toTargetX, toTargetY)
+        if (distanceToTarget <= VISUAL_BULLET_TARGET_EPSILON || stepDistance >= distanceToTarget) {
+          bullet.x = bullet.targetX
+          bullet.y = bullet.targetY
+          this.pendingVisualImpacts.push({
+            x: bullet.targetX,
+            y: bullet.targetY,
+            kind: bullet.impactKind,
+          })
+          toRemove.push(eid)
+          continue
+        }
+      }
+
+      bullet.x += bullet.vx * dt
+      bullet.y += bullet.vy * dt
+      bullet.age += dt
+
+      if (bullet.age >= bullet.maxLifetime) {
+        toRemove.push(eid)
+      }
+    }
+
+    for (const eid of toRemove) {
+      this.registry.remove(eid)
+      this.cosmeticBullets.delete(eid)
+    }
   }
 
   /**
@@ -158,9 +314,14 @@ export class BulletRenderer {
     for (const eid of this.bulletEntities) {
       this.registry.remove(eid)
     }
+    for (const eid of this.cosmeticBullets.keys()) {
+      this.registry.remove(eid)
+    }
     this.bulletEntities.clear()
     this.playerBullets.clear()
     this.currentEntities.clear()
+    this.cosmeticBullets.clear()
+    this.pendingVisualImpacts.length = 0
     this.removedPositions.length = 0
   }
 }

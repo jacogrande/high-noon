@@ -80,6 +80,7 @@ import { GameplayEventBuffer } from './GameplayEvents'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { FullWorldSimulationDriver } from './SimulationDriver'
 import {
+  didFireRound,
   didTakeDamageFromIframes,
 } from './feedbackSignals'
 import { syncRenderersAndQueueEvents } from './syncRenderersAndQueueEvents'
@@ -104,6 +105,9 @@ import { refreshTilemap } from './refreshTilemap'
 import { buildSingleplayerMinimapState } from './minimap'
 
 const GAME_ZOOM = 2
+const VISUAL_PLAYER_BULLET_SPEED = 2400
+const VISUAL_PLAYER_BULLET_MAX_LIFETIME = 0.65
+const MAX_PENDING_VISUAL_SHOTS = 256
 
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
@@ -152,6 +156,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly gameplayEvents: GameplayEventBuffer
   private readonly gameplayEventProcessor: GameplayEventProcessor
   private readonly deathPresentation: DeathSequencePresentation
+  private readonly pendingVisualShots: number[] = []
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private lastProcessedLevel = 0
@@ -166,6 +171,7 @@ export class SingleplayerModeController implements SceneModeController {
 
     // ECS world + systems
     this.world = createGameWorld(undefined, getCharacterDef(characterId))
+    this.world.playerFireMode = 'hitscan'
 
     // Generate first stage's tilemap from the run config
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
@@ -517,6 +523,60 @@ export class SingleplayerModeController implements SceneModeController {
     this.gameApp.world.visible = visible
   }
 
+  private queuePendingVisualShot(visualBulletId: number): void {
+    if (this.pendingVisualShots.length >= MAX_PENDING_VISUAL_SHOTS) {
+      this.pendingVisualShots.shift()
+    }
+    this.pendingVisualShots.push(visualBulletId)
+  }
+
+  private resolvePendingLocalShotResults(playerEid: number | null): void {
+    if (playerEid === null || this.world.pendingShotResults.length === 0) return
+
+    const fallbackEvents: Array<{ type: 'shot-confirmed'; x: number; y: number; hit: boolean }> = []
+    for (const result of this.world.pendingShotResults) {
+      if (result.shooterEid !== playerEid) continue
+
+      const visualBulletId = this.pendingVisualShots.shift()
+      if (
+        visualBulletId !== undefined &&
+        this.bulletRenderer.resolveVisualBulletImpact(
+          visualBulletId,
+          result.hitX,
+          result.hitY,
+          result.hit ? 'entity' : 'wall',
+        )
+      ) {
+        continue
+      }
+
+      fallbackEvents.push({
+        type: 'shot-confirmed',
+        x: result.hitX,
+        y: result.hitY,
+        hit: result.hit,
+      })
+    }
+
+    if (fallbackEvents.length > 0) {
+      this.gameplayEventProcessor.processAll(fallbackEvents)
+    }
+  }
+
+  private processVisualBulletImpacts(): void {
+    const impacts = this.bulletRenderer.consumeVisualImpacts()
+    if (impacts.length === 0) return
+
+    this.gameplayEventProcessor.processAll(
+      impacts.map((impact) => ({
+        type: 'shot-confirmed' as const,
+        x: impact.x,
+        y: impact.y,
+        hit: impact.kind === 'entity',
+      })),
+    )
+  }
+
   update(dt: number): void {
     // Stop simulation when local player is dead
     if (this.isPlayerDead()) return
@@ -607,6 +667,18 @@ export class SingleplayerModeController implements SceneModeController {
       const nowReloading = Cylinder.reloading[playerEid]!
       const angle = Player.aimAngle[playerEid]!
       const barrelTip = this.playerRenderer.getBarrelTipFromState(this.world, playerEid)
+      const muzzleX = barrelTip?.x ?? Position.x[playerEid]!
+      const muzzleY = barrelTip?.y ?? Position.y[playerEid]!
+      if (this.world.playerFireMode === 'hitscan' && didFireRound(prevRounds, newRounds)) {
+        const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+          muzzleX,
+          muzzleY,
+          angle,
+          VISUAL_PLAYER_BULLET_SPEED,
+          VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+        )
+        this.queuePendingVisualShot(visualBulletId)
+      }
       this.dryFireCooldown = emitCylinderPresentationEvents({
         events: this.gameplayEvents,
         actorEid: playerEid,
@@ -618,12 +690,13 @@ export class SingleplayerModeController implements SceneModeController {
         dryFireCooldown: this.dryFireCooldown,
         dryFireCooldownSeconds: 0.3,
         aimAngle: angle,
-        muzzleX: barrelTip?.x ?? Position.x[playerEid]!,
-        muzzleY: barrelTip?.y ?? Position.y[playerEid]!,
+        muzzleX,
+        muzzleY,
         fireTrauma: 0.15,
         fireKickStrength: 5,
       })
     }
+    this.resolvePendingLocalShotResults(playerEid)
     emitMeleeSwingEvents(this.gameplayEvents, this.world, playerEid)
 
     // Level-up detection
@@ -720,6 +793,10 @@ export class SingleplayerModeController implements SceneModeController {
     // Render player with interpolation
     this.playerRenderer.render(this.world, alpha, realDt)
 
+    // Advance and render local-only cosmetic player bullets.
+    this.bulletRenderer.updateVisualBullets(realDt)
+    this.processVisualBulletImpacts()
+
     // Render bullets with interpolation
     this.bulletRenderer.render(this.world, alpha)
 
@@ -815,6 +892,7 @@ export class SingleplayerModeController implements SceneModeController {
 
   destroy(): void {
     this.gameplayEvents.clear()
+    this.pendingVisualShots.length = 0
     this.particles.destroy()
     this.floatingText.destroy()
     this.sound.destroy()
