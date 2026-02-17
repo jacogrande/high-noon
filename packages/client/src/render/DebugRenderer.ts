@@ -43,6 +43,7 @@ export interface DebugStats {
   level: number
   pendingPts: number
   // Networking (multiplayer)
+  pingMs?: number | undefined
   netTelemetry?: string
 }
 
@@ -187,7 +188,7 @@ export class DebugRenderer {
    */
   updateStats(stats: DebugStats): void {
     this.statsText.text = [
-      `FPS: ${stats.fps}        Tick: ${stats.tick}      Entities: ${stats.entityCount}`,
+      `FPS: ${stats.fps}        Tick: ${stats.tick}      Entities: ${stats.entityCount}${stats.pingMs !== undefined ? `      Ping: ${stats.pingMs.toFixed(0)}ms` : ''}`,
       '',
       `Player: ${stats.playerState}`,
       `HP: ${stats.playerHP}/${stats.playerMaxHP}    Enemies: ${stats.enemyCount}  ${stats.enemyStates}`,

@@ -1174,6 +1174,7 @@ export class MultiplayerModeController implements SceneModeController {
       xp: this.latestHud?.xp ?? 0,
       level: this.latestHud?.level ?? 0,
       pendingPts: this.latestHud?.pendingPoints ?? 0,
+      pingMs: this.clockSync.isConverged() ? this.clockSync.getRTT() : undefined,
       netTelemetry: this.telemetry.getOverlayText(this.overlayMode),
     }
     this.debugRenderer.updateStats(stats)
