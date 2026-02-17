@@ -6,10 +6,10 @@
  * advances to the next StageEncounter after a brief delay.
  */
 
-import { defineQuery, removeEntity } from 'bitecs'
+import { defineQuery, hasComponent, removeComponent, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
-import { Enemy, Position, Bullet, Player, Health, ObjectiveRole } from '../components'
+import { Enemy, Position, Bullet, Player, Health, Dead, ObjectiveRole } from '../components'
 import { removeBullet, spawnNpc } from '../prefabs'
 import { initObjective, cleanupObjective } from './objectiveSystem'
 import { generateArena } from '../content/maps/mapGenerator'
@@ -90,6 +90,9 @@ export function spawnStageNpcs(world: GameWorld, stageIndex: number): void {
 export function healAllPlayers(world: GameWorld): void {
   for (const eid of playerHealthQuery(world)) {
     Health.current[eid] = Health.max[eid]!
+    if (hasComponent(world, Dead, eid)) {
+      removeComponent(world, Dead, eid)
+    }
   }
 }
 

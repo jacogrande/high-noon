@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
-import { defineQuery } from 'bitecs'
+import { addComponent, defineQuery, hasComponent } from 'bitecs'
 import { createGameWorld, setWorldTilemap, startRun, type GameWorld } from '../world'
 import { createTestArena } from '../content/maps/testArena'
-import { Enemy, EnemyType, EnemyTier, Position, Health, Bullet, Player } from '../components'
+import { Enemy, EnemyType, EnemyTier, Position, Health, Bullet, Player, Dead } from '../components'
 import { stageProgressionSystem, clearAllEnemies, healAllPlayers } from './stageProgression'
 import { waveSpawnerSystem } from './waveSpawner'
 import { healthSystem } from './health'
@@ -535,5 +535,30 @@ describe('stageProgressionSystem', () => {
     for (const eid of players) {
       expect(Health.current[eid]).toBe(Health.max[eid]!)
     }
+  })
+
+  test('camp entry revives dead players', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    // Kill the player: zero HP + add Dead component
+    const players = playerQuery(world)
+    expect(players.length).toBeGreaterThan(0)
+    const playerEid = players[0]!
+    Health.current[playerEid] = 0
+    addComponent(world, Dead, playerEid)
+    expect(hasComponent(world, Dead, playerEid)).toBe(true)
+
+    // Complete stage and transition to camp
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // clearing
+    stageProgressionSystem(world, 1.0) // -> camp (heals + revives)
+
+    // Dead component should be removed and HP restored
+    expect(hasComponent(world, Dead, playerEid)).toBe(false)
+    expect(Health.current[playerEid]).toBe(Health.max[playerEid]!)
   })
 })
