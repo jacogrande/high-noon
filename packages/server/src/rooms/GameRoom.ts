@@ -460,6 +460,7 @@ export class GameRoom extends Room<GameRoomState> {
         if (slot) {
           slot.client = reconnectedClient
           slot.inputQueue = []  // Clear stale inputs from before disconnect
+          slot.lastProcessedSeq = 0
           slot.lastInput = neutralInput
           slot.heldInputTicks = 0
           slot.inputTokens = INPUT_RATE_BURST_CAPACITY

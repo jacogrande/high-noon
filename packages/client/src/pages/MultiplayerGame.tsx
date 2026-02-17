@@ -43,6 +43,7 @@ export function MultiplayerGame() {
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
+  const isPageUnloadingRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
   const lastHudUpdateRef = useRef(0)
   const lastSeenRunIntroSequenceRef = useRef(0)
@@ -276,7 +277,27 @@ export function MultiplayerGame() {
 
   // Unmount-only cleanup: destroy game resources and network connection.
   useEffect(() => {
+    const markPageUnloading = () => {
+      isPageUnloadingRef.current = true
+    }
+    const clearPageUnloading = () => {
+      isPageUnloadingRef.current = false
+    }
+    window.addEventListener('beforeunload', markPageUnloading)
+    window.addEventListener('pagehide', markPageUnloading)
+    window.addEventListener('pageshow', clearPageUnloading)
     return () => {
+      window.removeEventListener('beforeunload', markPageUnloading)
+      window.removeEventListener('pagehide', markPageUnloading)
+      window.removeEventListener('pageshow', clearPageUnloading)
+    }
+  }, [])
+
+  // Unmount-only cleanup for in-app navigation.
+  // Skip explicit teardown during page refresh so reconnection token/session survive.
+  useEffect(() => {
+    return () => {
+      if (isPageUnloadingRef.current) return
       destroyGame()
       disconnectNetwork()
     }

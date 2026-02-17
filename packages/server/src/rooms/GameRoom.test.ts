@@ -142,6 +142,68 @@ describe('GameRoom lobby state', () => {
     expect(protocolMsgs).toHaveLength(1)
   })
 
+  test('reconnection resets input sequencing so refreshed clients can move immediately', async () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    onSetReady(client, { ready: true })
+    expect(room.state.phase).toBe('playing')
+
+    const onInput = getOnMessageHandler(room, 'input')
+    onInput(client, {
+      seq: 5,
+      clientTick: 5,
+      clientTimeMs: 100,
+      estimatedServerTimeMs: 100,
+      viewInterpDelayMs: 0,
+      shootSeq: 0,
+      buttons: 0,
+      aimAngle: 0,
+      moveX: 0,
+      moveY: 0,
+      cursorWorldX: 0,
+      cursorWorldY: 0,
+    })
+    ;(room as unknown as { serverTick: () => void }).serverTick()
+
+    const getSlot = (id: string) => (room as unknown as {
+      slots: Map<string, { lastProcessedSeq: number; client: Client }>
+    }).slots.get(id)
+    expect(getSlot(client.sessionId)?.lastProcessedSeq).toBe(5)
+
+    const reconnected = createClient(client.sessionId)
+    ;(room as unknown as {
+      allowReconnection: (_client: Client, _seconds: number) => Promise<Client>
+    }).allowReconnection = async () => reconnected
+
+    await room.onLeave(client, false)
+
+    const slot = getSlot(client.sessionId)
+    expect(slot).toBeDefined()
+    expect(slot?.client).toBe(reconnected)
+    expect(slot?.lastProcessedSeq).toBe(0)
+
+    onInput(reconnected, {
+      seq: 1,
+      clientTick: 1,
+      clientTimeMs: 120,
+      estimatedServerTimeMs: 120,
+      viewInterpDelayMs: 0,
+      shootSeq: 0,
+      buttons: 0,
+      aimAngle: 0,
+      moveX: 1,
+      moveY: 0,
+      cursorWorldX: 0,
+      cursorWorldY: 0,
+    })
+    ;(room as unknown as { serverTick: () => void }).serverTick()
+
+    expect(getSlot(client.sessionId)?.lastProcessedSeq).toBe(1)
+  })
+
   test('camp progression requires all connected players to mark ready', () => {
     const room = createRoom()
     const clientA = createClient('session-a')
