@@ -56,7 +56,7 @@ export const MULTIPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
   },
   debugHotkeys: {
     enableOverlayToggle: true,
-    enableSpawnPauseToggle: false,
+    enableSpawnPauseToggle: true,
     enableNetOverlay: true,
   },
 }

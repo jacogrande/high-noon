@@ -21,6 +21,7 @@ import {
   Showdown,
   Health,
   Enemy,
+  EnemyAI,
   BossPhase,
   getBoss,
   getCharacterDef,
@@ -110,6 +111,7 @@ const TRANSIENT_ACTION_BUTTONS =
 
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
 const bulletQuery = defineQuery([Bullet, Position, Velocity, Collider])
+const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 
 function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): number {
   let merged = baseButtons
@@ -455,6 +457,19 @@ export class GameRoom extends Room<GameRoomState> {
         writeStatsToECS(this.world, slot.eid, us)
       }
       client.send('select-node-result', { success, nodeId: data.nodeId } satisfies SelectNodeResponse)
+    })
+
+    this.onMessage('debug-spawn-pause', () => {
+      this.world.spawnsPaused = !this.world.spawnsPaused
+      if (this.world.spawnsPaused) {
+        const enemies = enemyAIQuery(this.world)
+        for (const eid of enemies) {
+          Health.current[eid] = 0
+        }
+        console.log(`[GameRoom] Spawns PAUSED — killed ${enemies.length} enemies`)
+      } else {
+        console.log('[GameRoom] Spawns RESUMED')
+      }
     })
 
     // Fixed-timestep simulation loop

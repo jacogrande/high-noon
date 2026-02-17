@@ -22,8 +22,8 @@ describe('PresentationPolicy', () => {
       .toBe(SINGLEPLAYER_PRESENTATION_POLICY.death.fadeDurationSeconds)
   })
 
-  test('allows spawn-pause debug toggle only in singleplayer', () => {
+  test('allows spawn-pause debug toggle in both modes', () => {
     expect(SINGLEPLAYER_PRESENTATION_POLICY.debugHotkeys.enableSpawnPauseToggle).toBe(true)
-    expect(MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys.enableSpawnPauseToggle).toBe(false)
+    expect(MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys.enableSpawnPauseToggle).toBe(true)
   })
 })

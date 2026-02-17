@@ -161,6 +161,10 @@ export class NetworkClient {
     this.room?.send('select-node', { nodeId } satisfies SelectNodeRequest)
   }
 
+  sendDebugSpawnPause(): void {
+    this.room?.send('debug-spawn-pause')
+  }
+
   requestGameConfig(): void {
     if (!this.room) return
     this.requestGameConfigFromRoom(this.room)

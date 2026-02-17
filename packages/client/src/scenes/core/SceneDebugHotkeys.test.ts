@@ -28,7 +28,7 @@ describe('SceneDebugHotkeys', () => {
     expect(spawnPauseToggles).toBe(1)
   })
 
-  test('multiplayer policy enables overlay only', () => {
+  test('multiplayer policy enables overlay and spawn-pause', () => {
     let overlayToggles = 0
     let spawnPauseToggles = 0
 
@@ -44,6 +44,6 @@ describe('SceneDebugHotkeys', () => {
     handler({ code: 'KeyP' } as KeyboardEvent)
 
     expect(overlayToggles).toBe(1)
-    expect(spawnPauseToggles).toBe(0)
+    expect(spawnPauseToggles).toBe(1)
   })
 })

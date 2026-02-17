@@ -369,6 +369,7 @@ export class MultiplayerModeController implements SceneModeController {
       MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys,
       {
         toggleDebugOverlay: () => this.debugRenderer.toggle(),
+        toggleSpawnPause: () => this.net.sendDebugSpawnPause(),
         cycleNetOverlay: () => this.cycleNetOverlay(),
         recordLagReport: () => this.recordLagReport(),
         exportReplay: () => this.exportReplay(),
