@@ -111,12 +111,9 @@ export interface SnapshotIngestStats {
 export class SnapshotIngestor {
   /** Server-authoritative enemy transform history (for velocity estimation). */
   private readonly enemyAuthState = new Map<number, { x: number; y: number; serverTime: number }>()
-  /** Grace window for rejecting immediate HP rollbacks after optimistic local hits. */
-  private readonly enemyHpRollbackGraceUntil = new Map<number, number>()
 
   resetSessionState(): void {
     this.enemyAuthState.clear()
-    this.enemyHpRollbackGraceUntil.clear()
   }
 
   applyEntityLifecycle(snapshot: WorldSnapshot, ctx: SnapshotIngestContext, predictionTick: number): SnapshotIngestStats {
@@ -335,12 +332,14 @@ export class SnapshotIngestor {
       )
     }
 
-    Position.prevX[clientEid] = Position.x[clientEid]!
-    Position.prevY[clientEid] = Position.y[clientEid]!
-    Position.x[clientEid] = event.x
-    Position.y[clientEid] = event.y
-    Velocity.x[clientEid] = event.vx
-    Velocity.y[clientEid] = event.vy
+    if (!matchedPredicted) {
+      Position.prevX[clientEid] = Position.x[clientEid]!
+      Position.prevY[clientEid] = Position.y[clientEid]!
+      Position.x[clientEid] = event.x
+      Position.y[clientEid] = event.y
+      Velocity.x[clientEid] = event.vx
+      Velocity.y[clientEid] = event.vy
+    }
 
     return matchedPredicted
   }
@@ -355,9 +354,6 @@ export class SnapshotIngestor {
 
   private applyEnemies(enemies: EnemySnapshot[], snapshotServerTime: number, ctx: SnapshotIngestContext): void {
     const seen = new Set<number>()
-    const nowMs = performance.now()
-    // One RTT + one snapshot interval gives the server time to confirm a valid hit.
-    const rollbackGraceMs = Math.max(100, Math.min(350, ctx.resolveRttMs() + 50))
 
     for (const e of enemies) {
       seen.add(e.eid)
@@ -391,7 +387,6 @@ export class SnapshotIngestor {
 
         ctx.enemyEntities.set(e.eid, clientEid)
         this.enemyAuthState.set(e.eid, { x: e.x, y: e.y, serverTime: snapshotServerTime })
-        this.enemyHpRollbackGraceUntil.delete(clientEid)
       } else {
         const prev = this.enemyAuthState.get(e.eid)
         if (prev && snapshotServerTime > prev.serverTime) {
@@ -404,22 +399,8 @@ export class SnapshotIngestor {
         this.enemyAuthState.set(e.eid, { x: e.x, y: e.y, serverTime: snapshotServerTime })
       }
 
-      // Avoid immediate HP bar flash-up when optimistic local hit prediction is
-      // waiting on server confirmation. Upward correction is delayed briefly.
-      const localHp = Health.current[clientEid]!
-      const serverHp = e.hp
-      if (serverHp > localHp) {
-        const graceUntil = this.enemyHpRollbackGraceUntil.get(clientEid)
-        if (graceUntil === undefined) {
-          this.enemyHpRollbackGraceUntil.set(clientEid, nowMs + rollbackGraceMs)
-        } else if (nowMs >= graceUntil) {
-          Health.current[clientEid] = serverHp
-          this.enemyHpRollbackGraceUntil.delete(clientEid)
-        }
-      } else {
-        Health.current[clientEid] = serverHp
-        this.enemyHpRollbackGraceUntil.delete(clientEid)
-      }
+      // Enemy HP is always authoritative in multiplayer ingest.
+      Health.current[clientEid] = e.hp
 
       // Keep max HP sane for render/UI ratio even if entity was created earlier.
       if (Health.max[clientEid]! <= 0) {
@@ -439,7 +420,6 @@ export class SnapshotIngestor {
       if (!seen.has(serverEid)) {
         removeEntity(ctx.world, clientEid)
         this.enemyAuthState.delete(serverEid)
-        this.enemyHpRollbackGraceUntil.delete(clientEid)
         ctx.enemyEntities.delete(serverEid)
       }
     }

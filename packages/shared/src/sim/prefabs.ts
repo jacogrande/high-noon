@@ -320,6 +320,8 @@ export function removeBullet(world: GameWorld, eid: number): void {
   world.bulletPierceHits.delete(eid)
   world.hookPierceCount.delete(eid)
   world.lagCompBulletShotTick.delete(eid)
+  world.lagCompBulletSpawnTick.delete(eid)
+  world.lagCompBulletSweepStart.delete(eid)
   removeEntity(world, eid)
 }
 

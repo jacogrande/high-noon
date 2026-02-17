@@ -66,7 +66,8 @@ function registerJJE(hooks: HookRegistry): void {
     damage: number,
   ): BulletHitResult => {
     // Check if the bullet owner's cylinder is empty (this was the last round)
-    const ownerId = Bullet.ownerId[bulletEid]!
+    const ownerId = Bullet.ownerId[bulletEid] ?? world.hitscanVirtualBulletOwners.get(bulletEid)
+    if (ownerId === undefined) return { damage, pierce: false }
     if (Cylinder.rounds[ownerId] === 0) {
       return { damage: clampDamage(damage * JJE_LAST_ROUND_BONUS), pierce: false }
     }

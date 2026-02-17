@@ -3,6 +3,7 @@ export { FloatingTextPool } from './FloatingTextPool'
 export { ChatBubblePool } from './ChatBubblePool'
 export {
   emitMuzzleFlash,
+  emitShotTracer,
   emitDeathBurst,
   emitWallImpact,
   emitEntityImpact,

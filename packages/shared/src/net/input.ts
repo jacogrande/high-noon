@@ -95,7 +95,7 @@ export interface NetworkInput extends InputState {
   estimatedServerTimeMs: number
   /**
    * Interpolation delay used by client render when input was sampled.
-   * Server subtracts this from estimatedServerTimeMs to align with what player saw.
+   * Reported for server telemetry and future tuning hooks.
    */
   viewInterpDelayMs: number
   /** Monotonic SHOOT press-edge counter for decoupled shot timing diagnostics */

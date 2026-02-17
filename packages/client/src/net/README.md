@@ -19,8 +19,9 @@ net.on('game-config', (config) => { /* { seed, sessionId, playerEid, characterId
 net.on('lobby-state', (state) => { /* { phase, serverTick, players[] } */ })
 net.on('player-roster', (roster) => { /* [{ eid, characterId }] */ })
 net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
-net.on('bullet-spawn', (event) => { /* authoritative bullet create */ })
-net.on('bullet-despawn', (event) => { /* authoritative bullet remove */ })
+net.on('bullet-spawn', (event) => { /* authoritative enemy/boss projectile create */ })
+net.on('bullet-despawn', (event) => { /* authoritative enemy/boss projectile remove */ })
+net.on('shot-result', (event) => { /* authoritative shooter hit/miss confirmation */ })
 net.on('incompatible-protocol', (reason) => { /* input/snapshot protocol mismatch */ })
 net.on('disconnect', () => { /* connection permanently lost */ })
 await net.join({ characterId: 'undertaker' }) // Resolves after game-config (10s timeout)
@@ -32,7 +33,7 @@ net.disconnect()              // Intentional leave, clears listeners
 ```
 
 - Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared
-- Current snapshot protocol (`v10`) includes player/enemy + ability state (bullets are sent as lifecycle events)
+- Current snapshot protocol (`v10`) includes player/enemy + ability state (server projectiles are sent as lifecycle events)
 - Snapshot decode errors are caught and logged (don't crash the game loop)
 - Protocol mismatches (snapshot or input shape/version) trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)

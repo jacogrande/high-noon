@@ -1,11 +1,12 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import { hasComponent, addComponent, defineQuery } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
-import { spawnPlayer } from '../prefabs'
+import { spawnPlayer, spawnGrunt } from '../prefabs'
 import { weaponSystem } from './weapon'
 import { Button, createInputState, setButton, type InputState } from '../../net/input'
-import { Weapon, Cylinder, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player } from '../components'
+import { Weapon, Cylinder, Roll, PlayerState, PlayerStateType, Bullet, Position, Velocity, Player, Health } from '../components'
 import { PISTOL_HOLD_FIRE_RATE, PISTOL_MIN_FIRE_INTERVAL, PISTOL_CYLINDER_SIZE, PISTOL_LAST_ROUND_MULTIPLIER, PISTOL_BULLET_DAMAGE, SAWED_OFF_BULLET_DAMAGE, SAWED_OFF_PELLET_COUNT, SAWED_OFF_SPREAD_ANGLE } from '../content/weapons'
+import { GRUNT_HP } from '../content/enemies'
 import { UNDERTAKER } from '../content/characters/undertaker'
 
 const bulletQuery = defineQuery([Bullet])
@@ -269,6 +270,8 @@ describe('weaponSystem', () => {
       expect(Position.x[eid]).toBeCloseTo(50 + vx * rewindSeconds)
       expect(Position.y[eid]).toBeCloseTo(60 + vy * rewindSeconds)
       expect(world.lagCompBulletShotTick.get(eid)).toBe(17)
+      expect(world.lagCompBulletSpawnTick.get(eid)).toBe(20)
+      expect(world.lagCompBulletSweepStart.get(eid)).toEqual({ x: 50, y: 60 })
     })
 
     test('falls back to current player origin when historical state is unavailable', () => {
@@ -287,6 +290,8 @@ describe('weaponSystem', () => {
       expect(Position.x[eid]).toBe(100)
       expect(Position.y[eid]).toBe(100)
       expect(world.lagCompBulletShotTick.has(eid)).toBe(false)
+      expect(world.lagCompBulletSpawnTick.has(eid)).toBe(false)
+      expect(world.lagCompBulletSweepStart.has(eid)).toBe(false)
     })
   })
 
@@ -388,6 +393,36 @@ describe('weaponSystem', () => {
       for (const beid of bullets) {
         expect(Bullet.damage[beid]).toBe(expectedPerPellet)
       }
+    })
+  })
+
+  describe('hitscan mode', () => {
+    test('resolves damage immediately without spawning player bullets', () => {
+      world.playerFireMode = 'hitscan'
+      const enemyEid = spawnGrunt(world, 220, 100)
+
+      setInput(world, playerEid, createShootInput(0))
+      weaponSystem(world, 1 / 60)
+
+      expect(countBullets(world)).toBe(0)
+      expect(Health.current[enemyEid]).toBe(GRUNT_HP - PISTOL_BULLET_DAMAGE)
+      expect(world.pendingShotResults).toHaveLength(1)
+      expect(world.pendingShotResults[0]?.hit).toBe(true)
+      expect(world.pendingShotResults[0]?.targetEid).toBe(enemyEid)
+    })
+
+    test('local-player prediction scope does not mutate enemy HP', () => {
+      world.playerFireMode = 'hitscan'
+      world.simulationScope = 'local-player'
+      world.localPlayerEid = playerEid
+      const enemyEid = spawnGrunt(world, 220, 100)
+      const initialHp = Health.current[enemyEid]!
+
+      setInput(world, playerEid, createShootInput(0))
+      weaponSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(initialHp)
+      expect(world.pendingShotResults).toHaveLength(0)
     })
   })
 })

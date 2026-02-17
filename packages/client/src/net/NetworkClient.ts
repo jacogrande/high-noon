@@ -12,6 +12,7 @@ import {
   type WorldSnapshot,
   type BulletSpawnMessage,
   type BulletDespawnMessage,
+  type ShotResultMessage,
   type NetworkInput,
   type PingMessage,
   type PongMessage,
@@ -48,6 +49,7 @@ export type NetworkEventMap = {
   snapshot: (snapshot: WorldSnapshot) => void
   'bullet-spawn': (event: BulletSpawnMessage) => void
   'bullet-despawn': (event: BulletDespawnMessage) => void
+  'shot-result': (event: ShotResultMessage) => void
   hud: (data: HudData) => void
   interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
@@ -250,6 +252,10 @@ export class NetworkClient {
 
     cleanup.push(room.onMessage('bullet-despawn', (data: BulletDespawnMessage) => {
       this.emit('bullet-despawn', data)
+    }))
+
+    cleanup.push(room.onMessage('shot-result', (data: ShotResultMessage) => {
+      this.emit('shot-result', data)
     }))
 
     const onLeave = () => {

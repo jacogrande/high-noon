@@ -488,10 +488,10 @@ export function MultiplayerGame() {
   if (phase === 'starting') {
     return (
       <div style={styles.container}>
-        <div style={styles.centerBox}>
+        <div ref={containerRef} style={styles.gameContainer} />
+        <div style={styles.startingOverlay}>
           <div style={styles.statusText}>Starting match...</div>
         </div>
-        <div ref={containerRef} style={styles.hiddenContainer} />
       </div>
     )
   }
@@ -592,6 +592,14 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     height: '100%',
     visibility: 'hidden',
+  },
+  startingOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
   },
   centerBox: {
     display: 'flex',

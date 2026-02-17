@@ -49,7 +49,7 @@ function makeContext(overrides: Partial<SnapshotIngestContext> = {}): SnapshotIn
     resolveCharacterIdForServerEid: overrides.resolveCharacterIdForServerEid ?? (() => undefined),
     setMyClientEid: overrides.setMyClientEid ?? (() => {}),
     setLocalPlayerRenderEid: overrides.setLocalPlayerRenderEid ?? (() => {}),
-    resolveRttMs: overrides.resolveRttMs ?? (() => 100),
+    resolveRttMs: overrides.resolveRttMs ?? (() => 0),
   }
 }
 
@@ -66,21 +66,20 @@ describe('SnapshotIngestor', () => {
     expect(Velocity.y[enemyClientEid]).toBeCloseTo(0)
   })
 
-  test('holds optimistic enemy HP briefly instead of immediate rollback', () => {
+  test('applies authoritative enemy HP immediately', () => {
     const ingestor = new SnapshotIngestor()
     const ctx = makeContext()
 
     ingestor.applyEntityLifecycle(makeSnapshot(2000, { eid: 7, x: 0, y: 0, hp: 10 }), ctx, 0)
     const enemyClientEid = ctx.enemyEntities.get(7)!
 
-    // Simulate optimistic local-prediction damage before server confirmation.
+    // Simulate stale local enemy HP before authoritative correction.
     Health.current[enemyClientEid] = 8
 
-    // Server still reports old HP in the next snapshot.
+    // Server reports authoritative HP in the next snapshot.
     ingestor.applyEntityLifecycle(makeSnapshot(2050, { eid: 7, x: 0, y: 0, hp: 10 }), ctx, 0)
 
-    // Do not flash back immediately to 10.
-    expect(Health.current[enemyClientEid]).toBe(8)
+    expect(Health.current[enemyClientEid]).toBe(10)
   })
 
   test('adopts local predicted bullet only when server owner matches local player', () => {
@@ -99,6 +98,10 @@ describe('SnapshotIngestor', () => {
       layer: CollisionLayer.PLAYER_BULLET,
     })
     expect(tracker.detectNewPredictedBullets(world, myClientEid, 10)).toBe(1)
+    const predictedX = Position.x[predictedEid]!
+    const predictedY = Position.y[predictedEid]!
+    const predictedVx = Velocity.x[predictedEid]!
+    const predictedVy = Velocity.y[predictedEid]!
 
     const ingestor = new SnapshotIngestor()
     const ctx = makeContext({
@@ -114,10 +117,10 @@ describe('SnapshotIngestor', () => {
         tick: 10,
         serverTime: 5000,
         ownerServerEid: myServerEid,
-        x: Position.x[predictedEid]!,
-        y: Position.y[predictedEid]!,
-        vx: 300,
-        vy: 0,
+        x: predictedX - 40,
+        y: predictedY + 30,
+        vx: -200,
+        vy: 140,
         layer: CollisionLayer.PLAYER_BULLET,
       },
       ctx,
@@ -126,6 +129,10 @@ describe('SnapshotIngestor', () => {
     expect(matched).toBe(true)
     expect(ctx.bulletEntities.get(1)).toBe(predictedEid)
     expect(ctx.tracker.isLocalTimelineBullet(predictedEid)).toBe(true)
+    expect(Position.x[predictedEid]).toBe(predictedX)
+    expect(Position.y[predictedEid]).toBe(predictedY)
+    expect(Velocity.x[predictedEid]).toBe(predictedVx)
+    expect(Velocity.y[predictedEid]).toBe(predictedVy)
   })
 
   test('does not adopt local predicted bullet for remote-owner bullet spawn', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Client } from 'colyseus'
-import { Button, TICK_MS, type NetworkInput } from '@high-noon/shared'
+import { Button, Position, TICK_MS, spawnGrunt, type GameWorld, type NetworkInput } from '@high-noon/shared'
 import { GameRoom } from './GameRoom'
 
 interface SentMessage {
@@ -222,7 +222,7 @@ describe('GameRoom lobby state', () => {
 })
 
 describe('GameRoom lag compensation', () => {
-  test('time-based rewind adds queue delay and clamps queue contribution', () => {
+  test('time-based rewind tracks queue delay telemetry without double-counting age', () => {
     const room = createRoom() as unknown as {
       world: { tick: number }
       estimateShotTickFromInputTime: (
@@ -249,7 +249,7 @@ describe('GameRoom lag compensation', () => {
     expect(sample!.latencyMs).toBe(100)
     expect(sample!.interpMs).toBe(40)
     expect(sample!.queueDelayMs).toBeCloseTo(3 * TICK_MS, 4)
-    const expectedAgeMs = 100 + 40 + 3 * TICK_MS
+    const expectedAgeMs = 100
     expect(sample!.effectiveAgeMs).toBeCloseTo(expectedAgeMs, 4)
     expect(sample!.tick).toBe(1000 - Math.round(expectedAgeMs / TICK_MS))
 
@@ -289,6 +289,9 @@ describe('GameRoom lag compensation', () => {
         viewInterpDelayMs: 35,
         buttons: Button.SHOOT,
         shootSeq: 7,
+        aimAngle: 1.25,
+        cursorWorldX: 321,
+        cursorWorldY: 654,
       }),
       makeInput({ seq: 3, clientTick: 93 }),
       makeInput({ seq: 4, clientTick: 94 }),
@@ -307,6 +310,55 @@ describe('GameRoom lag compensation', () => {
     expect(consumed.clientTimeMs).toBe(4567)
     expect(consumed.estimatedServerTimeMs).toBe(4500)
     expect(consumed.viewInterpDelayMs).toBe(35)
+    expect(consumed.aimAngle).toBe(1.25)
+    expect(consumed.cursorWorldX).toBe(321)
+    expect(consumed.cursorWorldY).toBe(654)
     expect(slot.lastShootSeq).toBe(7)
+  })
+
+  test('hitscan fire emits shot-result to the shooter', () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    onSetReady(client, { ready: true })
+
+    const roomPrivate = room as unknown as {
+      world: GameWorld
+      slots: Map<string, {
+        eid: number
+        inputQueue: NetworkInput[]
+      }>
+      serverTick: () => void
+    }
+    const slot = roomPrivate.slots.get(client.sessionId)
+    if (!slot) {
+      throw new Error('Expected slot for joined client')
+    }
+
+    const shooterX = Position.x[slot.eid]!
+    const shooterY = Position.y[slot.eid]!
+    spawnGrunt(roomPrivate.world, shooterX + 120, shooterY)
+
+    slot.inputQueue = [
+      makeInput({
+        seq: 1,
+        clientTick: 1,
+        buttons: Button.SHOOT,
+        aimAngle: 0,
+        shootSeq: 1,
+      }),
+    ]
+
+    roomPrivate.serverTick()
+
+    const shot = client.sent.find(message => message.type === 'shot-result')?.payload as
+      | { shooterServerEid: number; shootSeq: number; hit: boolean; damageApplied?: number }
+      | undefined
+    expect(shot).toBeDefined()
+    expect(shot?.shooterServerEid).toBe(slot.eid)
+    expect(shot?.shootSeq).toBe(1)
+    expect(shot?.hit).toBe(true)
+    expect((shot?.damageApplied ?? 0)).toBeGreaterThan(0)
   })
 })

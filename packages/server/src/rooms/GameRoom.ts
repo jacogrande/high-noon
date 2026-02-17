@@ -37,11 +37,13 @@ import {
   DEFAULT_RUN_STAGES,
   TICK_RATE,
   TICK_MS,
+  NO_TARGET,
   type GameWorld,
   type SystemRegistry,
   type NetworkInput,
   type BulletSpawnMessage,
   type BulletDespawnMessage,
+  type ShotResultMessage,
   type PingMessage,
   type PongMessage,
   type HudData,
@@ -155,6 +157,20 @@ const WORLD_COORD_MAX = 10_000
 interface JoinOptions {
   name?: string
   characterId?: unknown
+}
+
+interface MutableShotResultState {
+  pendingShotResults?: Array<{
+    shooterEid: number
+    shootSeq: number
+    tick: number
+    hit: boolean
+    hitX: number
+    hitY: number
+    targetEid: number
+    damageApplied: number
+  }>
+  hitscanVirtualBulletOwners?: Map<number, number>
 }
 
 interface ReadyMessage {
@@ -288,6 +304,8 @@ export class GameRoom extends Room<GameRoomState> {
   override onCreate() {
     const seed = Date.now()
     this.world = createGameWorld(seed)
+    this.ensureShotResultState()
+    this.world.playerFireMode = 'hitscan'
     this.world.lagCompEnabled = true
     this.world.lagCompMaxRewindTicks = REWIND_MAX_TICKS
     this.world.lagCompHistoricalRadiusPadding = REWIND_HISTORICAL_RADIUS_PADDING
@@ -518,6 +536,9 @@ export class GameRoom extends Room<GameRoomState> {
     this.rewindHistory.clear()
     this.world.lagCompShotTickByPlayer.clear()
     this.world.lagCompBulletShotTick.clear()
+    this.world.lagCompBulletSpawnTick.clear()
+    this.world.lagCompBulletSweepStart.clear()
+    this.getPendingShotResults().length = 0
     this.rewindTickSamples.length = 0
     this.rewindLatencyMsAccum = 0
     this.rewindInterpMsAccum = 0
@@ -527,6 +548,21 @@ export class GameRoom extends Room<GameRoomState> {
     this.nextBulletNetId = 1
     this.campReadySessions.clear()
     console.log('[GameRoom] Disposed')
+  }
+
+  private ensureShotResultState(): void {
+    const mutable = this.world as GameWorld & MutableShotResultState
+    if (!Array.isArray(mutable.pendingShotResults)) {
+      mutable.pendingShotResults = []
+    }
+    if (!(mutable.hitscanVirtualBulletOwners instanceof Map)) {
+      mutable.hitscanVirtualBulletOwners = new Map<number, number>()
+    }
+  }
+
+  private getPendingShotResults() {
+    this.ensureShotResultState()
+    return (this.world as GameWorld & Required<Pick<MutableShotResultState, 'pendingShotResults'>>).pendingShotResults
   }
 
   private sendGameConfig(client: Client, slot: PlayerSlot): void {
@@ -583,6 +619,41 @@ export class GameRoom extends Room<GameRoomState> {
       if (!hasComponent(this.world, Bullet, eid)) continue
       client.send('bullet-spawn', this.buildBulletSpawnMessage(eid, bulletId))
     }
+  }
+
+  private sendShotResults(): void {
+    const pending = this.getPendingShotResults()
+    if (pending.length <= 0) return
+
+    for (const result of pending) {
+      let slot: PlayerSlot | undefined
+      for (const candidate of this.slots.values()) {
+        if (candidate.eid === result.shooterEid) {
+          slot = candidate
+          break
+        }
+      }
+      if (!slot) continue
+
+      const msg: ShotResultMessage = {
+        shooterServerEid: result.shooterEid,
+        shootSeq: result.shootSeq,
+        tick: result.tick,
+        hit: result.hit,
+        hitX: result.hitX,
+        hitY: result.hitY,
+      }
+      if (result.hit && result.targetEid !== NO_TARGET) {
+        msg.targetServerEid = result.targetEid
+      }
+      if (result.damageApplied > 0) {
+        msg.damageApplied = result.damageApplied
+      }
+
+      slot.client.send('shot-result', msg)
+    }
+
+    pending.length = 0
   }
 
   private broadcastBulletEvents(): void {
@@ -735,7 +806,11 @@ export class GameRoom extends Room<GameRoomState> {
     const oneWayLatencyMs = Math.max(0, nowMs - input.estimatedServerTimeMs)
     const interpMs = Math.max(0, Math.min(REWIND_MAX_VIEW_INTERP_DELAY_MS, input.viewInterpDelayMs))
     const queueDelayMs = Math.max(0, Math.min(REWIND_MAX_QUEUE_DELAY_MS, queueDepth * TICK_MS))
-    const effectiveAgeMs = oneWayLatencyMs + interpMs + queueDelayMs
+    // Do not include render interpolation delay in rewind age:
+    // the client's view delay is not command transit latency.
+    // Also do not add queueDelayMs into effective age: it is already reflected in
+    // now - estimatedServerTimeMs when a sample waits in the server input queue.
+    const effectiveAgeMs = oneWayLatencyMs
     if (!Number.isFinite(effectiveAgeMs)) return null
     const ageTicks = Math.max(0, Math.round(effectiveAgeMs / TICK_MS))
     return {
@@ -830,6 +905,10 @@ export class GameRoom extends Room<GameRoomState> {
                 clientTimeMs: carriedShoot.clientTimeMs,
                 estimatedServerTimeMs: carriedShoot.estimatedServerTimeMs,
                 viewInterpDelayMs: carriedShoot.viewInterpDelayMs,
+                // Preserve shot-time aim metadata when we carry a dropped shoot edge.
+                aimAngle: carriedShoot.aimAngle,
+                cursorWorldX: carriedShoot.cursorWorldX,
+                cursorWorldY: carriedShoot.cursorWorldY,
               }
             }
             slot.inputQueue[0] = merged
@@ -864,6 +943,7 @@ export class GameRoom extends Room<GameRoomState> {
 
     // 2. Step simulation — DO NOT pass input param (that's the single-player bridge)
     stepWorld(this.world, this.systems)
+    this.sendShotResults()
     this.syncCampTransitionState()
     this.broadcastBulletEvents()
 

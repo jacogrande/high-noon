@@ -21,6 +21,9 @@ import { forEachInRadius } from '../SpatialHash'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
 
+/** Upper bound on historical enemy samples during lag-comp overlap checks. */
+const MAX_HISTORICAL_OVERLAP_SAMPLES = 16
+
 // Query for bullet entities
 const bulletQuery = defineQuery([Bullet, Position, Collider])
 const damageableQuery = defineQuery([Health, Position, Collider])
@@ -124,8 +127,9 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
     const x = Position.x[eid]!
     const y = Position.y[eid]!
-    const startX = Position.prevX[eid]!
-    const startY = Position.prevY[eid]!
+    const sweepStart = world.lagCompBulletSweepStart.get(eid)
+    const startX = sweepStart?.x ?? Position.prevX[eid]!
+    const startY = sweepStart?.y ?? Position.prevY[eid]!
     const radius = Collider.radius[eid]!
 
     // --- Entity collision (checked first) ---
@@ -144,12 +148,23 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       hasComponent(world, Showdown, bulletOwner) && Showdown.active[bulletOwner] === 1
     const showdownTarget = ownerHasShowdown ? Showdown.targetEid[bulletOwner]! : NO_TARGET
     const shotTick = world.lagCompBulletShotTick.get(eid)
+    const spawnTick = world.lagCompBulletSpawnTick.get(eid)
+    const withinHistoricalWindow =
+      spawnTick !== undefined
+        ? world.tick <= spawnTick
+        : shotTick !== undefined && world.tick <= shotTick + 1
+    const historicalWindowEndTick =
+      spawnTick !== undefined
+        ? spawnTick
+        : shotTick !== undefined
+          ? shotTick + 1
+          : world.tick
     const useHistoricalEnemyOverlap =
       !localOnly &&
       world.lagCompEnabled &&
       Collider.layer[eid] === CollisionLayer.PLAYER_BULLET &&
       shotTick !== undefined &&
-      world.tick <= shotTick + 1 &&
+      withinHistoricalWindow &&
       world.lagCompGetEnemyStateAtTick !== undefined
     const ignoreRadiusFilter = useHistoricalEnemyOverlap && !useSpatialHash
 
@@ -185,8 +200,11 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       const minDist = radius + Collider.radius[targetEid]!
       let overlaps = overlapsSweptCircle(startX, startY, x, y, tx, ty, minDist)
       if (!overlaps && useHistoricalEnemyOverlap && Collider.layer[targetEid] === CollisionLayer.ENEMY) {
-        const historical = world.lagCompGetEnemyStateAtTick?.(targetEid, shotTick)
-        if (historical && historical.alive) {
+        const endTick = Math.max(shotTick, historicalWindowEndTick)
+        const startTick = Math.max(shotTick, endTick - (MAX_HISTORICAL_OVERLAP_SAMPLES - 1))
+        for (let historicalTick = startTick; historicalTick <= endTick && !overlaps; historicalTick++) {
+          const historical = world.lagCompGetEnemyStateAtTick?.(targetEid, historicalTick)
+          if (!historical || !historical.alive) continue
           const historicalMinDist = radius + historical.radius + world.lagCompHistoricalRadiusPadding
           overlaps = overlapsSweptCircle(
             startX,
@@ -241,14 +259,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       }
 
       if (localOnly) {
-        // Prediction path: optimistic HP only; avoid authoritative hooks/credit.
-        applyDamage(world, targetEid, {
-          amount: damage,
-          attackerEid: eid,
-          clampToZero: true,
-          fireHealthChanged: false,
-          trackAttribution: false,
-        })
+        // Prediction path: no enemy HP mutation. Server authority drives HP.
         if (shouldRemoveBullet) bulletsToRemove.push(eid)
         if (shouldStopIteration) hitEntity = true
         return
@@ -281,7 +292,13 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       if (shouldStopIteration) hitEntity = true
     })
 
-    if (hitEntity) continue // skip wall check for this bullet
+    if (hitEntity) {
+      // Rewind catch-up sweep start is only used for the first collision step.
+      if (sweepStart) {
+        world.lagCompBulletSweepStart.delete(eid)
+      }
+      continue // skip wall check for this bullet
+    }
 
     // --- Destructible trap collision (player bullets only) ---
     if (Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET && world.trapZones.length > 0) {
@@ -302,7 +319,13 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         hitTrap = true
         break
       }
-      if (hitTrap) continue
+      if (hitTrap) {
+        // Rewind catch-up sweep start is only used for the first collision step.
+        if (sweepStart) {
+          world.lagCompBulletSweepStart.delete(eid)
+        }
+        continue
+      }
     }
 
     // --- Wall collision ---
@@ -323,6 +346,11 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
       // Mark for removal
       bulletsToRemove.push(eid)
+    }
+
+    // Rewind catch-up sweep start is only used for the first collision step.
+    if (sweepStart) {
+      world.lagCompBulletSweepStart.delete(eid)
     }
   }
 

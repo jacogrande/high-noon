@@ -268,6 +268,7 @@ describe('bulletCollisionSystem', () => {
       world.lagCompEnabled = true
       world.tick = 100
       world.lagCompBulletShotTick.set(bulletEid, 99)
+      world.lagCompBulletSpawnTick.set(bulletEid, 100)
       world.lagCompGetEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 99) return null
         return {
@@ -305,6 +306,7 @@ describe('bulletCollisionSystem', () => {
       world.tick = 100
       world.lagCompHistoricalRadiusPadding = 3
       world.lagCompBulletShotTick.set(bulletEid, 99)
+      world.lagCompBulletSpawnTick.set(bulletEid, 100)
       world.lagCompGetEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 99) return null
         return {
@@ -319,6 +321,187 @@ describe('bulletCollisionSystem', () => {
 
       expect(Health.current[enemyEid]).toBe(14)
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('historical overlap still applies on spawn tick when shot tick is much older', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 120, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      world.lagCompEnabled = true
+      world.tick = 120
+      world.lagCompBulletShotTick.set(bulletEid, 110)
+      world.lagCompBulletSpawnTick.set(bulletEid, 120)
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 110) return null
+        return {
+          x: OPEN_X,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('historical overlap checks intermediate rewind ticks for moving targets', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 120, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      world.lagCompEnabled = true
+      world.tick = 120
+      world.lagCompBulletShotTick.set(bulletEid, 110)
+      world.lagCompBulletSpawnTick.set(bulletEid, 120)
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid) return null
+        if (tick === 115) {
+          return {
+            x: OPEN_X,
+            y: OPEN_Y,
+            radius: Collider.radius[enemyEid]!,
+            alive: true,
+          }
+        }
+        return {
+          x: OPEN_X + 120,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+    })
+
+    test('first collision step uses lag-comp rewind sweep start when provided', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 120, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X + 40,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+      Position.prevX[bulletEid] = OPEN_X + 30
+      Position.prevY[bulletEid] = OPEN_Y
+
+      world.lagCompEnabled = true
+      world.tick = 120
+      world.lagCompBulletShotTick.set(bulletEid, 110)
+      world.lagCompBulletSpawnTick.set(bulletEid, 120)
+      world.lagCompBulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 110) return null
+        return {
+          x: OPEN_X,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(14)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+      expect(world.lagCompBulletSweepStart.has(bulletEid)).toBe(false)
+    })
+
+    test('rewind sweep start is consumed after one collision step even without a hit', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 300, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X + 40,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+      Position.prevX[bulletEid] = OPEN_X + 30
+      Position.prevY[bulletEid] = OPEN_Y
+
+      world.lagCompEnabled = true
+      world.tick = 120
+      world.lagCompBulletShotTick.set(bulletEid, 110)
+      world.lagCompBulletSpawnTick.set(bulletEid, 120)
+      world.lagCompBulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 110) return null
+        return {
+          x: OPEN_X + 300,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(20)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(true)
+      expect(world.lagCompBulletSweepStart.has(bulletEid)).toBe(false)
+    })
+
+    test('historical overlap window closes after spawn tick', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X + 120, OPEN_Y, 20)
+      const bulletEid = spawnBullet(world, {
+        x: OPEN_X,
+        y: OPEN_Y,
+        vx: 0,
+        vy: 0,
+        damage: 6,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      world.lagCompEnabled = true
+      world.tick = 121
+      world.lagCompBulletShotTick.set(bulletEid, 110)
+      world.lagCompBulletSpawnTick.set(bulletEid, 120)
+      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+        if (eid !== enemyEid || tick !== 110) return null
+        return {
+          x: OPEN_X,
+          y: OPEN_Y,
+          radius: Collider.radius[enemyEid]!,
+          alive: true,
+        }
+      }
+
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]).toBe(20)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(true)
     })
 
     test('enemy bullet damages player and is removed', () => {
@@ -634,8 +817,8 @@ describe('bulletCollisionSystem', () => {
     })
   })
 
-  describe('local-player scope optimistic hits', () => {
-    test('local player bullets apply optimistic enemy damage immediately', () => {
+  describe('local-player scope hit filtering', () => {
+    test('local player bullets are consumed without mutating enemy HP', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
       const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
       const bulletEid = spawnBullet(world, {
@@ -653,11 +836,11 @@ describe('bulletCollisionSystem', () => {
 
       bulletCollisionSystem(world, 1 / 60)
 
-      expect(Health.current[enemyEid]).toBe(14)
+      expect(Health.current[enemyEid]).toBe(20)
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
     })
 
-    test('local player optimistic hits work without a spatial hash rebuild', () => {
+    test('local-player bullet handling works without a spatial hash rebuild', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
       const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
       const bulletEid = spawnBullet(world, {
@@ -676,7 +859,7 @@ describe('bulletCollisionSystem', () => {
 
       bulletCollisionSystem(world, 1 / 60)
 
-      expect(Health.current[enemyEid]).toBe(14)
+      expect(Health.current[enemyEid]).toBe(20)
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
     })
 

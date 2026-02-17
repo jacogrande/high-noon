@@ -1,9 +1,9 @@
 /**
  * Weapon System
  *
- * Handles firing and bullet spawning for player entities.
- * Uses the Cylinder component for ammo tracking, fire cooldown,
- * and click-vs-hold fire rate differentiation.
+ * Handles firing for player entities.
+ * - `projectile` mode: legacy bullet spawning path.
+ * - `hitscan` mode: immediate ray-based resolution for player firearms.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
@@ -18,19 +18,46 @@ import {
   Roll,
   PlayerState,
   PlayerStateType,
+  Enemy,
+  Collider,
+  Health,
+  Invincible,
+  Showdown,
 } from '../components'
-import { spawnBullet } from '../prefabs'
+import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { clampDamage } from '../damage'
 import { getUpgradeStateForPlayer } from '../upgrade'
+import { applyDamage } from './applyDamage'
+import { isSolidAt } from '../tilemap'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
+const enemyTargetQuery = defineQuery([Enemy, Position, Collider, Health])
+
+const MAX_HISTORICAL_HITSCAN_SAMPLES = 16
+
+let nextVirtualBulletId = -1
 
 interface RewoundFireContext {
   originX: number
   originY: number
   rewindSeconds: number
   shotTick: number | null
+}
+
+interface HitscanCandidate {
+  targetEid: number
+  distance: number
+  x: number
+  y: number
+}
+
+interface HitscanPelletResult {
+  hit: boolean
+  targetEid: number
+  hitX: number
+  hitY: number
+  damageApplied: number
 }
 
 function getRewoundFireContext(world: GameWorld, playerEid: number, x: number, y: number, dt: number): RewoundFireContext {
@@ -57,6 +84,264 @@ function getRewoundFireContext(world: GameWorld, playerEid: number, x: number, y
   }
 }
 
+function rayCircleIntersectionDistance(
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+): number | null {
+  const mx = originX - centerX
+  const my = originY - centerY
+  const b = mx * dirX + my * dirY
+  const c = mx * mx + my * my - radius * radius
+
+  if (c > 0 && b > 0) return null
+
+  const discriminant = b * b - c
+  if (discriminant < 0) return null
+
+  const sqrtDisc = Math.sqrt(discriminant)
+  const nearT = -b - sqrtDisc
+  const farT = -b + sqrtDisc
+  if (farT < 0) return null
+
+  return nearT >= 0 ? nearT : 0
+}
+
+function findWallDistance(
+  world: GameWorld,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  maxDistance: number,
+): number {
+  const tilemap = world.tilemap
+  if (!tilemap) return maxDistance
+
+  if (isSolidAt(tilemap, originX, originY)) return 0
+
+  const step = Math.max(2, tilemap.tileSize * 0.25)
+  for (let d = step; d <= maxDistance; d += step) {
+    const x = originX + dirX * d
+    const y = originY + dirY * d
+    if (isSolidAt(tilemap, x, y)) {
+      return d
+    }
+  }
+
+  return maxDistance
+}
+
+function getHistoricalRayDistance(
+  world: GameWorld,
+  targetEid: number,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  shotTick: number | null,
+  currentRadius: number,
+): number | null {
+  let bestDistance: number | null = rayCircleIntersectionDistance(
+    originX,
+    originY,
+    dirX,
+    dirY,
+    Position.x[targetEid]!,
+    Position.y[targetEid]!,
+    currentRadius,
+  )
+
+  if (
+    shotTick === null ||
+    !world.lagCompEnabled ||
+    world.simulationScope === 'local-player' ||
+    world.lagCompGetEnemyStateAtTick === undefined
+  ) {
+    return bestDistance
+  }
+
+  const endTick = world.tick
+  const startTick = Math.max(shotTick, endTick - (MAX_HISTORICAL_HITSCAN_SAMPLES - 1))
+  for (let tick = startTick; tick <= endTick; tick++) {
+    const historical = world.lagCompGetEnemyStateAtTick(targetEid, tick)
+    if (!historical || !historical.alive) continue
+    const d = rayCircleIntersectionDistance(
+      originX,
+      originY,
+      dirX,
+      dirY,
+      historical.x,
+      historical.y,
+      historical.radius + world.lagCompHistoricalRadiusPadding,
+    )
+    if (d === null) continue
+    if (bestDistance === null || d < bestDistance) {
+      bestDistance = d
+    }
+  }
+
+  return bestDistance
+}
+
+function getHitscanCandidates(
+  world: GameWorld,
+  ownerEid: number,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  maxDistance: number,
+  shotTick: number | null,
+): { candidates: HitscanCandidate[]; wallDistance: number } {
+  const wallDistance = findWallDistance(world, originX, originY, dirX, dirY, maxDistance)
+  const candidatesByTarget = new Map<number, HitscanCandidate>()
+
+  for (const targetEid of enemyTargetQuery(world)) {
+    if (targetEid === ownerEid) continue
+    if (Collider.layer[targetEid] !== CollisionLayer.ENEMY) continue
+    if (Health.current[targetEid]! <= 0) continue
+    if (hasComponent(world, Invincible, targetEid)) continue
+    if (Health.iframes[targetEid]! > 0) continue
+
+    const obj = world.objective
+    if (obj && obj.type === 'duel' && obj.status === 'active' && targetEid !== obj.duelistEid) {
+      continue
+    }
+
+    const distance = getHistoricalRayDistance(
+      world,
+      targetEid,
+      originX,
+      originY,
+      dirX,
+      dirY,
+      shotTick,
+      Collider.radius[targetEid]!,
+    )
+    if (distance === null) continue
+    if (distance > wallDistance || distance > maxDistance) continue
+
+    const x = originX + dirX * distance
+    const y = originY + dirY * distance
+    const prev = candidatesByTarget.get(targetEid)
+    if (!prev || distance < prev.distance) {
+      candidatesByTarget.set(targetEid, { targetEid, distance, x, y })
+    }
+  }
+
+  const candidates = Array.from(candidatesByTarget.values())
+  candidates.sort((a, b) => {
+    if (a.distance !== b.distance) return a.distance - b.distance
+    return a.targetEid - b.targetEid
+  })
+
+  return { candidates, wallDistance }
+}
+
+function extractShootSeq(input: unknown): number {
+  if (typeof input !== 'object' || input === null) return 0
+  const seq = (input as { shootSeq?: unknown }).shootSeq
+  return typeof seq === 'number' && Number.isFinite(seq)
+    ? Math.max(0, Math.trunc(seq))
+    : 0
+}
+
+function resolveHitscanPellet(
+  world: GameWorld,
+  ownerEid: number,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  baseDamage: number,
+  range: number,
+  shotTick: number | null,
+): HitscanPelletResult {
+  const { candidates, wallDistance } = getHitscanCandidates(
+    world,
+    ownerEid,
+    originX,
+    originY,
+    dirX,
+    dirY,
+    range,
+    shotTick,
+  )
+
+  const ownerHasShowdown =
+    hasComponent(world, Showdown, ownerEid) && Showdown.active[ownerEid] === 1
+  const showdownTarget = ownerHasShowdown ? Showdown.targetEid[ownerEid]! : NO_TARGET
+
+  const authoritative = world.simulationScope !== 'local-player'
+  const hasBulletHooks = authoritative && world.hooks.hasHandlers('onBulletHit')
+  const virtualBulletId = nextVirtualBulletId--
+  world.hitscanVirtualBulletOwners.set(virtualBulletId, ownerEid)
+
+  let totalDamageApplied = 0
+  let firstHitTarget = NO_TARGET
+  let firstHitX = originX + dirX * Math.min(range, wallDistance)
+  let firstHitY = originY + dirY * Math.min(range, wallDistance)
+
+  for (const candidate of candidates) {
+    let damage = baseDamage
+    let shouldContinue = false
+
+    if (ownerHasShowdown && candidate.targetEid !== showdownTarget) {
+      shouldContinue = true
+    } else if (ownerHasShowdown && candidate.targetEid === showdownTarget) {
+      const ownerState = getUpgradeStateForPlayer(world, ownerEid)
+      damage = clampDamage(damage * ownerState.showdownDamageMultiplier)
+    }
+
+    if (hasBulletHooks) {
+      const hookResult = world.hooks.fireBulletHit(world, virtualBulletId, candidate.targetEid, damage)
+      damage = hookResult.damage
+      if (hookResult.pierce) {
+        shouldContinue = true
+      }
+    }
+
+    if (hasComponent(world, Player, candidate.targetEid) && getUpgradeStateForPlayer(world, candidate.targetEid).finalArrangementActive) {
+      damage = clampDamage(damage * 0.75)
+    }
+
+    if (authoritative) {
+      const result = applyDamage(world, candidate.targetEid, {
+        amount: damage,
+        attackerEid: ownerEid,
+        setIframes: true,
+      })
+      if (result.applied > 0) {
+        totalDamageApplied += result.applied
+        if (firstHitTarget === NO_TARGET) {
+          firstHitTarget = candidate.targetEid
+          firstHitX = candidate.x
+          firstHitY = candidate.y
+        }
+      }
+    }
+
+    if (!shouldContinue) break
+  }
+
+  world.hookPierceCount.delete(virtualBulletId)
+  world.bulletPierceHits.delete(virtualBulletId)
+  world.hitscanVirtualBulletOwners.delete(virtualBulletId)
+
+  return {
+    hit: firstHitTarget !== NO_TARGET,
+    targetEid: firstHitTarget,
+    hitX: firstHitX,
+    hitY: firstHitY,
+    damageApplied: totalDamageApplied,
+  }
+}
+
 /**
  * Weapon system - handles firing with cylinder-based ammo
  *
@@ -70,6 +355,7 @@ export function weaponSystem(
   dt: number,
 ): void {
   const entities = weaponQuery(world)
+  world.pendingShotResults.length = 0
 
   for (const eid of entities) {
     const us = getUpgradeStateForPlayer(world, eid)
@@ -100,12 +386,12 @@ export function weaponSystem(
 
     // Check cylinder has rounds
     const hasCylinder = hasComponent(world, Cylinder, eid)
-    // Prospector uses melee; bullet weapon path requires cylinder-based firearms.
+    // Prospector uses melee; firearm path requires cylinder-based weapons.
     if (!hasCylinder) continue
-    if (hasCylinder && Cylinder.rounds[eid]! <= 0) continue
+    if (Cylinder.rounds[eid]! <= 0) continue
 
     // Check fire cooldown (cylinder-based for players)
-    if (hasCylinder && Cylinder.fireCooldown[eid]! > 0) {
+    if (Cylinder.fireCooldown[eid]! > 0) {
       if (wasShootDown) {
         // Hold: must wait for full cooldown to expire
         continue
@@ -133,13 +419,13 @@ export function weaponSystem(
     }
 
     // Bandolier: first shot after reload deals bonus damage
-    if (us.bandolierFirstShotBonus > 0 && hasCylinder && Cylinder.firstShotAfterReload[eid] === 1) {
+    if (us.bandolierFirstShotBonus > 0 && Cylinder.firstShotAfterReload[eid] === 1) {
       bulletDamage = clampDamage(bulletDamage * (1 + us.bandolierFirstShotBonus))
       us.bandolierFirstShotBonus = 0
     }
 
     // Last round bonus: if cylinder has exactly 1 round, apply multiplier
-    if (hasCylinder && Cylinder.rounds[eid] === 1) {
+    if (Cylinder.rounds[eid] === 1) {
       const multiplier = us.lastRoundMultiplier
       bulletDamage = clampDamage(bulletDamage * multiplier)
     }
@@ -149,64 +435,130 @@ export function weaponSystem(
     const spreadAngle = us.spreadAngle
     const perPelletDamage = clampDamage(bulletDamage / pelletCount)
 
-    for (let i = 0; i < pelletCount; i++) {
-      // Fan formula: evenly distribute pellets across the spread arc
-      const angleOffset = pelletCount > 1
-        ? spreadAngle * (i / (pelletCount - 1) - 0.5)
-        : 0
-      const pelletAngle = aimAngle + angleOffset
+    if (world.playerFireMode === 'hitscan') {
+      const centerDirX = Math.cos(aimAngle)
+      const centerDirY = Math.sin(aimAngle)
+      const missDistance = findWallDistance(
+        world,
+        rewoundFire.originX,
+        rewoundFire.originY,
+        centerDirX,
+        centerDirY,
+        bulletRange,
+      )
+      const missX = rewoundFire.originX + centerDirX * missDistance
+      const missY = rewoundFire.originY + centerDirY * missDistance
 
-      const vx = Math.cos(pelletAngle) * bulletSpeed
-      const vy = Math.sin(pelletAngle) * bulletSpeed
+      let didHit = false
+      let firstHitTarget = NO_TARGET
+      let firstHitX = missX
+      let firstHitY = missY
+      let totalDamageApplied = 0
 
-      const bulletEid = spawnBullet(world, {
-        x: rewoundFire.originX,
-        y: rewoundFire.originY,
-        vx,
-        vy,
-        damage: perPelletDamage,
-        range: bulletRange,
-        ownerId: eid,
-      })
+      for (let i = 0; i < pelletCount; i++) {
+        const angleOffset = pelletCount > 1
+          ? spreadAngle * (i / (pelletCount - 1) - 0.5)
+          : 0
+        const pelletAngle = aimAngle + angleOffset
+        const dirX = Math.cos(pelletAngle)
+        const dirY = Math.sin(pelletAngle)
 
-      if (rewoundFire.rewindSeconds > 0) {
-        const catchupX = rewoundFire.originX + vx * rewoundFire.rewindSeconds
-        const catchupY = rewoundFire.originY + vy * rewoundFire.rewindSeconds
-        Position.prevX[bulletEid] = rewoundFire.originX
-        Position.prevY[bulletEid] = rewoundFire.originY
-        Position.x[bulletEid] = catchupX
-        Position.y[bulletEid] = catchupY
+        const pellet = resolveHitscanPellet(
+          world,
+          eid,
+          rewoundFire.originX,
+          rewoundFire.originY,
+          dirX,
+          dirY,
+          perPelletDamage,
+          bulletRange,
+          rewoundFire.shotTick,
+        )
 
-        const dx = catchupX - rewoundFire.originX
-        const dy = catchupY - rewoundFire.originY
-        const catchupDist = Math.sqrt(dx * dx + dy * dy)
-        Bullet.distanceTraveled[bulletEid] = Math.min(Bullet.range[bulletEid]!, catchupDist)
-        Bullet.lifetime[bulletEid] = Math.max(0, Bullet.lifetime[bulletEid]! - rewoundFire.rewindSeconds)
+        totalDamageApplied += pellet.damageApplied
+        if (!didHit && pellet.hit) {
+          didHit = true
+          firstHitTarget = pellet.targetEid
+          firstHitX = pellet.hitX
+          firstHitY = pellet.hitY
+        }
       }
 
-      if (rewoundFire.shotTick !== null) {
-        world.lagCompBulletShotTick.set(bulletEid, rewoundFire.shotTick)
+      if (world.simulationScope === 'all') {
+        world.pendingShotResults.push({
+          shooterEid: eid,
+          shootSeq: extractShootSeq(input),
+          tick: world.tick,
+          hit: didHit,
+          hitX: firstHitX,
+          hitY: firstHitY,
+          targetEid: firstHitTarget,
+          damageApplied: totalDamageApplied,
+        })
+      }
+    } else {
+      for (let i = 0; i < pelletCount; i++) {
+        // Fan formula: evenly distribute pellets across the spread arc
+        const angleOffset = pelletCount > 1
+          ? spreadAngle * (i / (pelletCount - 1) - 0.5)
+          : 0
+        const pelletAngle = aimAngle + angleOffset
+
+        const vx = Math.cos(pelletAngle) * bulletSpeed
+        const vy = Math.sin(pelletAngle) * bulletSpeed
+
+        const bulletEid = spawnBullet(world, {
+          x: rewoundFire.originX,
+          y: rewoundFire.originY,
+          vx,
+          vy,
+          damage: perPelletDamage,
+          range: bulletRange,
+          ownerId: eid,
+        })
+
+        if (rewoundFire.rewindSeconds > 0) {
+          const catchupX = rewoundFire.originX + vx * rewoundFire.rewindSeconds
+          const catchupY = rewoundFire.originY + vy * rewoundFire.rewindSeconds
+          Position.prevX[bulletEid] = rewoundFire.originX
+          Position.prevY[bulletEid] = rewoundFire.originY
+          Position.x[bulletEid] = catchupX
+          Position.y[bulletEid] = catchupY
+          world.lagCompBulletSweepStart.set(bulletEid, {
+            x: rewoundFire.originX,
+            y: rewoundFire.originY,
+          })
+
+          const dx = catchupX - rewoundFire.originX
+          const dy = catchupY - rewoundFire.originY
+          const catchupDist = Math.sqrt(dx * dx + dy * dy)
+          Bullet.distanceTraveled[bulletEid] = Math.min(Bullet.range[bulletEid]!, catchupDist)
+          Bullet.lifetime[bulletEid] = Math.max(0, Bullet.lifetime[bulletEid]! - rewoundFire.rewindSeconds)
+        }
+
+        if (rewoundFire.shotTick !== null) {
+          world.lagCompBulletShotTick.set(bulletEid, rewoundFire.shotTick)
+          world.lagCompBulletSpawnTick.set(bulletEid, world.tick)
+        }
       }
     }
 
     // Consume round and set fire cooldown
-    if (hasCylinder) {
-      Cylinder.rounds[eid] = Cylinder.rounds[eid]! - 1
-      Cylinder.firstShotAfterReload[eid] = 0
+    Cylinder.rounds[eid] = Cylinder.rounds[eid]! - 1
+    Cylinder.firstShotAfterReload[eid] = 0
 
-      // Fire onCylinderEmpty hook when last round consumed
-      if (Cylinder.rounds[eid] === 0) {
-        world.hooks.fireCylinderEmpty(world, eid)
-      }
-
-      // Always set hold-rate cooldown. Click-to-fire advantage is at the
-      // gate (rising edge can fire through remaining cooldown early).
-      let fireCooldown = 1 / us.holdFireRate
-      // Witching Hour: double fire rate (halve cooldown)
-      if (us.witchingHourActive) {
-        fireCooldown *= 0.5
-      }
-      Cylinder.fireCooldown[eid] = fireCooldown
+    // Fire onCylinderEmpty hook when last round consumed
+    if (Cylinder.rounds[eid] === 0) {
+      world.hooks.fireCylinderEmpty(world, eid)
     }
+
+    // Always set hold-rate cooldown. Click-to-fire advantage is at the
+    // gate (rising edge can fire through remaining cooldown early).
+    let fireCooldown = 1 / us.holdFireRate
+    // Witching Hour: double fire rate (halve cooldown)
+    if (us.witchingHourActive) {
+      fireCooldown *= 0.5
+    }
+    Cylinder.fireCooldown[eid] = fireCooldown
   }
 }

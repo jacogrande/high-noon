@@ -54,6 +54,35 @@ export function emitMuzzleFlash(
 }
 
 /**
+ * Shot tracer - short-lived streak to preserve firearm readability with hitscan.
+ */
+export function emitShotTracer(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  aimAngle: number,
+): void {
+  const count = randInt(2, 3)
+  for (let i = 0; i < count; i++) {
+    const speed = rand(420, 620)
+    const spread = rand(-0.04, 0.04)
+    const angle = aimAngle + spread
+    pool.emit({
+      x: x + Math.cos(aimAngle) * rand(0, 4),
+      y: y + Math.sin(aimAngle) * rand(0, 4),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.04, 0.07),
+      startScale: rand(1.4, 2.4),
+      endScale: 0,
+      startAlpha: 0.85,
+      endAlpha: 0,
+      tint: 0xffe9a6,
+    })
+  }
+}
+
+/**
  * Death burst — colored particles explode outward from enemy death position.
  * Count scales with tier: fodder 8-12, threat 15-20.
  */

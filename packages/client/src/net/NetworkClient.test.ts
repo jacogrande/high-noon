@@ -334,6 +334,35 @@ describe('NetworkClient', () => {
     expect(despawns).toEqual([{ bulletId: 10, tick: 226 }])
   })
 
+  test('registerRoomHandlers forwards shot-result messages', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    const results: Array<{ shootSeq: number; hit: boolean; damageApplied?: number }> = []
+
+    net.on('shot-result', (payload) => {
+      results.push({
+        shootSeq: payload.shootSeq,
+        hit: payload.hit,
+        damageApplied: payload.damageApplied,
+      })
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    room.emit('shot-result', {
+      shooterServerEid: 7,
+      shootSeq: 12,
+      tick: 400,
+      hit: true,
+      hitX: 120,
+      hitY: 80,
+      targetServerEid: 42,
+      damageApplied: 18,
+    })
+
+    expect(results).toEqual([{ shootSeq: 12, hit: true, damageApplied: 18 }])
+  })
+
   test('registerRoomHandlers emits lobby-state from schema state and updates', () => {
     const net = new NetworkClient('ws://localhost:2567')
     const room = new FakeRoom()
