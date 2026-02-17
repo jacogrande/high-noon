@@ -14,4 +14,10 @@ export interface ShotResultMessage {
   targetServerEid?: number
   /** Optional total damage applied by the resolved shot. */
   damageApplied?: number
+  /** How many ticks the server rewound for lag compensation. */
+  rewindTicks?: number
+  /** Whether the rewind was clamped to the maximum allowed distance. */
+  rewindClamped?: boolean
+  /** Server frame time in ms for the tick that resolved this shot. */
+  serverFrameTimeMs?: number
 }

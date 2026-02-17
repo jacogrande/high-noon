@@ -31,6 +31,7 @@ import {
   initUpgradeState,
   canTakeNode,
   deriveAbilityHudState,
+  computeQuickHash,
   type UpgradeState,
   type SelectNodeResponse,
   type SystemRegistry,
@@ -83,7 +84,7 @@ import { SnapshotIngestor } from './SnapshotIngestor'
 import { PredictedEntityTracker } from './PredictedEntityTracker'
 import { RemoteInterpolationApplier } from './RemoteInterpolationApplier'
 import { MultiplayerReconciler } from './MultiplayerReconciler'
-import { MultiplayerTelemetry } from './MultiplayerTelemetry'
+import { MultiplayerTelemetry, type OverlayMode } from './MultiplayerTelemetry'
 import { syncRenderersAndQueueEvents } from './syncRenderersAndQueueEvents'
 import type { SceneModeController } from './SceneModeController'
 import { DeathSequencePresentation } from './DeathSequencePresentation'
@@ -103,6 +104,10 @@ import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
 import { buildMultiplayerMinimapState } from './minimap'
 import { didFireRound } from './feedbackSignals'
+import { ShotTraceBuffer } from '../../net/ShotTrace'
+import { HitAgreementTracker } from '../../net/HitAgreementTracker'
+import { SessionReplayRecorder, type LagReport } from '../../net/SessionReplay'
+import { NetGraph } from '../../render/NetGraph'
 
 const GAME_ZOOM = 2
 
@@ -173,6 +178,13 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly interpolationApplier: RemoteInterpolationApplier
   private readonly reconciler: MultiplayerReconciler
   private readonly telemetry: MultiplayerTelemetry
+  private readonly shotTraceBuffer: ShotTraceBuffer
+  private readonly hitAgreement: HitAgreementTracker
+  private readonly replayRecorder: SessionReplayRecorder
+  private readonly netGraph: NetGraph
+  private readonly stateHashHistory = new Map<number, number>()
+  private readonly lagReports: LagReport[] = []
+  private overlayMode: OverlayMode = 'off'
 
   /** Input sequence counter for network messages */
   private inputSeq = 0
@@ -314,6 +326,16 @@ export class MultiplayerModeController implements SceneModeController {
     this.interpolationApplier = new RemoteInterpolationApplier()
     this.reconciler = new MultiplayerReconciler()
     this.telemetry = new MultiplayerTelemetry()
+    this.shotTraceBuffer = new ShotTraceBuffer()
+    this.hitAgreement = new HitAgreementTracker()
+    this.replayRecorder = new SessionReplayRecorder()
+    this.netGraph = new NetGraph(this.gameApp.layers.ui)
+    this.netGraph.addSeries('rtt', 0x44cc44, 200)
+    this.netGraph.setThresholds('rtt', 40, 80, 120)
+    this.netGraph.addSeries('correction', 0xcccc44, 100)
+    this.netGraph.setThresholds('correction', 4, 20, 50)
+    this.netGraph.addSeries('bufferDepth', 0x4488cc, 8)
+    this.netGraph.setThresholds('bufferDepth', 3, 2, 1)
     this.gameplayEventProcessor = new GameplayEventProcessor({
       camera: this.camera,
       sound: this.sound,
@@ -334,6 +356,9 @@ export class MultiplayerModeController implements SceneModeController {
       MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys,
       {
         toggleDebugOverlay: () => this.debugRenderer.toggle(),
+        cycleNetOverlay: () => this.cycleNetOverlay(),
+        recordLagReport: () => this.recordLagReport(),
+        exportReplay: () => this.exportReplay(),
       },
     )
     window.addEventListener('keydown', this.handleKeyDown)
@@ -430,6 +455,13 @@ export class MultiplayerModeController implements SceneModeController {
 
     this.net.on('pong', (clientTime, serverTime) => {
       this.clockSync.onPong(clientTime, serverTime)
+      if (this.clockSync.isConverged()) {
+        this.telemetry.onRTTSample(this.clockSync.getRTT())
+      }
+    })
+
+    this.net.on('state-hash', (data) => {
+      this.onStateHash(data.tick, data.hash)
     })
 
     this.net.on('game-config', (config: GameConfig) => {
@@ -445,6 +477,7 @@ export class MultiplayerModeController implements SceneModeController {
       // Defer heavy decode/apply/reconcile work to fixed update, so socket
       // callbacks stay lightweight and don't preempt rendering.
       this.telemetry.onSnapshotReceived(this.pendingSnapshots.length > 0)
+      this.telemetry.onSnapshotReceivedTimed()
       if (this.pendingSnapshots.length >= MAX_PENDING_SNAPSHOTS) {
         this.pendingSnapshots.shift()
         this.telemetry.onSnapshotDropped()
@@ -533,6 +566,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.connected = true
     this.disconnected = false
     this.shootWasDown = false
+    this.replayRecorder.start(config.seed, config.characterId)
     console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
     this.clockSync.stop()
     this.snapshotBuffer.clear()
@@ -635,6 +669,23 @@ export class MultiplayerModeController implements SceneModeController {
     while (this.pendingShotResults.length > 0) {
       const result = this.pendingShotResults.shift()!
       if (result.shooterServerEid !== this.myServerEid) continue
+
+      // Attach to shot trace and feed hit agreement.
+      // NOTE: Client prediction attachment is deferred — passing null means
+      // all outcomes classify as TRUE_MISS or FALSE_MISS until we track
+      // per-bullet predicted targets. Agreement rate reflects miss-only stats.
+      const trace = this.shotTraceBuffer.attachServerResult(result.shootSeq, result)
+      if (trace) {
+        this.hitAgreement.record(
+          null,
+          result.hit ? (result.targetServerEid ?? null) : null,
+        )
+      }
+
+      // Feed server frame time telemetry
+      if (result.serverFrameTimeMs !== undefined) {
+        this.telemetry.onServerFrameTime(result.serverFrameTimeMs)
+      }
 
       const visualBulletId = this.takePendingVisualShot(result.shootSeq)
       if (
@@ -794,7 +845,20 @@ export class MultiplayerModeController implements SceneModeController {
       SNAP_THRESHOLD,
     )
     if (sample.hadCorrection) {
-      this.telemetry.onReconciliationCorrection(sample.snapped)
+      this.telemetry.onReconciliationCorrectionDetailed(
+        sample.correctionErrorMagnitude,
+        sample.snapped,
+        this.reconciler.getError().x,
+        this.reconciler.getError().y,
+      )
+    }
+
+    // Store client state hash for desync detection
+    const clientHash = computeQuickHash(this.world)
+    this.stateHashHistory.set(snapshot.tick, clientHash)
+    // Prune old entries
+    for (const [tick] of this.stateHashHistory) {
+      if (tick < snapshot.tick - 120) this.stateHashHistory.delete(tick)
     }
   }
 
@@ -844,6 +908,16 @@ export class MultiplayerModeController implements SceneModeController {
     const wantsShoot = (inputState.buttons & Button.SHOOT) !== 0
     if (wantsShoot && !this.shootWasDown) {
       this.shootSeq++
+      this.shotTraceBuffer.open(
+        this.shootSeq,
+        this.inputSeq + 1,
+        performance.now(),
+        this.predictionTick,
+        Player.aimAngle[this.myClientEid]!,
+        Position.x[this.myClientEid]!,
+        Position.y[this.myClientEid]!,
+        this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
+      )
     }
     this.shootWasDown = wantsShoot
     this.inputSeq++
@@ -972,6 +1046,9 @@ export class MultiplayerModeController implements SceneModeController {
     )
     const alpha = interpState ? this.interpolateFromBuffer(interpState) : 0.5
 
+    // Feed interpolation delay telemetry
+    this.telemetry.onInterpolationDelayUpdate(this.snapshotBuffer.getInterpolationDelayMs())
+
     // Decay misprediction error (frame-rate independent).
     this.reconciler.decayError(rawDt, CORRECTION_SPEED)
     const error = this.reconciler.getError()
@@ -1097,10 +1174,36 @@ export class MultiplayerModeController implements SceneModeController {
       xp: this.latestHud?.xp ?? 0,
       level: this.latestHud?.level ?? 0,
       pendingPts: this.latestHud?.pendingPoints ?? 0,
-      netTelemetry: this.telemetry.getOverlayText(),
+      netTelemetry: this.telemetry.getOverlayText(this.overlayMode),
     }
     this.debugRenderer.updateStats(stats)
     this.telemetry.maybeLog(now)
+
+    // Feed NetGraph when in graphs mode
+    if (this.overlayMode === 'graphs') {
+      this.netGraph.pushSample('rtt', this.telemetry.rttHistory.count > 0 ? this.telemetry.rttHistory.percentile(0.5) : 0)
+      this.netGraph.pushSample('correction', this.telemetry.correctionMagnitudeHistory.count > 0 ? this.telemetry.correctionMagnitudeHistory.percentile(0.5) : 0)
+      this.netGraph.pushSample('bufferDepth', this.snapshotBuffer.getBufferDepth())
+      this.netGraph.reposition(this.gameApp.width, this.gameApp.height)
+      this.netGraph.render()
+    }
+
+    // Feed replay recorder
+    if (this.replayRecorder.isRecording && this.myClientEid >= 0) {
+      this.replayRecorder.recordFrame({
+        tick: this.world.tick,
+        time: now,
+        playerX: Position.x[this.myClientEid]!,
+        playerY: Position.y[this.myClientEid]!,
+        aimAngle: Player.aimAngle[this.myClientEid]!,
+        buttons: 0,
+        rtt: this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
+        interpDelay: this.snapshotBuffer.getInterpolationDelayMs(),
+        correctionMag: this.reconciler.getError().x !== 0 || this.reconciler.getError().y !== 0
+          ? Math.sqrt(this.reconciler.getError().x ** 2 + this.reconciler.getError().y ** 2) : 0,
+        bufferDepth: this.snapshotBuffer.getBufferDepth(),
+      })
+    }
   }
 
   /**
@@ -1286,6 +1389,85 @@ export class MultiplayerModeController implements SceneModeController {
   }
 
   // ===========================================================================
+  // Netcode Observability
+  // ===========================================================================
+
+  private cycleNetOverlay(): void {
+    const modes: OverlayMode[] = ['off', 'summary', 'detailed', 'graphs']
+    const idx = modes.indexOf(this.overlayMode)
+    this.overlayMode = modes[(idx + 1) % modes.length]!
+    if (this.overlayMode === 'graphs') {
+      this.netGraph.show()
+    } else {
+      this.netGraph.hide()
+    }
+    console.log(`[MP] Net overlay: ${this.overlayMode}`)
+  }
+
+  private recordLagReport(): void {
+    const report: LagReport = {
+      tick: this.world.tick,
+      time: performance.now(),
+      rttMs: this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
+      correctionMagnitude: this.telemetry.correctionMagnitudeHistory.count > 0
+        ? this.telemetry.correctionMagnitudeHistory.percentile(0.5) : 0,
+      bufferDepth: this.snapshotBuffer.getBufferDepth(),
+      interpAlpha: this.snapshotBuffer.getLastAlpha(),
+      recentCorrections: [],
+    }
+    this.lagReports.push(report)
+    if (this.replayRecorder.isRecording) {
+      this.replayRecorder.addLagReport(report)
+    }
+    console.log('[MP] Lag report captured:', report)
+  }
+
+  private exportReplay(): void {
+    if (!this.replayRecorder.isRecording) {
+      console.log('[MP] No replay recording active')
+      return
+    }
+    const summary = this.shotTraceBuffer.getSummary()
+    const data = this.replayRecorder.stop({
+      shotTraces: this.shotTraceBuffer.getCompletedTraces(),
+      hitAgreement: this.hitAgreement.getStats(),
+      shotSummary: summary,
+      rttP50: this.telemetry.rttHistory.percentile(0.5),
+      rttP95: this.telemetry.rttHistory.percentile(0.95),
+      correctionP50: this.telemetry.correctionMagnitudeHistory.percentile(0.5),
+      correctionP95: this.telemetry.correctionMagnitudeHistory.percentile(0.95),
+    })
+    const json = JSON.stringify(data, (_key, val) =>
+      typeof val === 'number' ? +val.toFixed(2) : val,
+    )
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `replay-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    console.log(`[MP] Replay exported (${data.frames.length} frames)`)
+
+    // Start a new recording
+    this.replayRecorder.start(this.world.initialSeed, this.authoritativeCharacterId)
+  }
+
+  private onStateHash(serverTick: number, serverHash: number): void {
+    const clientHash = this.stateHashHistory.get(serverTick)
+    if (clientHash === undefined) return // No client hash for that tick yet
+    if (clientHash !== serverHash) {
+      this.telemetry.recordDesync()
+      if (this.replayRecorder.isRecording) {
+        this.replayRecorder.addDesyncEvent(serverTick, clientHash, serverHash)
+      }
+      console.error(
+        `[MP][DESYNC] tick=${serverTick} client=0x${clientHash.toString(16)} server=0x${serverHash.toString(16)}`,
+      )
+    }
+  }
+
+  // ===========================================================================
   // Cleanup
   // ===========================================================================
 
@@ -1310,6 +1492,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.lightingSystem.destroy()
     this.input.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
+    this.netGraph.destroy()
     this.debugRenderer.destroy()
     this.tilemapRenderer.destroy()
     this.interactableRenderer.destroy()

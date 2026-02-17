@@ -45,6 +45,8 @@ export class SnapshotBuffer {
   private lastReceiveTime: number | null = null
   private expectedReceiveInterval: number | null = null
   private intervalJitter = 0
+  private _starvationCount = 0
+  private _lastAlpha = 0
 
   constructor(interpolationDelay = DEFAULT_INTERPOLATION_DELAY) {
     this.baseInterpolationDelay = interpolationDelay
@@ -128,7 +130,11 @@ export class SnapshotBuffer {
    * falls back to local receive-time timestamps.
    */
   getInterpolationState(serverTimeNow?: number): InterpolationState | null {
-    if (this.buffer.length < 2) return null
+    if (this.buffer.length < 2) {
+      this._starvationCount++
+      this._lastAlpha = 0
+      return null
+    }
 
     const useServerTime = serverTimeNow !== undefined
     const renderTime = useServerTime
@@ -147,6 +153,7 @@ export class SnapshotBuffer {
 
     // No snapshot old enough — we're too far ahead, use oldest two
     if (fromIdx === -1) {
+      this._lastAlpha = 0
       return {
         from: this.buffer[0]!.snapshot,
         to: this.buffer[1]!.snapshot,
@@ -171,6 +178,7 @@ export class SnapshotBuffer {
         const extraAlpha = (t / span) * decay
         alpha = Math.min(MAX_EXTRAPOLATION_ALPHA, 1 + extraAlpha)
       }
+      this._lastAlpha = alpha
       return {
         from: from.snapshot,
         to: to.snapshot,
@@ -187,12 +195,22 @@ export class SnapshotBuffer {
       ? Math.max(0, Math.min(1, (renderTime - fromT) / span))
       : 1
 
+    this._lastAlpha = alpha
     return {
       from: from.snapshot,
       to: to.snapshot,
       alpha,
     }
   }
+
+  /** Number of snapshots currently in the buffer. */
+  getBufferDepth(): number { return this.buffer.length }
+
+  /** Cumulative count of interpolation starvation events (buffer had < 2 snapshots). */
+  getStarvationCount(): number { return this._starvationCount }
+
+  /** The interpolation alpha from the most recent getInterpolationState() call. */
+  getLastAlpha(): number { return this._lastAlpha }
 
   clear(): void {
     this.buffer.length = 0

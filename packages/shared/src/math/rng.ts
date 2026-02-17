@@ -35,4 +35,9 @@ export class SeededRng {
   reset(seed: number): void {
     this.seed = seed | 0
   }
+
+  /** Read current internal state (for hashing / desync detection). */
+  getState(): number {
+    return this.seed
+  }
 }

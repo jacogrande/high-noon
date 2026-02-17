@@ -307,6 +307,8 @@ export interface PendingShotResult {
   hitY: number
   targetEid: number
   damageApplied: number
+  rewindTicks: number
+  rewindClamped: boolean
 }
 
 /**

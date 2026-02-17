@@ -494,6 +494,8 @@ export function weaponSystem(
           hitY: firstHitY,
           targetEid: firstHitTarget,
           damageApplied: totalDamageApplied,
+          rewindTicks: rewoundFire.shotTick !== null ? world.tick - rewoundFire.shotTick : 0,
+          rewindClamped: false, // Server overrides in sendShotResults()
         })
       }
     } else {

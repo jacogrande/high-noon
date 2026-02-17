@@ -4,6 +4,9 @@ export interface SceneDebugHotkeyActions {
   toggleDebugOverlay: () => void
   toggleCollisionDebugOverlay?: () => void
   toggleSpawnPause?: () => void
+  cycleNetOverlay?: () => void
+  recordLagReport?: () => void
+  exportReplay?: () => void
 }
 
 export function createSceneDebugHotkeyHandler(
@@ -18,6 +21,18 @@ export function createSceneDebugHotkeyHandler(
 
     if (policy.enableSpawnPauseToggle && e.code === 'KeyP') {
       actions.toggleSpawnPause?.()
+    }
+
+    if (policy.enableNetOverlay && e.code === 'KeyN') {
+      actions.cycleNetOverlay?.()
+    }
+
+    if (policy.enableNetOverlay && e.code === 'KeyL') {
+      actions.recordLagReport?.()
+    }
+
+    if (policy.enableNetOverlay && e.code === 'KeyR' && e.shiftKey) {
+      actions.exportReplay?.()
     }
   }
 }

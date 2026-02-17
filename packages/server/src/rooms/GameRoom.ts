@@ -55,6 +55,7 @@ import {
   type SelectNodeResponse,
   type CharacterId,
   type PlayerRosterEntry,
+  computeQuickHash,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 import { ClientTickMapper } from '../net/ClientTickMapper'
@@ -169,6 +170,8 @@ interface MutableShotResultState {
     hitY: number
     targetEid: number
     damageApplied: number
+    rewindTicks: number
+    rewindClamped: boolean
   }>
   hitscanVirtualBulletOwners?: Map<number, number>
 }
@@ -293,6 +296,10 @@ export class GameRoom extends Room<GameRoomState> {
   private nextBulletNetId = 1
   private readonly campReadySessions = new Set<string>()
   private wasCampTransition = false
+  private readonly rewindClampedByPlayer = new Map<number, boolean>()
+  private lastTickDurationMs = 0
+  private tickTimingSamples: number[] = []
+  private metricsLogTick = 0
 
   override onAuth(_client: Client, options?: JoinOptions): boolean {
     if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
@@ -521,6 +528,10 @@ export class GameRoom extends Room<GameRoomState> {
       }
     }
 
+    const leavingSlot = this.slots.get(client.sessionId)
+    if (leavingSlot) {
+      this.rewindClampedByPlayer.delete(leavingSlot.eid)
+    }
     removePlayer(this.world, client.sessionId)
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
@@ -642,12 +653,28 @@ export class GameRoom extends Room<GameRoomState> {
         hit: result.hit,
         hitX: result.hitX,
         hitY: result.hitY,
+        rewindTicks: result.rewindTicks,
+        rewindClamped: this.rewindClampedByPlayer.get(result.shooterEid) ?? result.rewindClamped,
+        serverFrameTimeMs: this.lastTickDurationMs,
       }
       if (result.hit && result.targetEid !== NO_TARGET) {
         msg.targetServerEid = result.targetEid
       }
       if (result.damageApplied > 0) {
         msg.damageApplied = result.damageApplied
+      }
+
+      if (process.env.TRACE_SHOTS) {
+        console.log(JSON.stringify({
+          event: 'shot',
+          tick: result.tick,
+          shooter: result.shooterEid,
+          shootSeq: result.shootSeq,
+          hit: result.hit,
+          targetEid: result.targetEid,
+          rewindTicks: msg.rewindTicks,
+          rewindClamped: msg.rewindClamped,
+        }))
       }
 
       slot.client.send('shot-result', msg)
@@ -860,6 +887,7 @@ export class GameRoom extends Room<GameRoomState> {
     }
     const rewind = slot.tickMapper.clampRewindTick(this.world.tick, estimatedTick, REWIND_MAX_TICKS)
     this.world.lagCompShotTickByPlayer.set(slot.eid, rewind.tick)
+    this.rewindClampedByPlayer.set(slot.eid, rewind.clamped)
     if (isNewShootCommand) {
       this.rewindShotsTotal++
       const rewindTicks = this.world.tick - rewind.tick
@@ -876,7 +904,7 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private serverTick() {
-    const tickNowMs = performance.now()
+    const tickStartMs = performance.now()
     this.rewindHistory.record(this.world)
     this.world.lagCompShotTickByPlayer.clear()
     this.syncCampTransitionState()
@@ -935,7 +963,7 @@ export class GameRoom extends Room<GameRoomState> {
         }
       }
 
-      this.applyLagCompShotTick(slot, input, hadFreshInput, tickNowMs, slot.inputQueue.length)
+      this.applyLagCompShotTick(slot, input, hadFreshInput, tickStartMs, slot.inputQueue.length)
       this.world.playerInputs.set(slot.eid, input)
     }
 
@@ -961,8 +989,21 @@ export class GameRoom extends Room<GameRoomState> {
       this.sendInteractablesUpdates()
     }
 
+    // Tick duration tracking
+    this.lastTickDurationMs = performance.now() - tickStartMs
+    this.tickTimingSamples.push(this.lastTickDurationMs)
+
+    // State hash broadcast at ~1Hz (every 60 ticks), gated on DESYNC_CHECK
+    if (process.env.DESYNC_CHECK && this.world.tick % 60 === 0) {
+      const hash = computeQuickHash(this.world)
+      for (const slot of this.slots.values()) {
+        slot.client.send('state-hash', { tick: this.world.tick, hash })
+      }
+    }
+
     this.maybeLogRateLimitDrops()
     this.maybeLogRewindStats()
+    this.maybeLogRoomMetrics()
   }
 
   private maybeLogRateLimitDrops(): void {
@@ -1028,6 +1069,43 @@ export class GameRoom extends Room<GameRoomState> {
     this.rewindInterpMsAccum = 0
     this.rewindQueueDelayMsAccum = 0
     this.rewindEffectiveAgeMsAccum = 0
+  }
+
+  private maybeLogRoomMetrics(): void {
+    const METRICS_INTERVAL_TICKS = 600 // 10s at 60Hz
+    if (this.world.tick - this.metricsLogTick < METRICS_INTERVAL_TICKS) return
+    this.metricsLogTick = this.world.tick
+    if (this.tickTimingSamples.length === 0) return
+
+    const sorted = [...this.tickTimingSamples].sort((a, b) => a - b)
+    const avg = sorted.reduce((s, v) => s + v, 0) / sorted.length
+    const p95Idx = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * 0.95)))
+    const p95 = sorted[p95Idx]!
+    const overbudget = sorted.filter(v => v > TICK_MS).length
+    const overbudgetRate = overbudget / sorted.length
+    const effectiveTickRate = sorted.length / (METRICS_INTERVAL_TICKS / TICK_RATE)
+
+    console.log(
+      JSON.stringify({
+        event: 'room-metrics',
+        tick: this.world.tick,
+        players: this.slots.size,
+        avgTickMs: +avg.toFixed(2),
+        p95TickMs: +p95.toFixed(2),
+        overbudgetRate: +overbudgetRate.toFixed(3),
+        effectiveTickRate: +effectiveTickRate.toFixed(2),
+        samples: sorted.length,
+      }),
+    )
+
+    if (overbudgetRate > 0.05) {
+      console.warn(`[GameRoom][alert] overbudget rate ${(overbudgetRate * 100).toFixed(1)}% > 5%`)
+    }
+    if (effectiveTickRate * TICK_RATE < 55) {
+      console.warn(`[GameRoom][alert] effective tick rate ${(effectiveTickRate * TICK_RATE).toFixed(1)} < 55Hz`)
+    }
+
+    this.tickTimingSamples.length = 0
   }
 
   private sendHudUpdates() {

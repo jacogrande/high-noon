@@ -53,6 +53,7 @@ export type NetworkEventMap = {
   hud: (data: HudData) => void
   interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
+  'state-hash': (data: { tick: number; hash: number }) => void
   'incompatible-protocol': (reason: string) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
@@ -256,6 +257,10 @@ export class NetworkClient {
 
     cleanup.push(room.onMessage('shot-result', (data: ShotResultMessage) => {
       this.emit('shot-result', data)
+    }))
+
+    cleanup.push(room.onMessage('state-hash', (data: { tick: number; hash: number }) => {
+      this.emit('state-hash', data)
     }))
 
     const onLeave = () => {

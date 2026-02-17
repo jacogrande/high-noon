@@ -14,6 +14,7 @@ export interface DeathPresentationPolicy {
 export interface DebugHotkeysPolicy {
   enableOverlayToggle: boolean
   enableSpawnPauseToggle: boolean
+  enableNetOverlay: boolean
 }
 
 export interface ScenePresentationPolicy {
@@ -37,6 +38,7 @@ export const SINGLEPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
   debugHotkeys: {
     enableOverlayToggle: true,
     enableSpawnPauseToggle: true,
+    enableNetOverlay: true,
   },
 }
 
@@ -55,5 +57,6 @@ export const MULTIPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
   debugHotkeys: {
     enableOverlayToggle: true,
     enableSpawnPauseToggle: false,
+    enableNetOverlay: true,
   },
 }
