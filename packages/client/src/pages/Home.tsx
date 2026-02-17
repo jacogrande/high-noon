@@ -1,25 +1,77 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { VERSION } from '@high-noon/shared'
+import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { SettingsPanel } from '../ui/SettingsPanel'
 
 export function Home() {
+  const [showSettings, setShowSettings] = useState(false)
+  const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
+  const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+
+  const handleVolumeChange = (v: number) => {
+    setVolume(v)
+    if (muted && v > 0) setMuted(false)
+    saveAudioPrefs(v, v > 0 ? false : muted)
+  }
+
+  const handleMutedChange = (m: boolean) => {
+    setMuted(m)
+    saveAudioPrefs(volume, m)
+  }
+
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>High Noon</h1>
-      <p style={styles.version}>v{VERSION}</p>
-      <p style={styles.subtitle}>A twitchy top-down roguelite</p>
+      <div style={styles.content}>
+        <h1 style={styles.title}>HIGH NOON</h1>
+        <p style={styles.version}>v{VERSION}</p>
+        <p style={styles.subtitle}>A twitchy top-down roguelite</p>
 
-      <div style={styles.menu}>
-        <Link to="/play" style={styles.button}>
-          Play
-        </Link>
-        <Link to="/play-multi" style={styles.button}>
-          Multiplayer
-        </Link>
+        <div style={styles.menu}>
+          <Link to="/play" style={styles.playButton}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.35)' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.2)' }}
+          >
+            PLAY
+          </Link>
+          <Link to="/play-multi" style={styles.secondaryButton}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(140, 120, 80, 0.25)' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(140, 120, 80, 0.1)' }}
+          >
+            MULTIPLAYER
+          </Link>
+          <button style={styles.secondaryButton}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(140, 120, 80, 0.25)' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(140, 120, 80, 0.1)' }}
+            onClick={() => setShowSettings(true)}
+          >
+            SETTINGS
+          </button>
+        </div>
       </div>
 
-      <div style={styles.footer}>
-        <p style={styles.footerText}>More options coming soon...</p>
-      </div>
+      {showSettings && (
+        <div style={styles.backdrop}>
+          <div style={styles.panel}>
+            <div style={styles.panelTitle}>SETTINGS</div>
+            <SettingsPanel
+              volume={volume}
+              muted={muted}
+              onVolumeChange={handleVolumeChange}
+              onMutedChange={handleMutedChange}
+            />
+            <div style={styles.divider} />
+            <button
+              style={styles.closeButton}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.22)' }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.12)' }}
+              onClick={() => setShowSettings(false)}
+            >
+              CLOSE
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -31,49 +83,121 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100vh',
-    backgroundColor: '#1a1a2e',
+    background: 'radial-gradient(ellipse at 50% 60%, #2a1a0a 0%, #110a04 50%, #050208 100%)',
     color: '#ffffff',
-    fontFamily: 'Arial, sans-serif',
+    fontFamily: 'monospace',
+  },
+  content: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   title: {
-    fontSize: '4rem',
+    fontSize: 48,
+    fontWeight: 'bold',
     margin: 0,
-    textTransform: 'uppercase',
-    letterSpacing: '0.2em',
+    color: '#ffcc00',
+    letterSpacing: '0.3em',
+    textShadow: '0 0 20px rgba(255, 204, 0, 0.6), 0 0 40px rgba(255, 150, 0, 0.3)',
   },
   version: {
-    fontSize: '0.875rem',
-    color: '#888',
+    fontSize: 11,
+    color: '#555',
+    letterSpacing: '0.1em',
     margin: '0.5rem 0',
   },
   subtitle: {
-    fontSize: '1.25rem',
-    color: '#aaa',
+    fontSize: 14,
+    color: '#d7bf8a',
+    fontStyle: 'italic',
     marginBottom: '3rem',
   },
   menu: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '1rem',
+    gap: '0.75rem',
+    minWidth: 220,
   },
-  button: {
-    padding: '1rem 3rem',
-    fontSize: '1.25rem',
-    backgroundColor: '#e94560',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '4px',
+  playButton: {
+    fontFamily: 'monospace',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    letterSpacing: '0.15em',
+    color: '#ff4422',
+    backgroundColor: 'rgba(255, 68, 34, 0.2)',
+    border: '1px solid rgba(255, 68, 34, 0.5)',
+    borderRadius: 3,
+    padding: '0.7rem 1.5rem',
     cursor: 'pointer',
     textDecoration: 'none',
     textAlign: 'center',
-    transition: 'background-color 0.2s',
+    textShadow: '0 0 10px rgba(255, 68, 34, 0.5)',
+    transition: 'background-color 0.15s',
   },
-  footer: {
-    position: 'absolute',
-    bottom: '2rem',
+  secondaryButton: {
+    fontFamily: 'monospace',
+    fontSize: '0.85rem',
+    fontWeight: 'bold',
+    letterSpacing: '0.12em',
+    color: '#bbaa88',
+    backgroundColor: 'rgba(140, 120, 80, 0.1)',
+    border: '1px solid rgba(140, 120, 80, 0.3)',
+    borderRadius: 3,
+    padding: '0.55rem 1.5rem',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    textAlign: 'center',
+    transition: 'background-color 0.15s',
   },
-  footerText: {
-    color: '#666',
-    fontSize: '0.875rem',
+  backdrop: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 70,
+  },
+  panel: {
+    backgroundColor: 'rgba(10, 10, 18, 0.95)',
+    border: '1px solid #333',
+    borderRadius: 4,
+    padding: '2rem 2.5rem',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1.25rem',
+    minWidth: 320,
+    boxShadow: '0 0 40px rgba(0, 0, 0, 0.6)',
+  },
+  panelTitle: {
+    fontFamily: 'monospace',
+    fontSize: '1.6rem',
+    fontWeight: 'bold',
+    color: '#ffcc00',
+    letterSpacing: '0.25em',
+    textShadow: '0 0 12px rgba(255, 204, 0, 0.4)',
+  },
+  divider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#333',
+  },
+  closeButton: {
+    fontFamily: 'monospace',
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    letterSpacing: '0.15em',
+    color: '#ffcc00',
+    backgroundColor: 'rgba(255, 204, 0, 0.12)',
+    border: '1px solid rgba(255, 204, 0, 0.4)',
+    borderRadius: 3,
+    padding: '0.65rem 1.5rem',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s',
+    width: '100%',
   },
 }

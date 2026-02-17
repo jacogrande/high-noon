@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SettingsPanel } from './SettingsPanel'
 
 interface PauseMenuProps {
   mode: 'singleplayer' | 'multiplayer'
@@ -8,6 +9,7 @@ interface PauseMenuProps {
   onVolumeChange: (v: number) => void
   onMutedChange: (m: boolean) => void
   onQuitToMenu: () => void
+  onShowControls: () => void
 }
 
 export function PauseMenu({
@@ -18,10 +20,11 @@ export function PauseMenu({
   onVolumeChange,
   onMutedChange,
   onQuitToMenu,
+  onShowControls,
 }: PauseMenuProps) {
   const [resumeHover, setResumeHover] = useState(false)
   const [quitHover, setQuitHover] = useState(false)
-  const [muteHover, setMuteHover] = useState(false)
+  const [controlsHover, setControlsHover] = useState(false)
 
   const isSingleplayer = mode === 'singleplayer'
   const title = isSingleplayer ? 'PAUSED' : 'SETTINGS'
@@ -33,43 +36,29 @@ export function PauseMenu({
       <div style={styles.panel}>
         <div style={styles.title}>{title}</div>
 
-        <div style={styles.section}>
-          <div style={styles.sliderRow}>
-            <span style={styles.sliderLabel}>VOLUME</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={muted ? 0 : volume}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                onVolumeChange(v)
-                if (muted && v > 0) onMutedChange(false)
-              }}
-              style={styles.slider}
-            />
-            <span style={styles.sliderValue}>{muted ? '0' : Math.round(volume)}%</span>
-          </div>
-
-          <button
-            style={{
-              ...styles.muteButton,
-              backgroundColor: muteHover
-                ? 'rgba(255, 255, 255, 0.15)'
-                : 'rgba(255, 255, 255, 0.06)',
-              color: muted ? '#ff6644' : '#aaaaaa',
-            }}
-            onMouseEnter={() => setMuteHover(true)}
-            onMouseLeave={() => setMuteHover(false)}
-            onClick={() => onMutedChange(!muted)}
-          >
-            {muted ? 'UNMUTE' : 'MUTE'}
-          </button>
-        </div>
+        <SettingsPanel
+          volume={volume}
+          muted={muted}
+          onVolumeChange={onVolumeChange}
+          onMutedChange={onMutedChange}
+        />
 
         <div style={styles.divider} />
 
         <div style={styles.buttonGroup}>
+          <button
+            style={{
+              ...styles.controlsButton,
+              backgroundColor: controlsHover
+                ? 'rgba(255, 204, 0, 0.18)'
+                : 'rgba(255, 204, 0, 0.08)',
+            }}
+            onMouseEnter={() => setControlsHover(true)}
+            onMouseLeave={() => setControlsHover(false)}
+            onClick={onShowControls}
+          >
+            CONTROLS
+          </button>
           <button
             style={{
               ...styles.resumeButton,
@@ -139,49 +128,6 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '0.25em',
     textShadow: '0 0 12px rgba(255, 204, 0, 0.4)',
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.75rem',
-    width: '100%',
-  },
-  sliderRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    width: '100%',
-  },
-  sliderLabel: {
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    color: '#888',
-    letterSpacing: '0.1em',
-    minWidth: '55px',
-  },
-  slider: {
-    flex: 1,
-    height: '4px',
-    cursor: 'pointer',
-    accentColor: '#ffcc00',
-  },
-  sliderValue: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-    color: '#ccc',
-    minWidth: '38px',
-    textAlign: 'right',
-  },
-  muteButton: {
-    fontFamily: 'monospace',
-    fontSize: '0.7rem',
-    letterSpacing: '0.1em',
-    padding: '0.35rem 1rem',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    borderRadius: '3px',
-    cursor: 'pointer',
-    transition: 'background-color 0.15s',
-  },
   divider: {
     width: '100%',
     height: '1px',
@@ -192,6 +138,18 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '0.6rem',
     width: '100%',
+  },
+  controlsButton: {
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+    fontWeight: 'bold',
+    letterSpacing: '0.12em',
+    color: '#ccbb88',
+    border: '1px solid rgba(255, 204, 0, 0.25)',
+    borderRadius: '3px',
+    padding: '0.5rem 1.5rem',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s',
   },
   resumeButton: {
     fontFamily: 'monospace',
