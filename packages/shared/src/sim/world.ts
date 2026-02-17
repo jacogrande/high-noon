@@ -476,6 +476,8 @@ export interface GameWorld extends IWorld {
   goldNuggets: GoldNugget[]
   /** Total gold collected this encounter */
   goldCollected: number
+  /** Total enemies killed this run */
+  killCount: number
   /** Shared shovel inventory for stash interactions */
   shovelCount: number
   /** Set to true when last kill was via melee (for Gold Rush 2x) */
@@ -615,6 +617,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     dynamiteDetonations: [],
     goldNuggets: [],
     goldCollected: 0,
+    killCount: 0,
     shovelCount: 0,
     lastKillWasMelee: false,
     lastDamageByEntity: new Map(),
@@ -711,6 +714,7 @@ export function resetWorld(world: GameWorld): void {
   world.dynamiteDetonations = []
   world.goldNuggets = []
   world.goldCollected = 0
+  world.killCount = 0
   world.shovelCount = 0
   world.lastKillWasMelee = false
   world.lastDamageByEntity.clear()

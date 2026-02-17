@@ -967,6 +967,7 @@ export class GameRoom extends Room<GameRoomState> {
         xp: state.xp,
         level: state.level,
         goldCollected,
+        killCount: this.world.killCount,
         shovelCount,
         interactionPrompt,
         interactionFeedbackDescription: feedbackDesc,

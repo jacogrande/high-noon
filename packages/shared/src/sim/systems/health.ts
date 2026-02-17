@@ -44,6 +44,8 @@ export function healthSystem(world: GameWorld, dt: number): void {
         }
 
         if (isEnemy) {
+          // Total enemies eliminated this run, regardless of kill attribution
+          world.killCount++
           world.pendingGoldRewards.push({
             enemyType: Enemy.type[eid]!,
             killerPlayerEid,

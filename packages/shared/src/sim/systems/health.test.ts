@@ -125,6 +125,51 @@ describe('healthSystem', () => {
     })
   })
 
+  describe('killCount', () => {
+    test('increments when an enemy dies', () => {
+      const eid = spawnHealthEntity(1)
+      addComponent(world, Enemy, eid)
+      Enemy.type[eid] = EnemyType.SWARMER
+      Health.current[eid] = 0
+
+      expect(world.killCount).toBe(0)
+      healthSystem(world, 1 / 60)
+      expect(world.killCount).toBe(1)
+    })
+
+    test('does not increment for non-enemy entity death', () => {
+      const eid = spawnHealthEntity(1)
+      Health.current[eid] = 0
+
+      healthSystem(world, 1 / 60)
+      expect(world.killCount).toBe(0)
+    })
+
+    test('does not increment for player death', () => {
+      const playerEid = spawnPlayer(world, 100, 100)
+      Health.current[playerEid] = 0
+
+      healthSystem(world, 1 / 60)
+      expect(world.killCount).toBe(0)
+    })
+
+    test('accumulates across multiple ticks', () => {
+      const e1 = spawnHealthEntity(1)
+      addComponent(world, Enemy, e1)
+      Enemy.type[e1] = EnemyType.SWARMER
+      Health.current[e1] = 0
+      healthSystem(world, 1 / 60)
+      expect(world.killCount).toBe(1)
+
+      const e2 = spawnHealthEntity(1)
+      addComponent(world, Enemy, e2)
+      Enemy.type[e2] = EnemyType.SWARMER
+      Health.current[e2] = 0
+      healthSystem(world, 1 / 60)
+      expect(world.killCount).toBe(2)
+    })
+  })
+
   describe('bullet callback cleanup', () => {
     test('cleans up bullet collision callback on non-player death', () => {
       const eid = spawnHealthEntity(1)

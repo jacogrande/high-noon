@@ -9,7 +9,6 @@ export interface DeathPresentationPolicy {
   enabled: boolean
   deathAnimDurationSeconds: number
   fadeDurationSeconds: number
-  gameOverText: string
 }
 
 export interface DebugHotkeysPolicy {
@@ -34,7 +33,6 @@ export const SINGLEPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
     enabled: true,
     deathAnimDurationSeconds: 0.75,
     fadeDurationSeconds: 1.0,
-    gameOverText: 'GAME OVER',
   },
   debugHotkeys: {
     enableOverlayToggle: true,
@@ -53,7 +51,6 @@ export const MULTIPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
     enabled: true,
     deathAnimDurationSeconds: 0.75,
     fadeDurationSeconds: 1.0,
-    gameOverText: 'GAME OVER',
   },
   debugHotkeys: {
     enableOverlayToggle: true,

@@ -59,6 +59,7 @@ export interface HudData {
   xp: number
   level: number
   goldCollected: number
+  killCount: number
   shovelCount: number
   interactionPrompt: string | null
   pendingPoints: number

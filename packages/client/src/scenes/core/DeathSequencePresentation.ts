@@ -1,4 +1,4 @@
-import { Graphics, Text, TextStyle, type Container } from 'pixi.js'
+import { Graphics, type Container } from 'pixi.js'
 import type { DeathPresentationPolicy } from './PresentationPolicy'
 
 export interface DeathViewport {
@@ -23,7 +23,6 @@ export class DeathSequencePresentation {
   private readonly policy: DeathPresentationPolicy
   private readonly getViewport: () => DeathViewport
   private readonly fadeOverlay: Graphics
-  private readonly gameOverText: Text
   private deathTime: number | null = null
 
   constructor(uiLayer: Container, getViewport: () => DeathViewport, policy: DeathPresentationPolicy) {
@@ -36,19 +35,6 @@ export class DeathSequencePresentation {
     this.fadeOverlay.alpha = 0
     this.fadeOverlay.visible = false
     uiLayer.addChild(this.fadeOverlay)
-
-    this.gameOverText = new Text({
-      text: this.policy.gameOverText,
-      style: new TextStyle({
-        fontFamily: 'monospace',
-        fontSize: 72,
-        fill: '#cc0000',
-        stroke: { color: '#000000', width: 6 },
-      }),
-    })
-    this.gameOverText.anchor.set(0.5)
-    this.gameOverText.visible = false
-    uiLayer.addChild(this.gameOverText)
   }
 
   update(isDead: boolean): void {
@@ -62,7 +48,6 @@ export class DeathSequencePresentation {
     }
 
     const elapsed = (performance.now() - this.deathTime) / 1000
-    const gameOverDelay = this.policy.deathAnimDurationSeconds + this.policy.fadeDurationSeconds
     const { width, height } = this.getViewport()
     const phase = getDeathSequencePhase(true, elapsed, this.policy)
 
@@ -75,23 +60,15 @@ export class DeathSequencePresentation {
       )
       this.fadeOverlay.alpha = fadeProgress
     }
-
-    if (phase === 'game-over' && elapsed > gameOverDelay) {
-      this.gameOverText.x = width / 2
-      this.gameOverText.y = height / 2
-      this.gameOverText.visible = true
-    }
   }
 
   destroy(): void {
     this.fadeOverlay.destroy()
-    this.gameOverText.destroy()
   }
 
   private reset(): void {
     this.deathTime = null
     this.fadeOverlay.alpha = 0
     this.fadeOverlay.visible = false
-    this.gameOverText.visible = false
   }
 }

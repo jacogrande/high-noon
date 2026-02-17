@@ -330,6 +330,7 @@ export class SingleplayerModeController implements SceneModeController {
       maxHP: playerEid !== null ? Health.max[playerEid]! : state.maxHP,
       xp,
       goldCollected: this.world.goldCollected,
+      killCount: this.world.killCount,
       shovelCount,
       interactionPrompt,
       xpForCurrentLevel,

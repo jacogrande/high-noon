@@ -18,6 +18,7 @@ import {
   type GameplayBossIntroState,
   type GameplayRunIntroState,
 } from '../ui/GameplayOverlays'
+import { RunEndPanel } from '../ui/RunEndPanel'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -36,6 +37,10 @@ export function Game() {
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
+  const [showRunEnd, setShowRunEnd] = useState<'victory' | 'defeat' | 'mutual_kill' | null>(null)
+  const showRunEndRef = useRef(showRunEnd)
+  showRunEndRef.current = showRunEnd
+  const deathTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const lastHudUpdateRef = useRef(0)
@@ -132,6 +137,25 @@ export function Game() {
               setRunIntro(runIntroUpdate.runIntro)
               scene!.setPaused(true)
             }
+            // Detect run end (death, victory, or mutual kill)
+            if (!showRunEndRef.current) {
+              const isDead = hud.isDead
+              const isCompleted = hud.stageStatus === 'completed'
+              if (isDead && isCompleted) {
+                // Mutual kill: player and final enemy died on the same tick
+                showRunEndRef.current = 'mutual_kill'
+                // Delay to let the death fade play before showing panel
+                deathTimerRef.current = setTimeout(() => setShowRunEnd('mutual_kill'), 1750)
+              } else if (isDead) {
+                showRunEndRef.current = 'defeat'
+                // Delay showing panel until after PixiJS death fade (~0.75s anim + 1.0s fade)
+                deathTimerRef.current = setTimeout(() => setShowRunEnd('defeat'), 1750)
+              } else if (isCompleted) {
+                // Victory: show panel immediately (no death-fade to wait for)
+                showRunEndRef.current = 'victory'
+                setShowRunEnd('victory')
+              }
+            }
             // Detect camp entry/exit
             const isCamp = hud.stageStatus === 'camp'
             setShowCamp(isCamp)
@@ -155,6 +179,10 @@ export function Game() {
 
     return () => {
       mounted = false
+      if (deathTimerRef.current !== null) {
+        clearTimeout(deathTimerRef.current)
+        deathTimerRef.current = null
+      }
       gameLoop?.stop()
       scene?.destroy()
       sceneRef.current = null
@@ -238,8 +266,20 @@ export function Game() {
 
   const handleBossIntroComplete = useCallback(() => setBossIntro(null), [])
 
+  const handlePlayAgain = useCallback(() => {
+    showRunEndRef.current = null
+    setShowRunEnd(null)
+    setHudState(null)
+    setShowCamp(false)
+    setBossIntro(null)
+    setRunIntro(null)
+    lastSeenRunIntroSequenceRef.current = 0
+    setSelectedCharacter(null)
+  }, [])
+
   const handleQuitToMenu = useCallback(() => {
     sceneRef.current?.setPaused(false)
+    setShowRunEnd(null)
     navigate('/')
   }, [navigate])
 
@@ -277,6 +317,7 @@ export function Game() {
     setSelectedCharacter(null)
     setBossIntro(null)
     setRunIntro(null)
+    setShowRunEnd(null)
     lastSeenRunIntroSequenceRef.current = 0
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
@@ -334,7 +375,7 @@ export function Game() {
   return (
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && !showRunEnd && <GameHUD state={hudState} />}
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
@@ -353,6 +394,20 @@ export function Game() {
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
           onVisitorPurchase={handleVisitorPurchase}
+        />
+      )}
+      {showRunEnd && (
+        <RunEndPanel
+          outcome={showRunEnd}
+          stageNumber={hudState?.stageNumber ?? 0}
+          totalStages={hudState?.totalStages ?? 0}
+          level={hudState?.level ?? 0}
+          goldCollected={hudState?.goldCollected ?? 0}
+          killCount={hudState?.killCount ?? 0}
+          items={hudState?.items ?? []}
+          resolutionText={hudState?.resolutionText ?? null}
+          onPlayAgain={handlePlayAgain}
+          onQuitToMenu={handleQuitToMenu}
         />
       )}
       {showSkillTree && skillTreeData && (
