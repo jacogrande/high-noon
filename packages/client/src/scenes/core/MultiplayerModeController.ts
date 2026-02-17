@@ -682,7 +682,32 @@ export class MultiplayerModeController implements SceneModeController {
     const fallbackEvents: Array<{ type: 'shot-confirmed'; x: number; y: number; hit: boolean }> = []
     while (this.pendingShotResults.length > 0) {
       const result = this.pendingShotResults.shift()!
-      if (result.shooterServerEid !== this.myServerEid) continue
+      // Remote player shot — spawn visual bullet toward impact point
+      if (result.shooterServerEid !== this.myServerEid) {
+        const remoteClientEid = this.playerEntities.get(result.shooterServerEid)
+        if (remoteClientEid !== undefined) {
+          const barrelTip = this.playerRenderer.getBarrelTipPosition(remoteClientEid)
+          const startX = barrelTip?.x ?? Position.x[remoteClientEid]!
+          const startY = barrelTip?.y ?? Position.y[remoteClientEid]!
+          const angle = Math.atan2(result.hitY - startY, result.hitX - startX)
+          const visualId = this.bulletRenderer.spawnVisualBullet(
+            startX, startY, angle,
+            VISUAL_PLAYER_BULLET_SPEED, VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+          )
+          this.bulletRenderer.resolveVisualBulletImpact(
+            visualId, result.hitX, result.hitY,
+            result.hit ? 'entity' : 'wall',
+          )
+          this.lightingSystem.addLight(createMuzzleFlashLight(startX, startY))
+        }
+        fallbackEvents.push({
+          type: 'shot-confirmed',
+          x: result.hitX,
+          y: result.hitY,
+          hit: result.hit,
+        })
+        continue
+      }
 
       // Attach to shot trace and feed hit agreement.
       // NOTE: Client prediction attachment is deferred — passing null means

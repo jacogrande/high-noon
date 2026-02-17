@@ -692,7 +692,10 @@ export class GameRoom extends Room<GameRoomState> {
         }))
       }
 
-      slot.client.send('shot-result', msg)
+      // Broadcast to all clients so remote players can render visual bullets
+      for (const otherSlot of this.slots.values()) {
+        otherSlot.client.send('shot-result', msg)
+      }
     }
 
     pending.length = 0
