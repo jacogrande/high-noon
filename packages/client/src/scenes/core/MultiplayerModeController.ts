@@ -112,9 +112,22 @@ import { NetGraph } from '../../render/NetGraph'
 const GAME_ZOOM = 2
 
 /** Misprediction smoothing constants */
-const SNAP_THRESHOLD = 96    // pixels — teleport if error exceeds this
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
-const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
+
+/** Tiered correction speed — small errors snap back fast, large errors
+ *  smooth slowly to avoid visible lurching.
+ *  Values are exponential decay rates; higher = faster visual correction. */
+function getCorrectionSpeed(errorMag: number): number {
+  if (errorMag < 2) return 25   // sub-pixel jitter: nearly instant
+  if (errorMag < 8) return 18   // small drift
+  if (errorMag < 32) return 10  // medium correction
+  return 6                       // large correction: slow smooth
+}
+
+/** RTT-aware snap threshold — higher latency tolerates larger corrections. */
+function getSnapThreshold(rtt: number): number {
+  return 96 + Math.min(rtt * 0.96, 192)
+}
 const MAX_PENDING_SNAPSHOTS = 6
 const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 4
 const MAX_PENDING_BULLET_EVENTS = 128
@@ -828,6 +841,7 @@ export class MultiplayerModeController implements SceneModeController {
    * and compute visual error offset for smooth misprediction correction.
    */
   private reconcileLocalPlayer(snapshot: WorldSnapshot): void {
+    const rtt = this.clockSync.isConverged() ? this.clockSync.getRTT() : 0
     const sample = this.reconciler.reconcile(
       snapshot,
       {
@@ -842,7 +856,7 @@ export class MultiplayerModeController implements SceneModeController {
         hitPolicy: MULTIPLAYER_PRESENTATION_POLICY.playerHit,
       },
       EPSILON,
-      SNAP_THRESHOLD,
+      getSnapThreshold(rtt),
     )
     if (sample.hadCorrection) {
       this.telemetry.onReconciliationCorrectionDetailed(
@@ -1027,6 +1041,11 @@ export class MultiplayerModeController implements SceneModeController {
       worldMouse.y,
       TICK_S,
     )
+
+    // Re-sync camera for screen→world conversion after camera update,
+    // so the next render frame's mouse position uses the corrected camera.
+    const updatedCamPos = this.camera.getPosition()
+    this.input.setCamera(updatedCamPos.x, updatedCamPos.y, this.gameApp.width, this.gameApp.height, GAME_ZOOM)
   }
 
   // ===========================================================================
@@ -1049,9 +1068,10 @@ export class MultiplayerModeController implements SceneModeController {
     // Feed interpolation delay telemetry
     this.telemetry.onInterpolationDelayUpdate(this.snapshotBuffer.getInterpolationDelayMs())
 
-    // Decay misprediction error (frame-rate independent).
-    this.reconciler.decayError(rawDt, CORRECTION_SPEED)
+    // Decay misprediction error (frame-rate independent, tiered by magnitude).
     const error = this.reconciler.getError()
+    const errorMag = Math.sqrt(error.x * error.x + error.y * error.y)
+    this.reconciler.decayError(rawDt, getCorrectionSpeed(errorMag))
 
     // Feed monotonic prediction tick to player renderer for local player animation
     this.playerRenderer.localPlayerTick = this.predictionTick

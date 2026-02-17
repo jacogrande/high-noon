@@ -20,6 +20,12 @@ import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
 import type { IGameplayEventSink, ILocalIdentityState, ISimStateSource } from './SceneRuntimeContracts'
 import { captureReplayExcludedState, restoreReplayExcludedState } from './ReplayExcludedState'
 
+/** Maximum accumulated error offset in pixels before clamping. */
+const MAX_ERROR_OFFSET = 48
+/** Blend weight for error velocity EMA — higher = corrections respond faster
+ *  but oscillate more on sign-alternating corrections. */
+const ERROR_VEL_BLEND = 0.7
+
 export interface ReconcileContext extends ISimStateSource, ILocalIdentityState {
   inputBuffer: InputBuffer
   replayDriver: LocalPlayerSimulationDriver
@@ -37,6 +43,8 @@ export class MultiplayerReconciler {
   private prevHP = -1
   private errorX = 0
   private errorY = 0
+  private errorVelX = 0
+  private errorVelY = 0
 
   getError(): { x: number; y: number } {
     return { x: this.errorX, y: this.errorY }
@@ -50,6 +58,13 @@ export class MultiplayerReconciler {
       this.errorY *= (1 - factor)
       if (Math.abs(this.errorX) < 0.1) this.errorX = 0
       if (Math.abs(this.errorY) < 0.1) this.errorY = 0
+    } else {
+      // Error has fully decayed — bleed off stored velocity so it doesn't
+      // amplify the next correction that arrives after a quiet period.
+      this.errorVelX *= 0.9
+      this.errorVelY *= 0.9
+      if (Math.abs(this.errorVelX) < 0.01) this.errorVelX = 0
+      if (Math.abs(this.errorVelY) < 0.01) this.errorVelY = 0
     }
   }
 
@@ -174,7 +189,11 @@ export class MultiplayerReconciler {
 
     ctx.inputBuffer.acknowledgeUpTo(serverPlayer.lastProcessedSeq)
     const pending = ctx.inputBuffer.getPending()
-    ctx.replayDriver.replay(ctx.myClientEid, pending)
+
+    // Skip replay when no pending inputs — avoids unnecessary system ticks and float drift
+    if (pending.length > 0) {
+      ctx.replayDriver.replay(ctx.myClientEid, pending)
+    }
 
     // Restore state excluded from replay systems.
     restoreReplayExcludedState(ctx.world, ctx.myClientEid, excludedState)
@@ -187,17 +206,31 @@ export class MultiplayerReconciler {
 
     let snapped = false
     if (errorMag > epsilon) {
-      const newErrorX = this.errorX + dx
-      const newErrorY = this.errorY + dy
+      // Damped error velocity blend — reduces oscillation from alternating corrections
+      this.errorVelX = this.errorVelX * (1 - ERROR_VEL_BLEND) + dx * ERROR_VEL_BLEND
+      this.errorVelY = this.errorVelY * (1 - ERROR_VEL_BLEND) + dy * ERROR_VEL_BLEND
+
+      const newErrorX = this.errorX + this.errorVelX
+      const newErrorY = this.errorY + this.errorVelY
       const totalMag = Math.sqrt(newErrorX * newErrorX + newErrorY * newErrorY)
 
       if (totalMag > snapThreshold) {
         this.errorX = 0
         this.errorY = 0
+        this.errorVelX = 0
+        this.errorVelY = 0
         snapped = true
       } else {
         this.errorX = newErrorX
         this.errorY = newErrorY
+
+        // Cap accumulated error offset to prevent runaway visual drift
+        const errorOffsetMag = Math.sqrt(this.errorX * this.errorX + this.errorY * this.errorY)
+        if (errorOffsetMag > MAX_ERROR_OFFSET) {
+          const scale = MAX_ERROR_OFFSET / errorOffsetMag
+          this.errorX *= scale
+          this.errorY *= scale
+        }
       }
     }
 

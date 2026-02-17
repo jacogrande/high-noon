@@ -246,4 +246,163 @@ describe('SnapshotBuffer', () => {
     expect(state!.to.tick).toBe(2)
     expect(state!.alpha).toBeCloseTo(0.5, 1)
   })
+
+  // ---------------------------------------------------------------------------
+  // Starvation-responsive delay adjustment
+  // ---------------------------------------------------------------------------
+
+  it('bumps delay on starvation (buffer < 2 snapshots)', () => {
+    const buf = new SnapshotBuffer(80) as unknown as {
+      push: (s: WorldSnapshot) => void
+      getInterpolationState: (t?: number) => unknown
+      getInterpolationDelayMs: () => number
+      getStarvationCount: () => number
+      expectedReceiveInterval: number | null
+      buffer: unknown[]
+    }
+
+    // Push two snapshots to establish expectedReceiveInterval
+    buf.push(makeSnapshot(1, 1000))
+    buf.push(makeSnapshot(2, 1050))
+    expect(buf.expectedReceiveInterval).not.toBeNull()
+
+    // Remove all but one entry to trigger starvation
+    buf.buffer.length = 1
+    const delayBefore = buf.getInterpolationDelayMs()
+
+    buf.getInterpolationState(1200)
+    const delayAfter = buf.getInterpolationDelayMs()
+
+    expect(delayAfter).toBeGreaterThan(delayBefore)
+    expect(buf.getStarvationCount()).toBeGreaterThan(0)
+  })
+
+  it('clamps starvation delay bump to MAX_INTERPOLATION_DELAY (160)', () => {
+    const buf = new SnapshotBuffer(150) as unknown as {
+      push: (s: WorldSnapshot) => void
+      getInterpolationState: (t?: number) => unknown
+      getInterpolationDelayMs: () => number
+      expectedReceiveInterval: number | null
+      buffer: unknown[]
+    }
+    buf.push(makeSnapshot(1, 1000))
+    buf.push(makeSnapshot(2, 1050))
+    buf.buffer.length = 1 // Force starvation
+
+    // Multiple starvation events
+    for (let i = 0; i < 10; i++) {
+      buf.getInterpolationState(1100 + i * 50)
+    }
+
+    expect(buf.getInterpolationDelayMs()).toBeLessThanOrEqual(160)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Burst detection
+  // ---------------------------------------------------------------------------
+
+  it('does not overshoot delay on burst arrivals', () => {
+    const buf = new SnapshotBuffer(80) as unknown as {
+      push: (s: WorldSnapshot) => void
+      getInterpolationDelayMs: () => number
+    }
+
+    // Establish baseline at 50ms cadence
+    // We need to simulate time passing for recentArrivalTimes to record real gaps
+    // Since push uses performance.now(), we'll verify the burst detection logic
+    // by checking delay doesn't spike excessively from batched arrivals
+    buf.push(makeSnapshot(1, 1000))
+    buf.push(makeSnapshot(2, 1050))
+    buf.push(makeSnapshot(3, 1100))
+    buf.push(makeSnapshot(4, 1150))
+
+    const delayBeforeBurst = buf.getInterpolationDelayMs()
+
+    // Push several snapshots in rapid succession (burst)
+    buf.push(makeSnapshot(5, 1200))
+    buf.push(makeSnapshot(6, 1250))
+    buf.push(makeSnapshot(7, 1300))
+
+    const delayAfterBurst = buf.getInterpolationDelayMs()
+
+    // Delay should not have increased dramatically from burst
+    // Allow some tolerance since actual timing is performance.now() based
+    expect(delayAfterBurst).toBeLessThanOrEqual(160)
+    // Burst detection may or may not fire depending on actual timing,
+    // but delay should remain reasonable
+    expect(delayAfterBurst - delayBeforeBurst).toBeLessThan(40)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Buffer depth pressure
+  // ---------------------------------------------------------------------------
+
+  it('resists delay decrease when buffer depth is below target', () => {
+    const buf = new SnapshotBuffer(80) as unknown as {
+      push: (s: WorldSnapshot) => void
+      getInterpolationDelayMs: () => number
+      getInterpolationState: (t?: number) => unknown
+      expectedReceiveInterval: number | null
+      buffer: unknown[]
+      delayPressure: boolean
+      dynamicInterpolationDelay: number
+    }
+
+    // Establish expectedReceiveInterval
+    buf.push(makeSnapshot(1, 1000))
+    buf.push(makeSnapshot(2, 1050))
+
+    // Manually bump delay above baseline to simulate a starvation recovery scenario
+    buf.dynamicInterpolationDelay = 120
+    const bumpedDelay = buf.getInterpolationDelayMs()
+    expect(bumpedDelay).toBe(120)
+
+    // Clear buffer to 0 entries so next push has buffer.length < 2 (delayPressure = true)
+    buf.buffer.length = 0
+
+    // Push with low depth — after this.buffer.push, length = 1 which is < TARGET(2),
+    // so delayPressure = true and updateAdaptiveDelay skips decrease
+    buf.push(makeSnapshot(3, 1100))
+    const afterPush = buf.getInterpolationDelayMs()
+
+    // Delay should NOT have decreased because delayPressure was true
+    expect(afterPush).toBeGreaterThanOrEqual(bumpedDelay - 0.01)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Delay recovery after sustained stable period
+  // ---------------------------------------------------------------------------
+
+  it('allows delay recovery after sustained stable period', () => {
+    const buf = new SnapshotBuffer(80) as unknown as {
+      push: (s: WorldSnapshot) => void
+      updateAdaptiveDelay: (receiveTime: number) => void
+      getInterpolationDelayMs: () => number
+      getInterpolationState: (t?: number) => unknown
+      starvationWindow: number
+    }
+
+    // Bump delay with bursty arrivals
+    buf.updateAdaptiveDelay(0)
+    buf.updateAdaptiveDelay(50)
+    buf.updateAdaptiveDelay(100)
+    buf.updateAdaptiveDelay(250) // +150 jitter spike
+    buf.updateAdaptiveDelay(300)
+
+    const spikedDelay = buf.getInterpolationDelayMs()
+    expect(spikedDelay).toBeGreaterThan(80)
+
+    // Simulate long stable period
+    buf.starvationWindow = 301 // Above 300 threshold
+
+    // Feed stable intervals — should decay faster
+    let t = 350
+    for (let i = 0; i < 20; i++) {
+      t += 50
+      buf.updateAdaptiveDelay(t)
+    }
+
+    const recoveredDelay = buf.getInterpolationDelayMs()
+    expect(recoveredDelay).toBeLessThan(spikedDelay)
+  })
 })

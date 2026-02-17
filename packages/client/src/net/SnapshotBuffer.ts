@@ -33,6 +33,15 @@ const JITTER_SMOOTHING = 0.1
 const INTERVAL_SMOOTHING = 0.2
 /** Decrease delay slowly to avoid oscillation */
 const DELAY_DECAY = 0.1
+/** Faster delay recovery after sustained stable period */
+const DELAY_DECAY_FAST = 0.15
+/** Snapshot arrivals without starvation before allowing fast delay recovery.
+ *  At ~10-20Hz server snapshot rate, 300 arrivals ≈ 15-30 seconds. */
+const STABLE_PUSHES_FOR_FAST_DECAY = 300
+/** Target minimum buffer depth for healthy interpolation */
+const TARGET_BUFFER_DEPTH = 2
+/** Number of recent arrival times to track for burst detection */
+const BURST_WINDOW_SIZE = 10
 /** Short extrapolation window when interpolation buffer runs dry. */
 const MAX_EXTRAPOLATION_MS = 100
 /** Hard cap on extrapolated alpha to avoid runaway projections. */
@@ -47,6 +56,9 @@ export class SnapshotBuffer {
   private intervalJitter = 0
   private _starvationCount = 0
   private _lastAlpha = 0
+  private starvationWindow = 0
+  private delayPressure = false
+  private recentArrivalTimes: number[] = []
 
   constructor(interpolationDelay = DEFAULT_INTERPOLATION_DELAY) {
     this.baseInterpolationDelay = interpolationDelay
@@ -61,12 +73,39 @@ export class SnapshotBuffer {
       serverTime: snapshot.serverTime,
     }
     this.buffer.push(entry)
+
+    // Track arrival times for burst detection
+    this.recentArrivalTimes.push(receiveTime)
+    if (this.recentArrivalTimes.length > BURST_WINDOW_SIZE) {
+      this.recentArrivalTimes.shift()
+    }
+
+    this.starvationWindow++
+
+    // Buffer depth pressure — resist delay decrease when depth is low.
+    // Computed before updateAdaptiveDelay so it influences decay behavior.
+    this.delayPressure = this.buffer.length < TARGET_BUFFER_DEPTH
+
     this.updateAdaptiveDelay(receiveTime)
 
     // Evict old snapshots
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift()
     }
+  }
+
+  private detectBurst(): boolean {
+    const n = this.recentArrivalTimes.length
+    if (n < 3) return false
+    let sum = 0
+    let minGap = Infinity
+    for (let i = 1; i < n; i++) {
+      const gap = this.recentArrivalTimes[i]! - this.recentArrivalTimes[i - 1]!
+      sum += gap
+      if (gap < minGap) minGap = gap
+    }
+    const avgGap = sum / (n - 1)
+    return avgGap > 0 && minGap < avgGap * 0.3
   }
 
   private updateAdaptiveDelay(receiveTime: number): void {
@@ -98,12 +137,22 @@ export class SnapshotBuffer {
       )
     )
 
+    // Skip delay increase on burst arrivals (batched packets, not sustained jitter)
+    if (target > this.dynamicInterpolationDelay && this.detectBurst()) {
+      return
+    }
+
     // Increase quickly for resilience; decrease slowly for stability.
     if (target > this.dynamicInterpolationDelay) {
       this.dynamicInterpolationDelay = target
-    } else {
-      this.dynamicInterpolationDelay += (target - this.dynamicInterpolationDelay) * DELAY_DECAY
+    } else if (!this.delayPressure) {
+      // Allow faster decay after sustained stable period
+      const decayRate = this.starvationWindow >= STABLE_PUSHES_FOR_FAST_DECAY
+        ? DELAY_DECAY_FAST
+        : DELAY_DECAY
+      this.dynamicInterpolationDelay += (target - this.dynamicInterpolationDelay) * decayRate
     }
+    // When delayPressure is true (buffer depth < target), resist decrease
   }
 
   /** The most recently received snapshot, or null if buffer is empty */
@@ -133,6 +182,15 @@ export class SnapshotBuffer {
     if (this.buffer.length < 2) {
       this._starvationCount++
       this._lastAlpha = 0
+
+      // Starvation-responsive delay adjustment — bump delay when buffer runs dry
+      if (this.expectedReceiveInterval !== null) {
+        this.dynamicInterpolationDelay = Math.min(
+          MAX_INTERPOLATION_DELAY,
+          this.dynamicInterpolationDelay + this.expectedReceiveInterval * 0.5,
+        )
+      }
+      this.starvationWindow = 0
       return null
     }
 
@@ -218,5 +276,8 @@ export class SnapshotBuffer {
     this.lastReceiveTime = null
     this.expectedReceiveInterval = null
     this.intervalJitter = 0
+    this.starvationWindow = 0
+    this.delayPressure = false
+    this.recentArrivalTimes.length = 0
   }
 }
