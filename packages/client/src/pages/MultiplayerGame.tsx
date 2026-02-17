@@ -14,6 +14,8 @@ import { NetworkClient } from '../net/NetworkClient'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { PauseMenu } from '../ui/PauseMenu'
+import { ControlsPanel } from '../ui/ControlsPanel'
+import { hasSeenControls, markControlsSeen } from '../ui/controlsPrefs'
 import {
   GameplayOverlays,
   type GameplayBossIntroState,
@@ -37,6 +39,7 @@ export function MultiplayerGame() {
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
   const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [showControls, setShowControls] = useState(false)
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
@@ -372,6 +375,11 @@ export function MultiplayerGame() {
     if (phase !== 'playing') return
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
+      // Priority 0: close controls panel
+      if (showControls) {
+        setShowControls(false)
+        return
+      }
       // Priority 1: close skill tree
       if (showingTreeRef.current) {
         showingTreeRef.current = false
@@ -392,7 +400,7 @@ export function MultiplayerGame() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, showCamp, showPauseMenu, hudState?.isDead])
+  }, [phase, showCamp, showPauseMenu, showControls, hudState?.isDead])
 
   const handleRetry = () => {
     destroyGame()
@@ -491,7 +499,7 @@ export function MultiplayerGame() {
   return (
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && <GameHUD state={hudState} />}
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
@@ -531,6 +539,20 @@ export function MultiplayerGame() {
           onVolumeChange={handleVolumeChange}
           onMutedChange={handleMutedChange}
           onQuitToMenu={handleLeaveMatch}
+          onShowControls={() => {
+            setShowPauseMenu(false)
+            setShowControls(true)
+          }}
+        />
+      )}
+      {showControls && (
+        <ControlsPanel
+          onClose={() => setShowControls(false)}
+          showDontShowAgain={!hasSeenControls()}
+          onDontShowAgain={() => {
+            markControlsSeen()
+            setShowControls(false)
+          }}
         />
       )}
     </div>

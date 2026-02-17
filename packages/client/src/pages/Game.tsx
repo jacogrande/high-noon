@@ -13,6 +13,8 @@ import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { CharacterSelect } from '../ui/CharacterSelect'
 import { PauseMenu } from '../ui/PauseMenu'
+import { ControlsPanel } from '../ui/ControlsPanel'
+import { hasSeenControls, markControlsSeen } from '../ui/controlsPrefs'
 import {
   GameplayOverlays,
   type GameplayBossIntroState,
@@ -33,6 +35,9 @@ export function Game() {
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
   const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [showControls, setShowControls] = useState(false)
+  const showControlsRef = useRef(false)
+  showControlsRef.current = showControls
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
@@ -128,14 +133,17 @@ export function Game() {
             lastHudUpdateRef.current = now
             const hud = scene!.getHUDState()
             setHudState(hud)
-            const runIntroUpdate = getSingleplayerRunIntroUpdate(
-              hud,
-              lastSeenRunIntroSequenceRef.current,
-            )
-            lastSeenRunIntroSequenceRef.current = runIntroUpdate.nextLastSeenSequence
-            if (runIntroUpdate.runIntro) {
-              setRunIntro(runIntroUpdate.runIntro)
-              scene!.setPaused(true)
+            // Defer run intro while controls panel is showing
+            if (!showControlsRef.current) {
+              const runIntroUpdate = getSingleplayerRunIntroUpdate(
+                hud,
+                lastSeenRunIntroSequenceRef.current,
+              )
+              lastSeenRunIntroSequenceRef.current = runIntroUpdate.nextLastSeenSequence
+              if (runIntroUpdate.runIntro) {
+                setRunIntro(runIntroUpdate.runIntro)
+                scene!.setPaused(true)
+              }
             }
             // Detect run end (death, victory, or mutual kill)
             if (!showRunEndRef.current) {
@@ -173,6 +181,10 @@ export function Game() {
         }
       )
       gameLoop.start()
+
+      if (!hasSeenControls()) {
+        setShowControls(true)
+      }
     }
 
     init(container)
@@ -287,6 +299,11 @@ export function Game() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
+      // Priority 0: close controls panel
+      if (showControls) {
+        setShowControls(false)
+        return
+      }
       // Priority 1: close skill tree
       if (showingTreeRef.current) {
         showingTreeRef.current = false
@@ -309,7 +326,7 @@ export function Game() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showCamp, showPauseMenu, hudState?.isDead])
+  }, [showCamp, showPauseMenu, showControls, hudState?.isDead])
 
   const handleRetry = () => {
     setLoading(true)
@@ -375,7 +392,7 @@ export function Game() {
   return (
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !hudState.isDead && !showRunEnd && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && !showRunEnd && <GameHUD state={hudState} />}
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
@@ -426,6 +443,20 @@ export function Game() {
           onVolumeChange={handleVolumeChange}
           onMutedChange={handleMutedChange}
           onQuitToMenu={handleQuitToMenu}
+          onShowControls={() => {
+            setShowPauseMenu(false)
+            setShowControls(true)
+          }}
+        />
+      )}
+      {showControls && (
+        <ControlsPanel
+          onClose={() => setShowControls(false)}
+          showDontShowAgain={!hasSeenControls()}
+          onDontShowAgain={() => {
+            markControlsSeen()
+            setShowControls(false)
+          }}
         />
       )}
     </div>
