@@ -19,6 +19,8 @@ net.on('game-config', (config) => { /* { seed, sessionId, playerEid, characterId
 net.on('lobby-state', (state) => { /* { phase, serverTick, players[] } */ })
 net.on('player-roster', (roster) => { /* [{ eid, characterId }] */ })
 net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
+net.on('bullet-spawn', (event) => { /* authoritative bullet create */ })
+net.on('bullet-despawn', (event) => { /* authoritative bullet remove */ })
 net.on('incompatible-protocol', (reason) => { /* input/snapshot protocol mismatch */ })
 net.on('disconnect', () => { /* connection permanently lost */ })
 await net.join({ characterId: 'undertaker' }) // Resolves after game-config (10s timeout)
@@ -30,7 +32,7 @@ net.disconnect()              // Intentional leave, clears listeners
 ```
 
 - Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared
-- Current snapshot protocol (`v6`) includes jump state payload (`z`, `zVelocity`, jump edge-state flag) for reconciliation parity
+- Current snapshot protocol (`v10`) includes player/enemy + ability state (bullets are sent as lifecycle events)
 - Snapshot decode errors are caught and logged (don't crash the game loop)
 - Protocol mismatches (snapshot or input shape/version) trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)
@@ -53,9 +55,9 @@ const interp = buffer.getInterpolationState(serverTime)
 // interp = { from: WorldSnapshot, to: WorldSnapshot, alpha: number }
 ```
 
-- Buffer size: 8 snapshots (~266ms at 30Hz)
+- Buffer size: 8 snapshots (~400ms at 20Hz)
 - Interpolation uses server-time-based rendering when clock sync is converged
-- Alpha is clamped to [0, 1]
+- Alpha is [0, 1] for interpolation and may briefly exceed 1 (bounded) during short dry-buffer stalls
 - Returns null until 2+ snapshots are buffered
 
 ## ClockSync

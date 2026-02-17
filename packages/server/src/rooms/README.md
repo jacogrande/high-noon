@@ -48,8 +48,9 @@ Lobby messages:
 - Player metadata (name, ready)
 - Server tick counter
 
-**Sync via binary snapshots** (manual, 30Hz):
+**Sync via binary snapshots** (manual, 20Hz):
 - Full entity state via `encodeSnapshot` → `sendBytes`
+- Bullet lifecycle is sent via reliable ordered `bullet-spawn` / `bullet-despawn` messages.
 - Per-client HUD payloads are sent at 10Hz (`hud` message) with character-aware ability/cylinder fields.
 
 ## Dependencies

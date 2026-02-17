@@ -19,12 +19,12 @@ export interface InterpolationState {
   alpha: number
 }
 
-/** Maximum number of snapshots to retain (8 ~= 266ms at 30Hz). */
+/** Maximum number of snapshots to retain (8 ~= 400ms at 20Hz). */
 const MAX_BUFFER_SIZE = 8
 /** Default interpolation delay in ms for responsive multiplayer presentation. */
-const DEFAULT_INTERPOLATION_DELAY = 50
+const DEFAULT_INTERPOLATION_DELAY = 80
 /** Upper bound to keep remote presentation responsive */
-const MAX_INTERPOLATION_DELAY = 200
+const MAX_INTERPOLATION_DELAY = 160
 /** Convert observed interval jitter into delay headroom */
 const DELAY_JITTER_MULTIPLIER = 2
 /** EWMA smoothing for interval jitter estimation */
@@ -33,13 +33,17 @@ const JITTER_SMOOTHING = 0.1
 const INTERVAL_SMOOTHING = 0.2
 /** Decrease delay slowly to avoid oscillation */
 const DELAY_DECAY = 0.1
+/** Short extrapolation window when interpolation buffer runs dry. */
+const MAX_EXTRAPOLATION_MS = 100
+/** Hard cap on extrapolated alpha to avoid runaway projections. */
+const MAX_EXTRAPOLATION_ALPHA = 1.25
 
 export class SnapshotBuffer {
   private buffer: TimestampedSnapshot[] = []
   private readonly baseInterpolationDelay: number
   private dynamicInterpolationDelay: number
-  private lastServerTime: number | null = null
-  private expectedServerInterval: number | null = null
+  private lastReceiveTime: number | null = null
+  private expectedReceiveInterval: number | null = null
   private intervalJitter = 0
 
   constructor(interpolationDelay = DEFAULT_INTERPOLATION_DELAY) {
@@ -48,13 +52,14 @@ export class SnapshotBuffer {
   }
 
   push(snapshot: WorldSnapshot): void {
+    const receiveTime = performance.now()
     const entry: TimestampedSnapshot = {
       snapshot,
-      receiveTime: performance.now(),
+      receiveTime,
       serverTime: snapshot.serverTime,
     }
     this.buffer.push(entry)
-    this.updateAdaptiveDelay(snapshot.serverTime)
+    this.updateAdaptiveDelay(receiveTime)
 
     // Evict old snapshots
     if (this.buffer.length > MAX_BUFFER_SIZE) {
@@ -62,25 +67,25 @@ export class SnapshotBuffer {
     }
   }
 
-  private updateAdaptiveDelay(serverTime: number): void {
-    if (this.lastServerTime === null) {
-      this.lastServerTime = serverTime
+  private updateAdaptiveDelay(receiveTime: number): void {
+    if (this.lastReceiveTime === null) {
+      this.lastReceiveTime = receiveTime
       return
     }
 
-    const interval = serverTime - this.lastServerTime
-    this.lastServerTime = serverTime
+    const interval = receiveTime - this.lastReceiveTime
+    this.lastReceiveTime = receiveTime
 
     // Guard against invalid or stale timestamps.
     if (!Number.isFinite(interval) || interval <= 0 || interval > 1000) return
 
-    if (this.expectedServerInterval === null) {
-      this.expectedServerInterval = interval
+    if (this.expectedReceiveInterval === null) {
+      this.expectedReceiveInterval = interval
       return
     }
 
-    const deviation = Math.abs(interval - this.expectedServerInterval)
-    this.expectedServerInterval += (interval - this.expectedServerInterval) * INTERVAL_SMOOTHING
+    const deviation = Math.abs(interval - this.expectedReceiveInterval)
+    this.expectedReceiveInterval += (interval - this.expectedReceiveInterval) * INTERVAL_SMOOTHING
     this.intervalJitter += (deviation - this.intervalJitter) * JITTER_SMOOTHING
 
     const target = Math.max(
@@ -115,7 +120,8 @@ export class SnapshotBuffer {
    * Compute interpolation state for the current render frame.
    *
    * Finds two snapshots bracketing `now - interpolationDelay` and returns
-   * the pair with a clamped alpha in [0, 1].
+   * the pair with a bounded alpha. In rare dry-buffer cases, alpha may
+   * extend slightly beyond 1 for short extrapolation.
    *
    * When `serverTimeNow` is provided (from ClockSync), brackets on
    * server-time timestamps for jitter-resilient interpolation. Otherwise
@@ -148,13 +154,27 @@ export class SnapshotBuffer {
       }
     }
 
-    // No snapshot after from — use last two
+    // No snapshot after from — we're ahead of available data.
+    // Use last two with short bounded extrapolation for smoother stalls.
     if (fromIdx >= this.buffer.length - 1) {
       const last = this.buffer.length - 1
+      const from = this.buffer[last - 1]!
+      const to = this.buffer[last]!
+      const fromT = useServerTime ? from.serverTime : from.receiveTime
+      const toT = useServerTime ? to.serverTime : to.receiveTime
+      const span = toT - fromT
+      const aheadMs = renderTime - toT
+      let alpha = 1
+      if (aheadMs > 0 && span > 0 && aheadMs <= MAX_EXTRAPOLATION_MS) {
+        const t = Math.min(aheadMs, MAX_EXTRAPOLATION_MS)
+        const decay = Math.exp(-2 * (t / MAX_EXTRAPOLATION_MS))
+        const extraAlpha = (t / span) * decay
+        alpha = Math.min(MAX_EXTRAPOLATION_ALPHA, 1 + extraAlpha)
+      }
       return {
-        from: this.buffer[last - 1]!.snapshot,
-        to: this.buffer[last]!.snapshot,
-        alpha: 1,
+        from: from.snapshot,
+        to: to.snapshot,
+        alpha,
       }
     }
 
@@ -177,8 +197,8 @@ export class SnapshotBuffer {
   clear(): void {
     this.buffer.length = 0
     this.dynamicInterpolationDelay = this.baseInterpolationDelay
-    this.lastServerTime = null
-    this.expectedServerInterval = null
+    this.lastReceiveTime = null
+    this.expectedReceiveInterval = null
     this.intervalJitter = 0
   }
 }

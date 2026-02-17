@@ -3,7 +3,6 @@ import { addComponent } from 'bitecs'
 import { createGameWorld } from '../sim/world'
 import {
   Position,
-  Velocity,
   Health,
   PlayerState,
   PlayerStateType,
@@ -14,24 +13,21 @@ import {
   EnemyAI,
   AIState,
   EnemyType,
-  Enemy,
-  Collider,
-  ZPosition,
   Showdown,
+  ZPosition,
 } from '../sim/components'
-import { spawnPlayer, spawnBullet, spawnSwarmer, spawnGrunt, CollisionLayer, NO_OWNER, NO_TARGET } from '../sim/prefabs'
+import { spawnPlayer, spawnSwarmer, spawnGrunt, NO_TARGET } from '../sim/prefabs'
 import {
   encodeSnapshot,
   decodeSnapshot,
   SNAPSHOT_VERSION,
   HEADER_SIZE,
   PLAYER_SIZE,
-  BULLET_SIZE,
   ENEMY_SIZE,
 } from './snapshot'
 
 describe('snapshot', () => {
-  it('round-trip: encode → decode preserves all fields', () => {
+  it('round-trip: encode -> decode preserves all fields', () => {
     const world = createGameWorld(42)
     world.tick = 1000
 
@@ -41,11 +37,6 @@ describe('snapshot', () => {
     ZPosition.zVelocity[pEid] = -45
     PlayerState.state[pEid] = PlayerStateType.MOVING
     Health.current[pEid] = 80
-
-    const bEid = spawnBullet(world, {
-      x: 50, y: 60, vx: 300, vy: -150,
-      damage: 10, range: 500, ownerId: pEid, layer: CollisionLayer.PLAYER_BULLET,
-    })
 
     const eEid = spawnSwarmer(world, 400, 500)
     Health.current[eEid] = 3
@@ -58,7 +49,6 @@ describe('snapshot', () => {
     expect(snap.tick).toBe(1000)
     expect(snap.serverTime).toBe(Math.fround(12345.678))
 
-    // Player
     expect(snap.players).toHaveLength(1)
     const p = snap.players[0]!
     expect(p.eid).toBe(pEid)
@@ -78,18 +68,6 @@ describe('snapshot', () => {
     expect(p.showdownActive).toBe(0)
     expect(p.showdownTargetEid).toBe(NO_TARGET)
 
-    // Bullet
-    expect(snap.bullets).toHaveLength(1)
-    const b = snap.bullets[0]!
-    expect(b.eid).toBe(bEid)
-    expect(b.x).toBe(50)
-    expect(b.y).toBe(60)
-    expect(b.vx).toBe(300)
-    expect(b.vy).toBe(-150)
-    expect(b.layer).toBe(CollisionLayer.PLAYER_BULLET)
-    expect(b.ownerEid).toBe(pEid)
-
-    // Enemy
     expect(snap.enemies).toHaveLength(1)
     const e = snap.enemies[0]!
     expect(e.eid).toBe(eEid)
@@ -100,7 +78,6 @@ describe('snapshot', () => {
     expect(e.aiState).toBe(AIState.CHASE)
     expect(e.targetEid).toBe(pEid)
 
-    // Ability sections (empty)
     expect(snap.lastRitesZones).toHaveLength(0)
     expect(snap.dynamites).toHaveLength(0)
   })
@@ -108,14 +85,12 @@ describe('snapshot', () => {
   it('empty world: version + header + section headers', () => {
     const world = createGameWorld(1)
     const encoded = encodeSnapshot(world, 0)
-    // HEADER_SIZE + 2 bytes for zone/dynamite count headers
     expect(encoded.byteLength).toBe(HEADER_SIZE + 2)
 
     const snap = decodeSnapshot(encoded)
     expect(snap.tick).toBe(0)
     expect(snap.serverTime).toBe(0)
     expect(snap.players).toHaveLength(0)
-    expect(snap.bullets).toHaveLength(0)
     expect(snap.enemies).toHaveLength(0)
     expect(snap.lastRitesZones).toHaveLength(0)
     expect(snap.dynamites).toHaveLength(0)
@@ -129,8 +104,8 @@ describe('snapshot', () => {
 
     const snap = decodeSnapshot(encodeSnapshot(world, 0))
     const p = snap.players[0]!
-    expect(p.flags & 1).toBe(1)  // Dead
-    expect(p.flags & 2).toBe(2)  // Invincible
+    expect(p.flags & 1).toBe(1)
+    expect(p.flags & 2).toBe(2)
   })
 
   it('player flags: rollButtonWasDown encodes correctly', () => {
@@ -183,19 +158,12 @@ describe('snapshot', () => {
     expect(snap.players[1]!.hp).toBe(0)
   })
 
-  it('multiple entities: 2 players + bullets + enemies', () => {
+  it('multiple entities: 2 players + enemies', () => {
     const world = createGameWorld(4)
     world.tick = 42
 
-    const p1 = spawnPlayer(world, 10, 20, 0)
-    const p2 = spawnPlayer(world, 30, 40, 1)
-
-    for (let i = 0; i < 5; i++) {
-      spawnBullet(world, {
-        x: i * 10, y: i * 10, vx: 100, vy: 0,
-        damage: 5, range: 300, ownerId: p1,
-      })
-    }
+    spawnPlayer(world, 10, 20, 0)
+    spawnPlayer(world, 30, 40, 1)
 
     for (let i = 0; i < 3; i++) {
       spawnSwarmer(world, 100 + i * 50, 200)
@@ -205,16 +173,13 @@ describe('snapshot', () => {
     const snap = decodeSnapshot(encoded)
     expect(snap.tick).toBe(42)
     expect(snap.players.length).toBeGreaterThanOrEqual(2)
-    expect(snap.bullets.length).toBeGreaterThanOrEqual(5)
     expect(snap.enemies.length).toBeGreaterThanOrEqual(3)
 
-    // Byte size consistent with decoded counts (+2 for zone/dynamite count headers)
     const expectedSize =
       HEADER_SIZE +
       snap.players.length * PLAYER_SIZE +
-      snap.bullets.length * BULLET_SIZE +
       snap.enemies.length * ENEMY_SIZE +
-      2 // zone + dynamite count headers
+      2
     expect(encoded.byteLength).toBe(expectedSize)
   })
 
@@ -223,7 +188,6 @@ describe('snapshot', () => {
     const eid = spawnPlayer(world, 0, 0, 0)
     const testVal = 1.23456789
     Position.x[eid] = testVal
-    // f32 truncates precision — compare via Math.fround
     const expected = Math.fround(testVal)
 
     const snap = decodeSnapshot(encodeSnapshot(world, 0))
@@ -233,9 +197,8 @@ describe('snapshot', () => {
   it('version mismatch: decoder throws', () => {
     const world = createGameWorld(6)
     const encoded = encodeSnapshot(world, 0)
-    // Corrupt version byte
     const corrupted = new Uint8Array(encoded)
-    corrupted[0] = 99
+    corrupted[0] = (SNAPSHOT_VERSION + 1) & 0xff
 
     expect(() => decodeSnapshot(corrupted)).toThrow('Snapshot version mismatch')
   })
@@ -261,36 +224,13 @@ describe('snapshot', () => {
     expect(snap.players[0]!.flags & 1).toBe(1)
   })
 
-  it('enemy bullet layer encodes correctly', () => {
-    const world = createGameWorld(9)
-    spawnBullet(world, {
-      x: 0, y: 0, vx: 100, vy: 0,
-      damage: 5, range: 300, ownerId: NO_OWNER,
-      layer: CollisionLayer.ENEMY_BULLET,
-    })
-
-    const snap = decodeSnapshot(encodeSnapshot(world, 0))
-    expect(snap.bullets[0]!.layer).toBe(CollisionLayer.ENEMY_BULLET)
-    expect(snap.bullets[0]!.ownerEid).toBe(NO_OWNER)
-  })
-
   it('snapshot byte size matches spec for typical game', () => {
     const world = createGameWorld(10)
     world.tick = 500
 
-    // 2 players
     spawnPlayer(world, 0, 0, 0)
-    const p2 = spawnPlayer(world, 100, 100, 1)
+    spawnPlayer(world, 100, 100, 1)
 
-    // 20 bullets
-    for (let i = 0; i < 20; i++) {
-      spawnBullet(world, {
-        x: i, y: i, vx: 100, vy: 0,
-        damage: 5, range: 300, ownerId: p2,
-      })
-    }
-
-    // 30 enemies
     for (let i = 0; i < 30; i++) {
       spawnSwarmer(world, i * 10, i * 10)
     }
@@ -298,21 +238,17 @@ describe('snapshot', () => {
     const encoded = encodeSnapshot(world, 1000)
     const snap = decodeSnapshot(encoded)
     expect(snap.players.length).toBeGreaterThanOrEqual(2)
-    expect(snap.bullets.length).toBeGreaterThanOrEqual(20)
     expect(snap.enemies.length).toBeGreaterThanOrEqual(30)
 
-    // Byte size consistent with decoded counts (+2 for zone/dynamite count headers)
     const expectedSize =
       HEADER_SIZE +
       snap.players.length * PLAYER_SIZE +
-      snap.bullets.length * BULLET_SIZE +
       snap.enemies.length * ENEMY_SIZE +
-      2 // zone + dynamite count headers
+      2
     expect(encoded.byteLength).toBe(expectedSize)
 
-    // Verify the per-entity sizes match spec (2 players + 20 bullets + 30 enemies + 2 section headers)
-    // 14 + 76 + 420 + 450 + 2 = 962
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 20 * BULLET_SIZE + 30 * ENEMY_SIZE + 2).toBe(962)
+    // 12 + 2*38 + 30*15 + 2 = 540 bytes
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 30 * ENEMY_SIZE + 2).toBe(540)
   })
 
   it('lastProcessedSeq round-trip with playerSeqs map', () => {
@@ -424,7 +360,10 @@ describe('snapshot', () => {
     world.dynamites.push({
       x: 300,
       y: 400.5,
+      startX: 300,
+      startY: 400.5,
       fuseRemaining: 2.5,
+      maxFuse: 3,
       damage: 50,
       radius: 64,
       knockback: 100,
@@ -433,7 +372,10 @@ describe('snapshot', () => {
     world.dynamites.push({
       x: 500,
       y: 600,
+      startX: 500,
+      startY: 600,
       fuseRemaining: 1.0,
+      maxFuse: 2,
       damage: 30,
       radius: 48,
       knockback: 80,
@@ -446,10 +388,13 @@ describe('snapshot', () => {
     expect(d0.x).toBe(300)
     expect(d0.y).toBe(Math.fround(400.5))
     expect(d0.fuseRemaining).toBe(2.5)
+    expect(d0.maxFuse).toBe(3)
     expect(d0.radius).toBe(64)
     expect(d0.ownerEid).toBe(eid)
+
     const d1 = snap.dynamites[1]!
     expect(d1.x).toBe(500)
     expect(d1.fuseRemaining).toBe(1)
+    expect(d1.maxFuse).toBe(2)
   })
 })

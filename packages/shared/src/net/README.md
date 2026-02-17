@@ -26,7 +26,10 @@ Network protocol definitions and serialization.
 - `game-config` - room seed + authoritative player/character identity (optionally includes full roster)
 - `player-roster` - authoritative player roster (`eid` + `characterId`) for remote presentation parity
 - `snapshot` - authoritative world snapshot (binary)
+- `bullet-spawn` / `bullet-despawn` - reliable ordered bullet lifecycle events
 - `hud` - HUD data derived from authoritative local player state
+- `interactables` - per-player interaction prompt and camp shop state
+- `select-node-result` - authoritative node selection response
 - `pong` - clock sync pong payload
 - `incompatible-protocol` - protocol/version mismatch message; client should disconnect and reload
 
@@ -36,18 +39,26 @@ Lobby metadata (`phase`, `players` with name/character/ready, `serverTick`) is s
 
 `NetworkInput.clientTick` is the client's local prediction tick for that input sample. `estimatedServerTimeMs` is the client's clock-synced estimate of server time at sample time, and `viewInterpDelayMs` tells the server how far behind remote entities were rendered on that frame.
 
-The server subtracts `viewInterpDelayMs` from `estimatedServerTimeMs`, converts that perceived-shot time into a bounded rewind tick window, and falls back to client-tick mapping when clock sync data is unavailable.
+For SHOOT inputs, the server computes rewind age from:
+- one-way latency estimate (`now - estimatedServerTimeMs`)
+- view interpolation delay (`viewInterpDelayMs`, bounded)
+- input queue delay (`queueDepth * TICK_MS`, bounded)
+
+That total age is converted to ticks with nearest-rounding, then clamped to the rewind window. If timing metadata is unavailable, the server falls back to client-tick mapping.
 
 ## Binary Snapshots
 
-`snapshot.ts` implements zero-allocation binary encode/decode for full entity state. The server broadcasts snapshots at 30Hz (every 2nd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
+`snapshot.ts` implements zero-allocation binary encode/decode for authoritative player/enemy + ability state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
 
-Current snapshot protocol (`SNAPSHOT_VERSION = 6`) includes:
+Current snapshot protocol (`SNAPSHOT_VERSION = 10`) includes:
 
 - Player: `x/y`, jump height `z`, jump vertical velocity `zVelocity`, aim/state/hp
 - Player flags: `Dead`, `Invincible`, `rollButtonWasDown`, `jumpButtonWasDown`
 - Roll reconciliation payload: elapsed/duration/direction
-- Bullet and enemy authoritative state
+- Enemy authoritative state (type/hp/AI/target)
+- Last Rites zones and dynamite throws
+
+Bullets are transported out-of-band via `bullet-spawn` / `bullet-despawn` messages to reduce snapshot payload size and improve interpolation stability.
 
 ## HUD Derivation
 

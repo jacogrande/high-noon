@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { createGameWorld, EnemyType, Health, NO_TARGET, Velocity, type WorldSnapshot } from '@high-noon/shared'
+import {
+  createGameWorld,
+  EnemyType,
+  Health,
+  NO_TARGET,
+  Position,
+  Velocity,
+  spawnBullet,
+  CollisionLayer,
+  type WorldSnapshot,
+} from '@high-noon/shared'
 import { PredictedEntityTracker } from './PredictedEntityTracker'
 import { SnapshotIngestor, type SnapshotIngestContext } from './SnapshotIngestor'
 
@@ -11,7 +21,6 @@ function makeSnapshot(
     tick: Math.floor(serverTime),
     serverTime,
     players: [],
-    bullets: [],
     enemies: [{
       eid: enemy.eid,
       x: enemy.x,
@@ -26,21 +35,21 @@ function makeSnapshot(
   }
 }
 
-function makeContext(): SnapshotIngestContext {
-  const world = createGameWorld(7)
+function makeContext(overrides: Partial<SnapshotIngestContext> = {}): SnapshotIngestContext {
+  const world = overrides.world ?? createGameWorld(7)
   return {
     world,
-    tracker: new PredictedEntityTracker(),
-    playerEntities: new Map(),
-    bulletEntities: new Map(),
-    enemyEntities: new Map(),
-    myServerEid: -1,
-    myClientEid: -1,
-    localCharacterId: 'sheriff',
-    resolveCharacterIdForServerEid: () => undefined,
-    setMyClientEid: () => {},
-    setLocalPlayerRenderEid: () => {},
-    resolveRttMs: () => 100,
+    tracker: overrides.tracker ?? new PredictedEntityTracker(),
+    playerEntities: overrides.playerEntities ?? new Map(),
+    bulletEntities: overrides.bulletEntities ?? new Map(),
+    enemyEntities: overrides.enemyEntities ?? new Map(),
+    myServerEid: overrides.myServerEid ?? -1,
+    myClientEid: overrides.myClientEid ?? -1,
+    localCharacterId: overrides.localCharacterId ?? 'sheriff',
+    resolveCharacterIdForServerEid: overrides.resolveCharacterIdForServerEid ?? (() => undefined),
+    setMyClientEid: overrides.setMyClientEid ?? (() => {}),
+    setLocalPlayerRenderEid: overrides.setLocalPlayerRenderEid ?? (() => {}),
+    resolveRttMs: overrides.resolveRttMs ?? (() => 100),
   }
 }
 
@@ -72,5 +81,97 @@ describe('SnapshotIngestor', () => {
 
     // Do not flash back immediately to 10.
     expect(Health.current[enemyClientEid]).toBe(8)
+  })
+
+  test('adopts local predicted bullet only when server owner matches local player', () => {
+    const world = createGameWorld(8)
+    const tracker = new PredictedEntityTracker()
+    const myClientEid = 17
+    const myServerEid = 170
+    const predictedEid = spawnBullet(world, {
+      x: 100,
+      y: 120,
+      vx: 300,
+      vy: 0,
+      damage: 10,
+      range: 500,
+      ownerId: myClientEid,
+      layer: CollisionLayer.PLAYER_BULLET,
+    })
+    expect(tracker.detectNewPredictedBullets(world, myClientEid, 10)).toBe(1)
+
+    const ingestor = new SnapshotIngestor()
+    const ctx = makeContext({
+      world,
+      tracker,
+      myServerEid,
+      myClientEid,
+    })
+
+    const matched = ingestor.applyBulletSpawn(
+      {
+        bulletId: 1,
+        tick: 10,
+        serverTime: 5000,
+        ownerServerEid: myServerEid,
+        x: Position.x[predictedEid]!,
+        y: Position.y[predictedEid]!,
+        vx: 300,
+        vy: 0,
+        layer: CollisionLayer.PLAYER_BULLET,
+      },
+      ctx,
+    )
+
+    expect(matched).toBe(true)
+    expect(ctx.bulletEntities.get(1)).toBe(predictedEid)
+    expect(ctx.tracker.isLocalTimelineBullet(predictedEid)).toBe(true)
+  })
+
+  test('does not adopt local predicted bullet for remote-owner bullet spawn', () => {
+    const world = createGameWorld(9)
+    const tracker = new PredictedEntityTracker()
+    const myClientEid = 21
+    const predictedEid = spawnBullet(world, {
+      x: 50,
+      y: 60,
+      vx: 200,
+      vy: 0,
+      damage: 10,
+      range: 500,
+      ownerId: myClientEid,
+      layer: CollisionLayer.PLAYER_BULLET,
+    })
+    expect(tracker.detectNewPredictedBullets(world, myClientEid, 10)).toBe(1)
+
+    const ingestor = new SnapshotIngestor()
+    const ctx = makeContext({
+      world,
+      tracker,
+      myServerEid: 210,
+      myClientEid,
+    })
+
+    const matched = ingestor.applyBulletSpawn(
+      {
+        bulletId: 2,
+        tick: 11,
+        serverTime: 5050,
+        ownerServerEid: 9999,
+        x: 50,
+        y: 60,
+        vx: 200,
+        vy: 0,
+        layer: CollisionLayer.PLAYER_BULLET,
+      },
+      ctx,
+    )
+
+    expect(matched).toBe(false)
+    const serverBulletEid = ctx.bulletEntities.get(2)
+    expect(serverBulletEid).toBeDefined()
+    expect(serverBulletEid).not.toBe(predictedEid)
+    expect(ctx.tracker.isLocalTimelineBullet(predictedEid)).toBe(true)
+    expect(ctx.tracker.isLocalTimelineBullet(serverBulletEid!)).toBe(false)
   })
 })

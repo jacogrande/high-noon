@@ -1,18 +1,15 @@
-import { Position, ZPosition, type BulletSnapshot, type EnemySnapshot, type PlayerSnapshot, type WorldSnapshot } from '@high-noon/shared'
+import { Position, ZPosition, type EnemySnapshot, type PlayerSnapshot, type WorldSnapshot } from '@high-noon/shared'
 import type { InterpolationState } from '../../net/SnapshotBuffer'
 
 export interface RemoteInterpolationContext {
   world: { tick: number }
   playerEntities: ReadonlyMap<number, number>
-  bulletEntities: ReadonlyMap<number, number>
   enemyEntities: ReadonlyMap<number, number>
   myClientEid: number
-  localTimelineBullets: ReadonlySet<number>
 }
 
 export class RemoteInterpolationApplier {
   private readonly fromPlayerIndex = new Map<number, PlayerSnapshot>()
-  private readonly fromBulletIndex = new Map<number, BulletSnapshot>()
   private readonly fromEnemyIndex = new Map<number, EnemySnapshot>()
 
   apply(interp: InterpolationState, ctx: RemoteInterpolationContext): number {
@@ -27,18 +24,12 @@ export class RemoteInterpolationApplier {
       this.fromPlayerIndex.set(p.eid, p)
     }
 
-    this.fromBulletIndex.clear()
-    for (const b of from.bullets) {
-      this.fromBulletIndex.set(b.eid, b)
-    }
-
     this.fromEnemyIndex.clear()
     for (const e of from.enemies) {
       this.fromEnemyIndex.set(e.eid, e)
     }
 
     this.interpolatePlayers(to, ctx, alpha)
-    this.interpolateBullets(to, ctx)
     this.interpolateEnemies(to, ctx)
 
     return alpha
@@ -62,26 +53,6 @@ export class RemoteInterpolationApplier {
       Position.x[clientEid] = p.x
       Position.y[clientEid] = p.y
       ZPosition.z[clientEid] = fromZ + (p.z - fromZ) * alpha
-    }
-  }
-
-  private interpolateBullets(to: WorldSnapshot, ctx: RemoteInterpolationContext): void {
-    for (const b of to.bullets) {
-      const clientEid = ctx.bulletEntities.get(b.eid)
-      if (clientEid === undefined) continue
-
-      // Local-timeline bullets are predicted/rendered in present time.
-      // Do not overwrite their positions with delayed snapshot interpolation.
-      if (ctx.localTimelineBullets.has(clientEid)) continue
-
-      const prev = this.fromBulletIndex.get(b.eid)
-      const fromX = prev?.x ?? b.x
-      const fromY = prev?.y ?? b.y
-
-      Position.prevX[clientEid] = fromX
-      Position.prevY[clientEid] = fromY
-      Position.x[clientEid] = b.x
-      Position.y[clientEid] = b.y
     }
   }
 

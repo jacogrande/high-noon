@@ -5,7 +5,7 @@
  * the server authoritative.
  */
 
-import { hasComponent } from 'bitecs'
+import { hasComponent, removeEntity } from 'bitecs'
 import {
   createGameWorld,
   generateArena,
@@ -38,9 +38,11 @@ import {
   type Tilemap,
   type GameWorld,
   type InputState,
-  type NetworkInput,
-  type WorldSnapshot,
-  type HudData,
+    type NetworkInput,
+    type WorldSnapshot,
+    type BulletSpawnMessage,
+    type BulletDespawnMessage,
+    type HudData,
   type InteractablesData,
   type CharacterId,
   type PlayerRosterEntry,
@@ -108,6 +110,8 @@ const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
 const CORRECTION_SPEED = 15   // exponential decay rate for visual smoothing
 const MAX_PENDING_SNAPSHOTS = 6
 const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 4
+const MAX_PENDING_BULLET_EVENTS = 128
+const REMOTE_BULLET_MAX_AGE_TICKS = 30
 
 interface MultiplayerInitializeOptions extends Record<string, unknown> {
   net?: NetworkClient
@@ -187,6 +191,9 @@ export class MultiplayerModeController implements SceneModeController {
 
   /** Authoritative snapshots waiting to be applied on fixed ticks */
   private readonly pendingSnapshots: WorldSnapshot[] = []
+  private readonly pendingBulletSpawns: BulletSpawnMessage[] = []
+  private readonly pendingBulletDespawns: BulletDespawnMessage[] = []
+  private readonly remoteBulletSpawnTickByClientEid = new Map<number, number>()
 
   /** Dry fire debounce cooldown (seconds) */
   private dryFireCooldown = 0
@@ -347,6 +354,15 @@ export class MultiplayerModeController implements SceneModeController {
       this.latestHud = null
       this.latestInteractables = null
       this.pendingSnapshots.length = 0
+      this.pendingBulletSpawns.length = 0
+      this.pendingBulletDespawns.length = 0
+      this.clockSync.stop()
+      this.snapshotBuffer.clear()
+      this.inputBuffer.clear()
+      this.predictedEntityTracker.clearLocalTimelineBullets()
+      this.remoteBulletSpawnTickByClientEid.clear()
+      this.snapshotIngestor.resetSessionState()
+      this.shootWasDown = false
       console.log('[MP] Disconnected from server')
     })
 
@@ -420,6 +436,23 @@ export class MultiplayerModeController implements SceneModeController {
       this.pendingSnapshots.push(snapshot)
     })
 
+    this.net.on('bullet-spawn', (event: BulletSpawnMessage) => {
+      if (this.pendingBulletSpawns.length >= MAX_PENDING_BULLET_EVENTS) {
+        // Overflow guard: we drop the oldest pending spawn. If that bullet's
+        // despawn later arrives without its spawn ever being ingested, despawn
+        // processing is a safe no-op because bulletId will not be mapped.
+        this.pendingBulletSpawns.shift()
+      }
+      this.pendingBulletSpawns.push(event)
+    })
+
+    this.net.on('bullet-despawn', (event: BulletDespawnMessage) => {
+      if (this.pendingBulletDespawns.length >= MAX_PENDING_BULLET_EVENTS) {
+        this.pendingBulletDespawns.shift()
+      }
+      this.pendingBulletDespawns.push(event)
+    })
+
     if (initOptions.preconnected) {
       const config = this.net.getLatestGameConfig()
       if (!config) {
@@ -479,6 +512,10 @@ export class MultiplayerModeController implements SceneModeController {
     this.shootWasDown = false
     console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
     this.clockSync.stop()
+    this.snapshotBuffer.clear()
+    this.inputBuffer.clear()
+    this.remoteBulletSpawnTickByClientEid.clear()
+    this.snapshotIngestor.resetSessionState()
     this.clockSync.start((clientTime) => this.net.sendPing(clientTime))
   }
 
@@ -512,27 +549,79 @@ export class MultiplayerModeController implements SceneModeController {
   // Entity Lifecycle — sync ECS shadow world with snapshot data
   // ===========================================================================
 
+  private buildSnapshotIngestContext() {
+    return {
+      world: this.world,
+      tracker: this.predictedEntityTracker,
+      playerEntities: this.playerEntities,
+      bulletEntities: this.bulletEntities,
+      enemyEntities: this.enemyEntities,
+      myServerEid: this.myServerEid,
+      myClientEid: this.myClientEid,
+      localCharacterId: this.authoritativeCharacterId,
+      resolveCharacterIdForServerEid: (serverEid: number) => this.serverCharacterIds.get(serverEid),
+      setMyClientEid: (eid: number) => { this.myClientEid = eid },
+      setLocalPlayerRenderEid: (eid: number | null) => { this.playerRenderer.localPlayerEid = eid },
+      resolveRttMs: () => this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
+    }
+  }
+
   private applyEntityLifecycle(snapshot: WorldSnapshot): void {
     const ingestStats = this.snapshotIngestor.applyEntityLifecycle(
       snapshot,
-      {
-        world: this.world,
-        tracker: this.predictedEntityTracker,
-        playerEntities: this.playerEntities,
-        bulletEntities: this.bulletEntities,
-        enemyEntities: this.enemyEntities,
-        myServerEid: this.myServerEid,
-        myClientEid: this.myClientEid,
-        localCharacterId: this.authoritativeCharacterId,
-        resolveCharacterIdForServerEid: (serverEid) => this.serverCharacterIds.get(serverEid),
-        setMyClientEid: (eid) => { this.myClientEid = eid },
-        setLocalPlayerRenderEid: (eid) => { this.playerRenderer.localPlayerEid = eid },
-        resolveRttMs: () => this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
-      },
+      this.buildSnapshotIngestContext(),
       this.predictionTick,
     )
-    this.telemetry.onPredictedBulletsMatched(ingestStats.matchedPredictedBullets)
     this.telemetry.onPredictedBulletsTimedOut(ingestStats.timedOutPredictedBullets)
+  }
+
+  private processPendingBulletEvents(): void {
+    if (this.pendingBulletSpawns.length === 0 && this.pendingBulletDespawns.length === 0) return
+    const ingestCtx = this.buildSnapshotIngestContext()
+    while (this.pendingBulletSpawns.length > 0) {
+      const event = this.pendingBulletSpawns.shift()!
+      if (this.snapshotIngestor.applyBulletSpawn(event, ingestCtx)) {
+        this.telemetry.onPredictedBulletsMatched(1)
+      }
+      const clientEid = this.bulletEntities.get(event.bulletId)
+      if (clientEid === undefined) continue
+      if (this.predictedEntityTracker.isLocalTimelineBullet(clientEid)) {
+        this.remoteBulletSpawnTickByClientEid.delete(clientEid)
+      } else if (!this.remoteBulletSpawnTickByClientEid.has(clientEid)) {
+        this.remoteBulletSpawnTickByClientEid.set(clientEid, this.predictionTick)
+      }
+    }
+    while (this.pendingBulletDespawns.length > 0) {
+      const event = this.pendingBulletDespawns.shift()!
+      const clientEid = this.bulletEntities.get(event.bulletId)
+      this.snapshotIngestor.applyBulletDespawn(event, ingestCtx)
+      if (clientEid !== undefined) {
+        this.remoteBulletSpawnTickByClientEid.delete(clientEid)
+      }
+    }
+  }
+
+  private advanceRemoteBullets(): void {
+    if (this.bulletEntities.size <= 0) return
+    for (const [bulletId, clientEid] of this.bulletEntities) {
+      if (this.predictedEntityTracker.isLocalTimelineBullet(clientEid)) continue
+
+      const spawnTick = this.remoteBulletSpawnTickByClientEid.get(clientEid)
+      if (spawnTick === undefined) {
+        this.remoteBulletSpawnTickByClientEid.set(clientEid, this.predictionTick)
+      } else if (this.predictionTick - spawnTick > REMOTE_BULLET_MAX_AGE_TICKS) {
+        removeEntity(this.world, clientEid)
+        this.predictedEntityTracker.unmarkServerBullet(clientEid)
+        this.bulletEntities.delete(bulletId)
+        this.remoteBulletSpawnTickByClientEid.delete(clientEid)
+        continue
+      }
+
+      Position.prevX[clientEid] = Position.x[clientEid]!
+      Position.prevY[clientEid] = Position.y[clientEid]!
+      Position.x[clientEid] = Position.x[clientEid]! + Velocity.x[clientEid]! * TICK_S
+      Position.y[clientEid] = Position.y[clientEid]! + Velocity.y[clientEid]! * TICK_S
+    }
   }
 
   /**
@@ -629,7 +718,9 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Apply pending authoritative snapshots on the fixed tick (bounded catch-up).
     this.processPendingSnapshots()
+    this.processPendingBulletEvents()
     this.prepareSimulationStateFromLatestSnapshot()
+    this.advanceRemoteBullets()
     this.tickPlayerHitIframes(TICK_S)
 
     // Level-up detection from server HUD data (emit one event per level gained)
@@ -914,10 +1005,8 @@ export class MultiplayerModeController implements SceneModeController {
     return this.interpolationApplier.apply(interp, {
       world: this.world,
       playerEntities: this.playerEntities,
-      bulletEntities: this.bulletEntities,
       enemyEntities: this.enemyEntities,
       myClientEid: this.myClientEid,
-      localTimelineBullets: this.predictedEntityTracker.getLocalTimelineBullets(),
     })
   }
 
@@ -1098,8 +1187,12 @@ export class MultiplayerModeController implements SceneModeController {
     this.predictedEntityTracker.clear(this.world)
 
     this.pendingSnapshots.length = 0
+    this.pendingBulletSpawns.length = 0
+    this.pendingBulletDespawns.length = 0
+    this.remoteBulletSpawnTickByClientEid.clear()
     this.gameplayEvents.clear()
     this.inputBuffer.clear()
+    this.snapshotIngestor.resetSessionState()
     this.clockSync.stop()
     this.net.disconnect()
     this.sound.destroy()

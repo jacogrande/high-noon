@@ -10,6 +10,8 @@ import { Client, type Room } from 'colyseus.js'
 import {
   decodeSnapshot,
   type WorldSnapshot,
+  type BulletSpawnMessage,
+  type BulletDespawnMessage,
   type NetworkInput,
   type PingMessage,
   type PongMessage,
@@ -44,6 +46,8 @@ export type NetworkEventMap = {
   'lobby-state': (state: LobbyState) => void
   'player-roster': (roster: PlayerRosterEntry[]) => void
   snapshot: (snapshot: WorldSnapshot) => void
+  'bullet-spawn': (event: BulletSpawnMessage) => void
+  'bullet-despawn': (event: BulletDespawnMessage) => void
   hud: (data: HudData) => void
   interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
@@ -238,6 +242,14 @@ export class NetworkClient {
           this.handleProtocolMismatch(room, err)
         }
       }
+    }))
+
+    cleanup.push(room.onMessage('bullet-spawn', (data: BulletSpawnMessage) => {
+      this.emit('bullet-spawn', data)
+    }))
+
+    cleanup.push(room.onMessage('bullet-despawn', (data: BulletDespawnMessage) => {
+      this.emit('bullet-despawn', data)
     }))
 
     const onLeave = () => {

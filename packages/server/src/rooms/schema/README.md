@@ -14,16 +14,20 @@ Colyseus schema definitions for synchronized state.
 
 ## Design Philosophy
 
-**Keep it small.** Schema sync is used only for lobby metadata (phase, player names, tick counter). All entity state (positions, health, enemies, bullets) is sent via binary snapshots at 30Hz using `encodeSnapshot`/`sendBytes`.
+**Keep it small.** Schema sync is used only for lobby metadata (phase, player names, tick counter). Player/enemy + ability state is sent via binary snapshots at 20Hz using `encodeSnapshot`/`sendBytes`, while bullets use dedicated lifecycle events.
 
 **What is synced via schema (10Hz):**
 - Game phase (`lobby` / `playing`)
 - Player metadata (name, character, ready flag)
 - Server tick counter
 
-**What is synced via binary snapshots (30Hz):**
+**What is synced via binary snapshots (20Hz):**
 - All entity positions, health, state
-- Enemy and bullet data
+- Enemy data + ability payloads (Last Rites zones, dynamites)
+
+**What is synced via bullet lifecycle events:**
+- `bullet-spawn`
+- `bullet-despawn`
 
 ## Current Schema
 

@@ -301,6 +301,39 @@ describe('NetworkClient', () => {
     expect(received?.salesman?.shovelPrice).toBe(18)
   })
 
+  test('registerRoomHandlers forwards bullet lifecycle messages', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    const spawns: Array<{ bulletId: number; ownerServerEid: number }> = []
+    const despawns: Array<{ bulletId: number; tick: number }> = []
+
+    net.on('bullet-spawn', (payload) => {
+      spawns.push({ bulletId: payload.bulletId, ownerServerEid: payload.ownerServerEid })
+    })
+    net.on('bullet-despawn', (payload) => {
+      despawns.push({ bulletId: payload.bulletId, tick: payload.tick })
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    room.emit('bullet-spawn', {
+      bulletId: 10,
+      tick: 222,
+      serverTime: 1234,
+      ownerServerEid: 7,
+      x: 10,
+      y: 20,
+      vx: 300,
+      vy: -50,
+      layer: 3,
+      shotTick: 219,
+    })
+    room.emit('bullet-despawn', { bulletId: 10, tick: 226 })
+
+    expect(spawns).toEqual([{ bulletId: 10, ownerServerEid: 7 }])
+    expect(despawns).toEqual([{ bulletId: 10, tick: 226 }])
+  })
+
   test('registerRoomHandlers emits lobby-state from schema state and updates', () => {
     const net = new NetworkClient('ws://localhost:2567')
     const room = new FakeRoom()

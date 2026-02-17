@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Testing
 coverage/
+
+# Local planning notes
+plan.md

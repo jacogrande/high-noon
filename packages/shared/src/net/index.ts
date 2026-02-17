@@ -3,6 +3,7 @@
  */
 
 export * from './clock'
+export * from './bullets'
 export * from './hud'
 export * from './interactables'
 export * from './input'

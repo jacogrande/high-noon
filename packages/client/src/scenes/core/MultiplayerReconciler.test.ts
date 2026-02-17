@@ -34,7 +34,6 @@ function makeSnapshot(playerEid: number, state: number): WorldSnapshot {
       showdownActive: 0,
       showdownTargetEid: 0xffff,
     }],
-    bullets: [],
     enemies: [],
     lastRitesZones: [],
     dynamites: [],

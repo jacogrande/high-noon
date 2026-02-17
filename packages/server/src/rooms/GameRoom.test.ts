@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Client } from 'colyseus'
+import { Button, TICK_MS, type NetworkInput } from '@high-noon/shared'
 import { GameRoom } from './GameRoom'
 
 interface SentMessage {
@@ -34,6 +35,24 @@ function createRoom(): GameRoom {
   }).setSimulationInterval = () => undefined
   room.onCreate()
   return room
+}
+
+function makeInput(overrides: Partial<NetworkInput> = {}): NetworkInput {
+  return {
+    seq: 1,
+    clientTick: 0,
+    clientTimeMs: 0,
+    estimatedServerTimeMs: 0,
+    viewInterpDelayMs: 0,
+    shootSeq: 0,
+    buttons: 0,
+    aimAngle: 0,
+    moveX: 0,
+    moveY: 0,
+    cursorWorldX: 0,
+    cursorWorldY: 0,
+    ...overrides,
+  }
 }
 
 function getOnMessageHandler(room: GameRoom, type: string): (client: Client, data: unknown) => void {
@@ -199,5 +218,95 @@ describe('GameRoom lobby state', () => {
 
     onSetCampReady(client, { ready: true })
     expect(roomWithWorld.world.campComplete).toBe(false)
+  })
+})
+
+describe('GameRoom lag compensation', () => {
+  test('time-based rewind adds queue delay and clamps queue contribution', () => {
+    const room = createRoom() as unknown as {
+      world: { tick: number }
+      estimateShotTickFromInputTime: (
+        nowMs: number,
+        input: NetworkInput,
+        queueDepth: number,
+      ) => {
+        tick: number
+        latencyMs: number
+        interpMs: number
+        queueDelayMs: number
+        effectiveAgeMs: number
+      } | null
+    }
+    room.world.tick = 1000
+
+    const input = makeInput({
+      estimatedServerTimeMs: 1000,
+      viewInterpDelayMs: 40,
+    })
+
+    const sample = room.estimateShotTickFromInputTime(1100, input, 3)
+    expect(sample).not.toBeNull()
+    expect(sample!.latencyMs).toBe(100)
+    expect(sample!.interpMs).toBe(40)
+    expect(sample!.queueDelayMs).toBeCloseTo(3 * TICK_MS, 4)
+    const expectedAgeMs = 100 + 40 + 3 * TICK_MS
+    expect(sample!.effectiveAgeMs).toBeCloseTo(expectedAgeMs, 4)
+    expect(sample!.tick).toBe(1000 - Math.round(expectedAgeMs / TICK_MS))
+
+    const clamped = room.estimateShotTickFromInputTime(1100, input, 999)
+    expect(clamped).not.toBeNull()
+    expect(clamped!.queueDelayMs).toBe(120)
+  })
+
+  test('queue trimming carries dropped shoot timing into the kept input', () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    onSetReady(client, { ready: true })
+
+    const roomPrivate = room as unknown as {
+      slots: Map<string, {
+        eid: number
+        inputQueue: NetworkInput[]
+        lastShootSeq: number
+        lastInput: NetworkInput
+      }>
+      serverTick: () => void
+    }
+    const slot = roomPrivate.slots.get(client.sessionId)
+    if (!slot) {
+      throw new Error('Expected slot for joined client')
+    }
+
+    slot.inputQueue = [
+      makeInput({ seq: 1, clientTick: 91 }),
+      makeInput({
+        seq: 2,
+        clientTick: 123,
+        clientTimeMs: 4567,
+        estimatedServerTimeMs: 4500,
+        viewInterpDelayMs: 35,
+        buttons: Button.SHOOT,
+        shootSeq: 7,
+      }),
+      makeInput({ seq: 3, clientTick: 93 }),
+      makeInput({ seq: 4, clientTick: 94 }),
+      makeInput({ seq: 5, clientTick: 95 }),
+      makeInput({ seq: 6, clientTick: 96 }),
+      makeInput({ seq: 7, clientTick: 97 }),
+    ]
+
+    roomPrivate.serverTick()
+
+    const consumed = slot.lastInput
+    expect(consumed.seq).toBe(5)
+    expect(consumed.buttons & Button.SHOOT).toBe(Button.SHOOT)
+    expect(consumed.shootSeq).toBe(7)
+    expect(consumed.clientTick).toBe(123)
+    expect(consumed.clientTimeMs).toBe(4567)
+    expect(consumed.estimatedServerTimeMs).toBe(4500)
+    expect(consumed.viewInterpDelayMs).toBe(35)
+    expect(slot.lastShootSeq).toBe(7)
   })
 })

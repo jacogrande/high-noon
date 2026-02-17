@@ -13,6 +13,10 @@ import {
   encodeSnapshot,
   createInputState,
   Button,
+  Bullet,
+  Position,
+  Velocity,
+  Collider,
   Cylinder,
   Showdown,
   Health,
@@ -36,6 +40,8 @@ import {
   type GameWorld,
   type SystemRegistry,
   type NetworkInput,
+  type BulletSpawnMessage,
+  type BulletDespawnMessage,
   type PingMessage,
   type PongMessage,
   type HudData,
@@ -55,8 +61,8 @@ import { RewindHistory } from '../net/RewindHistory'
 /** Maximum ticks to catch up in one update call (spiral-of-death protection) */
 const MAX_CATCHUP_TICKS = 4
 
-/** Snapshot broadcast interval (every N ticks). 60Hz / 2 = 30Hz */
-const SNAPSHOT_INTERVAL = 2
+/** Snapshot broadcast interval (every N ticks). 60Hz / 3 = 20Hz */
+const SNAPSHOT_INTERVAL = 3
 
 /** Maximum queued inputs per player before dropping oldest */
 const MAX_INPUT_QUEUE = 30
@@ -84,13 +90,12 @@ const neutralInput: NetworkInput = Object.freeze({
   shootSeq: 0,
 })
 
-const REWIND_MAX_MS = 120
+const REWIND_MAX_MS = 180
 const REWIND_MAX_TICKS = Math.max(1, Math.floor((REWIND_MAX_MS / 1000) * TICK_RATE))
 const REWIND_HISTORY_TICKS = REWIND_MAX_TICKS + 8
 const REWIND_MAX_VIEW_INTERP_DELAY_MS = 200
+const REWIND_MAX_QUEUE_DELAY_MS = 120
 const REWIND_HISTORICAL_RADIUS_PADDING = 2
-const REWIND_LATENCY_WEIGHT = 0.45
-const REWIND_VIEW_DELAY_WEIGHT = 0.35
 
 /**
  * Action buttons that should survive queue trimming.
@@ -101,6 +106,7 @@ const TRANSIENT_ACTION_BUTTONS =
   Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
 
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
+const bulletQuery = defineQuery([Bullet, Position, Velocity, Collider])
 
 function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): number {
   let merged = baseButtons
@@ -108,6 +114,22 @@ function mergeTransientButtons(inputs: NetworkInput[], baseButtons: number): num
     merged |= inputs[i]!.buttons & TRANSIENT_ACTION_BUTTONS
   }
   return merged
+}
+
+function selectLatestDroppedShootInput(
+  dropped: NetworkInput[],
+  minShootSeq: number,
+): NetworkInput | null {
+  let latest: NetworkInput | null = null
+  for (let i = 0; i < dropped.length; i++) {
+    const input = dropped[i]!
+    if ((input.buttons & Button.SHOOT) === 0) continue
+    if (input.shootSeq <= minShootSeq) continue
+    if (!latest || input.shootSeq > latest.shootSeq) {
+      latest = input
+    }
+  }
+  return latest
 }
 
 /** Per-player server state */
@@ -249,7 +271,10 @@ export class GameRoom extends Room<GameRoomState> {
   private rewindHeldInputShotsSkipped = 0
   private rewindLatencyMsAccum = 0
   private rewindInterpMsAccum = 0
+  private rewindQueueDelayMsAccum = 0
   private rewindEffectiveAgeMsAccum = 0
+  private readonly bulletNetIdByEid = new Map<number, number>()
+  private nextBulletNetId = 1
   private readonly campReadySessions = new Set<string>()
   private wasCampTransition = false
 
@@ -444,6 +469,7 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Send game config to the joining client
     this.sendGameConfig(client, slot)
+    this.sendCurrentBullets(client)
     this.broadcastPlayerRoster()
 
     console.log(`[GameRoom] ${client.sessionId} joined (eid=${eid}, character=${characterId}, players=${this.slots.size})`)
@@ -469,6 +495,7 @@ export class GameRoom extends Room<GameRoomState> {
           slot.lastShootSeq = 0
           slot.protocolMismatchNotified = false
           this.sendGameConfig(reconnectedClient, slot)
+          this.sendCurrentBullets(reconnectedClient)
         }
         return // Slot preserved
       } catch {
@@ -494,7 +521,10 @@ export class GameRoom extends Room<GameRoomState> {
     this.rewindTickSamples.length = 0
     this.rewindLatencyMsAccum = 0
     this.rewindInterpMsAccum = 0
+    this.rewindQueueDelayMsAccum = 0
     this.rewindEffectiveAgeMsAccum = 0
+    this.bulletNetIdByEid.clear()
+    this.nextBulletNetId = 1
     this.campReadySessions.clear()
     console.log('[GameRoom] Disposed')
   }
@@ -526,6 +556,62 @@ export class GameRoom extends Room<GameRoomState> {
     const roster = this.getPlayerRoster()
     for (const slot of this.slots.values()) {
       slot.client.send('player-roster', roster)
+    }
+  }
+
+  private buildBulletSpawnMessage(eid: number, bulletId: number): BulletSpawnMessage {
+    const shotTick = this.world.lagCompBulletShotTick.get(eid)
+    const base: BulletSpawnMessage = {
+      bulletId,
+      tick: this.world.tick,
+      serverTime: performance.now(),
+      ownerServerEid: Bullet.ownerId[eid]!,
+      x: Position.x[eid]!,
+      y: Position.y[eid]!,
+      vx: Velocity.x[eid]!,
+      vy: Velocity.y[eid]!,
+      layer: Collider.layer[eid]!,
+    }
+    return shotTick !== undefined
+      ? { ...base, shotTick }
+      : base
+  }
+
+  private sendCurrentBullets(client: Client): void {
+    if (this.state.phase !== 'playing') return
+    for (const [eid, bulletId] of this.bulletNetIdByEid) {
+      if (!hasComponent(this.world, Bullet, eid)) continue
+      client.send('bullet-spawn', this.buildBulletSpawnMessage(eid, bulletId))
+    }
+  }
+
+  private broadcastBulletEvents(): void {
+    const seen = new Set<number>()
+    const bullets = bulletQuery(this.world)
+
+    for (const eid of bullets) {
+      seen.add(eid)
+      let bulletId = this.bulletNetIdByEid.get(eid)
+      if (bulletId === undefined) {
+        bulletId = this.nextBulletNetId++
+        this.bulletNetIdByEid.set(eid, bulletId)
+        const spawn = this.buildBulletSpawnMessage(eid, bulletId)
+        for (const slot of this.slots.values()) {
+          slot.client.send('bullet-spawn', spawn)
+        }
+      }
+    }
+
+    for (const [eid, bulletId] of this.bulletNetIdByEid) {
+      if (seen.has(eid)) continue
+      const despawn: BulletDespawnMessage = {
+        bulletId,
+        tick: this.world.tick,
+      }
+      for (const slot of this.slots.values()) {
+        slot.client.send('bullet-despawn', despawn)
+      }
+      this.bulletNetIdByEid.delete(eid)
     }
   }
 
@@ -568,6 +654,8 @@ export class GameRoom extends Room<GameRoomState> {
 
     this.state.phase = 'playing'
     startRun(this.world, DEFAULT_RUN_STAGES)
+    this.bulletNetIdByEid.clear()
+    this.nextBulletNetId = 1
     this.campReadySessions.clear()
     this.wasCampTransition = false
     this.broadcastPlayerRoster()
@@ -635,25 +723,37 @@ export class GameRoom extends Room<GameRoomState> {
   private estimateShotTickFromInputTime(
     nowMs: number,
     input: NetworkInput,
-  ): { tick: number; latencyMs: number; interpMs: number; effectiveAgeMs: number } | null {
+    queueDepth: number,
+  ): {
+      tick: number
+      latencyMs: number
+      interpMs: number
+      queueDelayMs: number
+      effectiveAgeMs: number
+    } | null {
     if (input.estimatedServerTimeMs <= 0) return null
     const oneWayLatencyMs = Math.max(0, nowMs - input.estimatedServerTimeMs)
     const interpMs = Math.max(0, Math.min(REWIND_MAX_VIEW_INTERP_DELAY_MS, input.viewInterpDelayMs))
-    const effectiveAgeMs =
-      oneWayLatencyMs * REWIND_LATENCY_WEIGHT +
-      interpMs * REWIND_VIEW_DELAY_WEIGHT
+    const queueDelayMs = Math.max(0, Math.min(REWIND_MAX_QUEUE_DELAY_MS, queueDepth * TICK_MS))
+    const effectiveAgeMs = oneWayLatencyMs + interpMs + queueDelayMs
     if (!Number.isFinite(effectiveAgeMs)) return null
-    // Bias toward lower rewind to avoid over-rewinding on borderline fractions.
-    const ageTicks = Math.max(0, Math.floor(effectiveAgeMs / TICK_MS))
+    const ageTicks = Math.max(0, Math.round(effectiveAgeMs / TICK_MS))
     return {
       tick: this.world.tick - ageTicks,
       latencyMs: oneWayLatencyMs,
       interpMs,
+      queueDelayMs,
       effectiveAgeMs,
     }
   }
 
-  private applyLagCompShotTick(slot: PlayerSlot, input: NetworkInput, hadFreshInput: boolean, nowMs: number): void {
+  private applyLagCompShotTick(
+    slot: PlayerSlot,
+    input: NetworkInput,
+    hadFreshInput: boolean,
+    nowMs: number,
+    queueDepth: number,
+  ): void {
     if (hadFreshInput) {
       slot.tickMapper.updateOffset(this.world.tick, input.clientTick)
     }
@@ -663,30 +763,40 @@ export class GameRoom extends Room<GameRoomState> {
       this.rewindHeldInputShotsSkipped++
       return
     }
+    const isNewShootCommand = input.shootSeq > slot.lastShootSeq
+    if (isNewShootCommand) {
+      slot.lastShootSeq = input.shootSeq
+    }
 
-    const timeEstimated = this.estimateShotTickFromInputTime(nowMs, input)
+    const timeEstimated = this.estimateShotTickFromInputTime(nowMs, input, queueDepth)
     const estimatedTick = timeEstimated?.tick ?? slot.tickMapper.estimateServerTick(input.clientTick)
     if (timeEstimated !== null) {
-      this.rewindTimeBasedSamples++
-      this.rewindLatencyMsAccum += timeEstimated.latencyMs
-      this.rewindInterpMsAccum += timeEstimated.interpMs
-      this.rewindEffectiveAgeMsAccum += timeEstimated.effectiveAgeMs
+      if (isNewShootCommand) {
+        this.rewindTimeBasedSamples++
+        this.rewindLatencyMsAccum += timeEstimated.latencyMs
+        this.rewindInterpMsAccum += timeEstimated.interpMs
+        this.rewindQueueDelayMsAccum += timeEstimated.queueDelayMs
+        this.rewindEffectiveAgeMsAccum += timeEstimated.effectiveAgeMs
+      }
     } else {
-      this.rewindMapperFallbackSamples++
+      if (isNewShootCommand) {
+        this.rewindMapperFallbackSamples++
+      }
     }
     const rewind = slot.tickMapper.clampRewindTick(this.world.tick, estimatedTick, REWIND_MAX_TICKS)
     this.world.lagCompShotTickByPlayer.set(slot.eid, rewind.tick)
-    this.rewindShotsTotal++
-    const rewindTicks = this.world.tick - rewind.tick
-    this.rewindTicksAccum += rewindTicks
-    this.rewindTickSamples.push(rewindTicks)
-    slot.lastShootSeq = Math.max(slot.lastShootSeq, input.shootSeq)
+    if (isNewShootCommand) {
+      this.rewindShotsTotal++
+      const rewindTicks = this.world.tick - rewind.tick
+      this.rewindTicksAccum += rewindTicks
+      this.rewindTickSamples.push(rewindTicks)
 
-    if (rewind.clamped) {
-      this.rewindShotsClamped++
-    }
-    if (!this.rewindHistory.hasTick(rewind.tick)) {
-      this.rewindHistoryMisses++
+      if (rewind.clamped) {
+        this.rewindShotsClamped++
+      }
+      if (!this.rewindHistory.hasTick(rewind.tick)) {
+        this.rewindHistoryMisses++
+      }
     }
   }
 
@@ -707,10 +817,22 @@ export class GameRoom extends Room<GameRoomState> {
           const dropped = slot.inputQueue.splice(0, dropCount)
           const next = slot.inputQueue[0]
           if (next) {
-            slot.inputQueue[0] = {
+            const carriedShoot = selectLatestDroppedShootInput(dropped, slot.lastShootSeq)
+            let merged: NetworkInput = {
               ...next,
               buttons: mergeTransientButtons(dropped, next.buttons),
             }
+            if (carriedShoot && carriedShoot.shootSeq > merged.shootSeq) {
+              merged = {
+                ...merged,
+                shootSeq: carriedShoot.shootSeq,
+                clientTick: carriedShoot.clientTick,
+                clientTimeMs: carriedShoot.clientTimeMs,
+                estimatedServerTimeMs: carriedShoot.estimatedServerTimeMs,
+                viewInterpDelayMs: carriedShoot.viewInterpDelayMs,
+              }
+            }
+            slot.inputQueue[0] = merged
           }
         }
       }
@@ -734,7 +856,7 @@ export class GameRoom extends Room<GameRoomState> {
         }
       }
 
-      this.applyLagCompShotTick(slot, input, hadFreshInput, tickNowMs)
+      this.applyLagCompShotTick(slot, input, hadFreshInput, tickNowMs, slot.inputQueue.length)
       this.world.playerInputs.set(slot.eid, input)
     }
 
@@ -743,11 +865,12 @@ export class GameRoom extends Room<GameRoomState> {
     // 2. Step simulation — DO NOT pass input param (that's the single-player bridge)
     stepWorld(this.world, this.systems)
     this.syncCampTransitionState()
+    this.broadcastBulletEvents()
 
     // 3. Update Schema tick
     this.state.serverTick = this.world.tick
 
-    // 4. Broadcast snapshot every SNAPSHOT_INTERVAL ticks (30Hz)
+    // 4. Broadcast snapshot every SNAPSHOT_INTERVAL ticks (20Hz)
     if (this.world.tick % SNAPSHOT_INTERVAL === 0) {
       this.broadcastSnapshot()
     }
@@ -802,12 +925,15 @@ export class GameRoom extends Room<GameRoomState> {
     const avgInterpMs = this.rewindTimeBasedSamples > 0
       ? this.rewindInterpMsAccum / this.rewindTimeBasedSamples
       : 0
+    const avgQueueDelayMs = this.rewindTimeBasedSamples > 0
+      ? this.rewindQueueDelayMsAccum / this.rewindTimeBasedSamples
+      : 0
     const avgEffectiveAgeMs = this.rewindTimeBasedSamples > 0
       ? this.rewindEffectiveAgeMsAccum / this.rewindTimeBasedSamples
       : 0
 
     console.log(
-      `[GameRoom][rewind] shots=${this.rewindShotsTotal} clamped=${this.rewindShotsClamped} historyMiss=${this.rewindHistoryMisses} avgTicks=${avgRewindTicks.toFixed(2)} p50Ticks=${p50.toFixed(2)} p95Ticks=${p95.toFixed(2)} timeBased=${this.rewindTimeBasedSamples} mapperFallback=${this.rewindMapperFallbackSamples} heldSkip=${this.rewindHeldInputShotsSkipped} avgLatencyMs=${avgLatencyMs.toFixed(1)} avgInterpMs=${avgInterpMs.toFixed(1)} avgEffectiveAgeMs=${avgEffectiveAgeMs.toFixed(1)}`,
+      `[GameRoom][rewind] shots=${this.rewindShotsTotal} clamped=${this.rewindShotsClamped} historyMiss=${this.rewindHistoryMisses} avgTicks=${avgRewindTicks.toFixed(2)} p50Ticks=${p50.toFixed(2)} p95Ticks=${p95.toFixed(2)} timeBased=${this.rewindTimeBasedSamples} mapperFallback=${this.rewindMapperFallbackSamples} heldSkip=${this.rewindHeldInputShotsSkipped} avgLatencyMs=${avgLatencyMs.toFixed(1)} avgInterpMs=${avgInterpMs.toFixed(1)} avgQueueDelayMs=${avgQueueDelayMs.toFixed(1)} avgEffectiveAgeMs=${avgEffectiveAgeMs.toFixed(1)}`,
     )
 
     this.rewindShotsTotal = 0
@@ -820,6 +946,7 @@ export class GameRoom extends Room<GameRoomState> {
     this.rewindHeldInputShotsSkipped = 0
     this.rewindLatencyMsAccum = 0
     this.rewindInterpMsAccum = 0
+    this.rewindQueueDelayMsAccum = 0
     this.rewindEffectiveAgeMsAccum = 0
   }
 

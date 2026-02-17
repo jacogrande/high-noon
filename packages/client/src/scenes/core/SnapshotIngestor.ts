@@ -1,5 +1,7 @@
 import { addComponent, addEntity, hasComponent, removeComponent, removeEntity } from 'bitecs'
 import {
+  type BulletDespawnMessage,
+  type BulletSpawnMessage,
   Bullet,
   BULLET_RADIUS,
   Collider,
@@ -45,7 +47,6 @@ import {
   PlayerState,
   getCharacterDef,
   initUpgradeState,
-  type BulletSnapshot,
   type CharacterId,
   type DynamiteSnapshot,
   type EnemySnapshot,
@@ -104,7 +105,6 @@ export interface SnapshotIngestContext extends ISimStateSource, ILocalIdentitySt
 }
 
 export interface SnapshotIngestStats {
-  matchedPredictedBullets: number
   timedOutPredictedBullets: number
 }
 
@@ -114,14 +114,18 @@ export class SnapshotIngestor {
   /** Grace window for rejecting immediate HP rollbacks after optimistic local hits. */
   private readonly enemyHpRollbackGraceUntil = new Map<number, number>()
 
+  resetSessionState(): void {
+    this.enemyAuthState.clear()
+    this.enemyHpRollbackGraceUntil.clear()
+  }
+
   applyEntityLifecycle(snapshot: WorldSnapshot, ctx: SnapshotIngestContext, predictionTick: number): SnapshotIngestStats {
     this.applyPlayers(snapshot.players, ctx)
-    const matchedPredictedBullets = this.applyBullets(snapshot.bullets, ctx)
     this.applyEnemies(snapshot.enemies, snapshot.serverTime, ctx)
     this.applyLastRitesZones(snapshot.lastRitesZones, ctx)
     this.applyDynamites(snapshot.dynamites, ctx)
     const timedOutPredictedBullets = ctx.tracker.cleanupPredictedBullets(ctx.world, predictionTick)
-    return { matchedPredictedBullets, timedOutPredictedBullets }
+    return { timedOutPredictedBullets }
   }
 
   private applyPlayers(players: PlayerSnapshot[], ctx: SnapshotIngestContext): void {
@@ -277,74 +281,76 @@ export class SnapshotIngestor {
     }
   }
 
-  private applyBullets(bullets: BulletSnapshot[], ctx: SnapshotIngestContext): number {
-    const seen = new Set<number>()
-    let matchedPredictedBullets = 0
+  applyBulletSpawn(event: BulletSpawnMessage, ctx: SnapshotIngestContext): boolean {
+    const ownerClientEid = this.resolveOwnerClientEid(event.ownerServerEid, ctx)
+    const ownerResolved = event.ownerServerEid === NO_OWNER || ownerClientEid !== NO_OWNER
+    let clientEid = ctx.bulletEntities.get(event.bulletId)
+    let matchedPredicted = false
 
-    for (const b of bullets) {
-      seen.add(b.eid)
-      const ownerClientEid = this.resolveOwnerClientEid(b.ownerEid, ctx)
-      const ownerResolved = b.ownerEid === NO_OWNER || ownerClientEid !== NO_OWNER
-      let clientEid = ctx.bulletEntities.get(b.eid)
-
-      if (clientEid === undefined) {
-        const matched = b.layer === CollisionLayer.PLAYER_BULLET
-          ? ctx.tracker.findMatchingPredictedBullet(ctx.world, b, ctx.resolveRttMs())
-          : -1
-
-        if (matched >= 0) {
-          clientEid = matched
-          matchedPredictedBullets++
-          ctx.tracker.adoptMatchedPredictedBullet(clientEid)
-        } else {
-          clientEid = addEntity(ctx.world)
-          addComponent(ctx.world, Position, clientEid)
-          addComponent(ctx.world, Velocity, clientEid)
-          addComponent(ctx.world, Bullet, clientEid)
-          addComponent(ctx.world, Collider, clientEid)
-
-          Collider.radius[clientEid] = BULLET_RADIUS
-          Collider.layer[clientEid] = b.layer
-          Bullet.ownerId[clientEid] = ownerResolved ? ownerClientEid : NO_OWNER
-          ctx.tracker.setBulletLocalTimeline(
-            clientEid,
-            ownerResolved && ctx.myClientEid >= 0 && ownerClientEid === ctx.myClientEid,
+    if (clientEid === undefined) {
+      const matched = event.layer === CollisionLayer.PLAYER_BULLET
+        ? ctx.tracker.findMatchingPredictedBullet(
+            ctx.world,
+            event,
+            ctx.myServerEid,
+            ctx.resolveRttMs(),
           )
+        : -1
 
-          Position.x[clientEid] = b.x
-          Position.y[clientEid] = b.y
-          Position.prevX[clientEid] = b.x
-          Position.prevY[clientEid] = b.y
-        }
+      if (matched >= 0) {
+        clientEid = matched
+        matchedPredicted = true
+        ctx.tracker.adoptMatchedPredictedBullet(clientEid)
+      } else {
+        clientEid = addEntity(ctx.world)
+        addComponent(ctx.world, Position, clientEid)
+        addComponent(ctx.world, Velocity, clientEid)
+        addComponent(ctx.world, Bullet, clientEid)
+        addComponent(ctx.world, Collider, clientEid)
 
-        ctx.bulletEntities.set(b.eid, clientEid)
-        ctx.tracker.markServerBullet(clientEid)
-      }
-
-      Collider.layer[clientEid] = b.layer
-      if (ownerResolved) {
-        Bullet.ownerId[clientEid] = ownerClientEid
+        Collider.radius[clientEid] = BULLET_RADIUS
+        Collider.layer[clientEid] = event.layer
+        Bullet.ownerId[clientEid] = ownerResolved ? ownerClientEid : NO_OWNER
         ctx.tracker.setBulletLocalTimeline(
           clientEid,
-          ctx.myClientEid >= 0 && ownerClientEid === ctx.myClientEid,
+          ownerResolved && ctx.myClientEid >= 0 && ownerClientEid === ctx.myClientEid,
         )
+
+        Position.x[clientEid] = event.x
+        Position.y[clientEid] = event.y
+        Position.prevX[clientEid] = event.x
+        Position.prevY[clientEid] = event.y
       }
 
-      // Write velocity (used for rotation in BulletRenderer).
-      Velocity.x[clientEid] = b.vx
-      Velocity.y[clientEid] = b.vy
+      ctx.bulletEntities.set(event.bulletId, clientEid)
+      ctx.tracker.markServerBullet(clientEid)
     }
 
-    // Remove departed bullets (skip predicted bullets — they have their own cleanup).
-    for (const [serverEid, clientEid] of ctx.bulletEntities) {
-      if (!seen.has(serverEid)) {
-        removeEntity(ctx.world, clientEid)
-        ctx.tracker.unmarkServerBullet(clientEid)
-        ctx.bulletEntities.delete(serverEid)
-      }
+    Collider.layer[clientEid] = event.layer
+    if (ownerResolved) {
+      Bullet.ownerId[clientEid] = ownerClientEid
+      ctx.tracker.setBulletLocalTimeline(
+        clientEid,
+        ctx.myClientEid >= 0 && ownerClientEid === ctx.myClientEid,
+      )
     }
 
-    return matchedPredictedBullets
+    Position.prevX[clientEid] = Position.x[clientEid]!
+    Position.prevY[clientEid] = Position.y[clientEid]!
+    Position.x[clientEid] = event.x
+    Position.y[clientEid] = event.y
+    Velocity.x[clientEid] = event.vx
+    Velocity.y[clientEid] = event.vy
+
+    return matchedPredicted
+  }
+
+  applyBulletDespawn(event: BulletDespawnMessage, ctx: SnapshotIngestContext): void {
+    const clientEid = ctx.bulletEntities.get(event.bulletId)
+    if (clientEid === undefined) return
+    removeEntity(ctx.world, clientEid)
+    ctx.tracker.unmarkServerBullet(clientEid)
+    ctx.bulletEntities.delete(event.bulletId)
   }
 
   private applyEnemies(enemies: EnemySnapshot[], snapshotServerTime: number, ctx: SnapshotIngestContext): void {

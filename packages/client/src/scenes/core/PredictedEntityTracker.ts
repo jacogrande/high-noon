@@ -3,10 +3,11 @@ import {
   Bullet,
   Collider,
   CollisionLayer,
+  NO_OWNER,
   Position,
   Velocity,
   PISTOL_BULLET_SPEED,
-  type BulletSnapshot,
+  type BulletSpawnMessage,
   type GameWorld,
 } from '@high-noon/shared'
 
@@ -73,7 +74,16 @@ export class PredictedEntityTracker {
     return spawned
   }
 
-  findMatchingPredictedBullet(world: GameWorld, bullet: BulletSnapshot, rttMs: number): number {
+  findMatchingPredictedBullet(
+    world: GameWorld,
+    bullet: Pick<BulletSpawnMessage, 'x' | 'y' | 'ownerServerEid'>,
+    myServerEid: number,
+    rttMs: number,
+  ): number {
+    if (myServerEid < 0 || bullet.ownerServerEid === NO_OWNER || bullet.ownerServerEid !== myServerEid) {
+      return -1
+    }
+
     // Primary tolerance compensates for one-way network delay.
     const latencyComp = Math.min(120, (Math.max(0, rttMs) * 0.5 * PISTOL_BULLET_SPEED) / 1000)
     const primaryTolerance = BULLET_MATCH_TOLERANCE + latencyComp

@@ -297,7 +297,7 @@ const networkInput: NetworkInput = {
 
 Used by the server to track acknowledged inputs (`lastProcessedSeq`) and by the client to replay unacknowledged inputs during reconciliation.
 
-**Binary Snapshots (v3):**
+**Binary Snapshots (v10):**
 ```typescript
 import { encodeSnapshot, decodeSnapshot } from '@high-noon/shared'
 
@@ -312,7 +312,8 @@ const state = decodeSnapshot(serverSnapshot) // Decoded entity state
 state.players[0].lastProcessedSeq           // Server's last processed input seq for this player
 ```
 
-**Snapshot format:** HEADER_SIZE=14, PLAYER_SIZE=21 (includes 4-byte `lastProcessedSeq`), BULLET_SIZE=19, ENEMY_SIZE=13
+**Snapshot format:** HEADER_SIZE=12, PLAYER_SIZE=38, ENEMY_SIZE=15, plus variable Last Rites and dynamite sections.
+Bullets are sent separately via `bullet-spawn` / `bullet-despawn` messages.
 
 **Clock sync types:**
 ```typescript
@@ -374,7 +375,8 @@ src/
   net/
     clock.ts         # PingMessage/PongMessage types for clock sync
     input.ts         # Input state types (InputState, NetworkInput)
-    snapshot.ts      # Binary snapshot encode/decode (v3)
+    snapshot.ts      # Binary snapshot encode/decode (v10)
+    bullets.ts       # Bullet spawn/despawn network message types
     snapshot.test.ts # Unit tests
     index.ts
 ```

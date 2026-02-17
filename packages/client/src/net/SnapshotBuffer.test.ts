@@ -4,7 +4,7 @@ import type { WorldSnapshot } from '@high-noon/shared'
 
 /** Create a minimal snapshot with given tick and serverTime */
 function makeSnapshot(tick: number, serverTime: number): WorldSnapshot {
-  return { tick, serverTime, players: [], bullets: [], enemies: [], lastRitesZones: [], dynamites: [] }
+  return { tick, serverTime, players: [], enemies: [], lastRitesZones: [], dynamites: [] }
 }
 
 describe('SnapshotBuffer', () => {
@@ -120,15 +120,29 @@ describe('SnapshotBuffer', () => {
     expect(stateHalf!.alpha).toBeCloseTo(0.5, 5)
   })
 
-  it('clamps alpha to [0, 1]', () => {
+  it('returns alpha=1 when extrapolation window is exceeded', () => {
     const buf = new SnapshotBuffer(0)
     buf.push(makeSnapshot(1, 1000))
     buf.push(makeSnapshot(2, 1050))
 
-    // Way past the last snapshot → alpha clamped to 1
+    // Far past the newest snapshot; outside extrapolation window.
     const state = buf.getInterpolationState(2000)
     expect(state).not.toBeNull()
     expect(state!.alpha).toBe(1)
+  })
+
+  it('allows short bounded extrapolation when render time is slightly ahead', () => {
+    const buf = new SnapshotBuffer(0)
+    buf.push(makeSnapshot(1, 1000))
+    buf.push(makeSnapshot(2, 1050))
+
+    // 10ms ahead of newest sample (inside extrapolation window).
+    const state = buf.getInterpolationState(1060)
+    expect(state).not.toBeNull()
+    expect(state!.from.tick).toBe(1)
+    expect(state!.to.tick).toBe(2)
+    expect(state!.alpha).toBeGreaterThan(1)
+    expect(state!.alpha).toBeLessThanOrEqual(1.25)
   })
 
   it('returns alpha=0 when render time is before all snapshots', () => {
@@ -161,6 +175,31 @@ describe('SnapshotBuffer', () => {
     expect(state!.from.tick).toBe(2)
     expect(state!.to.tick).toBe(3)
     expect(state!.alpha).toBeCloseTo(0.5, 1)
+  })
+
+  it('increases adaptive delay from arrival jitter and stays bounded', () => {
+    const buf = new SnapshotBuffer(80) as unknown as {
+      updateAdaptiveDelay: (receiveTime: number) => void
+      getInterpolationDelayMs: () => number
+    }
+
+    // Initialize baseline at stable 50ms cadence.
+    buf.updateAdaptiveDelay(0)
+    buf.updateAdaptiveDelay(50)
+    buf.updateAdaptiveDelay(100)
+    buf.updateAdaptiveDelay(150)
+    expect(buf.getInterpolationDelayMs()).toBe(80)
+
+    // Introduce bursty arrival intervals.
+    buf.updateAdaptiveDelay(210) // +60
+    buf.updateAdaptiveDelay(240) // +30
+    buf.updateAdaptiveDelay(350) // +110
+    buf.updateAdaptiveDelay(380) // +30
+    buf.updateAdaptiveDelay(520) // +140
+
+    const delay = buf.getInterpolationDelayMs()
+    expect(delay).toBeGreaterThan(80)
+    expect(delay).toBeLessThanOrEqual(160)
   })
 
   // ---------------------------------------------------------------------------

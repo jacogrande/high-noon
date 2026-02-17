@@ -1,14 +1,13 @@
 /**
- * Binary Snapshot Serialization (v8)
+ * Binary Snapshot Serialization (v10)
  *
- * Encodes/decodes the world state into a compact binary format for
- * server→client broadcast at room-configured cadence (currently 30Hz).
+ * Encodes/decodes authoritative world state into a compact binary format for
+ * server→client broadcast at room-configured cadence.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
 import {
   Position,
-  Velocity,
   Player,
   PlayerState,
   Roll,
@@ -16,27 +15,24 @@ import {
   Health,
   Dead,
   Invincible,
-  Bullet,
-  Collider,
   Enemy,
   EnemyAI,
   Showdown,
 } from '../sim/components'
 import { playerQuery } from '../sim/queries'
 import type { GameWorld } from '../sim/world'
-import { NO_OWNER, NO_TARGET } from '../sim/prefabs'
+import { NO_TARGET } from '../sim/prefabs'
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 9
+export const SNAPSHOT_VERSION = 10
 
-/** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + bulletCount(2) + enemyCount(2) */
-export const HEADER_SIZE = 14
-export const PLAYER_SIZE = 38 // v7+: +3 bytes (showdownActive:1 + showdownTargetEid:2)
-export const BULLET_SIZE = 21
-export const ENEMY_SIZE = 15 // v8: +2 bytes (enemy targetEid)
+/** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + enemyCount(2) */
+export const HEADER_SIZE = 12
+export const PLAYER_SIZE = 38 // v10: includes showdownActive(1) + showdownTargetEid(2)
+export const ENEMY_SIZE = 15 // v10: includes enemy targetEid(2)
 
 // ============================================================================
 // Snapshot Types
@@ -59,16 +55,6 @@ export interface PlayerSnapshot {
   rollDirY: number
   showdownActive: number
   showdownTargetEid: number
-}
-
-export interface BulletSnapshot {
-  eid: number
-  x: number
-  y: number
-  vx: number
-  vy: number
-  layer: number
-  ownerEid: number
 }
 
 export interface EnemySnapshot {
@@ -103,7 +89,6 @@ export interface WorldSnapshot {
   tick: number
   serverTime: number
   players: PlayerSnapshot[]
-  bullets: BulletSnapshot[]
   enemies: EnemySnapshot[]
   lastRitesZones: LastRitesZoneSnapshot[]
   dynamites: DynamiteSnapshot[]
@@ -113,7 +98,6 @@ export interface WorldSnapshot {
 // Queries
 // ============================================================================
 
-const bulletQuery = defineQuery([Bullet, Position, Velocity, Collider])
 const enemyQuery = defineQuery([Enemy, Position, Health, EnemyAI])
 
 // ============================================================================
@@ -150,7 +134,6 @@ export function encodeSnapshot(
   playerSeqs?: Map<number, number>,
 ): Uint8Array {
   const players = playerQuery(world)
-  const bullets = bulletQuery(world)
 
   // Filter out dead enemies
   const allEnemies = enemyQuery(world)
@@ -175,7 +158,6 @@ export function encodeSnapshot(
   const totalSize =
     HEADER_SIZE +
     players.length * PLAYER_SIZE +
-    bullets.length * BULLET_SIZE +
     enemies.length * ENEMY_SIZE +
     1 + lastRitesZones.length * 14 + // zone count header + 14 bytes/zone
     1 + dynamites.length * 30         // dynamite count header + 30 bytes/dynamite
@@ -199,8 +181,6 @@ export function encodeSnapshot(
   offset += 4
   view.setUint8(offset, players.length)
   offset += 1
-  view.setUint16(offset, bullets.length, true)
-  offset += 2
   view.setUint16(offset, enemies.length, true)
   offset += 2
 
@@ -257,27 +237,6 @@ export function encodeSnapshot(
     view.setUint8(offset, showdownActive)
     offset += 1
     view.setUint16(offset, clampU16(showdownTargetEid), true)
-    offset += 2
-  }
-
-  // Bullets
-  for (let i = 0; i < bullets.length; i++) {
-    const eid = bullets[i]!
-    view.setUint16(offset, eid, true)
-    offset += 2
-    view.setFloat32(offset, Position.x[eid]!, true)
-    offset += 4
-    view.setFloat32(offset, Position.y[eid]!, true)
-    offset += 4
-    view.setFloat32(offset, Velocity.x[eid]!, true)
-    offset += 4
-    view.setFloat32(offset, Velocity.y[eid]!, true)
-    offset += 4
-    view.setUint8(offset, Collider.layer[eid]!)
-    offset += 1
-    const owner = Bullet.ownerId[eid]!
-    const encodedOwner = owner === 0xffff || owner === NO_OWNER ? 0xffff : clampU16(owner)
-    view.setUint16(offset, encodedOwner, true)
     offset += 2
   }
 
@@ -361,8 +320,6 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
   offset += 4
   const playerCount = view.getUint8(offset)
   offset += 1
-  const bulletCount = view.getUint16(offset, true)
-  offset += 2
   const enemyCount = view.getUint16(offset, true)
   offset += 2
 
@@ -418,26 +375,6 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
       showdownActive,
       showdownTargetEid,
     }
-  }
-
-  const bullets: BulletSnapshot[] = new Array(bulletCount)
-  for (let i = 0; i < bulletCount; i++) {
-    const eid = view.getUint16(offset, true)
-    offset += 2
-    const x = view.getFloat32(offset, true)
-    offset += 4
-    const y = view.getFloat32(offset, true)
-    offset += 4
-    const vx = view.getFloat32(offset, true)
-    offset += 4
-    const vy = view.getFloat32(offset, true)
-    offset += 4
-    const layer = view.getUint8(offset)
-    offset += 1
-    const rawOwnerEid = view.getUint16(offset, true)
-    offset += 2
-    const ownerEid = rawOwnerEid === 0xffff ? NO_OWNER : rawOwnerEid
-    bullets[i] = { eid, x, y, vx, vy, layer, ownerEid }
   }
 
   const enemies: EnemySnapshot[] = new Array(enemyCount)
@@ -500,5 +437,5 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     dynamites[i] = { x: dx, y: dy, startX, startY, fuseRemaining, maxFuse, radius, ownerEid }
   }
 
-  return { tick, serverTime, players, bullets, enemies, lastRitesZones, dynamites }
+  return { tick, serverTime, players, enemies, lastRitesZones, dynamites }
 }
