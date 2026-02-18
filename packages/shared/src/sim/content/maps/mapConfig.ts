@@ -48,7 +48,7 @@ export interface MapConfig {
   hazards: HazardConfig[]
 }
 
-/** Stage 1: Town — 50x38, sparse lava */
+/** Stage 1: Town — 50x38, no hazards */
 export const STAGE_1_MAP_CONFIG: MapConfig = {
   width: 50,
   height: 38,
@@ -63,9 +63,7 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
       profiles: TOWN_BUILDINGS,
     },
   },
-  hazards: [
-    { tileType: TileType.LAVA, noiseThreshold: 0.82, noiseCellSize: 8, maxCoverage: 0.04 },
-  ],
+  hazards: [],
 }
 
 /** Stage 2: Badlands — 54x42 (larger), mud clusters + sparse bramble */

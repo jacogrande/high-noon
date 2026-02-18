@@ -252,7 +252,7 @@ describe('mapGenerator', () => {
 
   describe('hazard placement', () => {
     test('hazards only placed on floor layer', () => {
-      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map = generateArena(STAGE_2_MAP_CONFIG, 12345, 0)
       const solidLayer = map.layers[0]!
       const floorLayer = map.layers[1]!
 
@@ -268,7 +268,7 @@ describe('mapGenerator', () => {
     })
 
     test('hazard coverage does not exceed maxCoverage', () => {
-      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map = generateArena(STAGE_2_MAP_CONFIG, 12345, 0)
       const solidLayer = map.layers[0]!
       const floorLayer = map.layers[1]!
 
@@ -293,21 +293,18 @@ describe('mapGenerator', () => {
       }
 
       const coverage = hazardCount / floorCount
-      const maxCoverage = STAGE_1_MAP_CONFIG.hazards[0]!.maxCoverage
-      expect(coverage).toBeLessThanOrEqual(maxCoverage)
+      // Each hazard type is capped independently; total can be the sum of all caps
+      const totalMaxCoverage = STAGE_2_MAP_CONFIG.hazards.reduce((sum, h) => sum + h.maxCoverage, 0)
+      expect(coverage).toBeLessThanOrEqual(totalMaxCoverage)
     })
 
-    test('stage 1 has lava hazards', () => {
+    test('stage 1 has no hazards', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
       const floorLayer = map.layers[1]!
 
-      let lavaCount = 0
       for (const tile of floorLayer.data) {
-        if (tile === TileType.LAVA) lavaCount++
+        expect(tile === TileType.LAVA || tile === TileType.MUD || tile === TileType.BRAMBLE).toBe(false)
       }
-
-      // Should have some lava tiles (not exact count due to RNG)
-      expect(lavaCount).toBeGreaterThan(0)
     })
 
     test('stage 2 has mud and bramble hazards', () => {
