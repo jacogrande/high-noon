@@ -356,19 +356,23 @@ function placeTownBuildings(
   }
 
   // 6. Build filler queues for each of 6 strips
-  //    noDither buildings (water towers) only go in far lots — inner strips
-  //    would hide things placed behind them since they never go transparent.
-  const innerFiller = filler.filter(p => !p.noDither)
+  //    noDither buildings (water towers) have a tall roof that extends north
+  //    and never goes transparent. They MUST be placed first in the far-lot
+  //    strip so their roof extends off the top of the map with nothing behind.
+  //    They're excluded from all other strips entirely.
+  const noDitherFiller = filler.filter(p => p.noDither)
+  const regularFiller = filler.filter(p => !p.noDither)
   const FRONTAGE_FILLER_COUNT = 6
   const BACK_ROW_FILLER_COUNT = 8
   const FAR_LOT_FILLER_COUNT = 6
 
-  const westFrontageFiller = buildFillerQueue(rng, innerFiller, FRONTAGE_FILLER_COUNT)
-  const eastFrontageFiller = buildFillerQueue(rng, innerFiller, FRONTAGE_FILLER_COUNT)
-  const westBackRow = buildFillerQueue(rng, innerFiller, BACK_ROW_FILLER_COUNT)
-  const eastBackRow = buildFillerQueue(rng, innerFiller, BACK_ROW_FILLER_COUNT)
-  const westFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
-  const eastFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
+  const westFrontageFiller = buildFillerQueue(rng, regularFiller, FRONTAGE_FILLER_COUNT)
+  const eastFrontageFiller = buildFillerQueue(rng, regularFiller, FRONTAGE_FILLER_COUNT)
+  const westBackRow = buildFillerQueue(rng, regularFiller, BACK_ROW_FILLER_COUNT)
+  const eastBackRow = buildFillerQueue(rng, regularFiller, BACK_ROW_FILLER_COUNT)
+  // Far lots: noDither buildings first (roof extends off-map), then regular filler
+  const westFarLots = [...noDitherFiller, ...buildFillerQueue(rng, regularFiller, FAR_LOT_FILLER_COUNT)]
+  const eastFarLots = [...noDitherFiller, ...buildFillerQueue(rng, regularFiller, FAR_LOT_FILLER_COUNT)]
 
   // 7. Combine frontage queues: unique first, then filler
   const westFrontage = [...sortRestAscending(westUnique), ...westFrontageFiller]
