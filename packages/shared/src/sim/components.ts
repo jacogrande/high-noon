@@ -46,6 +46,8 @@ export const Player = {
   abilityWasDown: new Uint8Array(MAX_ENTITIES),
   /** Whether jump button was held last tick (for re-press detection) */
   jumpButtonWasDown: new Uint8Array(MAX_ENTITIES),
+  /** Whether HP potion button was held last tick (for re-press detection) */
+  potionButtonWasDown: new Uint8Array(MAX_ENTITIES),
 }
 
 /** Player state enum values */

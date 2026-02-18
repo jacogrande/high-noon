@@ -36,6 +36,8 @@ export interface HudData {
   characterId: CharacterId
   hp: number
   maxHp: number
+  hpPotions: number
+  hpPotionsMax: number
   cylinderRounds: number
   cylinderMax: number
   isReloading: boolean

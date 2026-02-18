@@ -3,7 +3,7 @@ import { hasComponent, addComponent, addEntity } from 'bitecs'
 import { createGameWorld, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { healthSystem } from './health'
-import { Health, Player, Dead, Enemy, EnemyType } from '../components'
+import { Health, Player, Dead, Enemy, EnemyType, EnemyTier } from '../components'
 
 describe('healthSystem', () => {
   let world: GameWorld
@@ -167,6 +167,36 @@ describe('healthSystem', () => {
       Health.current[e2] = 0
       healthSystem(world, 1 / 60)
       expect(world.killCount).toBe(2)
+    })
+  })
+
+  describe('hp potion drops', () => {
+    test('spawns potion pickup when enemy drop roll succeeds', () => {
+      const eid = spawnHealthEntity(1)
+      addComponent(world, Enemy, eid)
+      Enemy.type[eid] = EnemyType.SWARMER
+      Enemy.tier[eid] = EnemyTier.FODDER
+      Health.current[eid] = 0
+
+      world.rng.next = () => 0
+
+      healthSystem(world, 1 / 60)
+
+      expect(world.hpPotionPickups.length).toBe(1)
+    })
+
+    test('does not spawn potion pickup when drop roll fails', () => {
+      const eid = spawnHealthEntity(1)
+      addComponent(world, Enemy, eid)
+      Enemy.type[eid] = EnemyType.SWARMER
+      Enemy.tier[eid] = EnemyTier.FODDER
+      Health.current[eid] = 0
+
+      world.rng.next = () => 0.99
+
+      healthSystem(world, 1 / 60)
+
+      expect(world.hpPotionPickups.length).toBe(0)
     })
   })
 

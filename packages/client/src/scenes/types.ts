@@ -1,6 +1,6 @@
 import type { CharacterId } from '@high-noon/shared'
 
-export type MinimapMarkerKind = 'self' | 'ally' | 'enemy' | 'npc' | 'salesman' | 'stash' | 'item'
+export type MinimapMarkerKind = 'self' | 'ally' | 'enemy' | 'npc' | 'salesman' | 'stash' | 'item' | 'potion'
 
 export interface MinimapMarker {
   x: number
@@ -19,6 +19,8 @@ export interface HUDState {
   characterId: CharacterId
   hp: number
   maxHP: number
+  hpPotions: number
+  hpPotionsMax: number
   xp: number
   goldCollected: number
   killCount: number

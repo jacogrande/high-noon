@@ -23,6 +23,8 @@ export const Button = {
   JUMP: 1 << 9,
   /** Interact (hold for context actions like vendor/stash) */
   INTERACT: 1 << 10,
+  /** Use HP potion */
+  USE_HP_POTION: 1 << 11,
 } as const
 
 export type ButtonFlag = (typeof Button)[keyof typeof Button]

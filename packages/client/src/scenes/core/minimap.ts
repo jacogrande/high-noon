@@ -108,6 +108,13 @@ export function buildSingleplayerMinimapState(world: GameWorld, selfEid: number 
     )
     itemMarkers++
   }
+  for (let i = 0; i < world.hpPotionPickups.length; i++) {
+    if (itemMarkers >= MAX_ITEM_MARKERS) break
+    const pickup = world.hpPotionPickups[i]!
+    if (pickup.collected) continue
+    pushMarker(markers, mapWidth, mapHeight, 'potion', pickup.x, pickup.y)
+    itemMarkers++
+  }
 
   return { mapWidth, mapHeight, markers }
 }
@@ -167,9 +174,18 @@ export function buildMultiplayerMinimapState(
   }
 
   const itemPickups = interactables?.itemPickups ?? []
-  for (let i = 0; i < itemPickups.length && i < MAX_ITEM_MARKERS; i++) {
+  let itemMarkers = 0
+  for (let i = 0; i < itemPickups.length && itemMarkers < MAX_ITEM_MARKERS; i++) {
     const pickup = itemPickups[i]!
     pushMarker(markers, mapWidth, mapHeight, 'item', pickup.x, pickup.y, pickup.rarity)
+    itemMarkers++
+  }
+
+  const hpPotionPickups = interactables?.hpPotionPickups ?? []
+  for (let i = 0; i < hpPotionPickups.length && itemMarkers < MAX_ITEM_MARKERS; i++) {
+    const pickup = hpPotionPickups[i]!
+    pushMarker(markers, mapWidth, mapHeight, 'potion', pickup.x, pickup.y)
+    itemMarkers++
   }
 
   return { mapWidth, mapHeight, markers }

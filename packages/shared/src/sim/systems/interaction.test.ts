@@ -140,6 +140,7 @@ describe('interactionSystem', () => {
     const state = world.upgradeState
     const hasItem = state.items.size > 0 || world.itemPickups.length > 0
     expect(hasItem).toBe(true)
+    expect(state.hpPotionCount).toBe(1)
   })
 
   test('shows missing shovel prompt near stash', () => {

@@ -70,6 +70,9 @@ export class Input {
       case 'KeyE':
         this.transientButtons |= Button.INTERACT
         break
+      case 'KeyF':
+        this.transientButtons |= Button.USE_HP_POTION
+        break
     }
   }
 
@@ -209,6 +212,11 @@ export class Input {
     // Interact
     if ((transientButtons & Button.INTERACT) !== 0 || this.keys.has('KeyE')) {
       input.buttons |= Button.INTERACT
+    }
+
+    // HP potion
+    if ((transientButtons & Button.USE_HP_POTION) !== 0 || this.keys.has('KeyF')) {
+      input.buttons |= Button.USE_HP_POTION
     }
 
     // Convert mouse screen position to world space, then calculate aim angle

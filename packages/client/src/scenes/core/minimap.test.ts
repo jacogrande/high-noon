@@ -89,6 +89,9 @@ describe('minimap helpers', () => {
       itemPickups: [
         { id: 11, itemId: 1, x: 260, y: 260, rarity: 'silver' },
       ],
+      hpPotionPickups: [
+        { id: 91, x: 280, y: 280 },
+      ],
     }
 
     const minimap = buildMultiplayerMinimapState(
@@ -109,6 +112,7 @@ describe('minimap helpers', () => {
     expect(kinds.has('salesman')).toBe(true)
     expect(kinds.has('stash')).toBe(true)
     expect(kinds.has('item')).toBe(true)
+    expect(kinds.has('potion')).toBe(true)
     expect(minimap.markers.filter(marker => marker.kind === 'stash')).toHaveLength(1)
   })
 

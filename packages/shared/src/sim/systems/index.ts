@@ -10,6 +10,7 @@ import type { CharacterId } from '../content/characters'
 
 import { movementSystem } from './movement'
 import { playerInputSystem } from './playerInput'
+import { hpPotionUseSystem } from './hpPotionUse'
 import { rollSystem } from './roll'
 import { jumpSystem } from './jump'
 import { showdownSystem } from './showdown'
@@ -54,6 +55,7 @@ import { tryVisitorPurchase, type CampVisitorState } from './campVisitor'
 export {
   movementSystem,
   playerInputSystem,
+  hpPotionUseSystem,
   rollSystem,
   jumpSystem,
   showdownSystem,
@@ -105,6 +107,7 @@ export type { CampVisitorState }
  *
  * Includes both legacy Sheriff path and new character systems; systems self-gate
  * by player character/components.
+ * Consumables like HP potions remain server-authoritative and are excluded.
  */
 export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
@@ -158,6 +161,7 @@ export function registerReplaySystems(systems: SystemRegistry): void {
 export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
   // -- Input & abilities (read floorSpeedMul from previous tick) --
   systems.register(playerInputSystem)
+  systems.register(hpPotionUseSystem)
   systems.register(rollSystem)
   systems.register(jumpSystem)
   systems.register(showdownSystem)

@@ -27,8 +27,15 @@ export interface ItemPickupData {
   rarity: string
 }
 
+export interface HpPotionPickupData {
+  id: number
+  x: number
+  y: number
+}
+
 export interface InteractablesData {
   salesman: SalesmanData | null
   stashes: StashData[]
   itemPickups: ItemPickupData[]
+  hpPotionPickups: HpPotionPickupData[]
 }
