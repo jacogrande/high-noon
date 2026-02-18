@@ -9,6 +9,8 @@ import { spawnPlayer } from '../prefabs'
 import { SeededRng } from '../../math/rng'
 import { STAGE_1_ENCOUNTER, type StageEncounter, type WaveDefinition } from '../content/waves'
 import { STAGE_1_MAP_CONFIG } from '../content/maps/mapConfig'
+import { generateArena } from '../content/maps/mapGenerator'
+import { isSolidAt } from '../tilemap'
 
 const TEST_SEED = 12345
 
@@ -505,6 +507,20 @@ describe('waveSpawnerSystem', () => {
         // Player is centered — no clamping needed, all spawns should be within ring
         expect(dist).toBeGreaterThanOrEqual(spawnRadius - radiusSpread)
         expect(dist).toBeLessThanOrEqual(spawnRadius + radiusSpread)
+      }
+    })
+
+    test('never spawns inside solid tiles on a real town map', () => {
+      const tilemap = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
+      const centerX = Math.floor(tilemap.width / 2) * tilemap.tileSize + tilemap.tileSize / 2
+      const centerY = Math.floor(tilemap.height / 2) * tilemap.tileSize + tilemap.tileSize / 2
+
+      for (const seed of [1, 42, 9999, 77777]) {
+        const rng = new SeededRng(seed)
+        for (let i = 0; i < 200; i++) {
+          const pos = pickSpawnPosition(rng, centerX, centerY, tilemap, 200, 400, 80)
+          expect(isSolidAt(tilemap, pos.x, pos.y)).toBe(false)
+        }
       }
     })
   })

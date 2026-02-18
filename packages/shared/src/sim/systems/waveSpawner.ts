@@ -124,7 +124,7 @@ export function pickSpawnPosition(
   }
 
   // Relaxed fallback — drop minDist requirement, still avoid walls
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     const x = rng.nextRange(left, right)
     const y = rng.nextRange(top, bottom)
 
@@ -132,7 +132,13 @@ export function pickSpawnPosition(
     return { x, y }
   }
 
-  // Final fallback — just pick a random open position
+  // Final fallback — arena center (guaranteed clear by map generation)
+  if (tilemap) {
+    return {
+      x: (left + right) / 2,
+      y: (top + bottom) / 2,
+    }
+  }
   return {
     x: rng.nextRange(left, right),
     y: rng.nextRange(top, bottom),
