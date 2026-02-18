@@ -14,6 +14,7 @@ import { removeBullet, spawnNpc } from '../prefabs'
 import { initObjective, cleanupObjective } from './objectiveSystem'
 import { generateArena } from '../content/maps/mapGenerator'
 import { STAGE_NPC_SPAWNS } from '../content/npcs'
+import { getTile, TileType } from '../tilemap'
 import {
   selectCampVisitor,
   generateVisitorOffers,
@@ -68,17 +69,57 @@ export function clearAllEnemies(world: GameWorld): void {
 }
 
 /**
+ * Find the nearest walkable floor tile via spiral search.
+ * Returns the original tile if it's already walkable.
+ */
+function findWalkableTile(
+  map: { width: number; height: number },
+  tileX: number,
+  tileY: number,
+  getTileFn: (layer: number, x: number, y: number) => number,
+): { tileX: number; tileY: number } {
+  // Check original position first
+  if (
+    tileX > 1 && tileX < map.width - 2 &&
+    tileY > 1 && tileY < map.height - 2 &&
+    getTileFn(0, tileX, tileY) === TileType.EMPTY &&
+    getTileFn(1, tileX, tileY) === TileType.FLOOR
+  ) {
+    return { tileX, tileY }
+  }
+
+  // Spiral outward until we find a walkable floor tile
+  for (let r = 1; r <= 15; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+        const tx = tileX + dx
+        const ty = tileY + dy
+        if (tx <= 1 || tx >= map.width - 2 || ty <= 1 || ty >= map.height - 2) continue
+        if (getTileFn(0, tx, ty) === TileType.EMPTY && getTileFn(1, tx, ty) === TileType.FLOOR) {
+          return { tileX: tx, tileY: ty }
+        }
+      }
+    }
+  }
+
+  return { tileX, tileY }
+}
+
+/**
  * Spawn discovery NPCs for the given stage index.
- * Converts tile coordinates to world pixel positions.
+ * Validates tile positions against the tilemap to avoid spawning inside buildings.
  */
 export function spawnStageNpcs(world: GameWorld, stageIndex: number): void {
   const spawns = STAGE_NPC_SPAWNS[stageIndex]
   if (!spawns || !world.tilemap) return
 
-  const tileSize = world.tilemap.tileSize
+  const map = world.tilemap
+  const tileSize = map.tileSize
   for (const spawn of spawns) {
-    const x = spawn.tileX * tileSize + tileSize / 2
-    const y = spawn.tileY * tileSize + tileSize / 2
+    const tile = findWalkableTile(map, spawn.tileX, spawn.tileY, (layer, x, y) => getTile(map, layer, x, y))
+    const x = tile.tileX * tileSize + tileSize / 2
+    const y = tile.tileY * tileSize + tileSize / 2
     spawnNpc(world, spawn.type, x, y)
   }
 }

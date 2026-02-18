@@ -356,14 +356,17 @@ function placeTownBuildings(
   }
 
   // 6. Build filler queues for each of 6 strips
+  //    noDither buildings (water towers) only go in far lots — inner strips
+  //    would hide things placed behind them since they never go transparent.
+  const innerFiller = filler.filter(p => !p.noDither)
   const FRONTAGE_FILLER_COUNT = 6
   const BACK_ROW_FILLER_COUNT = 8
   const FAR_LOT_FILLER_COUNT = 6
 
-  const westFrontageFiller = buildFillerQueue(rng, filler, FRONTAGE_FILLER_COUNT)
-  const eastFrontageFiller = buildFillerQueue(rng, filler, FRONTAGE_FILLER_COUNT)
-  const westBackRow = buildFillerQueue(rng, filler, BACK_ROW_FILLER_COUNT)
-  const eastBackRow = buildFillerQueue(rng, filler, BACK_ROW_FILLER_COUNT)
+  const westFrontageFiller = buildFillerQueue(rng, innerFiller, FRONTAGE_FILLER_COUNT)
+  const eastFrontageFiller = buildFillerQueue(rng, innerFiller, FRONTAGE_FILLER_COUNT)
+  const westBackRow = buildFillerQueue(rng, innerFiller, BACK_ROW_FILLER_COUNT)
+  const eastBackRow = buildFillerQueue(rng, innerFiller, BACK_ROW_FILLER_COUNT)
   const westFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
   const eastFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
 
