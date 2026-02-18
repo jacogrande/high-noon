@@ -8,8 +8,20 @@
 
 import { SeededRng } from '../../../math/rng'
 import { createTilemap, addLayer, setTile, getTile, TileType, type Tilemap, type PlacedBuilding } from '../../tilemap'
-import type { MapConfig, ObstacleTemplate, HazardConfig } from './mapConfig'
+import type { MapConfig, HazardConfig } from './mapConfig'
 import type { BuildingProfile } from './buildingProfiles'
+
+// ── Town layout constants ──────────────────────────────────────────────
+const UNIQUE_BUILDING_IDS = new Set(['general_store', 'saloon', 'barber', 'sheriff', 'bank'])
+const STREET_HALF_W = 2   // street is 4 tiles wide (centered on map centerX)
+const SIDEWALK_W = 1       // 1 tile sidewalk on each side of street
+const ALLEY_GAP = 1        // 1 tile horizontal gap between tier columns
+const BORDER_INSET = 2     // stay 2 tiles from map border
+const MAX_FRONTAGE_WIDTH = 7  // widest frontage building (general_store) — used to compute back-alley X
+const MAX_FILLER_WIDTH = 3    // widest filler building — used to compute far-lot X
+const FRONTAGE_GAP = 1        // vertical gap between buildings on frontage (dense)
+const BACK_ROW_GAP = 2        // vertical gap between buildings in back row (medium)
+const FAR_LOT_GAP = 3         // vertical gap between buildings in far lots (sparse)
 
 /**
  * Derive a sub-seed from a base seed and stage index.
@@ -82,76 +94,12 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
   // Track all placed obstacle centers for spacing checks
   const placed: Array<{ x: number; y: number }> = []
 
-  // 4. Place buildings (if configured) via AABB-aware Poisson sampling
+  // 4. Place buildings (if configured) via strip-based main street layout
   const buildings = config.obstacles.buildings
   if (buildings) {
-    const placedBuildings: PlacedBuilding[] = []
-    const buildingMaxAttempts = buildings.count * 40
-
-    for (let attempt = 0; attempt < buildingMaxAttempts && placedBuildings.length < buildings.count; attempt++) {
-      // Pick a random building profile
-      const profile = buildings.profiles[rng.nextInt(buildings.profiles.length)]!
-
-      // Pick a random position (inset from borders by 2 tiles)
-      const ox = 2 + rng.nextInt(width - 4 - profile.widthTiles)
-      const oy = 2 + rng.nextInt(height - 4 - profile.heightTiles)
-
-      // AABB of this building
-      const aMinX = ox
-      const aMinY = oy
-      const aMaxX = ox + profile.widthTiles
-      const aMaxY = oy + profile.heightTiles
-
-      // Reject if AABB overlaps center exclusion zone
-      const cMinX = centerX - clearR
-      const cMinY = centerY - clearR
-      const cMaxX = centerX + clearR + 1
-      const cMaxY = centerY + clearR + 1
-      if (aMinX < cMaxX && aMaxX > cMinX && aMinY < cMaxY && aMaxY > cMinY) continue
-
-      // Reject if too close to existing placed obstacles/buildings (center distance)
-      let tooClose = false
-      const bcx = ox + profile.widthTiles / 2
-      const bcy = oy + profile.heightTiles / 2
-      for (const p of placed) {
-        const dx = bcx - p.x
-        const dy = bcy - p.y
-        if (dx * dx + dy * dy < buildings.minSpacing * buildings.minSpacing) {
-          tooClose = true
-          break
-        }
-      }
-      if (tooClose) continue
-
-      // Check no wall tile positions already occupied
-      let fits = true
-      for (const offset of profile.walls) {
-        const tx = ox + offset.dx
-        const ty = oy + offset.dy
-        if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
-        if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
-      }
-      if (profile.halfWalls) {
-        for (const offset of profile.halfWalls) {
-          const tx = ox + offset.dx
-          const ty = oy + offset.dy
-          if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
-          if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
-        }
-      }
-      if (!fits) continue
-
-      // Stamp the building collision tiles
-      stampObstacle(map, profile, ox, oy)
-
-      // Record the building for client rendering
-      placedBuildings.push({ profileId: profile.id, tileX: ox, tileY: oy })
-
-      // Push center into placed array so generic obstacles also respect spacing
-      placed.push({ x: bcx, y: bcy })
-    }
-
-    map.placedBuildings = placedBuildings
+    map.placedBuildings = placeTownBuildings(
+      map, rng, buildings.profiles, centerX, centerY, clearR, placed,
+    )
   }
 
   // 5. Place generic obstacles via Poisson-like sampling
@@ -237,6 +185,239 @@ function stampObstacle(
       setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.HALF_WALL)
     }
   }
+}
+
+// ── Town building placement helpers ────────────────────────────────────
+
+/** Fisher-Yates shuffle using seeded RNG for determinism. */
+function shuffleInPlace<T>(arr: T[], rng: SeededRng): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rng.nextInt(i + 1)
+    const tmp = arr[i]!
+    arr[i] = arr[j]!
+    arr[j] = tmp
+  }
+}
+
+/** Check that every tile of a building profile fits on the map without overlapping existing walls. */
+function canStampBuilding(map: Tilemap, profile: BuildingProfile, ox: number, oy: number): boolean {
+  const { width, height } = map
+  for (const offset of profile.walls) {
+    const tx = ox + offset.dx
+    const ty = oy + offset.dy
+    if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) return false
+    if (getTile(map, 0, tx, ty) !== TileType.EMPTY) return false
+  }
+  if (profile.halfWalls) {
+    for (const offset of profile.halfWalls) {
+      const tx = ox + offset.dx
+      const ty = oy + offset.dy
+      if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) return false
+      if (getTile(map, 0, tx, ty) !== TileType.EMPTY) return false
+    }
+  }
+  return true
+}
+
+/** Stamp a building onto the map: collision tiles, interior floor, and bookkeeping. */
+function stampBuilding(
+  map: Tilemap,
+  profile: BuildingProfile,
+  ox: number,
+  oy: number,
+  placedBuildings: PlacedBuilding[],
+  placedCenters: Array<{ x: number; y: number }>,
+): void {
+  stampObstacle(map, profile, ox, oy)
+
+  // Interior floor (skip bottom-most row to blend with surrounding tiles)
+  const floorType = profile.interiorFloor ?? TileType.WOOD_FLOOR
+  for (let dy = 0; dy < profile.heightTiles - 1; dy++) {
+    for (let dx = 0; dx < profile.widthTiles; dx++) {
+      setTile(map, 1, ox + dx, oy + dy, floorType)
+    }
+  }
+
+  placedBuildings.push({ profileId: profile.id, tileX: ox, tileY: oy })
+  placedCenters.push({ x: ox + profile.widthTiles / 2, y: oy + profile.heightTiles / 2 })
+}
+
+/**
+ * Place a vertical strip of buildings, advancing a Y-cursor and skipping the
+ * center clear zone when a building would overlap it.
+ *
+ * @param computeX - Given a profile, returns the tile X for placement
+ * @param skipClearZone - Whether to skip the center clear zone (frontage yes, outskirts no)
+ * @param clearMinY / clearMaxY - Y bounds of the clear zone (exclusive top of maxY)
+ */
+function placeStrip(
+  map: Tilemap,
+  queue: BuildingProfile[],
+  computeX: (profile: BuildingProfile) => number,
+  skipClearZone: boolean,
+  clearMinY: number,
+  clearMaxY: number,
+  placedBuildings: PlacedBuilding[],
+  placedCenters: Array<{ x: number; y: number }>,
+  gap: number = FRONTAGE_GAP,
+): void {
+  let cursor = BORDER_INSET
+
+  for (const profile of queue) {
+    // Skip over center clear zone if building would overlap it in Y
+    if (skipClearZone && cursor < clearMaxY && cursor + profile.heightTiles > clearMinY) {
+      cursor = clearMaxY + gap
+    }
+
+    // Check if building fits vertically (last tile must be before border wall)
+    // Use continue (not break) so smaller buildings later in the queue can still fill the gap
+    if (cursor + profile.heightTiles > map.height - 1) continue
+
+    const ox = computeX(profile)
+    if (!canStampBuilding(map, profile, ox, cursor)) {
+      // Can't place — skip this building without advancing cursor
+      continue
+    }
+
+    stampBuilding(map, profile, ox, cursor, placedBuildings, placedCenters)
+    cursor += profile.heightTiles + gap
+  }
+}
+
+/**
+ * Build a filler queue by cycling through shuffled filler templates.
+ * Each call gets a fresh shuffle for variety across strips.
+ */
+function buildFillerQueue(rng: SeededRng, fillerProfiles: BuildingProfile[], count: number): BuildingProfile[] {
+  const shuffled = [...fillerProfiles]
+  shuffleInPlace(shuffled, rng)
+  const queue: BuildingProfile[] = []
+  for (let i = 0; i < count; i++) {
+    queue.push(shuffled[i % shuffled.length]!)
+  }
+  return queue
+}
+
+/**
+ * Dense 3-tier town layout for Stage 1 (Town).
+ *
+ * Organises buildings in three depth tiers on each side of a vertical main street:
+ * - Frontage (dense, gap=1): unique named buildings + filler copies
+ * - Back row (medium, gap=2): filler copies behind the frontage
+ * - Far lots (sparse, gap=3): filler copies at the town edges
+ *
+ * Filler profiles are reused across strips — same sprite, multiple placements.
+ * Expected total: ~25-35 buildings (vs 14 in the single-tier layout).
+ */
+function placeTownBuildings(
+  map: Tilemap,
+  rng: SeededRng,
+  profiles: BuildingProfile[],
+  centerX: number,
+  centerY: number,
+  clearR: number,
+  placedCenters: Array<{ x: number; y: number }>,
+): PlacedBuilding[] {
+  const placedBuildings: PlacedBuilding[] = []
+
+  // 1. Split profiles into unique (named) and filler
+  const unique: BuildingProfile[] = []
+  const filler: BuildingProfile[] = []
+  for (const p of profiles) {
+    if (UNIQUE_BUILDING_IDS.has(p.id)) unique.push(p)
+    else filler.push(p)
+  }
+
+  // 2. Shuffle both lists for variety across seeds
+  shuffleInPlace(unique, rng)
+  shuffleInPlace(filler, rng)
+
+  // 3. Sort unique by height descending so tallest go to opposite sides
+  //    (prevents two h=8 buildings from exhausting one strip). The shuffle
+  //    above is still effective: for equal-height pairs, it randomises
+  //    which goes west vs east.
+  unique.sort((a, b) => b.heightTiles - a.heightTiles)
+
+  // 4. Alternate unique to west/east frontage
+  const westUnique: BuildingProfile[] = []
+  const eastUnique: BuildingProfile[] = []
+  for (let i = 0; i < unique.length; i++) {
+    if (i % 2 === 0) westUnique.push(unique[i]!)
+    else eastUnique.push(unique[i]!)
+  }
+
+  // 5. Gap optimization: keep tallest first, sort rest ascending so shortest
+  //    unique fits in the gap between tallest building and the clear zone
+  const sortRestAscending = (arr: BuildingProfile[]) => {
+    if (arr.length <= 1) return arr
+    const [first, ...rest] = arr
+    rest.sort((a, b) => a.heightTiles - b.heightTiles)
+    return [first!, ...rest]
+  }
+
+  // 6. Build filler queues for each of 6 strips
+  const FRONTAGE_FILLER_COUNT = 6
+  const BACK_ROW_FILLER_COUNT = 8
+  const FAR_LOT_FILLER_COUNT = 6
+
+  const westFrontageFiller = buildFillerQueue(rng, filler, FRONTAGE_FILLER_COUNT)
+  const eastFrontageFiller = buildFillerQueue(rng, filler, FRONTAGE_FILLER_COUNT)
+  const westBackRow = buildFillerQueue(rng, filler, BACK_ROW_FILLER_COUNT)
+  const eastBackRow = buildFillerQueue(rng, filler, BACK_ROW_FILLER_COUNT)
+  const westFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
+  const eastFarLots = buildFillerQueue(rng, filler, FAR_LOT_FILLER_COUNT)
+
+  // 7. Combine frontage queues: unique first, then filler
+  const westFrontage = [...sortRestAscending(westUnique), ...westFrontageFiller]
+  const eastFrontage = [...sortRestAscending(eastUnique), ...eastFrontageFiller]
+
+  // 8. Compute X positions for 3 tiers
+  //    Street corridor: centerX-2 .. centerX+1  (4 tiles wide)
+  //    Sidewalks: 1 tile on each side of street
+  const westSidewalkX = centerX - STREET_HALF_W - SIDEWALK_W  // x=22 for 50-wide map
+  const eastFrontageX = centerX + STREET_HALF_W + SIDEWALK_W  // x=28
+
+  const westBackAlleyEdge = westSidewalkX - MAX_FRONTAGE_WIDTH - ALLEY_GAP  // 22-7-1=14
+  const eastBackAlleyStart = eastFrontageX + MAX_FRONTAGE_WIDTH + ALLEY_GAP  // 28+7+1=36
+
+  const westFarLotEdge = westBackAlleyEdge - MAX_FILLER_WIDTH - ALLEY_GAP   // 14-3-1=10
+  const eastFarLotStart = eastBackAlleyStart + MAX_FILLER_WIDTH + ALLEY_GAP  // 36+3+1=40
+
+  const computeWestFrontageX = (p: BuildingProfile) => westSidewalkX - p.widthTiles
+  const computeEastFrontageX = (_p: BuildingProfile) => eastFrontageX
+  const computeWestBackRowX = (p: BuildingProfile) => westBackAlleyEdge - p.widthTiles
+  const computeEastBackRowX = (_p: BuildingProfile) => eastBackAlleyStart
+  const computeWestFarLotX = (p: BuildingProfile) => westFarLotEdge - p.widthTiles
+  const computeEastFarLotX = (_p: BuildingProfile) => eastFarLotStart
+
+  // Clear zone Y bounds
+  const clearMinY = centerY - clearR
+  const clearMaxY = centerY + clearR + 1
+
+  // 9. Place all 6 strips
+  // Frontage: dense (gap=1), skip clear zone
+  placeStrip(map, westFrontage, computeWestFrontageX, true, clearMinY, clearMaxY, placedBuildings, placedCenters, FRONTAGE_GAP)
+  placeStrip(map, eastFrontage, computeEastFrontageX, true, clearMinY, clearMaxY, placedBuildings, placedCenters, FRONTAGE_GAP)
+
+  // Back row: medium density (gap=2), no clear zone skip
+  placeStrip(map, westBackRow, computeWestBackRowX, false, clearMinY, clearMaxY, placedBuildings, placedCenters, BACK_ROW_GAP)
+  placeStrip(map, eastBackRow, computeEastBackRowX, false, clearMinY, clearMaxY, placedBuildings, placedCenters, BACK_ROW_GAP)
+
+  // Far lots: sparse (gap=3), no clear zone skip
+  placeStrip(map, westFarLots, computeWestFarLotX, false, clearMinY, clearMaxY, placedBuildings, placedCenters, FAR_LOT_GAP)
+  placeStrip(map, eastFarLots, computeEastFarLotX, false, clearMinY, clearMaxY, placedBuildings, placedCenters, FAR_LOT_GAP)
+
+  // 10. Verify all unique buildings were placed (catch layout geometry regressions)
+  if (process.env.NODE_ENV !== 'production') {
+    const finalPlacedIds = new Set(placedBuildings.map(b => b.profileId))
+    for (const id of UNIQUE_BUILDING_IDS) {
+      if (!finalPlacedIds.has(id)) {
+        console.warn(`[mapGenerator] unique building '${id}' failed to place — check strip geometry`)
+      }
+    }
+  }
+
+  return placedBuildings
 }
 
 /**

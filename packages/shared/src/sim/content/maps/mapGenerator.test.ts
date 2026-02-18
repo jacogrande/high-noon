@@ -7,6 +7,7 @@
 import { describe, expect, test } from 'bun:test'
 import { generateArena } from './mapGenerator'
 import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './mapConfig'
+import { TOWN_BUILDINGS } from './buildingProfiles'
 import {
   BASE_TILE_VARIANTS_PER_STYLE,
   TileType,
@@ -396,8 +397,39 @@ describe('mapGenerator', () => {
     test('stage 1 maps have placedBuildings', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
       expect(map.placedBuildings).toBeDefined()
-      expect(map.placedBuildings!.length).toBeGreaterThan(0)
-      expect(map.placedBuildings!.length).toBeLessThanOrEqual(6)
+      // 3-tier dense town: frontage + back row + far lots with reusable filler
+      expect(map.placedBuildings!.length).toBeGreaterThanOrEqual(20)
+      expect(map.placedBuildings!.length).toBeLessThanOrEqual(40)
+    })
+
+    test('all 5 unique building IDs are placed', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const ids = new Set(map.placedBuildings!.map(b => b.profileId))
+      expect(ids.has('general_store')).toBe(true)
+      expect(ids.has('saloon')).toBe(true)
+      expect(ids.has('barber')).toBe(true)
+      expect(ids.has('sheriff')).toBe(true)
+      expect(ids.has('bank')).toBe(true)
+    })
+
+    test('unique buildings appear exactly once each', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const uniqueIds = ['general_store', 'saloon', 'barber', 'sheriff', 'bank']
+      for (const id of uniqueIds) {
+        const count = map.placedBuildings!.filter(b => b.profileId === id).length
+        expect(count).toBe(1)
+      }
+    })
+
+    test('all 5 unique buildings placed across multiple seeds', () => {
+      const uniqueIds = ['general_store', 'saloon', 'barber', 'sheriff', 'bank']
+      for (const seed of [1, 42, 9999, 77777, 123456]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const ids = new Set(map.placedBuildings!.map(b => b.profileId))
+        for (const id of uniqueIds) {
+          expect(ids.has(id)).toBe(true)
+        }
+      }
     })
 
     test('building collision tiles exist in solid layer', () => {
@@ -411,17 +443,25 @@ describe('mapGenerator', () => {
       }
     })
 
-    test('buildings do not overlap center exclusion zone', () => {
+    test('no building tile overlaps center exclusion zone', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
       const centerTileX = Math.floor(map.width / 2)
       const centerTileY = Math.floor(map.height / 2)
       const clearR = STAGE_1_MAP_CONFIG.centerClearRadius
 
       for (const building of map.placedBuildings!) {
-        // Building origin should be outside exclusion zone
-        const inClearX = Math.abs(building.tileX - centerTileX) <= clearR
-        const inClearY = Math.abs(building.tileY - centerTileY) <= clearR
-        expect(inClearX && inClearY).toBe(false)
+        const profile = TOWN_BUILDINGS.find(p => p.id === building.profileId)!
+        // Check every tile in the building footprint
+        for (let dy = 0; dy < profile.heightTiles; dy++) {
+          for (let dx = 0; dx < profile.widthTiles; dx++) {
+            const tileX = building.tileX + dx
+            const tileY = building.tileY + dy
+            const inZone =
+              Math.abs(tileX - centerTileX) <= clearR &&
+              Math.abs(tileY - centerTileY) <= clearR
+            expect(inZone).toBe(false)
+          }
+        }
       }
     })
 
@@ -445,6 +485,31 @@ describe('mapGenerator', () => {
         expect(map1.placedBuildings![i]!.tileX).toBe(map2.placedBuildings![i]!.tileX)
         expect(map1.placedBuildings![i]!.tileY).toBe(map2.placedBuildings![i]!.tileY)
       }
+    })
+
+    test('building wall tiles survive connectivity repair', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const solidLayer = map.layers[0]!
+
+      for (const building of map.placedBuildings!) {
+        const profile = TOWN_BUILDINGS.find(p => p.id === building.profileId)!
+        for (const offset of profile.walls) {
+          const idx = (building.tileY + offset.dy) * map.width + (building.tileX + offset.dx)
+          expect(solidLayer.data[idx]).toBe(TileType.WALL)
+        }
+      }
+    })
+
+    test('different seeds produce different building arrangements', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 99999, 0)
+
+      // At least one building should differ in position or ordering
+      const ids1 = map1.placedBuildings!.map(b => b.profileId).join(',')
+      const ids2 = map2.placedBuildings!.map(b => b.profileId).join(',')
+      const pos1 = map1.placedBuildings!.map(b => `${b.tileX},${b.tileY}`).join(';')
+      const pos2 = map2.placedBuildings!.map(b => `${b.tileX},${b.tileY}`).join(';')
+      expect(ids1 !== ids2 || pos1 !== pos2).toBe(true)
     })
   })
 
