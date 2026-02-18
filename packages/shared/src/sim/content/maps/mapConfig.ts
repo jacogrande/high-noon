@@ -4,6 +4,7 @@
 
 import { TileType, BASE_TILE_VARIANTS_PER_STYLE, type BaseTileStyle } from '../../tilemap'
 import { OBSTACLE_TEMPLATES } from './obstacleTemplates'
+import { TOWN_BUILDINGS, type BuildingProfile } from './buildingProfiles'
 
 export interface ObstacleTemplate {
   /** Relative tile offsets to place as WALL */
@@ -38,6 +39,12 @@ export interface MapConfig {
     count: number
     minSpacing: number
     templates: ObstacleTemplate[]
+    /** Optional premade building placement (Stage 1 only) */
+    buildings?: {
+      profiles: BuildingProfile[]
+      count: number
+      minSpacing: number
+    }
   }
   hazards: HazardConfig[]
 }
@@ -50,9 +57,14 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
   baseTiles: { style: 'red_dirt', variantCount: BASE_TILE_VARIANTS_PER_STYLE },
   centerClearRadius: 4,
   obstacles: {
-    count: 8,
+    count: 2,
     minSpacing: 6,
     templates: OBSTACLE_TEMPLATES,
+    buildings: {
+      profiles: TOWN_BUILDINGS,
+      count: 6,
+      minSpacing: 8,
+    },
   },
   hazards: [
     { tileType: TileType.LAVA, noiseThreshold: 0.82, noiseCellSize: 8, maxCoverage: 0.04 },

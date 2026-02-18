@@ -25,6 +25,19 @@ export interface BaseTileMetadata {
 }
 
 /**
+ * A building placed by the map generator.
+ * Stored on the Tilemap so the client can render building sprites.
+ */
+export interface PlacedBuilding {
+  /** Building profile ID (maps to sprite region on client) */
+  profileId: string
+  /** Top-left tile X of the collision footprint */
+  tileX: number
+  /** Top-left tile Y of the collision footprint */
+  tileY: number
+}
+
+/**
  * A single layer of tiles
  */
 export interface TileLayer {
@@ -48,6 +61,8 @@ export interface Tilemap {
   layers: TileLayer[]
   /** Optional base-tile visual metadata for stage-aware rendering */
   baseTiles?: BaseTileMetadata
+  /** Buildings placed by the map generator (for client rendering) */
+  placedBuildings?: PlacedBuilding[]
 }
 
 /** Tile type constants */

@@ -26,6 +26,10 @@ import {
   BASE_TILE_VARIANTS,
   BASE_TILE_STYLE_ROW,
 } from './baseTileset'
+import {
+  BUILDING_SPRITESHEET_PATH,
+  BUILDING_SPRITE_REGIONS,
+} from './buildingSpritesheet'
 
 /** Base path for character sprite sheets */
 const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
@@ -34,6 +38,7 @@ const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
 const MANIFEST = {
   tileset: '/assets/sprites/tileset.json',
   baseTileset: BASE_TILESET_PATH,
+  buildingSpritesheet: BUILDING_SPRITESHEET_PATH,
   bullet: '/assets/sprites/bullet.png',
 } as const
 
@@ -122,6 +127,9 @@ export class AssetLoader {
   /** Item icon textures: key = itemKey */
   private static itemTextures = new Map<string, Texture>()
 
+  /** Building textures sliced from building spritesheet: key = profileId */
+  private static buildingTextures = new Map<string, Texture>()
+
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000
 
@@ -136,9 +144,10 @@ export class AssetLoader {
 
     console.log('[AssetLoader] Starting asset load...')
 
-    // Load tilesets + bullet
+    // Load tilesets + bullet + building spritesheet
     Assets.add({ alias: 'tileset', src: MANIFEST.tileset })
     Assets.add({ alias: 'base_tileset', src: MANIFEST.baseTileset })
+    Assets.add({ alias: 'building_spritesheet', src: MANIFEST.buildingSpritesheet })
     Assets.add({ alias: 'bullet', src: MANIFEST.bullet })
 
     // Add character sprite sheets
@@ -166,6 +175,7 @@ export class AssetLoader {
     const allAliases = [
       'tileset',
       'base_tileset',
+      'building_spritesheet',
       'bullet',
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
@@ -295,6 +305,21 @@ export class AssetLoader {
       }
     }
     console.log('[AssetLoader] Item textures loaded:', this.itemTextures.size)
+
+    // Slice building spritesheet into per-building textures
+    const buildingSheet = loaded.building_spritesheet as Texture
+    if (buildingSheet) {
+      buildingSheet.source.scaleMode = 'nearest'
+      for (const [profileId, region] of Object.entries(BUILDING_SPRITE_REGIONS)) {
+        const rect = new Rectangle(region.x, region.y, region.width, region.height)
+        const subTexture = new Texture({
+          source: buildingSheet.source,
+          frame: rect,
+        })
+        this.buildingTextures.set(profileId, subTexture)
+      }
+      console.log('[AssetLoader] Building textures sliced:', this.buildingTextures.size)
+    }
 
     console.log('[AssetLoader] All assets loaded successfully')
 
@@ -435,6 +460,13 @@ export class AssetLoader {
   }
 
   /**
+   * Get building texture by profile ID. Returns null if not loaded.
+   */
+  static getBuildingTexture(profileId: string): Texture | null {
+    return this.buildingTextures.get(profileId) ?? null
+  }
+
+  /**
    * Reset loader state (for testing)
    */
   static reset(): void {
@@ -447,5 +479,6 @@ export class AssetLoader {
     this.weaponTextures.clear()
     this.enemyTextures.clear()
     this.itemTextures.clear()
+    this.buildingTextures.clear()
   }
 }

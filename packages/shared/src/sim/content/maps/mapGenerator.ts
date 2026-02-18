@@ -7,8 +7,9 @@
  */
 
 import { SeededRng } from '../../../math/rng'
-import { createTilemap, addLayer, setTile, TileType, type Tilemap } from '../../tilemap'
+import { createTilemap, addLayer, setTile, getTile, TileType, type Tilemap, type PlacedBuilding } from '../../tilemap'
 import type { MapConfig, ObstacleTemplate, HazardConfig } from './mapConfig'
+import type { BuildingProfile } from './buildingProfiles'
 
 /**
  * Derive a sub-seed from a base seed and stage index.
@@ -78,12 +79,87 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
   const centerY = Math.floor(height / 2)
   const clearR = config.centerClearRadius
 
-  // 4. Place obstacles via Poisson-like sampling
+  // Track all placed obstacle centers for spacing checks
   const placed: Array<{ x: number; y: number }> = []
+
+  // 4. Place buildings (if configured) via AABB-aware Poisson sampling
+  const buildings = config.obstacles.buildings
+  if (buildings) {
+    const placedBuildings: PlacedBuilding[] = []
+    const buildingMaxAttempts = buildings.count * 40
+
+    for (let attempt = 0; attempt < buildingMaxAttempts && placedBuildings.length < buildings.count; attempt++) {
+      // Pick a random building profile
+      const profile = buildings.profiles[rng.nextInt(buildings.profiles.length)]!
+
+      // Pick a random position (inset from borders by 2 tiles)
+      const ox = 2 + rng.nextInt(width - 4 - profile.widthTiles)
+      const oy = 2 + rng.nextInt(height - 4 - profile.heightTiles)
+
+      // AABB of this building
+      const aMinX = ox
+      const aMinY = oy
+      const aMaxX = ox + profile.widthTiles
+      const aMaxY = oy + profile.heightTiles
+
+      // Reject if AABB overlaps center exclusion zone
+      const cMinX = centerX - clearR
+      const cMinY = centerY - clearR
+      const cMaxX = centerX + clearR + 1
+      const cMaxY = centerY + clearR + 1
+      if (aMinX < cMaxX && aMaxX > cMinX && aMinY < cMaxY && aMaxY > cMinY) continue
+
+      // Reject if too close to existing placed obstacles/buildings (center distance)
+      let tooClose = false
+      const bcx = ox + profile.widthTiles / 2
+      const bcy = oy + profile.heightTiles / 2
+      for (const p of placed) {
+        const dx = bcx - p.x
+        const dy = bcy - p.y
+        if (dx * dx + dy * dy < buildings.minSpacing * buildings.minSpacing) {
+          tooClose = true
+          break
+        }
+      }
+      if (tooClose) continue
+
+      // Check no wall tile positions already occupied
+      let fits = true
+      for (const offset of profile.walls) {
+        const tx = ox + offset.dx
+        const ty = oy + offset.dy
+        if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
+        if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
+      }
+      if (profile.halfWalls) {
+        for (const offset of profile.halfWalls) {
+          const tx = ox + offset.dx
+          const ty = oy + offset.dy
+          if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
+          if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
+        }
+      }
+      if (!fits) continue
+
+      // Stamp the building collision tiles
+      stampObstacle(map, profile, ox, oy)
+
+      // Record the building for client rendering
+      placedBuildings.push({ profileId: profile.id, tileX: ox, tileY: oy })
+
+      // Push center into placed array so generic obstacles also respect spacing
+      placed.push({ x: bcx, y: bcy })
+    }
+
+    map.placedBuildings = placedBuildings
+  }
+
+  // 5. Place generic obstacles via Poisson-like sampling
   const { count, minSpacing, templates } = config.obstacles
   const maxAttempts = count * 20
+  let genericPlaced = 0
 
-  for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts && genericPlaced < count; attempt++) {
     // Pick a random position (inset from borders by 2 tiles)
     const ox = 2 + rng.nextInt(width - 4)
     const oy = 2 + rng.nextInt(height - 4)
@@ -113,6 +189,7 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
       const ty = oy + offset.dy
       if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
       if (Math.abs(tx - centerX) <= clearR && Math.abs(ty - centerY) <= clearR) { fits = false; break }
+      if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
     }
     if (template.halfWalls) {
       for (const offset of template.halfWalls) {
@@ -120,32 +197,46 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
         const ty = oy + offset.dy
         if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
         if (Math.abs(tx - centerX) <= clearR && Math.abs(ty - centerY) <= clearR) { fits = false; break }
+        if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
       }
     }
     if (!fits) continue
 
     // Stamp the template
-    for (const offset of template.walls) {
-      setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.WALL)
-    }
-    if (template.halfWalls) {
-      for (const offset of template.halfWalls) {
-        setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.HALF_WALL)
-      }
-    }
+    stampObstacle(map, template, ox, oy)
 
     placed.push({ x: ox, y: oy })
+    genericPlaced++
   }
 
-  // 5. Hazard scattering via interpolated value noise
+  // 6. Hazard scattering via interpolated value noise
   for (const hazard of config.hazards) {
     placeHazards(map, rng, hazard, centerX, centerY, clearR)
   }
 
-  // 6. Connectivity check — remove walls that create unreachable pockets
+  // 7. Connectivity check — remove walls that create unreachable pockets
   ensureConnectivity(map, centerX, centerY)
 
   return map
+}
+
+/**
+ * Stamp an obstacle (template or building profile) onto the solid layer.
+ */
+function stampObstacle(
+  map: Tilemap,
+  template: { walls: Array<{ dx: number; dy: number }>; halfWalls?: Array<{ dx: number; dy: number }> },
+  ox: number,
+  oy: number,
+): void {
+  for (const offset of template.walls) {
+    setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.WALL)
+  }
+  if (template.halfWalls) {
+    for (const offset of template.halfWalls) {
+      setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.HALF_WALL)
+    }
+  }
 }
 
 /**

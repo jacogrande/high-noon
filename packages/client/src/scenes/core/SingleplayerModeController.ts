@@ -187,6 +187,9 @@ export class SingleplayerModeController implements SceneModeController {
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
     this.tilemapRenderer.render(this.tilemap)
+    // Insert building roof overlay above entities so roofs render over players
+    const entitiesIdx = this.gameApp.world.getChildIndex(this.gameApp.layers.entities)
+    this.gameApp.world.addChildAt(this.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
     const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
     this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
@@ -755,6 +758,15 @@ export class SingleplayerModeController implements SceneModeController {
     this.lightingSystem.updateLights(realDt)
     this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
     this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
+
+    // Update roof dither reveal around player
+    {
+      const eid = this.playerRenderer.getPlayerEntity()
+      if (eid !== null) {
+        const screenPos = this.gameApp.world.toGlobal({ x: Position.x[eid]!, y: Position.y[eid]! })
+        this.tilemapRenderer.updateRoofReveal(screenPos.x, screenPos.y)
+      }
+    }
 
     // Clear debug graphics
     this.debugRenderer.clear()

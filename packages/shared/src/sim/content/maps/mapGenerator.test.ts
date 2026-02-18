@@ -392,6 +392,62 @@ describe('mapGenerator', () => {
     })
   })
 
+  describe('building placement', () => {
+    test('stage 1 maps have placedBuildings', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      expect(map.placedBuildings).toBeDefined()
+      expect(map.placedBuildings!.length).toBeGreaterThan(0)
+      expect(map.placedBuildings!.length).toBeLessThanOrEqual(6)
+    })
+
+    test('building collision tiles exist in solid layer', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const solidLayer = map.layers[0]!
+
+      for (const building of map.placedBuildings!) {
+        // At least the origin tile should be WALL
+        const idx = building.tileY * map.width + building.tileX
+        expect(solidLayer.data[idx]).toBe(TileType.WALL)
+      }
+    })
+
+    test('buildings do not overlap center exclusion zone', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
+      const centerTileX = Math.floor(map.width / 2)
+      const centerTileY = Math.floor(map.height / 2)
+      const clearR = STAGE_1_MAP_CONFIG.centerClearRadius
+
+      for (const building of map.placedBuildings!) {
+        // Building origin should be outside exclusion zone
+        const inClearX = Math.abs(building.tileX - centerTileX) <= clearR
+        const inClearY = Math.abs(building.tileY - centerTileY) <= clearR
+        expect(inClearX && inClearY).toBe(false)
+      }
+    })
+
+    test('stage 2 maps have no placedBuildings', () => {
+      const map = generateArena(STAGE_2_MAP_CONFIG, 12345, 1)
+      expect(map.placedBuildings).toBeUndefined()
+    })
+
+    test('stage 3 maps have no placedBuildings', () => {
+      const map = generateArena(STAGE_3_MAP_CONFIG, 12345, 2)
+      expect(map.placedBuildings).toBeUndefined()
+    })
+
+    test('building placements are deterministic', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+
+      expect(map1.placedBuildings!.length).toBe(map2.placedBuildings!.length)
+      for (let i = 0; i < map1.placedBuildings!.length; i++) {
+        expect(map1.placedBuildings![i]!.profileId).toBe(map2.placedBuildings![i]!.profileId)
+        expect(map1.placedBuildings![i]!.tileX).toBe(map2.placedBuildings![i]!.tileX)
+        expect(map1.placedBuildings![i]!.tileY).toBe(map2.placedBuildings![i]!.tileY)
+      }
+    })
+  })
+
   describe('stage configurations', () => {
     test('stage 1 generates 50x38 map', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)

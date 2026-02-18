@@ -281,6 +281,9 @@ export class MultiplayerModeController implements SceneModeController {
     // Renderers
     this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
     this.tilemapRenderer.render(tilemap)
+    // Insert building roof overlay above entities so roofs render over players
+    const entitiesIdx = this.gameApp.world.getChildIndex(this.gameApp.layers.entities)
+    this.gameApp.world.addChildAt(this.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
     const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
     this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
@@ -1183,6 +1186,12 @@ export class MultiplayerModeController implements SceneModeController {
     this.lightingSystem.updateLights(realDt)
     this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
     this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
+
+    // Update roof dither reveal around player
+    if (this.myClientEid >= 0) {
+      const screenPos = this.gameApp.world.toGlobal({ x: Position.x[this.myClientEid]!, y: Position.y[this.myClientEid]! })
+      this.tilemapRenderer.updateRoofReveal(screenPos.x, screenPos.y)
+    }
 
     // Clear debug
     this.debugRenderer.clear()
