@@ -39,11 +39,10 @@ export interface MapConfig {
     count: number
     minSpacing: number
     templates: ObstacleTemplate[]
-    /** Optional premade building placement (Stage 1 only) */
+    /** Optional premade building profiles (Stage 1 only). The strip-based
+     *  layout algorithm places all provided profiles; no count cap needed. */
     buildings?: {
       profiles: BuildingProfile[]
-      count: number
-      minSpacing: number
     }
   }
   hazards: HazardConfig[]
@@ -62,8 +61,6 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
     templates: OBSTACLE_TEMPLATES,
     buildings: {
       profiles: TOWN_BUILDINGS,
-      count: 6,
-      minSpacing: 8,
     },
   },
   hazards: [

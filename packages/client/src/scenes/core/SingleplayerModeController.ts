@@ -759,12 +759,14 @@ export class SingleplayerModeController implements SceneModeController {
     this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
     this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
 
-    // Update roof dither reveal around player
+    // Update per-building dither visibility
     {
       const eid = this.playerRenderer.getPlayerEntity()
       if (eid !== null) {
-        const screenPos = this.gameApp.world.toGlobal({ x: Position.x[eid]!, y: Position.y[eid]! })
-        this.tilemapRenderer.updateRoofReveal(screenPos.x, screenPos.y)
+        const px = Position.x[eid]!
+        const py = Position.y[eid]!
+        const screenPos = this.gameApp.world.toGlobal({ x: px, y: py })
+        this.tilemapRenderer.updateBuildingVisibility(px, py, screenPos.x, screenPos.y)
       }
     }
 

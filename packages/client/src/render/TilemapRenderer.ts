@@ -39,6 +39,18 @@ function pickBaseTileVariant(baseTiles: BaseTileMetadata, tileX: number, tileY: 
   return hashBaseTileVariant(baseTiles.seed, tileX, tileY) % count
 }
 
+/** Per-building tracking data for roof dither */
+interface BuildingRoofData {
+  roofSprite: Sprite
+  baseSprite: Sprite | null
+  /** Roof overhang zone in world coordinates — dither triggers when the
+   *  player is inside this rectangle (walking behind the roof). */
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
 /**
  * Tilemap renderer - draws tiles as sprites
  */
@@ -47,17 +59,18 @@ export class TilemapRenderer {
   private readonly roofContainer: Container
   private readonly sprites: Sprite[] = []
   private readonly roofSprites: Sprite[] = []
+  private readonly buildingData: BuildingRoofData[] = []
   private currentMap: Tilemap | null = null
   private roofDitherFilter: RoofDitherFilter | null = null
 
   constructor(parentContainer: Container, gameZoom: number = 2) {
     this.container = new Container()
     parentContainer.addChild(this.container)
-    // Roof container is NOT added to parent — caller places it above the entity layer
+    // Building overlay container — caller places it above the entity layer.
+    // No container-level filter; the dither filter is applied per-sprite
+    // only to buildings the player is visually behind.
     this.roofContainer = new Container()
-    // Apply dither filter to roof container
     this.roofDitherFilter = new RoofDitherFilter(gameZoom)
-    this.roofContainer.filters = [this.roofDitherFilter.filter]
   }
 
   /**
@@ -82,6 +95,7 @@ export class TilemapRenderer {
       sprite.destroy()
     }
     this.roofSprites.length = 0
+    this.buildingData.length = 0
 
     const { width, height, tileSize, layers } = map
 
@@ -144,7 +158,9 @@ export class TilemapRenderer {
       if (layers[i]?.solid) drawLayer(i, true)
     }
 
-    // Render building sprites split into base (tilemap layer) + roof (above entities)
+    // Render building sprites split into two layers:
+    //  - Roof (above entities) — gets dither filter when the player walks behind it
+    //  - Base (below entities) — player renders on top of the building body
     if (map.placedBuildings) {
       for (const building of map.placedBuildings) {
         const texture = AssetLoader.getBuildingTexture(building.profileId)
@@ -153,19 +169,16 @@ export class TilemapRenderer {
         const region = BUILDING_SPRITE_REGIONS[building.profileId]
         if (!region) continue
 
+        const profile = BUILDING_PROFILE_MAP.get(building.profileId)
         const worldX = building.tileX * tileSize
         const worldY = building.tileY * tileSize
+        const frame = texture.frame
 
-        if (region.roofHeight > 0 && region.roofHeight < region.height) {
-          // Roof portion (top roofHeight native pixels) → rendered above entities
+        if (region.roofHeight > 0) {
+          // Roof sub-texture (top portion) — above entities
           const roofTexture = new Texture({
             source: texture.source,
-            frame: new Rectangle(
-              texture.frame.x,
-              texture.frame.y,
-              region.width,
-              region.roofHeight,
-            ),
+            frame: new Rectangle(frame.x, frame.y, frame.width, region.roofHeight),
           })
           const roofSprite = new Sprite(roofTexture)
           roofSprite.scale.set(BUILDING_RENDER_SCALE)
@@ -173,25 +186,46 @@ export class TilemapRenderer {
           this.roofContainer.addChild(roofSprite)
           this.roofSprites.push(roofSprite)
 
-          // Base portion (rest of sprite) → tilemap layer, aligned with collision footprint
+          // Base sub-texture (lower portion) — below entities.
+          // Sized to cover the full collision footprint so changing roofHeight
+          // doesn't shift the visual bottom or expose floor tiles.
+          const footprintH = (profile?.heightTiles ?? 0) * tileSize
+          const footprintW = (profile?.widthTiles ?? 0) * tileSize
           const baseTexture = new Texture({
             source: texture.source,
             frame: new Rectangle(
-              texture.frame.x,
-              texture.frame.y + region.roofHeight,
-              region.width,
-              region.height - region.roofHeight,
+              frame.x,
+              frame.y + region.roofHeight,
+              frame.width,
+              frame.height - region.roofHeight,
             ),
           })
           const baseSprite = new Sprite(baseTexture)
-          baseSprite.scale.set(BUILDING_RENDER_SCALE)
+          baseSprite.width = footprintW
+          baseSprite.height = footprintH
           baseSprite.position.set(worldX, worldY)
           this.container.addChild(baseSprite)
           this.sprites.push(baseSprite)
+
+          // Dither overlap zone: roof overhang area using collision X bounds.
+          // Both roof and base sprites get the filter so the floor tiles
+          // underneath are revealed through the dithered holes.
+          if (!profile?.noDither) {
+            this.buildingData.push({
+              roofSprite,
+              baseSprite,
+              minX: worldX,
+              minY: worldY - region.roofHeight * BUILDING_RENDER_SCALE,
+              maxX: worldX + (profile?.widthTiles ?? 0) * tileSize,
+              maxY: worldY,
+            })
+          }
         } else {
-          // No roof — render entire sprite in tilemap layer
+          // No roof overhang — entire building below entities,
+          // sized to match collision footprint
           const sprite = new Sprite(texture)
-          sprite.scale.set(BUILDING_RENDER_SCALE)
+          sprite.width = (profile?.widthTiles ?? 0) * tileSize
+          sprite.height = (profile?.heightTiles ?? 0) * tileSize
           sprite.position.set(worldX, worldY)
           this.container.addChild(sprite)
           this.sprites.push(sprite)
@@ -215,12 +249,37 @@ export class TilemapRenderer {
   }
 
   /**
-   * Update roof dither reveal position each frame.
-   * @param screenX Player screen X in CSS pixels (from worldContainer.toGlobal)
-   * @param screenY Player screen Y in CSS pixels (from worldContainer.toGlobal)
+   * Update per-building visibility each frame.
+   * Buildings that visually overlap the player get a dithered reveal;
+   * buildings the player is NOT behind stay fully opaque.
+   *
+   * @param playerWorldX Player X in world coordinates
+   * @param playerWorldY Player Y in world coordinates
+   * @param screenX Player screen X in CSS pixels (for the dither filter)
+   * @param screenY Player screen Y in CSS pixels (for the dither filter)
    */
-  updateRoofReveal(screenX: number, screenY: number): void {
-    this.roofDitherFilter?.update(screenX, screenY)
+  updateBuildingVisibility(playerWorldX: number, playerWorldY: number, screenX: number, screenY: number): void {
+    if (!this.roofDitherFilter) return
+    this.roofDitherFilter.update(screenX, screenY)
+
+    const filterArr = [this.roofDitherFilter.filter]
+
+    for (const bd of this.buildingData) {
+      // Point-in-rect: is the player inside the roof overhang zone?
+      const behind =
+        playerWorldX > bd.minX &&
+        playerWorldX < bd.maxX &&
+        playerWorldY > bd.minY &&
+        playerWorldY < bd.maxY
+
+      if (behind) {
+        if (!bd.roofSprite.filters) bd.roofSprite.filters = filterArr
+        if (bd.baseSprite && !bd.baseSprite.filters) bd.baseSprite.filters = filterArr
+      } else {
+        if (bd.roofSprite.filters) bd.roofSprite.filters = null
+        if (bd.baseSprite?.filters) bd.baseSprite.filters = null
+      }
+    }
   }
 
   /**

@@ -5,9 +5,9 @@
  * Loads individual sprite sheet PNGs and slices them into sub-textures.
  */
 
-import { Assets, Texture, Rectangle } from 'pixi.js'
-import { TileType, type BaseTileStyle } from '@high-noon/shared'
-import type { Spritesheet } from 'pixi.js'
+import { Assets, Texture, Rectangle } from "pixi.js";
+import { TileType, type BaseTileStyle } from "@high-noon/shared";
+import type { Spritesheet } from "pixi.js";
 import {
   ANIMATION_STATES,
   PLAYER_SPRITE_INFO,
@@ -19,315 +19,373 @@ import {
   type Direction,
   type AnimationState,
   type EnemyAnimationState,
-} from './animations'
+} from "./animations";
 import {
   BASE_TILESET_PATH,
   BASE_TILE_SIZE,
   BASE_TILE_VARIANTS,
   BASE_TILE_STYLE_ROW,
-} from './baseTileset'
+} from "./baseTileset";
 import {
   BUILDING_SPRITESHEET_PATH,
   BUILDING_SPRITE_REGIONS,
-} from './buildingSpritesheet'
+} from "./buildingSpritesheet";
 
 /** Base path for character sprite sheets */
-const CHAR_SPRITE_BASE = '/assets/sprites/base character/Basic'
+const CHAR_SPRITE_BASE = "/assets/sprites/base character/Basic";
+
+/** Floors spritesheet (16px art tiles for building interiors) */
+const FLOORS_SPRITESHEET_PATH = "/assets/sprites/tilesets/floors.png";
+
+/** Wood floor tile region in floors.png (16x16 native pixels) */
+const WOOD_FLOOR_REGION = { x: 108, y: 124, size: 16 };
 
 /** Asset manifest for non-character assets */
 const MANIFEST = {
-  tileset: '/assets/sprites/tileset.json',
+  tileset: "/assets/sprites/tileset.json",
   baseTileset: BASE_TILESET_PATH,
   buildingSpritesheet: BUILDING_SPRITESHEET_PATH,
-  bullet: '/assets/sprites/bullet.png',
-} as const
+  floorsSpritesheet: FLOORS_SPRITESHEET_PATH,
+  bullet: "/assets/sprites/bullet.png",
+} as const;
 
 /** Weapon sprite manifest: weaponId → path */
 const WEAPON_SPRITES: Record<string, string> = {
-  revolver: '/assets/sprites/weapons/revolver.png',
-  sawed_off: '/assets/sprites/weapons/SawedOffShotgun.png',
-  pickaxe: '/assets/sprites/weapons/pickaxe.png',
-}
+  revolver: "/assets/sprites/weapons/revolver.png",
+  sawed_off: "/assets/sprites/weapons/SawedOffShotgun.png",
+  pickaxe: "/assets/sprites/weapons/pickaxe.png",
+};
 
 /** Enemy sprite manifest: enemyId → path */
 const ENEMY_SPRITES: Record<string, string> = {
-  swarmer: '/assets/sprites/enemies/swarmer.png',
-  grunt: '/assets/sprites/enemies/grunt.png',
-  shooter: '/assets/sprites/enemies/shooter.png',
-  charger: '/assets/sprites/enemies/charger.png',
-  runner: '/assets/sprites/enemies/runner.png',
-  duelist: '/assets/sprites/enemies/duelist.png',
-  goblin_barbarian: '/assets/sprites/enemies/goblin_barbarian.png',
-  goblin_rogue: '/assets/sprites/enemies/goblin_rogue.png',
-  mad_dog: '/assets/sprites/enemies/mad_dog.png',
-  boomstick: '/assets/sprites/enemies/boomstick.png',
-  dalton_emmett: '/assets/sprites/enemies/dalton_emmett.png',
-  dalton_bob: '/assets/sprites/enemies/dalton_bob.png',
-  coyote_jane: '/assets/sprites/enemies/coyote_jane.png',
-  coyote: '/assets/sprites/enemies/coyote.png',
-}
+  swarmer: "/assets/sprites/enemies/swarmer.png",
+  grunt: "/assets/sprites/enemies/grunt.png",
+  shooter: "/assets/sprites/enemies/shooter.png",
+  charger: "/assets/sprites/enemies/charger.png",
+  runner: "/assets/sprites/enemies/runner.png",
+  duelist: "/assets/sprites/enemies/duelist.png",
+  goblin_barbarian: "/assets/sprites/enemies/goblin_barbarian.png",
+  goblin_rogue: "/assets/sprites/enemies/goblin_rogue.png",
+  mad_dog: "/assets/sprites/enemies/mad_dog.png",
+  boomstick: "/assets/sprites/enemies/boomstick.png",
+  dalton_emmett: "/assets/sprites/enemies/dalton_emmett.png",
+  dalton_bob: "/assets/sprites/enemies/dalton_bob.png",
+  coyote_jane: "/assets/sprites/enemies/coyote_jane.png",
+  coyote: "/assets/sprites/enemies/coyote.png",
+};
 
 /** Item icon manifest: itemKey → path */
 const ITEM_SPRITES: Record<string, string> = {
-  gun_oil_tin: '/assets/sprites/items/gun_oil_tin.png',
-  gunpowder_pouch: '/assets/sprites/items/gunpowder_pouch.png',
-  trail_dust_boots: '/assets/sprites/items/trail_dust_boots.png',
-  leather_duster: '/assets/sprites/items/leather_duster.png',
-  tin_star_badge: '/assets/sprites/items/tin_star_badge.png',
-  fools_gold_nugget: '/assets/sprites/items/fools_gold_nugget.png',
-  rattlesnake_fang: '/assets/sprites/items/rattlesnake_fang.png',
-  moonshine_flask: '/assets/sprites/items/moonshine_flask.png',
-  powder_keg: '/assets/sprites/items/powder_keg.png',
-  sidewinder_belt: '/assets/sprites/items/sidewinder_belt.png',
-  dead_mans_deed: '/assets/sprites/items/dead_mans_deed.png',
-  grim_harvest: '/assets/sprites/items/grim_harvest.png',
-}
+  gun_oil_tin: "/assets/sprites/items/gun_oil_tin.png",
+  gunpowder_pouch: "/assets/sprites/items/gunpowder_pouch.png",
+  trail_dust_boots: "/assets/sprites/items/trail_dust_boots.png",
+  leather_duster: "/assets/sprites/items/leather_duster.png",
+  tin_star_badge: "/assets/sprites/items/tin_star_badge.png",
+  fools_gold_nugget: "/assets/sprites/items/fools_gold_nugget.png",
+  rattlesnake_fang: "/assets/sprites/items/rattlesnake_fang.png",
+  moonshine_flask: "/assets/sprites/items/moonshine_flask.png",
+  powder_keg: "/assets/sprites/items/powder_keg.png",
+  sidewinder_belt: "/assets/sprites/items/sidewinder_belt.png",
+  dead_mans_deed: "/assets/sprites/items/dead_mans_deed.png",
+  grim_harvest: "/assets/sprites/items/grim_harvest.png",
+};
 
 /** Enemy animation states for slicing */
-const ENEMY_ANIM_STATES: EnemyAnimationState[] = ['idle', 'walk', 'death', 'attack']
+const ENEMY_ANIM_STATES: EnemyAnimationState[] = [
+  "idle",
+  "walk",
+  "death",
+  "attack",
+];
 
 /** Enemy sprite directions that exist in the sheet (W mirrors E) */
-const ENEMY_SPRITE_DIRS = ['S', 'E', 'N'] as const
+const ENEMY_SPRITE_DIRS = ["S", "E", "N"] as const;
 
 /** Tile type to frame name mapping */
 const TILE_FRAME_MAP: Record<number, string> = {
-  [TileType.EMPTY]: 'tile_empty',
-  [TileType.WALL]: 'tile_wall',
-  [TileType.FLOOR]: 'tile_floor',
-  [TileType.LAVA]: 'tile_floor',
-  [TileType.HALF_WALL]: 'tile_wall',
-  [TileType.MUD]: 'tile_floor',
-  [TileType.BRAMBLE]: 'tile_floor',
-}
+  [TileType.EMPTY]: "tile_empty",
+  [TileType.WALL]: "tile_wall",
+  [TileType.FLOOR]: "tile_floor",
+  [TileType.LAVA]: "tile_floor",
+  [TileType.HALF_WALL]: "tile_wall",
+  [TileType.MUD]: "tile_floor",
+  [TileType.BRAMBLE]: "tile_floor",
+  [TileType.WOOD_FLOOR]: "tile_floor", // fallback; overridden by dedicated texture
+};
 
 /** Sprite directions that exist in the sprite sheet (W mirrors E) */
-const SPRITE_DIRS = ['N', 'E', 'S'] as const
+const SPRITE_DIRS = ["N", "E", "S"] as const;
 
 /**
  * Singleton asset loader
  */
 export class AssetLoader {
-  private static loaded = false
-  private static tilesetSheet: Spritesheet | null = null
-  private static baseTilesetTexture: Texture | null = null
-  private static bulletTexture: Texture | null = null
+  private static loaded = false;
+  private static tilesetSheet: Spritesheet | null = null;
+  private static baseTilesetTexture: Texture | null = null;
+  private static bulletTexture: Texture | null = null;
 
   /** Pre-sliced player textures: key = `${state}_${spriteDir}_${frame}` */
-  private static playerTextures = new Map<string, Texture>()
+  private static playerTextures = new Map<string, Texture>();
 
   /** Pre-sliced base tile textures: key = `${style}_${variant}` */
-  private static baseTileTextures = new Map<string, Texture>()
+  private static baseTileTextures = new Map<string, Texture>();
 
   /** Weapon textures: key = weaponId */
-  private static weaponTextures = new Map<string, Texture>()
+  private static weaponTextures = new Map<string, Texture>();
 
   /** Pre-sliced enemy textures: key = `${enemyId}_${state}_${dir}_${frame}` */
-  private static enemyTextures = new Map<string, Texture>()
+  private static enemyTextures = new Map<string, Texture>();
 
   /** Item icon textures: key = itemKey */
-  private static itemTextures = new Map<string, Texture>()
+  private static itemTextures = new Map<string, Texture>();
 
   /** Building textures sliced from building spritesheet: key = profileId */
-  private static buildingTextures = new Map<string, Texture>()
+  private static buildingTextures = new Map<string, Texture>();
+
+  /** Wood floor texture sliced from floors spritesheet */
+  private static woodFloorTexture: Texture | null = null;
 
   /** Timeout for asset loading (ms) */
-  private static readonly LOAD_TIMEOUT = 30000
+  private static readonly LOAD_TIMEOUT = 30000;
 
   /**
    * Load all game assets
    */
   static async loadAll(onProgress?: (progress: number) => void): Promise<void> {
     if (this.loaded) {
-      console.log('[AssetLoader] Already loaded, skipping')
-      return
+      console.log("[AssetLoader] Already loaded, skipping");
+      return;
     }
 
-    console.log('[AssetLoader] Starting asset load...')
+    console.log("[AssetLoader] Starting asset load...");
 
     // Load tilesets + bullet + building spritesheet
-    Assets.add({ alias: 'tileset', src: MANIFEST.tileset })
-    Assets.add({ alias: 'base_tileset', src: MANIFEST.baseTileset })
-    Assets.add({ alias: 'building_spritesheet', src: MANIFEST.buildingSpritesheet })
-    Assets.add({ alias: 'bullet', src: MANIFEST.bullet })
+    Assets.add({ alias: "tileset", src: MANIFEST.tileset });
+    Assets.add({ alias: "base_tileset", src: MANIFEST.baseTileset });
+    Assets.add({
+      alias: "building_spritesheet",
+      src: MANIFEST.buildingSpritesheet,
+    });
+    Assets.add({
+      alias: "floors_spritesheet",
+      src: MANIFEST.floorsSpritesheet,
+    });
+    Assets.add({ alias: "bullet", src: MANIFEST.bullet });
 
     // Add character sprite sheets
     for (const state of ANIMATION_STATES) {
-      const info = PLAYER_SPRITE_INFO[state]
-      const alias = `char_${state}`
-      Assets.add({ alias, src: `${CHAR_SPRITE_BASE}/${info.file}` })
+      const info = PLAYER_SPRITE_INFO[state];
+      const alias = `char_${state}`;
+      Assets.add({ alias, src: `${CHAR_SPRITE_BASE}/${info.file}` });
     }
 
     // Add weapon sprites
     for (const [weaponId, path] of Object.entries(WEAPON_SPRITES)) {
-      Assets.add({ alias: `weapon_${weaponId}`, src: path })
+      Assets.add({ alias: `weapon_${weaponId}`, src: path });
     }
 
     // Add enemy sprites
     for (const [enemyId, path] of Object.entries(ENEMY_SPRITES)) {
-      Assets.add({ alias: `enemy_${enemyId}`, src: path })
+      Assets.add({ alias: `enemy_${enemyId}`, src: path });
     }
 
     // Add item icon sprites
     for (const [itemKey, path] of Object.entries(ITEM_SPRITES)) {
-      Assets.add({ alias: `item_${itemKey}`, src: path })
+      Assets.add({ alias: `item_${itemKey}`, src: path });
     }
 
     const allAliases = [
-      'tileset',
-      'base_tileset',
-      'building_spritesheet',
-      'bullet',
+      "tileset",
+      "base_tileset",
+      "building_spritesheet",
+      "floors_spritesheet",
+      "bullet",
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
       ...Object.keys(ENEMY_SPRITES).map((id) => `enemy_${id}`),
       ...Object.keys(ITEM_SPRITES).map((id) => `item_${id}`),
-    ]
+    ];
 
     const loadPromise = Assets.load(allAliases, (progress) => {
-      console.log(`[AssetLoader] Progress: ${(progress * 100).toFixed(1)}%`)
-      onProgress?.(progress)
-    })
+      console.log(`[AssetLoader] Progress: ${(progress * 100).toFixed(1)}%`);
+      onProgress?.(progress);
+    });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`Asset loading timed out after ${this.LOAD_TIMEOUT / 1000}s`))
-      }, this.LOAD_TIMEOUT)
-    })
+        reject(
+          new Error(
+            `Asset loading timed out after ${this.LOAD_TIMEOUT / 1000}s`,
+          ),
+        );
+      }, this.LOAD_TIMEOUT);
+    });
 
-    let loaded: Record<string, unknown>
+    let loaded: Record<string, unknown>;
     try {
-      loaded = await Promise.race([loadPromise, timeoutPromise])
+      loaded = await Promise.race([loadPromise, timeoutPromise]);
     } catch (err) {
-      console.error('[AssetLoader] Load failed:', err)
-      throw err
+      console.error("[AssetLoader] Load failed:", err);
+      throw err;
     }
 
-    console.log('[AssetLoader] Assets loaded, storing references...')
+    console.log("[AssetLoader] Assets loaded, storing references...");
 
-    this.tilesetSheet = loaded.tileset as Spritesheet
-    this.baseTilesetTexture = loaded.base_tileset as Texture
-    this.bulletTexture = loaded.bullet as Texture
+    this.tilesetSheet = loaded.tileset as Spritesheet;
+    this.baseTilesetTexture = loaded.base_tileset as Texture;
+    this.bulletTexture = loaded.bullet as Texture;
 
     if (!this.tilesetSheet?.textures) {
-      throw new Error('Tileset spritesheet failed to load or has no textures')
+      throw new Error("Tileset spritesheet failed to load or has no textures");
     }
     if (!this.baseTilesetTexture) {
-      throw new Error('Base tileset texture failed to load')
+      throw new Error("Base tileset texture failed to load");
     }
     if (!this.bulletTexture) {
-      throw new Error('Bullet texture failed to load')
+      throw new Error("Bullet texture failed to load");
     }
 
-    this.baseTilesetTexture.source.scaleMode = 'nearest'
-    this.sliceBaseTileset(this.baseTilesetTexture)
+    this.baseTilesetTexture.source.scaleMode = "nearest";
+    this.sliceBaseTileset(this.baseTilesetTexture);
 
     // Store weapon textures with nearest-neighbor scaling
     for (const weaponId of Object.keys(WEAPON_SPRITES)) {
-      const tex = loaded[`weapon_${weaponId}`] as Texture
+      const tex = loaded[`weapon_${weaponId}`] as Texture;
       if (!tex) {
-        throw new Error(`Weapon texture failed to load: ${weaponId}`)
+        throw new Error(`Weapon texture failed to load: ${weaponId}`);
       }
-      tex.source.scaleMode = 'nearest'
-      this.weaponTextures.set(weaponId, tex)
+      tex.source.scaleMode = "nearest";
+      this.weaponTextures.set(weaponId, tex);
     }
 
     // Slice character sprite sheets into individual frame textures
     for (const state of ANIMATION_STATES) {
-      const info = PLAYER_SPRITE_INFO[state]
-      const baseTexture = loaded[`char_${state}`] as Texture
+      const info = PLAYER_SPRITE_INFO[state];
+      const baseTexture = loaded[`char_${state}`] as Texture;
 
       if (!baseTexture) {
-        throw new Error(`Character sprite sheet failed to load: ${info.file}`)
+        throw new Error(`Character sprite sheet failed to load: ${info.file}`);
       }
 
       // Ensure nearest-neighbor scaling for pixel art
-      baseTexture.source.scaleMode = 'nearest'
+      baseTexture.source.scaleMode = "nearest";
 
       for (const dir of SPRITE_DIRS) {
-        const row = SPRITE_ROW[dir]
+        const row = SPRITE_ROW[dir];
         for (let frame = 0; frame < info.frames; frame++) {
           const rect = new Rectangle(
             frame * SPRITE_CELL_SIZE,
             row * SPRITE_CELL_SIZE,
             SPRITE_CELL_SIZE,
-            SPRITE_CELL_SIZE
-          )
+            SPRITE_CELL_SIZE,
+          );
           const subTexture = new Texture({
             source: baseTexture.source,
             frame: rect,
-          })
-          const key = `${state}_${dir}_${frame}`
-          this.playerTextures.set(key, subTexture)
+          });
+          const key = `${state}_${dir}_${frame}`;
+          this.playerTextures.set(key, subTexture);
         }
       }
     }
 
-    console.log('[AssetLoader] Player textures sliced:', this.playerTextures.size, 'frames')
+    console.log(
+      "[AssetLoader] Player textures sliced:",
+      this.playerTextures.size,
+      "frames",
+    );
 
     // Slice enemy sprite sheets into individual frame textures
     for (const enemyId of Object.keys(ENEMY_SPRITES)) {
-      const baseTexture = loaded[`enemy_${enemyId}`] as Texture
+      const baseTexture = loaded[`enemy_${enemyId}`] as Texture;
       if (!baseTexture) {
-        throw new Error(`Enemy sprite sheet failed to load: ${enemyId}`)
+        throw new Error(`Enemy sprite sheet failed to load: ${enemyId}`);
       }
-      baseTexture.source.scaleMode = 'nearest'
+      baseTexture.source.scaleMode = "nearest";
 
       for (const animState of ENEMY_ANIM_STATES) {
-        const info = ENEMY_SPRITE_INFO[animState]
+        const info = ENEMY_SPRITE_INFO[animState];
         for (const dir of ENEMY_SPRITE_DIRS) {
-          const row = info.rowOffset + ENEMY_SPRITE_ROW[dir]
+          const row = info.rowOffset + ENEMY_SPRITE_ROW[dir];
           for (let frame = 0; frame < info.frames; frame++) {
             const rect = new Rectangle(
               frame * ENEMY_SPRITE_CELL_SIZE,
               row * ENEMY_SPRITE_CELL_SIZE,
               ENEMY_SPRITE_CELL_SIZE,
               ENEMY_SPRITE_CELL_SIZE,
-            )
+            );
             const subTexture = new Texture({
               source: baseTexture.source,
               frame: rect,
-            })
-            const key = `${enemyId}_${animState}_${dir}_${frame}`
-            this.enemyTextures.set(key, subTexture)
+            });
+            const key = `${enemyId}_${animState}_${dir}_${frame}`;
+            this.enemyTextures.set(key, subTexture);
           }
         }
       }
     }
 
-    console.log('[AssetLoader] Enemy textures sliced:', this.enemyTextures.size, 'frames')
+    console.log(
+      "[AssetLoader] Enemy textures sliced:",
+      this.enemyTextures.size,
+      "frames",
+    );
 
     // Store item textures with nearest-neighbor scaling
     for (const itemKey of Object.keys(ITEM_SPRITES)) {
-      const tex = loaded[`item_${itemKey}`] as Texture
+      const tex = loaded[`item_${itemKey}`] as Texture;
       if (tex) {
-        tex.source.scaleMode = 'nearest'
-        this.itemTextures.set(itemKey, tex)
+        tex.source.scaleMode = "nearest";
+        this.itemTextures.set(itemKey, tex);
       }
     }
-    console.log('[AssetLoader] Item textures loaded:', this.itemTextures.size)
+    console.log("[AssetLoader] Item textures loaded:", this.itemTextures.size);
 
     // Slice building spritesheet into per-building textures
-    const buildingSheet = loaded.building_spritesheet as Texture
+    const buildingSheet = loaded.building_spritesheet as Texture;
     if (buildingSheet) {
-      buildingSheet.source.scaleMode = 'nearest'
-      for (const [profileId, region] of Object.entries(BUILDING_SPRITE_REGIONS)) {
-        const rect = new Rectangle(region.x, region.y, region.width, region.height)
+      buildingSheet.source.scaleMode = "nearest";
+      for (const [profileId, region] of Object.entries(
+        BUILDING_SPRITE_REGIONS,
+      )) {
+        const rect = new Rectangle(
+          region.x,
+          region.y,
+          region.width,
+          region.height,
+        );
         const subTexture = new Texture({
           source: buildingSheet.source,
           frame: rect,
-        })
-        this.buildingTextures.set(profileId, subTexture)
+        });
+        this.buildingTextures.set(profileId, subTexture);
       }
-      console.log('[AssetLoader] Building textures sliced:', this.buildingTextures.size)
+      console.log(
+        "[AssetLoader] Building textures sliced:",
+        this.buildingTextures.size,
+      );
     }
 
-    console.log('[AssetLoader] All assets loaded successfully')
+    // Slice wood floor tile from floors spritesheet
+    const floorsSheet = loaded.floors_spritesheet as Texture;
+    if (floorsSheet) {
+      floorsSheet.source.scaleMode = "nearest";
+      const r = WOOD_FLOOR_REGION;
+      this.woodFloorTexture = new Texture({
+        source: floorsSheet.source,
+        frame: new Rectangle(r.x, r.y, r.size, r.size),
+      });
+      console.log("[AssetLoader] Wood floor texture loaded");
+    }
 
-    this.loaded = true
+    console.log("[AssetLoader] All assets loaded successfully");
+
+    this.loaded = true;
   }
 
   private static sliceBaseTileset(baseTileset: Texture): void {
-    this.baseTileTextures.clear()
+    this.baseTileTextures.clear();
 
     for (const [style, row] of Object.entries(BASE_TILE_STYLE_ROW)) {
       for (let variant = 0; variant < BASE_TILE_VARIANTS; variant++) {
@@ -336,12 +394,12 @@ export class AssetLoader {
           row * BASE_TILE_SIZE,
           BASE_TILE_SIZE,
           BASE_TILE_SIZE,
-        )
+        );
         const subTexture = new Texture({
           source: baseTileset.source,
           frame: rect,
-        })
-        this.baseTileTextures.set(`${style}_${variant}`, subTexture)
+        });
+        this.baseTileTextures.set(`${style}_${variant}`, subTexture);
       }
     }
   }
@@ -350,7 +408,7 @@ export class AssetLoader {
    * Check if assets are loaded
    */
   static isLoaded(): boolean {
-    return this.loaded
+    return this.loaded;
   }
 
   /**
@@ -358,53 +416,69 @@ export class AssetLoader {
    */
   static getTileTexture(tileType: number): Texture {
     if (!this.tilesetSheet) {
-      throw new Error('Assets not loaded. Call AssetLoader.loadAll() first.')
+      throw new Error("Assets not loaded. Call AssetLoader.loadAll() first.");
     }
 
-    const frameName = TILE_FRAME_MAP[tileType]
+    // Return dedicated texture for wood floor
+    if (tileType === TileType.WOOD_FLOOR && this.woodFloorTexture) {
+      return this.woodFloorTexture;
+    }
+
+    const frameName = TILE_FRAME_MAP[tileType];
     if (!frameName) {
-      throw new Error(`Unknown tile type: ${tileType}`)
+      throw new Error(`Unknown tile type: ${tileType}`);
     }
 
-    const texture = this.tilesetSheet.textures[frameName]
+    const texture = this.tilesetSheet.textures[frameName];
     if (!texture) {
-      throw new Error(`Texture not found: ${frameName}`)
+      throw new Error(`Texture not found: ${frameName}`);
     }
 
-    return texture
+    return texture;
   }
 
   /**
    * Get a stage base tile texture by style + variant index.
    */
-  static getBaseTileTexture(style: BaseTileStyle, variantIndex: number): Texture {
-    const wrappedVariant = ((Math.floor(variantIndex) % BASE_TILE_VARIANTS) + BASE_TILE_VARIANTS) % BASE_TILE_VARIANTS
-    const key = `${style}_${wrappedVariant}`
-    const texture = this.baseTileTextures.get(key)
+  static getBaseTileTexture(
+    style: BaseTileStyle,
+    variantIndex: number,
+  ): Texture {
+    const wrappedVariant =
+      ((Math.floor(variantIndex) % BASE_TILE_VARIANTS) + BASE_TILE_VARIANTS) %
+      BASE_TILE_VARIANTS;
+    const key = `${style}_${wrappedVariant}`;
+    const texture = this.baseTileTextures.get(key);
     if (!texture) {
-      throw new Error(`Base tile texture not found: ${key}. Call AssetLoader.loadAll() first.`)
+      throw new Error(
+        `Base tile texture not found: ${key}. Call AssetLoader.loadAll() first.`,
+      );
     }
-    return texture
+    return texture;
   }
 
   /**
    * Get player texture for a specific animation state and direction.
    * W direction automatically uses the E sprite (caller handles the flip).
    */
-  static getPlayerTexture(state: AnimationState, direction: Direction, frame: number): Texture {
+  static getPlayerTexture(
+    state: AnimationState,
+    direction: Direction,
+    frame: number,
+  ): Texture {
     // W mirrors E in the sprite sheet
-    const spriteDir = direction === 'W' ? 'E' : direction
-    const key = `${state}_${spriteDir}_${frame}`
-    const texture = this.playerTextures.get(key)
+    const spriteDir = direction === "W" ? "E" : direction;
+    const key = `${state}_${spriteDir}_${frame}`;
+    const texture = this.playerTextures.get(key);
     if (!texture) {
       // Fall back to idle E frame 0
-      const fallback = this.playerTextures.get('idle_E_0')
+      const fallback = this.playerTextures.get("idle_E_0");
       if (!fallback) {
-        throw new Error(`Player texture not found: ${key}`)
+        throw new Error(`Player texture not found: ${key}`);
       }
-      return fallback
+      return fallback;
     }
-    return texture
+    return texture;
   }
 
   /**
@@ -412,20 +486,22 @@ export class AssetLoader {
    */
   static getBulletTexture(): Texture {
     if (!this.bulletTexture) {
-      throw new Error('Assets not loaded. Call AssetLoader.loadAll() first.')
+      throw new Error("Assets not loaded. Call AssetLoader.loadAll() first.");
     }
-    return this.bulletTexture
+    return this.bulletTexture;
   }
 
   /**
    * Get weapon texture by weapon ID
    */
   static getWeaponTexture(weaponId: string): Texture {
-    const tex = this.weaponTextures.get(weaponId)
+    const tex = this.weaponTextures.get(weaponId);
     if (!tex) {
-      throw new Error(`Weapon texture not found: ${weaponId}. Call AssetLoader.loadAll() first.`)
+      throw new Error(
+        `Weapon texture not found: ${weaponId}. Call AssetLoader.loadAll() first.`,
+      );
     }
-    return tex
+    return tex;
   }
 
   /**
@@ -438,47 +514,48 @@ export class AssetLoader {
     direction: Direction,
     frame: number,
   ): Texture {
-    const spriteDir = direction === 'W' ? 'E' : direction
-    const key = `${enemyId}_${state}_${spriteDir}_${frame}`
-    const texture = this.enemyTextures.get(key)
+    const spriteDir = direction === "W" ? "E" : direction;
+    const key = `${enemyId}_${state}_${spriteDir}_${frame}`;
+    const texture = this.enemyTextures.get(key);
     if (!texture) {
       // Fall back to idle S frame 0
-      const fallback = this.enemyTextures.get(`${enemyId}_idle_S_0`)
+      const fallback = this.enemyTextures.get(`${enemyId}_idle_S_0`);
       if (!fallback) {
-        throw new Error(`Enemy texture not found: ${key}`)
+        throw new Error(`Enemy texture not found: ${key}`);
       }
-      return fallback
+      return fallback;
     }
-    return texture
+    return texture;
   }
 
   /**
    * Get item icon texture by item key. Returns null if not loaded.
    */
   static getItemTexture(itemKey: string): Texture | null {
-    return this.itemTextures.get(itemKey) ?? null
+    return this.itemTextures.get(itemKey) ?? null;
   }
 
   /**
    * Get building texture by profile ID. Returns null if not loaded.
    */
   static getBuildingTexture(profileId: string): Texture | null {
-    return this.buildingTextures.get(profileId) ?? null
+    return this.buildingTextures.get(profileId) ?? null;
   }
 
   /**
    * Reset loader state (for testing)
    */
   static reset(): void {
-    this.loaded = false
-    this.tilesetSheet = null
-    this.baseTilesetTexture = null
-    this.bulletTexture = null
-    this.baseTileTextures.clear()
-    this.playerTextures.clear()
-    this.weaponTextures.clear()
-    this.enemyTextures.clear()
-    this.itemTextures.clear()
-    this.buildingTextures.clear()
+    this.loaded = false;
+    this.tilesetSheet = null;
+    this.baseTilesetTexture = null;
+    this.bulletTexture = null;
+    this.baseTileTextures.clear();
+    this.playerTextures.clear();
+    this.weaponTextures.clear();
+    this.enemyTextures.clear();
+    this.itemTextures.clear();
+    this.buildingTextures.clear();
+    this.woodFloorTexture = null;
   }
 }
