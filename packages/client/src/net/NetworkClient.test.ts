@@ -295,6 +295,7 @@ describe('NetworkClient', () => {
         { id: 0, x: 140, y: 150, stageIndex: 0, opened: false },
       ],
       itemPickups: [],
+      hpPotionPickups: [],
     } satisfies InteractablesData)
 
     expect(received?.stashes).toHaveLength(1)

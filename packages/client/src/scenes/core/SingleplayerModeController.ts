@@ -50,6 +50,7 @@ import {
   getThread,
   tryVisitorPurchase,
   type CharacterId,
+  HP_POTION_MAX_STACK,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameApp } from '../../engine/GameApp'
@@ -179,7 +180,7 @@ export class SingleplayerModeController implements SceneModeController {
     setWorldTilemap(this.world, this.tilemap)
     this.systems = createSystemRegistry()
 
-    // Register all 19 simulation systems in canonical order
+    // Register simulation systems in canonical order
     registerAllSystems(this.systems)
     this.simulationDriver = new FullWorldSimulationDriver(this.world, this.systems)
 
@@ -334,6 +335,8 @@ export class SingleplayerModeController implements SceneModeController {
       characterId,
       hp: playerEid !== null ? Health.current[playerEid]! : state.maxHP,
       maxHP: playerEid !== null ? Health.max[playerEid]! : state.maxHP,
+      hpPotions: state.hpPotionCount,
+      hpPotionsMax: HP_POTION_MAX_STACK,
       xp,
       goldCollected: this.world.goldCollected,
       killCount: this.world.killCount,
@@ -787,6 +790,13 @@ export class SingleplayerModeController implements SceneModeController {
             rarity: def?.rarity ?? 'brass',
           }
         }),
+      hpPotionPickups: this.world.hpPotionPickups
+        .filter(p => !p.collected)
+        .map(p => ({
+          id: p.id,
+          x: p.x,
+          y: p.y,
+        })),
     }
     this.interactableRenderer.render(interactables, realDt)
 

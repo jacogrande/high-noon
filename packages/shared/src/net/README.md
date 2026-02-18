@@ -29,7 +29,7 @@ Network protocol definitions and serialization.
 - `bullet-spawn` / `bullet-despawn` - reliable ordered lifecycle events for server projectiles (enemy/boss)
 - `shot-result` - authoritative per-shot hit confirmation for local shooter feedback
 - `hud` - HUD data derived from authoritative local player state
-- `interactables` - per-player interaction prompt and camp shop state
+- `interactables` - low-frequency world interactables (salesman, stashes, item pickups, HP potion pickups)
 - `select-node-result` - authoritative node selection response
 - `pong` - clock sync pong payload
 - `incompatible-protocol` - protocol/version mismatch message; client should disconnect and reload

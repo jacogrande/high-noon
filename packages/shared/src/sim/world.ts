@@ -284,6 +284,14 @@ export interface ItemPickupState {
   collected: boolean
 }
 
+export interface HpPotionPickupState {
+  id: number
+  x: number
+  y: number
+  lifetime: number
+  collected: boolean
+}
+
 export interface RewindPlayerState {
   x: number
   y: number
@@ -561,6 +569,10 @@ export interface GameWorld extends IWorld {
   itemPickups: ItemPickupState[]
   /** ID counter for item pickups */
   nextItemPickupId: number
+  /** HP potion pickups on the ground */
+  hpPotionPickups: HpPotionPickupState[]
+  /** ID counter for HP potion pickups */
+  nextHpPotionPickupId: number
   /** Active discovery NPC entity IDs (for cleanup between stages) */
   npcEntities: Set<number>
   /** Current stage objective state (null = no side objective) */
@@ -675,6 +687,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     campVisitor: null,
     itemPickups: [],
     nextItemPickupId: 1,
+    hpPotionPickups: [],
+    nextHpPotionPickupId: 1,
     npcEntities: new Set(),
     objective: null,
     bossState: new Map(),
@@ -779,6 +793,8 @@ export function resetWorld(world: GameWorld): void {
   world.campVisitor = null
   world.itemPickups = []
   world.nextItemPickupId = 1
+  world.hpPotionPickups = []
+  world.nextHpPotionPickupId = 1
   world.npcEntities.clear()
   world.objective = null
   world.bossState.clear()
@@ -875,6 +891,7 @@ export function startRun(world: GameWorld, stages: StageEncounter[]): void {
   world.pendingStashRewards = []
   world.shovelCount = 0
   world.itemPickups = []
+  world.hpPotionPickups = []
   world.interactionHoldTicksByPlayer.clear()
   world.interactionTargetByPlayer.clear()
   world.interactionLastInputSeqByPlayer.clear()
@@ -896,6 +913,7 @@ export function swapTilemap(world: GameWorld, tilemap: Tilemap): void {
   world.salesman = null
   world.stashes = []
   world.itemPickups = []
+  world.hpPotionPickups = []
   world.interactionHoldTicksByPlayer.clear()
   world.interactionTargetByPlayer.clear()
   world.interactionLastInputSeqByPlayer.clear()

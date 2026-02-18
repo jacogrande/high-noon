@@ -15,6 +15,7 @@ const CONTROLS: { keys: string[]; action: string }[] = [
   { keys: ['SHIFT'], action: 'ROLL / DODGE' },
   { keys: ['R'], action: 'RELOAD' },
   { keys: ['E'], action: 'INTERACT' },
+  { keys: ['F'], action: 'USE HP POTION' },
   { keys: ['ESC'], action: 'PAUSE' },
 ]
 

@@ -23,6 +23,7 @@ import {
   NO_TARGET,
   TICK_S,
   PLAYER_HP,
+  HP_POTION_MAX_STACK,
   createSystemRegistry,
   registerPredictionSystems,
   registerReplaySystems,
@@ -1388,6 +1389,8 @@ export class MultiplayerModeController implements SceneModeController {
       // Prefer authoritative snapshot-applied ECS HP for responsive damage feedback.
       hp: localHp ?? (hud?.hp ?? 0),
       maxHP: localMaxHp ?? (hud?.maxHp ?? PLAYER_HP),
+      hpPotions: hud?.hpPotions ?? localState.hpPotionCount,
+      hpPotionsMax: hud?.hpPotionsMax ?? HP_POTION_MAX_STACK,
       xp: hud?.xp ?? 0,
       goldCollected: hud?.goldCollected ?? 0,
       killCount: hud?.killCount ?? 0,

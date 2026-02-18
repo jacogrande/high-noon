@@ -101,4 +101,21 @@ describe('Input transient action buffering', () => {
 
     input.destroy()
   })
+
+  test('preserves quick F tap between polls as a one-tick USE_HP_POTION pulse', () => {
+    const fakeWindow = new FakeWindow()
+    g.window = fakeWindow as unknown as Window & typeof globalThis
+
+    const input = new Input()
+    fakeWindow.dispatch('keydown', { code: 'KeyF', repeat: false })
+    fakeWindow.dispatch('keyup', { code: 'KeyF' })
+
+    const firstTick = input.getInputState()
+    expect(hasButton(firstTick.buttons, Button.USE_HP_POTION)).toBe(true)
+
+    const secondTick = input.getInputState()
+    expect(hasButton(secondTick.buttons, Button.USE_HP_POTION)).toBe(false)
+
+    input.destroy()
+  })
 })

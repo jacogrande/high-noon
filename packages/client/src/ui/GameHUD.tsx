@@ -22,6 +22,8 @@ const RARITY_MINIMAP_COLORS: Record<string, string> = {
   gold: '#ffd24a',
 }
 
+const POTION_MINIMAP_COLOR = '#ff5555'
+
 function toPercent(value: number, max: number): number {
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return 0
   return Math.max(0, Math.min(100, (value / max) * 100))
@@ -62,6 +64,14 @@ function getMinimapMarkerStyle(marker: MinimapMarker): React.CSSProperties {
     return {
       ...styles.minimapMarker,
       ...styles.minimapStashMarker,
+    }
+  }
+  if (marker.kind === 'potion') {
+    return {
+      ...styles.minimapMarker,
+      ...styles.minimapItemMarker,
+      backgroundColor: POTION_MINIMAP_COLOR,
+      boxShadow: `0 0 6px ${POTION_MINIMAP_COLOR}`,
     }
   }
   return {
@@ -216,6 +226,12 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
               <div style={{ ...styles.abilityLabel, color: '#00ffcc' }}>{abilityName} READY</div>
             </>
           )}
+        </div>
+        <div style={styles.potionRow}>
+          <div style={styles.potionKey}>F</div>
+          <div style={styles.potionLabel}>
+            POTIONS {state.hpPotions} / {state.hpPotionsMax}
+          </div>
         </div>
         {showCylinder && (
           <>
@@ -642,6 +658,33 @@ const styles: Record<string, React.CSSProperties> = {
   abilityLabel: {
     fontSize: 9,
     fontWeight: 'bold',
+    textShadow: '0 0 4px rgba(0,0,0,0.8)',
+    whiteSpace: 'nowrap' as const,
+  },
+  potionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  potionKey: {
+    width: 16,
+    height: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 9,
+    fontWeight: 'bold',
+    borderRadius: 2,
+    border: '1px solid #ff6666',
+    color: '#ffcccc',
+    backgroundColor: 'rgba(120, 30, 30, 0.45)',
+    lineHeight: 1,
+  },
+  potionLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#ff8a8a',
     textShadow: '0 0 4px rgba(0,0,0,0.8)',
     whiteSpace: 'nowrap' as const,
   },

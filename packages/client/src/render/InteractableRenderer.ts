@@ -7,6 +7,8 @@ const SALESMAN_CORE = 0xe4b86a
 const SALESMAN_RING = 0xffd89a
 const STASH_CLOSED = 0x9c6232
 const STASH_OPENED = 0x5a5a5a
+const HP_POTION_CORE = 0xff6a6a
+const HP_POTION_RING = 0xffb3b3
 
 const RARITY_COLORS: Record<string, number> = {
   brass: 0xd4a046,
@@ -117,6 +119,27 @@ export class InteractableRenderer {
             .fill({ color, alpha: 0.9 })
         }
       }
+    }
+
+    for (let i = 0; i < data.hpPotionPickups.length; i++) {
+        const pickup = data.hpPotionPickups[i]!
+        const bob = Math.sin(this.pulseClock * 3 + pickup.id * 1.3) * 2.5
+        const pulse = Math.sin(this.pulseClock * 6 + pickup.id * 0.6) * 0.5 + 0.5
+        const px = pickup.x
+        const py = pickup.y + bob
+
+        this.graphics
+          .circle(px, py, 8 + pulse * 2)
+          .stroke({ color: HP_POTION_RING, width: 1.5, alpha: 0.35 + pulse * 0.4 })
+        this.graphics
+          .circle(px, py, 5.5)
+          .fill({ color: HP_POTION_CORE, alpha: 0.92 })
+        this.graphics
+          .rect(px - 1, py - 3.5, 2, 7)
+          .fill({ color: 0xffffff, alpha: 0.92 })
+        this.graphics
+          .rect(px - 3.5, py - 1, 7, 2)
+          .fill({ color: 0xffffff, alpha: 0.92 })
     }
 
     // Remove stale pickup sprites

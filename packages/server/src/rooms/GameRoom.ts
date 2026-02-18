@@ -39,6 +39,7 @@ import {
   TICK_RATE,
   TICK_MS,
   NO_TARGET,
+  HP_POTION_MAX_STACK,
   type GameWorld,
   type SystemRegistry,
   type NetworkInput,
@@ -107,7 +108,7 @@ const REWIND_HISTORICAL_RADIUS_PADDING = 2
  * causes visible client/server divergence (e.g., dash not starting server-side).
  */
 const TRANSIENT_ACTION_BUTTONS =
-  Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT
+  Button.ROLL | Button.JUMP | Button.RELOAD | Button.ABILITY | Button.SHOOT | Button.USE_HP_POTION
 
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
 const bulletQuery = defineQuery([Bullet, Position, Velocity, Collider])
@@ -1321,6 +1322,8 @@ export class GameRoom extends Room<GameRoomState> {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
         maxHp: Health.max[eid]!,
+        hpPotions: state.hpPotionCount,
+        hpPotionsMax: HP_POTION_MAX_STACK,
         cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
         cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
         isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
@@ -1393,6 +1396,13 @@ export class GameRoom extends Room<GameRoomState> {
             rarity: def?.rarity ?? 'brass',
           }
         }),
+      hpPotionPickups: this.world.hpPotionPickups
+        .filter(p => !p.collected)
+        .map(p => ({
+          id: p.id,
+          x: p.x,
+          y: p.y,
+        })),
     }
 
     for (const [, slot] of this.slots) {
@@ -1530,6 +1540,8 @@ export class GameRoom extends Room<GameRoomState> {
       characterId: slot.characterId,
       hp: Health.current[eid]!,
       maxHp: Health.max[eid]!,
+      hpPotions: state.hpPotionCount,
+      hpPotionsMax: HP_POTION_MAX_STACK,
       cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
       cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
       isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
@@ -1604,6 +1616,13 @@ export class GameRoom extends Room<GameRoomState> {
             rarity: def?.rarity ?? 'brass',
           }
         }),
+      hpPotionPickups: this.world.hpPotionPickups
+        .filter(p => !p.collected)
+        .map(p => ({
+          id: p.id,
+          x: p.x,
+          y: p.y,
+        })),
     }
     client.send('interactables', payload)
   }

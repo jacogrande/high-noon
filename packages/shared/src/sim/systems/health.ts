@@ -14,6 +14,14 @@ import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
 import { ENEMY_DROP_CHANCE, DROP_RARITY_WEIGHTS_FODDER, DROP_RARITY_WEIGHTS_THREAT } from '../content/enemies'
 import { getRandomItemByRarity, type ItemRarity } from '../content/items'
 import { getBoss } from '../content/bosses'
+/** Lifetime in seconds for item pickups dropped by enemies */
+const ENEMY_ITEM_DROP_LIFETIME = 15
+import {
+  HP_POTION_DROP_CHANCE_BOSS,
+  HP_POTION_DROP_CHANCE_FODDER,
+  HP_POTION_DROP_CHANCE_THREAT,
+  HP_POTION_PICKUP_LIFETIME,
+} from '../content/hpPotion'
 
 const healthQuery = defineQuery([Health])
 const playerQuery = defineQuery([Player, Health])
@@ -52,11 +60,14 @@ export function healthSystem(world: GameWorld, dt: number): void {
             wasMelee: killWasMelee,
           })
 
-          // Item drop roll (check boss registry, then ENEMY_DROP_CHANCE table)
           const enemyType = Enemy.type[eid]!
-          const dropChance = ENEMY_DROP_CHANCE[enemyType] ?? getBoss(enemyType)?.dropChance ?? 0
+          const isFodder = Enemy.tier[eid] === EnemyTier.FODDER
+          const bossDef = getBoss(enemyType)
+          const isBoss = bossDef !== undefined
+
+          // Item drop roll (check boss registry, then ENEMY_DROP_CHANCE table)
+          const dropChance = ENEMY_DROP_CHANCE[enemyType] ?? bossDef?.dropChance ?? 0
           if (dropChance > 0 && world.rng.next() < dropChance) {
-            const isFodder = Enemy.tier[eid] === EnemyTier.FODDER
             const weights = isFodder ? DROP_RARITY_WEIGHTS_FODDER : DROP_RARITY_WEIGHTS_THREAT
             let totalW = 0
             for (const [, w] of weights) totalW += w
@@ -73,10 +84,25 @@ export function healthSystem(world: GameWorld, dt: number): void {
                 itemId,
                 x: Position.x[eid]!,
                 y: Position.y[eid]!,
-                lifetime: 15,
+                lifetime: ENEMY_ITEM_DROP_LIFETIME,
                 collected: false,
               })
             }
+          }
+
+          const potionDropChance = isBoss
+            ? HP_POTION_DROP_CHANCE_BOSS
+            : isFodder
+              ? HP_POTION_DROP_CHANCE_FODDER
+              : HP_POTION_DROP_CHANCE_THREAT
+          if (potionDropChance > 0 && world.rng.next() < potionDropChance) {
+            world.hpPotionPickups.push({
+              id: world.nextHpPotionPickupId++,
+              x: Position.x[eid]!,
+              y: Position.y[eid]!,
+              lifetime: HP_POTION_PICKUP_LIFETIME,
+              collected: false,
+            })
           }
         }
 

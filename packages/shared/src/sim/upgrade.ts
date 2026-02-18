@@ -102,6 +102,8 @@ export interface UpgradeState {
 
   // Item inventory (itemId → stack count)
   items: Map<number, number>
+  /** Current HP potion count in the dedicated consumable slot */
+  hpPotionCount: number
   /** Computed block chance from Tin Star Badge (hyperbolic) */
   blockChance: number
   /** Computed gold multiplier from Fool's Gold Nugget */
@@ -186,6 +188,7 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     goldFeverStacks: 0,
     goldFeverTimer: 0,
     items: new Map(),
+    hpPotionCount: 0,
     blockChance: 0,
     goldMultiplier: 1,
     moonshineFlaskCooldown: 0,
