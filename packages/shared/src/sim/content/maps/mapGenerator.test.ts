@@ -191,9 +191,9 @@ describe('mapGenerator', () => {
           const tileY = centerTileY + dy
           const { worldX, worldY } = tileToWorld(map, tileX, tileY)
 
-          // Check floor tile is not a hazard
+          // Check floor tile is not a hazard (ROAD is allowed — purely visual)
           const floorTile = getFloorTileTypeAt(map, worldX + map.tileSize / 2, worldY + map.tileSize / 2)
-          expect(floorTile).toBe(TileType.FLOOR)
+          expect(floorTile === TileType.FLOOR || floorTile === TileType.ROAD).toBe(true)
         }
       }
     })
@@ -507,6 +507,185 @@ describe('mapGenerator', () => {
       const pos1 = map1.placedBuildings!.map(b => `${b.tileX},${b.tileY}`).join(';')
       const pos2 = map2.placedBuildings!.map(b => `${b.tileX},${b.tileY}`).join(';')
       expect(ids1 !== ids2 || pos1 !== pos2).toBe(true)
+    })
+
+    test('cross alley corridors are clear of solid tiles', () => {
+      // Test multiple seeds to cover 0/1/2 alley cases
+      // Check per-column using the bent profile (not the bounding box)
+      for (const seed of [1, 42, 9999, 77777, 123456, 55555, 31337]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const roadNetwork = map.roadNetwork
+        if (!roadNetwork) continue
+        const solidLayer = map.layers[0]!
+
+        for (const alley of roadNetwork.alleys) {
+          const halfW = Math.floor(alley.width / 2)
+          for (let x = 1; x < map.width - 1; x++) {
+            const cy = alley.profile[x]!
+            const minY = cy - halfW
+            const maxY = minY + alley.width
+            for (let y = minY; y < maxY; y++) {
+              if (y < 1 || y >= map.height - 1) continue
+              const tile = solidLayer.data[y * map.width + x]!
+              expect(tile).toBe(TileType.EMPTY)
+            }
+          }
+        }
+      }
+    })
+
+    test('road network is deterministic', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+
+      const rn1 = map1.roadNetwork!
+      const rn2 = map2.roadNetwork!
+
+      // Street profile must match
+      expect(rn1.streetProfile.length).toBe(rn2.streetProfile.length)
+      for (let i = 0; i < rn1.streetProfile.length; i++) {
+        expect(rn1.streetProfile[i]).toBe(rn2.streetProfile[i])
+      }
+
+      // Alley profiles must match
+      expect(rn1.alleys.length).toBe(rn2.alleys.length)
+      for (let i = 0; i < rn1.alleys.length; i++) {
+        expect(rn1.alleys[i]!.bounds.minY).toBe(rn2.alleys[i]!.bounds.minY)
+        expect(rn1.alleys[i]!.bounds.maxY).toBe(rn2.alleys[i]!.bounds.maxY)
+        for (let x = 0; x < rn1.alleys[i]!.profile.length; x++) {
+          expect(rn1.alleys[i]!.profile[x]).toBe(rn2.alleys[i]!.profile[x])
+        }
+      }
+
+      // Spur roads must match
+      expect(rn1.spurs.length).toBe(rn2.spurs.length)
+      for (let i = 0; i < rn1.spurs.length; i++) {
+        expect(rn1.spurs[i]!.y).toBe(rn2.spurs[i]!.y)
+        expect(rn1.spurs[i]!.startX).toBe(rn2.spurs[i]!.startX)
+        expect(rn1.spurs[i]!.length).toBe(rn2.spurs[i]!.length)
+        expect(rn1.spurs[i]!.direction).toBe(rn2.spurs[i]!.direction)
+      }
+    })
+
+    test('main street and cross alleys have road tiles on floor layer', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const floorLayer = map.layers[1]!
+
+      // Count road tiles
+      let roadCount = 0
+      for (let i = 0; i < floorLayer.data.length; i++) {
+        if (floorLayer.data[i] === TileType.ROAD) roadCount++
+      }
+
+      // Main street is 4 tiles wide × (height - 2 border) interior rows.
+      // Conservatively expect at least 30% unobstructed by buildings/obstacles.
+      const interiorRows = STAGE_1_MAP_CONFIG.height - 2
+      const minRoadTiles = Math.floor(4 * interiorRows * 0.3)
+      expect(roadCount).toBeGreaterThan(minRoadTiles)
+
+      // Verify road tiles exist in cross alley ranges (if any alleys exist)
+      const alleys = map.crossAlleys ?? []
+      for (const alley of alleys) {
+        let alleyRoadCount = 0
+        for (let y = alley.minY; y < alley.maxY; y++) {
+          for (let x = 1; x < map.width - 1; x++) {
+            if (floorLayer.data[y * map.width + x] === TileType.ROAD) {
+              alleyRoadCount++
+            }
+          }
+        }
+        // Each alley should have road tiles (full width minus solid tiles)
+        expect(alleyRoadCount).toBeGreaterThan(0)
+      }
+    })
+
+    test('cross alley count varies across seeds', () => {
+      const counts = new Set<number>()
+      for (let seed = 0; seed < 60; seed++) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        counts.add((map.crossAlleys ?? []).length)
+      }
+      // With 60 seeds and distribution 25%/50%/25%, we expect all of 0, 1, 2
+      expect(counts.has(0)).toBe(true)
+      expect(counts.has(1)).toBe(true)
+      expect(counts.has(2)).toBe(true)
+    })
+
+    test('main street profile meanders within drift limits', () => {
+      for (const seed of [1, 42, 9999, 77777, 123456]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const rn = map.roadNetwork!
+        for (let y = 0; y < rn.streetProfile.length; y++) {
+          const drift = Math.abs(rn.streetProfile[y]! - rn.streetCenterX)
+          expect(drift).toBeLessThanOrEqual(3)
+        }
+      }
+    })
+
+    test('main street profile has no gaps (adjacent rows differ by at most 1)', () => {
+      for (const seed of [1, 42, 9999, 77777, 123456]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const profile = map.roadNetwork!.streetProfile
+        for (let y = 1; y < profile.length; y++) {
+          const diff = Math.abs(profile[y]! - profile[y - 1]!)
+          expect(diff).toBeLessThanOrEqual(1)
+        }
+      }
+    })
+
+    test('cross alley profiles bend within drift limits', () => {
+      for (const seed of [1, 42, 9999, 77777, 123456]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const rn = map.roadNetwork
+        if (!rn) continue
+        for (const alley of rn.alleys) {
+          const halfW = Math.floor(alley.width / 2)
+          for (let x = 0; x < alley.profile.length; x++) {
+            const cy = alley.profile[x]!
+            // Every profile point must be within bounds envelope
+            expect(cy - halfW).toBeGreaterThanOrEqual(alley.bounds.minY)
+            expect(cy - halfW + alley.width).toBeLessThanOrEqual(alley.bounds.maxY)
+          }
+        }
+      }
+    })
+
+    test('spur roads produce road tiles between buildings', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const rn = map.roadNetwork!
+      const floorLayer = map.layers[1]!
+
+      // Count road tiles that are not on the main street or alleys
+      // Spurs should contribute some road tiles
+      if (rn.spurs.length === 0) return
+
+      let spurRoadCount = 0
+      for (const spur of rn.spurs) {
+        for (let i = 0; i < spur.length; i++) {
+          const x = spur.startX + spur.direction * i
+          for (let dy = 0; dy < spur.height; dy++) {
+            const y = spur.y + dy
+            if (x < 1 || x >= map.width - 1 || y < 1 || y >= map.height - 1) continue
+            if (floorLayer.data[y * map.width + x] === TileType.ROAD) {
+              spurRoadCount++
+            }
+          }
+        }
+      }
+      expect(spurRoadCount).toBeGreaterThan(0)
+    })
+
+    test('street profile varies across seeds', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 99999, 0)
+      const p1 = map1.roadNetwork!.streetProfile
+      const p2 = map2.roadNetwork!.streetProfile
+
+      let differs = false
+      for (let y = 0; y < p1.length; y++) {
+        if (p1[y] !== p2[y]) { differs = true; break }
+      }
+      expect(differs).toBe(true)
     })
   })
 
