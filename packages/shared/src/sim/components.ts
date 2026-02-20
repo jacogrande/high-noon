@@ -150,6 +150,10 @@ export const Bullet = {
   range: new Float32Array(MAX_ENTITIES),
   /** Distance traveled so far in pixels */
   distanceTraveled: new Float32Array(MAX_ENTITIES),
+  /** Visual sprite variant (BulletSpriteId) */
+  spriteId: new Uint8Array(MAX_ENTITIES),
+  /** Render scale multiplier */
+  size: new Float32Array(MAX_ENTITIES),
 }
 
 /** Weapon data */

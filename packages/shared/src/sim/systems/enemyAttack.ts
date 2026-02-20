@@ -27,7 +27,7 @@ import {
   DUELIST_MELEE_KB_SPEED, DUELIST_MELEE_KB_DURATION,
   COYOTE_DART_SPEED, COYOTE_DART_DURATION,
 } from '../content/enemies'
-import { ENEMY_BULLET_RANGE } from '../content/weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
 import { applyDamage } from './applyDamage'
 import { isBoss, getBoss } from '../content/bosses'
 
@@ -216,6 +216,9 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       const drag = AttackConfig.projectileDrag[eid]!
       const damage = AttackConfig.damage[eid]!
 
+      const isThreat = Enemy.tier[eid] === EnemyTier.THREAT
+      const enemyBulletSize = isThreat ? ENEMY_BULLET_SIZE_THREAT : ENEMY_BULLET_SIZE_FODDER
+
       for (let i = 0; i < count; i++) {
         let bulletAngle: number
         if (count === 1) {
@@ -235,6 +238,8 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
+          spriteId: BulletSpriteId.SLUG,
+          size: enemyBulletSize,
         })
       }
 

@@ -11,7 +11,7 @@ import type { HookRegistry, BulletHitResult } from '../hooks'
 import { Health, Bullet, Player, Position, Weapon, Cylinder, Collider, Enemy, Dead, Invincible, SlowDebuff, MeleeWeapon, Roll } from '../components'
 import { spawnBullet } from '../prefabs'
 import { clampDamage } from '../damage'
-import { BULLET_RADIUS } from './weapons'
+import { BULLET_RADIUS, getBulletConfigForCharacter } from './weapons'
 import { applySlow } from '../systems/slowDebuff'
 import { hasComponent, addComponent } from 'bitecs'
 import { forEachInRadius } from '../SpatialHash'
@@ -117,6 +117,9 @@ function registerDeadMansHand(hooks: HookRegistry): void {
       ? DEAD_MANS_HAND_SPREAD / (DEAD_MANS_HAND_COUNT - 1)
       : 0
 
+    const charId = world.playerCharacters.get(playerEid) ?? world.characterId
+    const bulletCfg = getBulletConfigForCharacter(charId)
+
     for (let i = 0; i < DEAD_MANS_HAND_COUNT; i++) {
       const angle = aimAngle - halfSpread + step * i
       const vx = Math.cos(angle) * bulletSpeed
@@ -130,6 +133,8 @@ function registerDeadMansHand(hooks: HookRegistry): void {
         damage: bulletDamage,
         range: bulletRange,
         ownerId: playerEid,
+        spriteId: bulletCfg.spriteId,
+        size: bulletCfg.size,
       })
     }
   })

@@ -33,6 +33,7 @@ export function debugSpawnSystem(world: GameWorld, _dt: number): void {
     // Spawn 50px away at 150px/s -> arrives in ~0.2s.
     // Roll i-frames last 0.15s, so rolling toward the bullet
     // (or rolling right as it arrives) should block damage.
+    // Debug: uses default visual config (spriteId=SLUG, size=1.0)
     spawnBullet(world, {
       x: Position.x[eid]! + 50,
       y: Position.y[eid]!,

@@ -51,6 +51,7 @@ import {
   tryVisitorPurchase,
   type CharacterId,
   HP_POTION_MAX_STACK,
+  getBulletConfigForCharacter,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameApp } from '../../engine/GameApp'
@@ -676,12 +677,15 @@ export class SingleplayerModeController implements SceneModeController {
       const muzzleX = barrelTip?.x ?? Position.x[playerEid]!
       const muzzleY = barrelTip?.y ?? Position.y[playerEid]!
       if (this.world.playerFireMode === 'hitscan' && didFireRound(prevRounds, newRounds)) {
+        const bulletCfg = getBulletConfigForCharacter(this.world.characterId)
         const visualBulletId = this.bulletRenderer.spawnVisualBullet(
           muzzleX,
           muzzleY,
           angle,
           VISUAL_PLAYER_BULLET_SPEED,
           VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+          bulletCfg.spriteId,
+          bulletCfg.size,
         )
         this.queuePendingVisualShot(visualBulletId)
       }

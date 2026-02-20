@@ -49,6 +49,7 @@ import {
   type InteractablesData,
   type CharacterId,
   type PlayerRosterEntry,
+  getBulletConfigForCharacter,
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
@@ -732,9 +733,12 @@ export class MultiplayerModeController implements SceneModeController {
           const startX = barrelTip?.x ?? Position.x[remoteClientEid]!
           const startY = barrelTip?.y ?? Position.y[remoteClientEid]!
           const angle = Math.atan2(result.hitY - startY, result.hitX - startX)
+          const remoteCharId = this.serverCharacterIds.get(result.shooterServerEid) ?? 'sheriff'
+          const remoteBulletCfg = getBulletConfigForCharacter(remoteCharId)
           const visualId = this.bulletRenderer.spawnVisualBullet(
             startX, startY, angle,
             VISUAL_PLAYER_BULLET_SPEED, VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+            remoteBulletCfg.spriteId, remoteBulletCfg.size,
           )
           this.bulletRenderer.resolveVisualBulletImpact(
             visualId, result.hitX, result.hitY,
@@ -1060,12 +1064,15 @@ export class MultiplayerModeController implements SceneModeController {
       if (firedRound) {
         const muzzleX = barrelTip?.x ?? Position.x[this.myClientEid]!
         const muzzleY = barrelTip?.y ?? Position.y[this.myClientEid]!
+        const localBulletCfg = getBulletConfigForCharacter(this.authoritativeCharacterId)
         const visualBulletId = this.bulletRenderer.spawnVisualBullet(
           muzzleX,
           muzzleY,
           angle,
           VISUAL_PLAYER_BULLET_SPEED,
           VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+          localBulletCfg.spriteId,
+          localBulletCfg.size,
         )
         this.queuePendingVisualShot(this.shootSeq, visualBulletId)
       }

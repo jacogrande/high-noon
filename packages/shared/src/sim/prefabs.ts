@@ -260,6 +260,10 @@ export interface SpawnBulletOptions {
   onCollide?: BulletCollisionCallback
   /** Collision layer (default: PLAYER_BULLET) */
   layer?: number
+  /** Visual sprite variant (BulletSpriteId, default: 0 = SLUG) */
+  spriteId?: number
+  /** Render scale multiplier (default: 1.0) */
+  size?: number
 }
 
 /**
@@ -270,7 +274,7 @@ export interface SpawnBulletOptions {
  * @returns The entity ID
  */
 export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): number {
-  const { x, y, vx, vy, damage, accel, drag, range, ownerId, onCollide, layer } = options
+  const { x, y, vx, vy, damage, accel, drag, range, ownerId, onCollide, layer, spriteId, size } = options
   const eid = addEntity(world)
 
   // Add bullet components
@@ -297,6 +301,8 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
   Bullet.lifetime[eid] = BULLET_LIFETIME
   Bullet.range[eid] = range
   Bullet.distanceTraveled[eid] = 0
+  Bullet.spriteId[eid] = spriteId ?? 0
+  Bullet.size[eid] = size ?? 1.0
 
   // Set collider
   Collider.radius[eid] = BULLET_RADIUS

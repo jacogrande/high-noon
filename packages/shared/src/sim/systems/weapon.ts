@@ -29,6 +29,7 @@ import { clampDamage } from '../damage'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
 import { isSolidAt } from '../tilemap'
+import { getBulletConfigForCharacter } from '../content/weapons'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
@@ -499,6 +500,7 @@ export function weaponSystem(
         })
       }
     } else {
+      const bulletCfg = getBulletConfigForCharacter(us.characterDef.id)
       for (let i = 0; i < pelletCount; i++) {
         // Fan formula: evenly distribute pellets across the spread arc
         const angleOffset = pelletCount > 1
@@ -517,6 +519,8 @@ export function weaponSystem(
           damage: perPelletDamage,
           range: bulletRange,
           ownerId: eid,
+          spriteId: bulletCfg.spriteId,
+          size: bulletCfg.size,
         })
 
         if (rewoundFire.rewindSeconds > 0) {

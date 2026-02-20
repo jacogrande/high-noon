@@ -6,7 +6,7 @@
  */
 
 import { Assets, Texture, Rectangle } from "pixi.js";
-import { TileType, type BaseTileStyle } from "@high-noon/shared";
+import { TileType, BulletSpriteId, type BaseTileStyle } from "@high-noon/shared";
 import type { Spritesheet } from "pixi.js";
 import {
   ANIMATION_STATES,
@@ -47,6 +47,7 @@ const MANIFEST = {
   buildingSpritesheet: BUILDING_SPRITESHEET_PATH,
   floorsSpritesheet: FLOORS_SPRITESHEET_PATH,
   bullet: "/assets/sprites/bullet.png",
+  bullet_pellet: "/assets/sprites/bullet_pellet.png",
 } as const;
 
 /** Weapon sprite manifest: weaponId → path */
@@ -125,6 +126,7 @@ export class AssetLoader {
   private static tilesetSheet: Spritesheet | null = null;
   private static baseTilesetTexture: Texture | null = null;
   private static bulletTexture: Texture | null = null;
+  private static bulletPelletTexture: Texture | null = null;
 
   /** Pre-sliced player textures: key = `${state}_${spriteDir}_${frame}` */
   private static playerTextures = new Map<string, Texture>();
@@ -173,6 +175,7 @@ export class AssetLoader {
       src: MANIFEST.floorsSpritesheet,
     });
     Assets.add({ alias: "bullet", src: MANIFEST.bullet });
+    Assets.add({ alias: "bullet_pellet", src: MANIFEST.bullet_pellet });
 
     // Add character sprite sheets
     for (const state of ANIMATION_STATES) {
@@ -202,6 +205,7 @@ export class AssetLoader {
       "building_spritesheet",
       "floors_spritesheet",
       "bullet",
+      "bullet_pellet",
       ...ANIMATION_STATES.map((s) => `char_${s}`),
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
       ...Object.keys(ENEMY_SPRITES).map((id) => `enemy_${id}`),
@@ -236,6 +240,7 @@ export class AssetLoader {
     this.tilesetSheet = loaded.tileset as Spritesheet;
     this.baseTilesetTexture = loaded.base_tileset as Texture;
     this.bulletTexture = loaded.bullet as Texture;
+    this.bulletPelletTexture = loaded.bullet_pellet as Texture;
 
     if (!this.tilesetSheet?.textures) {
       throw new Error("Tileset spritesheet failed to load or has no textures");
@@ -246,6 +251,11 @@ export class AssetLoader {
     if (!this.bulletTexture) {
       throw new Error("Bullet texture failed to load");
     }
+    if (!this.bulletPelletTexture) {
+      throw new Error("Bullet pellet texture failed to load");
+    }
+    this.bulletTexture.source.scaleMode = "nearest";
+    this.bulletPelletTexture.source.scaleMode = "nearest";
 
     this.baseTilesetTexture.source.scaleMode = "nearest";
     this.sliceBaseTileset(this.baseTilesetTexture);
@@ -493,6 +503,18 @@ export class AssetLoader {
   }
 
   /**
+   * Get bullet texture by sprite ID (BulletSpriteId from shared).
+   * SLUG → bullet.png, PELLET → bullet_pellet.png
+   */
+  static getBulletTextureById(spriteId: number): Texture {
+    if (spriteId === BulletSpriteId.PELLET) {
+      // bulletPelletTexture is guaranteed non-null after loadAll()
+      return this.bulletPelletTexture!;
+    }
+    return this.getBulletTexture();
+  }
+
+  /**
    * Get weapon texture by weapon ID
    */
   static getWeaponTexture(weaponId: string): Texture {
@@ -551,6 +573,7 @@ export class AssetLoader {
     this.tilesetSheet = null;
     this.baseTilesetTexture = null;
     this.bulletTexture = null;
+    this.bulletPelletTexture = null;
     this.baseTileTextures.clear();
     this.playerTextures.clear();
     this.weaponTextures.clear();

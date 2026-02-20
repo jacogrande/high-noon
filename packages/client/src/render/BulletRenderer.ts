@@ -74,7 +74,7 @@ export class BulletRenderer {
 
       // Create sprite if doesn't exist
       if (!this.bulletEntities.has(eid)) {
-        const texture = AssetLoader.getBulletTexture()
+        const texture = AssetLoader.getBulletTextureById(Bullet.spriteId[eid]!)
         const sprite = this.registry.createSprite(eid, texture)
         this.bulletEntities.add(eid)
 
@@ -89,12 +89,20 @@ export class BulletRenderer {
           this.playerBullets.add(eid)
         }
 
-        // Tint and scale enemy bullets by tier
+        // Apply per-bullet size from ECS component (Float32Array defaults to 0; treat as 1.0)
+        const rawSize = Bullet.size[eid]!
+        const bulletSize = rawSize > 0 ? rawSize : 1.0
+
         if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
+          // Tint enemy bullets by tier
           const ownerId = Bullet.ownerId[eid]!
           const isThreat = Enemy.tier[ownerId] === EnemyTier.THREAT
           sprite.tint = isThreat ? 0xff2222 : 0xff9966
-          sprite.scale.set(isThreat ? 1.3 : 0.8)
+          sprite.scale.set(bulletSize)
+        } else {
+          // Player bullets: warm tint
+          sprite.tint = 0xfff5cf
+          sprite.scale.set(bulletSize)
         }
       }
     }
@@ -193,12 +201,14 @@ export class BulletRenderer {
     angle: number,
     speed = VISUAL_BULLET_DEFAULT_SPEED,
     maxLifetime = VISUAL_BULLET_DEFAULT_LIFETIME,
+    spriteId = 0,
+    size = 0.95,
   ): number {
     const eid = this.nextCosmeticId--
-    const texture = AssetLoader.getBulletTexture()
+    const texture = AssetLoader.getBulletTextureById(spriteId)
     const sprite = this.registry.createSprite(eid, texture)
     sprite.tint = 0xfff5cf
-    sprite.scale.set(0.95, 0.95)
+    sprite.scale.set(size, size)
     this.registry.setRotation(eid, angle)
     this.registry.setPosition(eid, x, y)
 

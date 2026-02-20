@@ -22,7 +22,7 @@ import { CollisionLayer, NO_TARGET, spawnBullet } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
-import { ENEMY_BULLET_RANGE } from '../weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -465,6 +465,8 @@ function executeBuckshotBlast(world: GameWorld, eid: number, state: DaltonBrothe
       range: BUCKSHOT_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.SLUG,
+      size: ENEMY_BULLET_SIZE_THREAT,
     })
   }
 
@@ -528,6 +530,8 @@ function executeDeadShot(world: GameWorld, eid: number, state: DaltonBrotherStat
     range: ENEMY_BULLET_RANGE,
     ownerId: eid,
     layer: CollisionLayer.ENEMY_BULLET,
+    spriteId: BulletSpriteId.SLUG,
+    size: ENEMY_BULLET_SIZE_THREAT,
   })
 
   transition(eid, AIState.RECOVERY)
@@ -550,6 +554,8 @@ function executeCoveringFire(world: GameWorld, eid: number, state: DaltonBrother
     range: ENEMY_BULLET_RANGE,
     ownerId: eid,
     layer: CollisionLayer.ENEMY_BULLET,
+    spriteId: BulletSpriteId.SLUG,
+    size: ENEMY_BULLET_SIZE_THREAT,
   })
 
   state.burstShotsRemaining--

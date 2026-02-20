@@ -20,7 +20,7 @@ import {
 } from '../../components'
 import { CollisionLayer, spawnBullet, spawnCoyote } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
-import { ENEMY_BULLET_RANGE } from '../weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { isSolidAt, getPlayableBoundsFromTilemap } from '../../tilemap'
 
@@ -695,6 +695,8 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       range: ENEMY_BULLET_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.SLUG,
+      size: ENEMY_BULLET_SIZE_THREAT,
     })
   } else if (state.selectedAttack === CoyoteJaneAttack.HIP_SHOT) {
     // Fast multi-bullet hip shot (Phase 3) — re-aims at attack time (tracks player, unlike rifle)
@@ -724,6 +726,8 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
         range: ENEMY_BULLET_RANGE,
         ownerId: eid,
         layer: CollisionLayer.ENEMY_BULLET,
+        spriteId: BulletSpriteId.SLUG,
+        size: ENEMY_BULLET_SIZE_THREAT,
       })
     }
   }

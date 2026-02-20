@@ -18,7 +18,7 @@ import {
 import { CollisionLayer, spawnBullet, spawnSwarmer, spawnGoblinRogue } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { isSolidAt } from '../../tilemap'
-import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK } from '../weapons'
+import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 
 // ============================================================================
@@ -329,6 +329,8 @@ const boomstickModule: BossModule = {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
+          spriteId: BulletSpriteId.SLUG,
+          size: ENEMY_BULLET_SIZE_THREAT,
         })
       }
     }
@@ -348,6 +350,8 @@ const boomstickModule: BossModule = {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
+          spriteId: BulletSpriteId.SLUG,
+          size: ENEMY_BULLET_SIZE_THREAT,
         })
       }
       ringDelay = rollRingDelay(world, phase)

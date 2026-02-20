@@ -22,7 +22,7 @@ import { CollisionLayer, spawnBullet } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { applySlow } from '../../systems/slowDebuff'
-import { ENEMY_BULLET_RANGE } from '../weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { getPlayableBoundsFromTilemap } from '../../tilemap'
 
@@ -774,6 +774,8 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       range: ENEMY_BULLET_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.SLUG,
+      size: ENEMY_BULLET_SIZE_THREAT,
     })
   } else if (state.selectedAttack === HollowManAttack.GRAVE_REACH) {
     // Cone damage: hit player if within range
@@ -910,6 +912,8 @@ function tickConvergence(world: GameWorld, eid: number, state: HollowManState, d
         range: ENEMY_BULLET_RANGE,
         ownerId: shooterEid,
         layer: CollisionLayer.ENEMY_BULLET,
+        spriteId: BulletSpriteId.SLUG,
+        size: ENEMY_BULLET_SIZE_THREAT,
       })
     }
     state.convergenceShotsFired++

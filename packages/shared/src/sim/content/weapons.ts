@@ -7,6 +7,24 @@
 import type { CharacterId } from './characters'
 
 // ============================================================================
+// Bullet Visual Config — per-character bullet size and sprite
+// ============================================================================
+
+/** Sprite IDs for bullet visual variants */
+export const BulletSpriteId = {
+  SLUG: 0,        // Revolver round + enemy bullets (bullet.png, enemies tinted at render)
+  PELLET: 1,      // Smaller shotgun pellet (bullet_pellet.png)
+} as const
+
+export type BulletSpriteIdValue = typeof BulletSpriteId[keyof typeof BulletSpriteId]
+
+/** Per-character bullet visual config */
+export interface BulletConfig {
+  size: number              // render scale multiplier
+  spriteId: BulletSpriteIdValue
+}
+
+// ============================================================================
 // Weapon Sprite Data — visual definitions read by the client renderer
 // ============================================================================
 
@@ -291,3 +309,47 @@ export const SHOWDOWN_SPEED_BONUS = 1.1
 
 /** Maximum range to mark an enemy (pixels) */
 export const SHOWDOWN_MARK_RANGE = 500
+
+// ============================================================================
+// Enemy Bullet Sizes
+// ============================================================================
+
+/** Render scale for threat-tier enemy bullets (bosses, shooters) */
+export const ENEMY_BULLET_SIZE_THREAT = 1.5
+
+/** Render scale for fodder-tier enemy bullets (swarmers, grunts) */
+export const ENEMY_BULLET_SIZE_FODDER = 1.2
+
+// ============================================================================
+// Per-Character Bullet Configs
+// ============================================================================
+
+export const SHERIFF_BULLET: BulletConfig = {
+  size: 1.5,
+  spriteId: BulletSpriteId.SLUG,
+}
+
+export const UNDERTAKER_BULLET: BulletConfig = {
+  size: 1.0,
+  spriteId: BulletSpriteId.PELLET,
+}
+
+/**
+ * Prospector is melee-only (pelletCount=0, no Cylinder component).
+ * This entry exists to satisfy the exhaustive Record<CharacterId, BulletConfig> type.
+ * It is not reachable via weaponSystem in normal gameplay.
+ */
+export const PROSPECTOR_BULLET: BulletConfig = {
+  size: 1.0,
+  spriteId: BulletSpriteId.SLUG,
+}
+
+export const CHARACTER_BULLET_CONFIG: Record<CharacterId, BulletConfig> = {
+  sheriff: SHERIFF_BULLET,
+  undertaker: UNDERTAKER_BULLET,
+  prospector: PROSPECTOR_BULLET,
+}
+
+export function getBulletConfigForCharacter(characterId: CharacterId): BulletConfig {
+  return CHARACTER_BULLET_CONFIG[characterId] ?? SHERIFF_BULLET
+}
