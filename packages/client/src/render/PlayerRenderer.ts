@@ -351,6 +351,18 @@ export class PlayerRenderer {
       // Flip body sprite for west direction
       bodySprite.scale.x = needsMirror ? -BODY_SCALE : BODY_SCALE
 
+      // Spin body sprite during roll (2 full rotations).
+      // Anchor Y shifted to character's visual center (~38% from top)
+      // so the spin doesn't orbit around empty space below the feet.
+      if (isRolling && hasComponent(world, Roll, eid) && Roll.duration[eid]! > 0) {
+        const progress = Roll.elapsed[eid]! / Roll.duration[eid]!
+        bodySprite.anchor.set(0.5, 0.38)
+        bodySprite.rotation = (needsMirror ? -1 : 1) * progress * Math.PI * 2
+      } else {
+        bodySprite.anchor.set(0.5, 0.5)
+        bodySprite.rotation = 0
+      }
+
       // --- Weapon rotation, flip, and depth ---
       weaponPivot.rotation = aimAngle
 

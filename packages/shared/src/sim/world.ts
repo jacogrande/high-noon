@@ -585,6 +585,10 @@ export interface GameWorld extends IWorld {
   bossShockwaves: BossShockwave[]
   /** Per-tick boss telegraph shapes (cleared each tick by bossPhaseSystem) */
   bossTelegraphs: BossTelegraph[]
+  /** Hollow Man dust veils (obscuration zones left on teleport) */
+  hollowManVeils: Array<{ x: number; y: number; radius: number; timer: number }>
+  /** Hollow Man dust storm state (null when inactive) */
+  hollowManStorm: { active: boolean; timer: number; duration: number; visibilityRadius: number } | null
   /** Active trap zones (bear traps, caltrops) from bosses */
   trapZones: TrapZone[]
   /** Per-tick trap detonation events for client VFX */
@@ -695,6 +699,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     groundCracks: [],
     bossShockwaves: [],
     bossTelegraphs: [],
+    hollowManVeils: [],
+    hollowManStorm: null,
     trapZones: [],
     trapDetonations: [],
     bossPhaseChanges: [],
@@ -801,6 +807,8 @@ export function resetWorld(world: GameWorld): void {
   world.groundCracks = []
   world.bossShockwaves = []
   world.bossTelegraphs = []
+  world.hollowManVeils = []
+  world.hollowManStorm = null
   world.trapZones = []
   world.trapDetonations = []
   // Note: bitECS entities persist - call removeEntity for each if needed

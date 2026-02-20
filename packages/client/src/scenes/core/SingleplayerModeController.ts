@@ -105,7 +105,7 @@ import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
 import { buildSingleplayerMinimapState } from './minimap'
 
-const GAME_ZOOM = 2
+const GAME_ZOOM = 2.75
 const VISUAL_PLAYER_BULLET_SPEED = 2400
 const VISUAL_PLAYER_BULLET_MAX_LIFETIME = 0.65
 const MAX_PENDING_VISUAL_SHOTS = 256

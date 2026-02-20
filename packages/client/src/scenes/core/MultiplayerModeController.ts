@@ -110,7 +110,7 @@ import { HitAgreementTracker } from '../../net/HitAgreementTracker'
 import { SessionReplayRecorder, type LagReport } from '../../net/SessionReplay'
 import { NetGraph } from '../../render/NetGraph'
 
-const GAME_ZOOM = 2
+const GAME_ZOOM = 2.75
 
 /** Misprediction smoothing constants */
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions

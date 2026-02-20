@@ -62,6 +62,7 @@ const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.RUNNER]: 0x44ddff,           // bright cyan (fast, urgent)
   [EnemyType.DUELIST]: 0xddaa33,         // dark amber/gold (duel challenger)
   [EnemyType.COYOTE]: 0xc4a35a,          // sandy tan (desert coyote)
+  [EnemyType.AFTERIMAGE]: 0x8888aa,      // ghostly blue-grey
 }
 
 // Populate boss colors from registry
@@ -96,6 +97,7 @@ const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.DALTON]: 2.5,
   [EnemyType.COYOTE_JANE]: 2.5,
   [EnemyType.COYOTE]: 1.5,
+  [EnemyType.HOLLOW_MAN]: 2.5,
 }
 
 function isSpriteEnemy(type: number): boolean {

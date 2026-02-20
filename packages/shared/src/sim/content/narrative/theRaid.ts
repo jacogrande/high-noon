@@ -30,7 +30,7 @@ export const THE_RAID: PlotThread = {
       },
     },
     {
-      bossPool: [],
+      bossPool: [EnemyType.HOLLOW_MAN],
       objectiveType: 'intercept',
       objectiveDescription: 'Intercept the last riders before they vanish into badland dust.',
     },
@@ -76,6 +76,7 @@ export const THE_RAID: PlotThread = {
     [EnemyType.MAD_DOG]: 'Wrong street. Wrong day.',
     [EnemyType.DALTON]: "Two guns, one grave. That's Dalton math.",
     [EnemyType.COYOTE_JANE]: 'You made it this far? My pack will finish the job.',
+    [EnemyType.HOLLOW_MAN]: 'Something in the canyon found the raiders first.',
   },
   resolution: {
     success: 'The gang scattered before sundown. The town stands, battered but breathing.',

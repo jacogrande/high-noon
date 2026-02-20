@@ -30,7 +30,7 @@ export const THE_STRANGER: PlotThread = {
       },
     },
     {
-      bossPool: [],
+      bossPool: [EnemyType.HOLLOW_MAN],
       objectiveType: 'intercept',
       objectiveDescription: 'Intercept what stalks the canyon before it reaches open country.',
     },
@@ -76,6 +76,7 @@ export const THE_STRANGER: PlotThread = {
     [EnemyType.BOOMSTICK]: 'Even the righteous fear the canyon at night.',
     [EnemyType.DALTON]: 'Badlands make thieves of every honest man.',
     [EnemyType.COYOTE_JANE]: 'Canyon knows your name already.',
+    [EnemyType.HOLLOW_MAN]: 'The canyon does not give anything back.',
   },
   resolution: {
     success: 'The warning was real, and you answered it. Dawn found the road open and the town alive.',

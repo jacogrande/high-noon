@@ -142,6 +142,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
 export const STAGE_3_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_3_MAP_CONFIG,
   objective: STAGE_3_INTERCEPT,
+  bossPool: [EnemyType.HOLLOW_MAN],
   waves: [
     // Wave 1: Pressure + 1 shooter + 1 charger
     {
@@ -160,7 +161,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
       spawnDelay: 0,
       threatClearRatio: 1.0,
     },
-    // Wave 2: Final stand + 2 threats
+    // Wave 2: Final stand + stage boss
     {
       fodderBudget: 20,
       fodderPool: [
@@ -171,8 +172,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
       ],
       maxFodderAlive: 8,
       threats: [
-        { type: EnemyType.CHARGER, count: 1 },
-        { type: EnemyType.SHOOTER, count: 1 },
+        { type: EnemyType.HOLLOW_MAN, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,
