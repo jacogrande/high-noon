@@ -21,7 +21,8 @@ function isStageBaseTile(tileType: number): boolean {
     tileType === TileType.FLOOR ||
     tileType === TileType.LAVA ||
     tileType === TileType.MUD ||
-    tileType === TileType.BRAMBLE
+    tileType === TileType.BRAMBLE ||
+    tileType === TileType.ROAD
   )
 }
 
@@ -142,6 +143,8 @@ export class TilemapRenderer {
             sprite.tint = 0x8B6914
           } else if (tile === TileType.BRAMBLE) {
             sprite.tint = 0x3A7A3A
+          } else if (tile === TileType.ROAD) {
+            sprite.tint = 0xC8A878
           }
 
           this.container.addChild(sprite)

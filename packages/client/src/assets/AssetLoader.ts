@@ -111,6 +111,7 @@ const TILE_FRAME_MAP: Record<number, string> = {
   [TileType.MUD]: "tile_floor",
   [TileType.BRAMBLE]: "tile_floor",
   [TileType.WOOD_FLOOR]: "tile_floor", // fallback; overridden by dedicated texture
+  [TileType.ROAD]: "tile_floor",
 };
 
 /** Sprite directions that exist in the sprite sheet (W mirrors E) */
