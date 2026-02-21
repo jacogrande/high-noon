@@ -9,6 +9,8 @@
 import { defineQuery, hasComponent, removeComponent, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
+import { getArenaCenterFromTilemap } from '../tilemap'
+import { GOLD_NUGGET_LIFETIME } from './goldRush'
 import { Enemy, Position, Bullet, Player, Health, Dead, ObjectiveRole } from '../components'
 import { removeBullet, spawnNpc } from '../prefabs'
 import { initObjective, cleanupObjective } from './objectiveSystem'
@@ -25,18 +27,16 @@ import { getAlivePlayers } from '../queries'
 import { getThread, pickNarrativeLine } from '../content/narrative'
 import type { ObjectiveConfig } from '../content/waves'
 
-const CAMP_CLEAR_DELAY = 0.5 // seconds to despawn enemies before entering camp
-
 const playerHealthQuery = defineQuery([Player, Health])
 
 const enemyCleanupQuery = defineQuery([Enemy, Position])
 const bulletCleanupQuery = defineQuery([Bullet])
 
 /**
- * Remove all enemies, bullets, and NPCs from the world.
- * Used during stage transitions to start fresh.
+ * Core cleanup: remove enemies, bullets, NPCs, boss state, and hazards.
+ * When `keepLoot` is true, gold nuggets / item pickups / HP potions are preserved.
  */
-export function clearAllEnemies(world: GameWorld): void {
+function clearEnemiesCore(world: GameWorld, keepLoot: boolean): void {
   // Remove all enemy entities and their associated tracking state
   for (const eid of enemyCleanupQuery(world)) {
     world.bulletCollisionCallbacks.delete(eid)
@@ -61,11 +61,38 @@ export function clearAllEnemies(world: GameWorld): void {
   // Reset derived/cached spatial state — will rebuild on next tick
   world.flowField = null
   world.spatialHash = null
-  // Clear transient world objects tied to the previous stage
-  world.goldNuggets = []
+  // Clear transient world objects and boss hazards
   world.dustClouds = []
   world.rockslideShockwaves = []
   world.dynamites = []
+  world.groundCracks = []
+  world.bossShockwaves = []
+  world.bossTelegraphs = []
+  world.hollowManVeils = []
+  world.hollowManStorm = null
+  world.trapZones = []
+  world.trapDetonations = []
+  if (!keepLoot) {
+    world.goldNuggets = []
+    world.itemPickups = []
+    world.hpPotionPickups = []
+  }
+}
+
+/**
+ * Remove all enemies, bullets, NPCs, hazards, and loot from the world.
+ * Used during stage transitions to start fresh.
+ */
+export function clearAllEnemies(world: GameWorld): void {
+  clearEnemiesCore(world, false)
+}
+
+/**
+ * Remove enemies and hazards but keep loot (gold, items, potions).
+ * Used when entering the looting phase after boss defeat.
+ */
+export function clearEnemiesForLooting(world: GameWorld): void {
+  clearEnemiesCore(world, true)
 }
 
 /**
@@ -228,6 +255,54 @@ function getObjectiveConfigForStage(
   }
 }
 
+/**
+ * Transition from a completed stage to camp phase.
+ * Heals players, pre-generates next tilemap, selects camp visitor.
+ */
+function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): void {
+  run.transition = 'camp'
+  run.transitionTimer = 0
+  world.campComplete = false
+  healAllPlayers(world)
+  // Pre-generate the next stage's map now so campComplete doesn't cause a frame hitch
+  const nextStageIndex = run.currentStage + 1
+  const nextStage = run.stages[nextStageIndex]!
+  run.pendingTilemap = generateArena(nextStage.mapConfig, world.initialSeed, nextStageIndex)
+
+  // Generate camp visitor
+  const visitor = selectCampVisitor(world.rng, run.previousVisitorIds)
+  const alivePlayers = getAlivePlayers(world)
+  // Union all players' items for duplicate avoidance in co-op
+  const allPlayerItems = new Map<number, number>()
+  for (const pEid of alivePlayers) {
+    const state = getUpgradeStateForPlayer(world, pEid)
+    for (const [itemId, stacks] of state.items) {
+      allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
+    }
+  }
+  const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
+  const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
+  run.lastGreetingIndex = greetingIdx
+  world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers }
+  selectCampNarrativeLine(world)
+}
+
+/**
+ * Complete a stage: mark run as completed (final) or enter camp (mid-run).
+ */
+function finishStage(world: GameWorld, run: NonNullable<GameWorld['run']>): void {
+  const isLastStage = run.currentStage + 1 >= run.totalStages
+  if (isLastStage) {
+    world.resolutionText = computeResolutionText(world)
+    world.campNarrativeLine = null
+    run.currentStage++
+    run.completed = true
+    run.transition = 'none'
+  } else {
+    enterCampPhase(world, run)
+  }
+}
+
 export function stageProgressionSystem(world: GameWorld, dt: number): void {
   const run = world.run
   if (!run || run.completed) return
@@ -249,61 +324,40 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
     }
   }
 
-  // Detect encounter completion -> begin clearing
+  // Detect encounter completion -> enter looting phase
   if (enc.completed && run.transition === 'none') {
     // Promote active objective to success (player survived the encounter)
     if (world.objective?.status === 'active') {
       world.objective.status = 'success'
     }
     recordStageOutcome(world)
-    run.transition = 'clearing'
-    run.transitionTimer = CAMP_CLEAR_DELAY
+    run.transition = 'looting'
+    run.transitionTimer = 0
     world.stageCleared = true
-    clearAllEnemies(world)
+    clearEnemiesForLooting(world)
+    // Extend gold nugget lifetimes so they don't expire during looting
+    for (const nugget of world.goldNuggets) {
+      nugget.lifetime = Math.max(nugget.lifetime, GOLD_NUGGET_LIFETIME)
+    }
+    // Spawn horse at arena center (fallback to map center if tilemap unavailable)
+    const center = world.tilemap
+      ? getArenaCenterFromTilemap(world.tilemap)
+      : { x: 800, y: 600 }
+    world.horse = { x: center.x, y: center.y, active: true }
     return
   }
 
-  // Count down clearing timer
-  if (run.transition === 'clearing') {
-    run.transitionTimer -= dt
-    if (run.transitionTimer <= 0) {
-      const isLastStage = run.currentStage + 1 >= run.totalStages
-      if (isLastStage) {
-        // Final stage — skip camp, go straight to completed
-        world.resolutionText = computeResolutionText(world)
-        world.campNarrativeLine = null
-        run.currentStage++
-        run.completed = true
-        run.transition = 'none'
-      } else {
-        // Enter camp phase — heal players and wait for campComplete signal
-        // currentStage stays at the just-completed stage so HUD shows correct number
-        run.transition = 'camp'
-        run.transitionTimer = 0
-        world.campComplete = false
-        healAllPlayers(world)
-        // Pre-generate the next stage's map now so campComplete doesn't cause a frame hitch
-        const nextStageIndex = run.currentStage + 1
-        const nextStage = run.stages[nextStageIndex]!
-        run.pendingTilemap = generateArena(nextStage.mapConfig, world.initialSeed, nextStageIndex)
-
-        // Generate camp visitor
-        const visitor = selectCampVisitor(world.rng, run.previousVisitorIds)
-        const alivePlayers = getAlivePlayers(world)
-        // Union all players' items for duplicate avoidance in co-op
-        const allPlayerItems = new Map<number, number>()
-        for (const pEid of alivePlayers) {
-          const state = getUpgradeStateForPlayer(world, pEid)
-          for (const [itemId, stacks] of state.items) {
-            allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
-          }
-        }
-        const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
-        const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
-        run.lastGreetingIndex = greetingIdx
-        world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers }
-        selectCampNarrativeLine(world)
-      }
+  // Looting phase — wait for player to interact with horse
+  if (run.transition === 'looting') {
+    // Defensive: if horse was never created, skip looting to avoid a stuck run
+    const horseDone = !world.horse || !world.horse.active
+    if (horseDone) {
+      world.horse = null
+      // Clear remaining loot before transitioning
+      world.goldNuggets = []
+      world.itemPickups = []
+      world.hpPotionPickups = []
+      finishStage(world, run)
     }
     return
   }

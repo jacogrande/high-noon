@@ -187,8 +187,8 @@ export interface RunState {
   totalStages: number
   stages: StageEncounter[]
   completed: boolean
-  /** 'clearing' = delay while enemies despawn, 'camp' = rest between stages */
-  transition: 'none' | 'clearing' | 'camp'
+  /** 'clearing' = delay while enemies despawn, 'looting' = collect loot + ride horse, 'camp' = rest between stages */
+  transition: 'none' | 'clearing' | 'looting' | 'camp'
   /** Seconds remaining in the current transition */
   transitionTimer: number
   /** Pre-generated tilemap for the next stage (built on camp entry to avoid frame hitch) */
@@ -245,6 +245,12 @@ export interface PendingGoldReward {
   enemyType: number
   killerPlayerEid: number | null
   wasMelee: boolean
+}
+
+export interface HorseState {
+  x: number
+  y: number
+  active: boolean
 }
 
 export interface SalesmanState {
@@ -517,6 +523,8 @@ export interface GameWorld extends IWorld {
   pendingGoldRewards: PendingGoldReward[]
   /** Stash rewards queued by interactionSystem for stashRewardSystem */
   pendingStashRewards: PendingStashReward[]
+  /** Horse for looting phase exit */
+  horse: HorseState | null
   /** Active shovel salesman (camp/stage) */
   salesman: SalesmanState | null
   /** Active stage stash states */
@@ -667,6 +675,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lastDamageByEntity: new Map(),
     pendingGoldRewards: [],
     pendingStashRewards: [],
+    horse: null,
     salesman: null,
     stashes: [],
     interactionLayoutKey: '',
@@ -773,6 +782,7 @@ export function resetWorld(world: GameWorld): void {
   world.lastDamageByEntity.clear()
   world.pendingGoldRewards = []
   world.pendingStashRewards = []
+  world.horse = null
   world.salesman = null
   world.stashes = []
   world.interactionLayoutKey = ''

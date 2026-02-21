@@ -9,6 +9,8 @@ const STASH_CLOSED = 0x9c6232
 const STASH_OPENED = 0x5a5a5a
 const HP_POTION_CORE = 0xff6a6a
 const HP_POTION_RING = 0xffb3b3
+const HORSE_BODY = 0x8b5e3c
+const HORSE_AURA = 0xffd700
 
 const RARITY_COLORS: Record<string, number> = {
   brass: 0xd4a046,
@@ -140,6 +142,41 @@ export class InteractableRenderer {
         this.graphics
           .rect(px - 3.5, py - 1, 7, 2)
           .fill({ color: 0xffffff, alpha: 0.92 })
+    }
+
+    // Horse (looting phase exit)
+    if (data.horse) {
+      const hx = data.horse.x
+      const hy = data.horse.y
+      const auraPulse = Math.sin(this.pulseClock * 3) * 0.5 + 0.5
+
+      // Pulsing gold aura ring
+      this.graphics
+        .circle(hx, hy, 22 + auraPulse * 4)
+        .stroke({ color: HORSE_AURA, width: 2, alpha: 0.25 + auraPulse * 0.4 })
+
+      // Brown body ellipse
+      this.graphics
+        .ellipse(hx, hy, 14, 10)
+        .fill({ color: HORSE_BODY, alpha: 0.95 })
+
+      // Head (smaller circle offset forward)
+      this.graphics
+        .circle(hx, hy - 12, 6)
+        .fill({ color: HORSE_BODY, alpha: 0.95 })
+
+      // Ears
+      this.graphics
+        .circle(hx - 4, hy - 17, 2.5)
+        .fill({ color: HORSE_BODY, alpha: 0.9 })
+      this.graphics
+        .circle(hx + 4, hy - 17, 2.5)
+        .fill({ color: HORSE_BODY, alpha: 0.9 })
+
+      // Eye
+      this.graphics
+        .circle(hx, hy - 13, 1.5)
+        .fill({ color: 0x000000, alpha: 0.9 })
     }
 
     // Remove stale pickup sprites

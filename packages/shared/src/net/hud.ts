@@ -76,7 +76,7 @@ export interface HudData {
   // Stage progression
   stageNumber: number
   totalStages: number
-  stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
+  stageStatus: 'active' | 'clearing' | 'looting' | 'camp' | 'completed' | 'none'
   narrativeThreadId: string | null
   narrativeThreadName: string | null
   campNarrativeLine: string | null

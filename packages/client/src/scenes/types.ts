@@ -34,7 +34,7 @@ export interface HUDState {
   waveStatus: 'active' | 'delay' | 'completed' | 'none'
   stageNumber: number
   totalStages: number
-  stageStatus: 'active' | 'clearing' | 'camp' | 'completed' | 'none'
+  stageStatus: 'active' | 'clearing' | 'looting' | 'camp' | 'completed' | 'none'
   narrativeThreadId: string | null
   narrativeThreadName: string | null
   campNarrativeLine: string | null

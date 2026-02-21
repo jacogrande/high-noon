@@ -4,6 +4,7 @@ import { ItemTooltip } from './ItemTooltip'
 
 function getStageDisplay(state: HUDState): string {
   if (state.stageStatus === 'completed') return 'RUN COMPLETE'
+  if (state.stageStatus === 'looting') return 'STAGE CLEAR'
   if (state.stageStatus === 'clearing') return 'STAGE CLEAR'
   if (state.stageStatus === 'camp') return ''
   if (state.stageStatus === 'none') return ''

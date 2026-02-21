@@ -355,7 +355,7 @@ export class SingleplayerModeController implements SceneModeController {
       stageNumber: run ? run.currentStage + 1 : 0,
       totalStages: run ? run.totalStages : 0,
       stageStatus: run
-        ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition !== 'none' ? 'clearing' : 'active')
+        ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition === 'looting' ? 'looting' : run.transition !== 'none' ? 'clearing' : 'active')
         : 'none',
       narrativeThreadId: this.world.narrative?.threadId ?? null,
       narrativeThreadName: narrativeThread?.name ?? null,
@@ -815,6 +815,7 @@ export class SingleplayerModeController implements SceneModeController {
           x: p.x,
           y: p.y,
         })),
+      horse: this.world.horse?.active ? { x: this.world.horse.x, y: this.world.horse.y } : null,
     }
     this.interactableRenderer.render(interactables, realDt)
 
@@ -903,7 +904,7 @@ export class SingleplayerModeController implements SceneModeController {
       cameraTrauma: this.camera.shake.currentTrauma,
       stageNumber: runState ? runState.currentStage + 1 : 0,
       stageStatus: runState
-        ? (runState.completed ? 'completed' : runState.transition === 'camp' ? 'camp' : runState.transition !== 'none' ? 'clearing' : 'active')
+        ? (runState.completed ? 'completed' : runState.transition === 'camp' ? 'camp' : runState.transition === 'looting' ? 'looting' : runState.transition !== 'none' ? 'clearing' : 'active')
         : 'none',
       waveNumber: enc ? enc.currentWave + 1 : 0,
       waveStatus: enc ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay') : 'none',

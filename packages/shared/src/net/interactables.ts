@@ -33,9 +33,15 @@ export interface HpPotionPickupData {
   y: number
 }
 
+export interface HorseData {
+  x: number
+  y: number
+}
+
 export interface InteractablesData {
   salesman: SalesmanData | null
   stashes: StashData[]
   itemPickups: ItemPickupData[]
   hpPotionPickups: HpPotionPickupData[]
+  horse: HorseData | null
 }

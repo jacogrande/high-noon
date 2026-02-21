@@ -78,6 +78,19 @@ function completeCurrentEncounter(world: GameWorld): void {
   if (!enc.completed) throw new Error('Failed to complete encounter')
 }
 
+/** Simulate the player interacting with the horse to leave the looting phase. */
+function deactivateHorse(world: GameWorld): void {
+  if (world.horse) world.horse.active = false
+}
+
+/** Complete encounter → enter looting → deactivate horse → advance to camp/completed */
+function completeEncounterAndLoot(world: GameWorld): void {
+  completeCurrentEncounter(world)
+  stageProgressionSystem(world, DT) // → looting
+  deactivateHorse(world)
+  stageProgressionSystem(world, DT) // → camp or completed
+}
+
 describe('stageProgressionSystem', () => {
   let world: GameWorld
 
@@ -103,7 +116,7 @@ describe('stageProgressionSystem', () => {
     expect(world.run!.transition).toBe('none')
   })
 
-  test('encounter completion triggers clearing phase', () => {
+  test('encounter completion triggers looting phase', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -117,12 +130,13 @@ describe('stageProgressionSystem', () => {
     // Now run stage progression to detect completion
     stageProgressionSystem(world, DT)
 
-    expect(world.run!.transition).toBe('clearing')
-    expect(world.run!.transitionTimer).toBeCloseTo(0.5, 1)
+    expect(world.run!.transition).toBe('looting')
     expect(world.stageCleared).toBe(true)
+    expect(world.horse).not.toBeNull()
+    expect(world.horse!.active).toBe(true)
   })
 
-  test('stageCleared flag is only true on the clearing tick', () => {
+  test('stageCleared flag is only true on the looting tick', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -131,7 +145,7 @@ describe('stageProgressionSystem', () => {
 
     // Complete encounter
     completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // triggers clearing
+    stageProgressionSystem(world, DT) // triggers looting
     expect(world.stageCleared).toBe(true)
 
     // On the next tick, flag should reset
@@ -155,13 +169,13 @@ describe('stageProgressionSystem', () => {
 
     // Complete the encounter
     completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // triggers clearing + clearAllEnemies
+    stageProgressionSystem(world, DT) // triggers looting + clearEnemiesForLooting
 
     // All enemies should be gone
     expect(enemyQuery(world).length).toBe(0)
   })
 
-  test('clearing timer counts down', () => {
+  test('looting phase waits for horse deactivation', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -169,15 +183,21 @@ describe('stageProgressionSystem', () => {
     startRun(world, stages)
 
     completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // triggers clearing
+    stageProgressionSystem(world, DT) // triggers looting
 
-    const initialTimer = world.run!.transitionTimer
-    stageProgressionSystem(world, 0.2) // advance 0.2 seconds (still within 0.5s)
-    expect(world.run!.transitionTimer).toBeCloseTo(initialTimer - 0.2, 1)
-    expect(world.run!.transition).toBe('clearing')
+    // Ticking without deactivating horse should stay in looting
+    stageProgressionSystem(world, DT)
+    expect(world.run!.transition).toBe('looting')
+
+    // Deactivate horse
+    deactivateHorse(world)
+    stageProgressionSystem(world, DT)
+
+    // Should advance to camp
+    expect(world.run!.transition).toBe('camp')
   })
 
-  test('clearing timer expires into camp phase (not directly to next stage)', () => {
+  test('looting to camp phase (not directly to next stage)', () => {
     const stages = [
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
       makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
@@ -185,11 +205,7 @@ describe('stageProgressionSystem', () => {
     startRun(world, stages)
     expect(world.run!.currentStage).toBe(0)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // triggers clearing
-
-    // Advance past the clearing timer (0.5s)
-    stageProgressionSystem(world, 1.0)
+    completeEncounterAndLoot(world) // → camp
 
     // Should be in camp — currentStage stays at the completed stage
     expect(world.run!.transition).toBe('camp')
@@ -204,9 +220,7 @@ describe('stageProgressionSystem', () => {
     ]
     startRun(world, stages)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp
+    completeEncounterAndLoot(world) // → camp
 
     expect(world.run!.transition).toBe('camp')
 
@@ -231,9 +245,7 @@ describe('stageProgressionSystem', () => {
     ]
     startRun(world, stages)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp
+    completeEncounterAndLoot(world) // → camp
 
     world.campComplete = true
     stageProgressionSystem(world, DT) // consume campComplete
@@ -255,9 +267,7 @@ describe('stageProgressionSystem', () => {
     Health.current[playerEid] = 1
     expect(Health.current[playerEid]).toBe(1)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp (heals)
+    completeEncounterAndLoot(world) // → camp (heals)
 
     // Player should be at full HP
     expect(Health.current[playerEid]).toBe(Health.max[playerEid]!)
@@ -269,11 +279,7 @@ describe('stageProgressionSystem', () => {
     ]
     startRun(world, stages)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-
-    // Advance past clearing timer
-    stageProgressionSystem(world, 1.0)
+    completeEncounterAndLoot(world) // → completed (final stage)
 
     expect(world.run!.completed).toBe(true)
     expect(world.run!.transition).toBe('none')
@@ -300,9 +306,7 @@ describe('stageProgressionSystem', () => {
     // Damage player
     Health.current[playerEid] = 1
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp (heals)
+    completeEncounterAndLoot(world) // → camp (heals)
 
     // Player should be at full HP after camp
     expect(Health.current[playerEid]).toBe(maxHP)
@@ -326,20 +330,16 @@ describe('stageProgressionSystem', () => {
 
     // Stage 1
     expect(world.run!.currentStage).toBe(0)
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp
+    completeEncounterAndLoot(world) // → camp
     expect(world.run!.transition).toBe('camp')
     world.campComplete = true
-    stageProgressionSystem(world, DT) // -> next stage
+    stageProgressionSystem(world, DT) // → next stage
 
     // Stage 2 (final)
     expect(world.run!.currentStage).toBe(1)
     expect(world.run!.completed).toBe(false)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> completed (no camp on final)
+    completeEncounterAndLoot(world) // → completed (final stage)
 
     // Run complete
     expect(world.run!.completed).toBe(true)
@@ -397,9 +397,7 @@ describe('stageProgressionSystem', () => {
     ]
     startRun(world, stages)
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // -> clearing
-    stageProgressionSystem(world, 1.0) // -> completed
+    completeEncounterAndLoot(world) // → completed (final stage)
 
     const thread = world.narrative ? getThread(world.narrative.threadId) : undefined
     expect(world.resolutionText).toBe(thread?.resolution.success ?? null)
@@ -433,9 +431,7 @@ describe('stageProgressionSystem', () => {
       forfeitGrace: 0,
     }
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // -> clearing
-    stageProgressionSystem(world, 1.0) // -> completed
+    completeEncounterAndLoot(world) // → completed (final stage)
 
     const thread = world.narrative ? getThread(world.narrative.threadId) : undefined
     expect(world.resolutionText).toBe(thread?.resolution.softFailure ?? null)
@@ -488,9 +484,7 @@ describe('stageProgressionSystem', () => {
       forfeitGrace: 0,
     }
 
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // camp
+    completeEncounterAndLoot(world) // → camp
     world.campComplete = true
     stageProgressionSystem(world, DT) // next stage
 
@@ -553,12 +547,70 @@ describe('stageProgressionSystem', () => {
     expect(hasComponent(world, Dead, playerEid)).toBe(true)
 
     // Complete stage and transition to camp
-    completeCurrentEncounter(world)
-    stageProgressionSystem(world, DT) // clearing
-    stageProgressionSystem(world, 1.0) // -> camp (heals + revives)
+    completeEncounterAndLoot(world) // → camp (heals + revives)
 
     // Dead component should be removed and HP restored
     expect(hasComponent(world, Dead, playerEid)).toBe(false)
     expect(Health.current[playerEid]).toBe(Health.max[playerEid]!)
+  })
+
+  test('horse is cleared after looting phase transitions', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // → looting
+    expect(world.horse).not.toBeNull()
+    expect(world.horse!.active).toBe(true)
+
+    deactivateHorse(world)
+    stageProgressionSystem(world, DT) // → camp
+
+    // Horse should be cleared
+    expect(world.horse).toBeNull()
+  })
+
+  test('loot persists during looting phase', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    // Place some loot
+    world.goldNuggets.push({ x: 100, y: 100, value: 5, lifetime: 3 })
+    world.itemPickups.push({ id: 1, itemId: 1, x: 200, y: 200, lifetime: 10, collected: false })
+    world.hpPotionPickups.push({ id: 1, x: 300, y: 300, lifetime: 10, collected: false })
+
+    completeCurrentEncounter(world)
+    stageProgressionSystem(world, DT) // → looting
+
+    // Loot should still be there
+    expect(world.goldNuggets.length).toBe(1)
+    expect(world.itemPickups.length).toBe(1)
+    expect(world.hpPotionPickups.length).toBe(1)
+  })
+
+  test('loot is cleared when leaving looting phase', () => {
+    const stages = [
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+      makeEncounter({ threats: [{ type: EnemyType.SHOOTER, count: 1 }] }),
+    ]
+    startRun(world, stages)
+
+    // Place some loot
+    world.goldNuggets.push({ x: 100, y: 100, value: 5, lifetime: 3 })
+    world.itemPickups.push({ id: 1, itemId: 1, x: 200, y: 200, lifetime: 10, collected: false })
+    world.hpPotionPickups.push({ id: 1, x: 300, y: 300, lifetime: 10, collected: false })
+
+    completeEncounterAndLoot(world) // → camp
+
+    // Loot should be cleared
+    expect(world.goldNuggets.length).toBe(0)
+    expect(world.itemPickups.length).toBe(0)
+    expect(world.hpPotionPickups.length).toBe(0)
   })
 })

@@ -14,6 +14,7 @@ export const STASHES_PER_STAGE = 6
 /** Interaction radii in world pixels. */
 export const STASH_INTERACT_RADIUS = 56
 export const SALESMAN_INTERACT_RADIUS = 64
+export const HORSE_INTERACT_RADIUS = 72
 
 /** Required continuous hold duration to confirm interaction (60Hz ticks). */
 export const INTERACT_HOLD_TICKS = 15

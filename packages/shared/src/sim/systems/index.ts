@@ -33,7 +33,7 @@ import { enemyAttackSystem } from './enemyAttack'
 import { spatialHashSystem } from './spatialHash'
 import { waveSpawnerSystem } from './waveSpawner'
 import { objectiveSystem, initObjective, cleanupObjective } from './objectiveSystem'
-import { stageProgressionSystem, clearAllEnemies, spawnStageNpcs } from './stageProgression'
+import { stageProgressionSystem, clearAllEnemies, clearEnemiesForLooting, spawnStageNpcs } from './stageProgression'
 import { npcMovementSystem } from './npcMovement'
 import { npcDialogueSystem } from './npcDialogue'
 import { buffSystem } from './buffSystem'
@@ -80,6 +80,7 @@ export {
   cleanupObjective,
   stageProgressionSystem,
   clearAllEnemies,
+  clearEnemiesForLooting,
   spawnStageNpcs,
   npcMovementSystem,
   npcDialogueSystem,

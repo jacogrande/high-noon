@@ -3,6 +3,7 @@ import { Button, hasButton, type InputState } from '../../net/input'
 import {
   INTERACT_HOLD_TICKS,
   INTERACTION_FEEDBACK_DURATION,
+  HORSE_INTERACT_RADIUS,
   SALESMAN_INTERACT_RADIUS,
   SHOVEL_MAX_STACK,
   STASH_INTERACT_RADIUS,
@@ -17,7 +18,7 @@ const playerQuery = defineQuery([Player, Position])
 interface InteractionTarget {
   key: string
   prompt: string
-  kind: 'salesman' | 'stash'
+  kind: 'salesman' | 'stash' | 'horse'
   stageIndex: number
   stashId: number
   distSq: number
@@ -56,7 +57,7 @@ function clearInteractionLayout(world: GameWorld): void {
 function ensureInteractionLayout(world: GameWorld): void {
   const map = world.tilemap
   const run = world.run
-  if (!map || !run || run.completed || run.transition === 'clearing') {
+  if (!map || !run || run.completed || run.transition === 'clearing' || run.transition === 'looting') {
     if (world.salesman || world.stashes.length > 0 || world.interactionLayoutKey !== '') {
       clearInteractionLayout(world)
     }
@@ -152,6 +153,27 @@ function getNearestTarget(world: GameWorld, playerEid: number): InteractionTarge
     }
   }
 
+  // Check horse (looting phase exit)
+  const horse = world.horse
+  if (horse && horse.active) {
+    const dx = horse.x - playerX
+    const dy = horse.y - playerY
+    const distSq = dx * dx + dy * dy
+    const horseRadiusSq = HORSE_INTERACT_RADIUS * HORSE_INTERACT_RADIUS
+    if (distSq <= horseRadiusSq && (!best || distSq < best.distSq)) {
+      const run = world.run
+      const isLastStage = run ? run.currentStage + 1 >= run.totalStages : false
+      best = {
+        key: 'horse',
+        prompt: isLastStage ? 'Hold E: Ride to Victory' : 'Hold E: Ride to Camp',
+        kind: 'horse',
+        stageIndex: -1,
+        stashId: -1,
+        distSq,
+      }
+    }
+  }
+
   return best
 }
 
@@ -209,6 +231,10 @@ function tryOpenStash(world: GameWorld, playerEid: number, stageIndex: number, s
 }
 
 function resolveInteraction(world: GameWorld, playerEid: number, target: InteractionTarget): void {
+  if (target.kind === 'horse') {
+    if (world.horse) world.horse.active = false
+    return
+  }
   if (target.kind === 'salesman') {
     tryBuyShovel(world, playerEid, target.stageIndex)
     return
