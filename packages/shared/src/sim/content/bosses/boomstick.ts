@@ -329,7 +329,7 @@ const boomstickModule: BossModule = {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
-          spriteId: BulletSpriteId.SLUG,
+          spriteId: BulletSpriteId.FIRE_ANIM,
           size: ENEMY_BULLET_SIZE_THREAT,
         })
       }
@@ -350,7 +350,7 @@ const boomstickModule: BossModule = {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
-          spriteId: BulletSpriteId.SLUG,
+          spriteId: BulletSpriteId.FIRE_ANIM,
           size: ENEMY_BULLET_SIZE_THREAT,
         })
       }

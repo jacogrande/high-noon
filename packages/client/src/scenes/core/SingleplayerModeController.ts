@@ -827,7 +827,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.processVisualBulletImpacts()
 
     // Render bullets with interpolation
-    this.bulletRenderer.render(this.world, alpha)
+    this.bulletRenderer.render(this.world, alpha, realDt)
 
     // Render enemies with interpolation
     this.enemyRenderer.render(this.world, alpha, realDt)

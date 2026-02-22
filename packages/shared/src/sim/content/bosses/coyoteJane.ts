@@ -695,7 +695,7 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       range: ENEMY_BULLET_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
-      spriteId: BulletSpriteId.SLUG,
+      spriteId: BulletSpriteId.SPIRIT_ANIM,
       size: ENEMY_BULLET_SIZE_THREAT,
     })
   } else if (state.selectedAttack === CoyoteJaneAttack.HIP_SHOT) {
@@ -726,7 +726,7 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
         range: ENEMY_BULLET_RANGE,
         ownerId: eid,
         layer: CollisionLayer.ENEMY_BULLET,
-        spriteId: BulletSpriteId.SLUG,
+        spriteId: BulletSpriteId.SPIRIT_ANIM,
         size: ENEMY_BULLET_SIZE_THREAT,
       })
     }

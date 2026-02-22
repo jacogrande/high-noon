@@ -27,7 +27,7 @@ import {
   DUELIST_MELEE_KB_SPEED, DUELIST_MELEE_KB_DURATION,
   COYOTE_DART_SPEED, COYOTE_DART_DURATION,
 } from '../content/enemies'
-import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER, type BulletSpriteIdValue } from '../content/weapons'
 import { applyDamage } from './applyDamage'
 import { isBoss, getBoss } from '../content/bosses'
 
@@ -88,6 +88,13 @@ const DUELIST_MELEE_CFG = { meleeReach: DUELIST_MELEE_REACH, attackDuration: DUE
 function getMeleeConfig(type: number) {
   if (type === EnemyType.DUELIST) return DUELIST_MELEE_CFG
   return type === EnemyType.GOBLIN_BARBARIAN ? BARBARIAN_MELEE_CFG : ROGUE_MELEE_CFG
+}
+
+/** Per-enemy-type bullet sprite. Melee/rush enemies are absent (they don't fire bullets). */
+const ENEMY_BULLET_SPRITE: Partial<Record<number, BulletSpriteIdValue>> = {
+  [EnemyType.SWARMER]: BulletSpriteId.FIRE_ANIM,
+  [EnemyType.GRUNT]: BulletSpriteId.SLUG_ANIM,
+  [EnemyType.SHOOTER]: BulletSpriteId.SPIRIT_ANIM,
 }
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
@@ -238,7 +245,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
-          spriteId: BulletSpriteId.SLUG,
+          spriteId: ENEMY_BULLET_SPRITE[type] ?? BulletSpriteId.SLUG,
           size: enemyBulletSize,
         })
       }

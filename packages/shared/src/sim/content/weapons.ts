@@ -14,6 +14,9 @@ import type { CharacterId } from './characters'
 export const BulletSpriteId = {
   SLUG: 0,        // Revolver round + enemy bullets (bullet.png, enemies tinted at render)
   PELLET: 1,      // Smaller shotgun pellet (bullet_pellet.png)
+  SLUG_ANIM: 2,   // Animated pulsing slug (bullet_slug_anim.png strip)
+  FIRE_ANIM: 3,   // Animated fiery bullet (bullet_fire_anim.png strip)
+  SPIRIT_ANIM: 4, // Animated spectral bullet (bullet_spirit_anim.png strip)
 } as const
 
 export type BulletSpriteIdValue = typeof BulletSpriteId[keyof typeof BulletSpriteId]
@@ -326,7 +329,7 @@ export const ENEMY_BULLET_SIZE_FODDER = 1.2
 
 export const SHERIFF_BULLET: BulletConfig = {
   size: 1.5,
-  spriteId: BulletSpriteId.SLUG,
+  spriteId: BulletSpriteId.SLUG_ANIM,
 }
 
 export const UNDERTAKER_BULLET: BulletConfig = {

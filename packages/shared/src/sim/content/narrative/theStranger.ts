@@ -12,7 +12,7 @@ export const THE_STRANGER: PlotThread = {
   ],
   stages: [
     {
-      bossPool: [EnemyType.MAD_DOG],
+      bossPool: [EnemyType.MAD_DOG, EnemyType.BOOMSTICK, EnemyType.DALTON],
       objectiveType: 'duel',
       objectiveDescription: 'Prove you can hold your nerve when the frontier bares its teeth.',
       softFailureNext: {

@@ -12,7 +12,7 @@ export const THE_RAID: PlotThread = {
   ],
   stages: [
     {
-      bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG],
+      bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG, EnemyType.DALTON],
       objectiveType: 'duel',
       objectiveDescription: 'Hold the line and break the raid leaders.',
       softFailureNext: {

@@ -1234,9 +1234,10 @@ export class MultiplayerModeController implements SceneModeController {
         this.predictedEntityTracker.getLocalTimelineBullets(),
         error.x,
         error.y,
+        realDt,
       )
     } else {
-      this.bulletRenderer.render(this.world, alpha)
+      this.bulletRenderer.render(this.world, alpha, realDt)
     }
     this.enemyRenderer.render(this.world, alpha, realDt)
     this.npcRenderer.render(this.world, alpha)

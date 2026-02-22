@@ -8,6 +8,7 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import { Bullet, Position, Collider, Velocity, CollisionLayer, Enemy, EnemyTier } from '@high-noon/shared'
+import type { Texture } from 'pixi.js'
 import { SpriteRegistry } from './SpriteRegistry'
 import { AssetLoader } from '../assets'
 
@@ -48,6 +49,7 @@ export class BulletRenderer {
   private readonly playerBullets = new Set<number>()
   private readonly currentEntities = new Set<number>()
   private readonly cosmeticBullets = new Map<number, CosmeticBullet>()
+  private readonly animState = new Map<number, { frame: number; elapsed: number; frames: Texture[]; fps: number }>()
   private readonly pendingVisualImpacts: VisualBulletImpact[] = []
   private nextCosmeticId = -1
   readonly removedPositions: Array<{ x: number; y: number }> = []
@@ -74,7 +76,8 @@ export class BulletRenderer {
 
       // Create sprite if doesn't exist
       if (!this.bulletEntities.has(eid)) {
-        const texture = AssetLoader.getBulletTextureById(Bullet.spriteId[eid]!)
+        const spriteId = Bullet.spriteId[eid]!
+        const texture = AssetLoader.getBulletTextureById(spriteId)
         const sprite = this.registry.createSprite(eid, texture)
         this.bulletEntities.add(eid)
 
@@ -104,6 +107,17 @@ export class BulletRenderer {
           sprite.tint = 0xfff5cf
           sprite.scale.set(bulletSize)
         }
+
+        // Init animation state for animated bullet sprites
+        const anim = AssetLoader.getBulletAnimFrames(spriteId)
+        if (anim) {
+          this.animState.set(eid, {
+            frame: 0,
+            elapsed: 0,
+            frames: anim.frames,
+            fps: anim.fps,
+          })
+        }
       }
     }
 
@@ -120,6 +134,7 @@ export class BulletRenderer {
         }
         this.registry.remove(eid)
         this.bulletEntities.delete(eid)
+        this.animState.delete(eid)
       }
     }
   }
@@ -130,7 +145,7 @@ export class BulletRenderer {
    * @param world - The game world
    * @param alpha - Interpolation factor (0-1) between previous and current state
    */
-  render(world: GameWorld, alpha: number): void {
+  render(world: GameWorld, alpha: number, realDt = 0): void {
     for (const eid of this.bulletEntities) {
       // Skip if entity no longer has Bullet component (despawned this frame)
       if (!hasComponent(world, Bullet, eid)) continue
@@ -152,6 +167,8 @@ export class BulletRenderer {
       const renderY = bullet.prevY + (bullet.y - bullet.prevY) * alpha
       this.registry.setPosition(eid, renderX, renderY)
     }
+
+    if (realDt > 0) this.updateAnimations(realDt)
   }
 
   /**
@@ -165,6 +182,7 @@ export class BulletRenderer {
     localTimelineBullets: ReadonlySet<number>,
     offsetX: number,
     offsetY: number,
+    realDt = 0,
   ): void {
     for (const eid of this.bulletEntities) {
       if (!hasComponent(world, Bullet, eid)) continue
@@ -189,6 +207,28 @@ export class BulletRenderer {
       const renderX = bullet.prevX + (bullet.x - bullet.prevX) * alpha
       const renderY = bullet.prevY + (bullet.y - bullet.prevY) * alpha
       this.registry.setPosition(eid, renderX, renderY)
+    }
+
+    if (realDt > 0) this.updateAnimations(realDt)
+  }
+
+  /**
+   * Advance animated bullet frame cycling.
+   */
+  private updateAnimations(dt: number): void {
+    for (const [eid, state] of this.animState) {
+      if (state.fps <= 0 || state.frames.length === 0) continue
+      state.elapsed += dt
+      // Keep elapsed bounded to prevent unbounded growth on long-lived bullets
+      const loopDuration = state.frames.length / state.fps
+      if (state.elapsed > loopDuration * 2) {
+        state.elapsed %= loopDuration
+      }
+      const newFrame = Math.floor(state.elapsed * state.fps) % state.frames.length
+      if (newFrame !== state.frame) {
+        state.frame = newFrame
+        this.registry.setTexture(eid, state.frames[newFrame]!)
+      }
     }
   }
 
@@ -331,6 +371,7 @@ export class BulletRenderer {
     this.playerBullets.clear()
     this.currentEntities.clear()
     this.cosmeticBullets.clear()
+    this.animState.clear()
     this.pendingVisualImpacts.length = 0
     this.removedPositions.length = 0
   }

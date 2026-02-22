@@ -774,7 +774,7 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       range: ENEMY_BULLET_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
-      spriteId: BulletSpriteId.SLUG,
+      spriteId: BulletSpriteId.SPIRIT_ANIM,
       size: ENEMY_BULLET_SIZE_THREAT,
     })
   } else if (state.selectedAttack === HollowManAttack.GRAVE_REACH) {
@@ -912,7 +912,7 @@ function tickConvergence(world: GameWorld, eid: number, state: HollowManState, d
         range: ENEMY_BULLET_RANGE,
         ownerId: shooterEid,
         layer: CollisionLayer.ENEMY_BULLET,
-        spriteId: BulletSpriteId.SLUG,
+        spriteId: BulletSpriteId.SPIRIT_ANIM,
         size: ENEMY_BULLET_SIZE_THREAT,
       })
     }

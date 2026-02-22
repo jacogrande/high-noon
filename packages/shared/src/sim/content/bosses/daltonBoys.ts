@@ -465,7 +465,7 @@ function executeBuckshotBlast(world: GameWorld, eid: number, state: DaltonBrothe
       range: BUCKSHOT_RANGE,
       ownerId: eid,
       layer: CollisionLayer.ENEMY_BULLET,
-      spriteId: BulletSpriteId.SLUG,
+      spriteId: BulletSpriteId.SLUG_ANIM,
       size: ENEMY_BULLET_SIZE_THREAT,
     })
   }
@@ -530,7 +530,7 @@ function executeDeadShot(world: GameWorld, eid: number, state: DaltonBrotherStat
     range: ENEMY_BULLET_RANGE,
     ownerId: eid,
     layer: CollisionLayer.ENEMY_BULLET,
-    spriteId: BulletSpriteId.SLUG,
+    spriteId: BulletSpriteId.SLUG_ANIM,
     size: ENEMY_BULLET_SIZE_THREAT,
   })
 
@@ -554,7 +554,7 @@ function executeCoveringFire(world: GameWorld, eid: number, state: DaltonBrother
     range: ENEMY_BULLET_RANGE,
     ownerId: eid,
     layer: CollisionLayer.ENEMY_BULLET,
-    spriteId: BulletSpriteId.SLUG,
+    spriteId: BulletSpriteId.SLUG_ANIM,
     size: ENEMY_BULLET_SIZE_THREAT,
   })
 

@@ -30,6 +30,7 @@ import {
   BUILDING_SPRITESHEET_PATH,
   BUILDING_SPRITE_REGIONS,
 } from "./buildingSpritesheet";
+import { BULLET_ANIM_CONFIG } from "./bulletAnimations";
 
 /** Base path for character sprite sheets */
 const CHAR_SPRITE_BASE = "/assets/sprites/base character/Basic";
@@ -149,6 +150,9 @@ export class AssetLoader {
   /** Wood floor texture sliced from floors spritesheet */
   private static woodFloorTexture: Texture | null = null;
 
+  /** Pre-sliced animated bullet frames: spriteId → { frames, fps } */
+  private static bulletAnimFrames = new Map<number, { frames: Texture[]; fps: number }>();
+
   /** Timeout for asset loading (ms) */
   private static readonly LOAD_TIMEOUT = 30000;
 
@@ -194,6 +198,11 @@ export class AssetLoader {
       Assets.add({ alias: `enemy_${enemyId}`, src: path });
     }
 
+    // Add animated bullet strip sprites
+    for (const config of Object.values(BULLET_ANIM_CONFIG)) {
+      if (config) Assets.add({ alias: config.asset, src: config.path });
+    }
+
     // Add item icon sprites
     for (const [itemKey, path] of Object.entries(ITEM_SPRITES)) {
       Assets.add({ alias: `item_${itemKey}`, src: path });
@@ -210,6 +219,9 @@ export class AssetLoader {
       ...Object.keys(WEAPON_SPRITES).map((id) => `weapon_${id}`),
       ...Object.keys(ENEMY_SPRITES).map((id) => `enemy_${id}`),
       ...Object.keys(ITEM_SPRITES).map((id) => `item_${id}`),
+      ...Object.values(BULLET_ANIM_CONFIG)
+        .filter((c): c is NonNullable<typeof c> => c != null)
+        .map((c) => c.asset),
     ];
 
     const loadPromise = Assets.load(allAliases, (progress) => {
@@ -390,6 +402,39 @@ export class AssetLoader {
       console.log("[AssetLoader] Wood floor texture loaded");
     }
 
+    // Slice animated bullet strips into frame arrays
+    for (const [spriteIdStr, config] of Object.entries(BULLET_ANIM_CONFIG)) {
+      if (!config) continue;
+      const tex = loaded[config.asset] as Texture;
+      if (!tex) {
+        console.warn(
+          `[AssetLoader] Bullet anim strip failed to load: ${config.asset} (${config.path}). Animated bullets will fall back to static.`,
+        );
+        continue;
+      }
+      tex.source.scaleMode = "nearest";
+      const frameCount = Math.floor(tex.width / config.cellSize);
+      const frames: Texture[] = [];
+      for (let i = 0; i < frameCount; i++) {
+        frames.push(
+          new Texture({
+            source: tex.source,
+            frame: new Rectangle(
+              i * config.cellSize,
+              0,
+              config.cellSize,
+              config.cellSize,
+            ),
+          }),
+        );
+      }
+      this.bulletAnimFrames.set(Number(spriteIdStr), { frames, fps: config.fps });
+    }
+    console.log(
+      "[AssetLoader] Bullet anim strips sliced:",
+      this.bulletAnimFrames.size,
+    );
+
     console.log("[AssetLoader] All assets loaded successfully");
 
     this.loaded = true;
@@ -505,13 +550,28 @@ export class AssetLoader {
   /**
    * Get bullet texture by sprite ID (BulletSpriteId from shared).
    * SLUG → bullet.png, PELLET → bullet_pellet.png
+   * Animated IDs → frame 0 of their strip
    */
   static getBulletTextureById(spriteId: number): Texture {
     if (spriteId === BulletSpriteId.PELLET) {
       // bulletPelletTexture is guaranteed non-null after loadAll()
       return this.bulletPelletTexture!;
     }
+    // For animated IDs, return frame 0
+    const anim = this.bulletAnimFrames.get(spriteId);
+    if (anim && anim.frames.length > 0) {
+      return anim.frames[0]!;
+    }
+    // SLUG and unknown IDs → default bullet.png
     return this.getBulletTexture();
+  }
+
+  /**
+   * Get animation data for an animated bullet sprite ID.
+   * Returns null for static (non-animated) sprite IDs.
+   */
+  static getBulletAnimFrames(spriteId: number): { frames: Texture[]; fps: number } | null {
+    return this.bulletAnimFrames.get(spriteId) ?? null;
   }
 
   /**
@@ -581,5 +641,6 @@ export class AssetLoader {
     this.itemTextures.clear();
     this.buildingTextures.clear();
     this.woodFloorTexture = null;
+    this.bulletAnimFrames.clear();
   }
 }
