@@ -28,6 +28,7 @@ import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { clampDamage } from '../damage'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { damageMapObstacle } from './damageHelpers'
 import { isSolidAt } from '../tilemap'
 import { getBulletConfigForCharacter } from '../content/weapons'
 
@@ -110,6 +111,38 @@ function rayCircleIntersectionDistance(
   if (farT < 0) return null
 
   return nearT >= 0 ? nearT : 0
+}
+
+/** Ray vs AABB intersection — returns entry distance or null if no hit. */
+function rayAABBDistance(
+  originX: number, originY: number,
+  dirX: number, dirY: number,
+  minX: number, minY: number,
+  maxX: number, maxY: number,
+): number | null {
+  let tmin = -Infinity
+  let tmax = Infinity
+
+  if (dirX !== 0) {
+    const t1 = (minX - originX) / dirX
+    const t2 = (maxX - originX) / dirX
+    tmin = Math.max(tmin, Math.min(t1, t2))
+    tmax = Math.min(tmax, Math.max(t1, t2))
+  } else if (originX < minX || originX > maxX) {
+    return null
+  }
+
+  if (dirY !== 0) {
+    const t1 = (minY - originY) / dirY
+    const t2 = (maxY - originY) / dirY
+    tmin = Math.max(tmin, Math.min(t1, t2))
+    tmax = Math.min(tmax, Math.max(t1, t2))
+  } else if (originY < minY || originY > maxY) {
+    return null
+  }
+
+  if (tmin > tmax) return null
+  return tmin >= 0 ? tmin : tmax >= 0 ? 0 : null
 }
 
 function findWallDistance(
@@ -274,11 +307,46 @@ function resolveHitscanPellet(
     shotTick,
   )
 
+  const authoritative = world.simulationScope !== 'local-player'
+
+  // --- Obstacle collision: check if ray hits a destructible obstacle ---
+  const effectiveRange = Math.min(range, wallDistance)
+  const nearestEntityDist = candidates.length > 0 ? candidates[0]!.distance : Infinity
+  const ts = world.tilemap?.tileSize ?? 32
+  let obstacleHitDist = Infinity
+  let obstacleHitIndex = -1
+  for (let oi = 0; oi < world.mapObstacles.length; oi++) {
+    const obs = world.mapObstacles[oi]!
+    if (obs.hp === undefined) continue
+    const halfW = (obs.widthTiles * ts) / 2
+    const halfH = (obs.heightTiles * ts) / 2
+    const d = rayAABBDistance(
+      originX, originY, dirX, dirY,
+      obs.x - halfW, obs.y - halfH,
+      obs.x + halfW, obs.y + halfH,
+    )
+    if (d !== null && d <= effectiveRange && d < obstacleHitDist) {
+      obstacleHitDist = d
+      obstacleHitIndex = oi
+    }
+  }
+  if (obstacleHitIndex >= 0 && obstacleHitDist <= nearestEntityDist) {
+    if (authoritative) {
+      damageMapObstacle(world, obstacleHitIndex, 1)
+    }
+    return {
+      hit: false,
+      targetEid: NO_TARGET,
+      hitX: originX + dirX * obstacleHitDist,
+      hitY: originY + dirY * obstacleHitDist,
+      damageApplied: 0,
+    }
+  }
+
   const ownerHasShowdown =
     hasComponent(world, Showdown, ownerEid) && Showdown.active[ownerEid] === 1
   const showdownTarget = ownerHasShowdown ? Showdown.targetEid[ownerEid]! : NO_TARGET
 
-  const authoritative = world.simulationScope !== 'local-player'
   const hasBulletHooks = authoritative && world.hooks.hasHandlers('onBulletHit')
   const virtualBulletId = nextVirtualBulletId--
   world.hitscanVirtualBulletOwners.set(virtualBulletId, ownerEid)

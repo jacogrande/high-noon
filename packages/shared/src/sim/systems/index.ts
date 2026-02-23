@@ -162,6 +162,8 @@ export function registerReplaySystems(systems: SystemRegistry): void {
  * `registerPredictionSystems` and `registerReplaySystems`.
  */
 export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
+  // -- Clear previous tick's per-frame events --
+  systems.register(mapObstacleSystem)
   // -- Input & abilities (read floorSpeedMul from previous tick) --
   systems.register(playerInputSystem)
   systems.register(hpPotionUseSystem)
@@ -202,7 +204,6 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(groundCrackSystem)
   systems.register(bossShockwaveSystem)
   systems.register(trapZoneSystem)
-  systems.register(mapObstacleSystem)
   // -- Post-movement --
   systems.register(healthSystem)
   systems.register(goldRewardSystem)
