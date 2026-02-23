@@ -5,6 +5,12 @@
 import { TileType, BASE_TILE_VARIANTS_PER_STYLE, type BaseTileStyle } from '../../tilemap'
 import { OBSTACLE_TEMPLATES } from './obstacleTemplates'
 import { TOWN_BUILDINGS, type BuildingProfile } from './buildingProfiles'
+import {
+  STAGE_1_OBSTACLE_POOL,
+  STAGE_2_OBSTACLE_POOL,
+  STAGE_3_OBSTACLE_POOL,
+  type WeightedObstacleDef,
+} from './mapObstacleDefs'
 
 export interface ObstacleTemplate {
   /** Relative tile offsets to place as WALL */
@@ -46,6 +52,12 @@ export interface MapConfig {
     }
   }
   hazards: HazardConfig[]
+  /** Strategic destructible/indestructible obstacles (crates, barrels, boulders, etc.) */
+  mapObstacles?: {
+    count: number
+    minSpacing: number
+    pool: WeightedObstacleDef[]
+  }
 }
 
 /** Stage 1: Town — 50x38, no hazards */
@@ -64,6 +76,11 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
     },
   },
   hazards: [],
+  mapObstacles: {
+    count: 6,
+    minSpacing: 5,
+    pool: STAGE_1_OBSTACLE_POOL,
+  },
 }
 
 /** Stage 2: Badlands — 54x42 (larger), mud clusters + sparse bramble */
@@ -82,6 +99,11 @@ export const STAGE_2_MAP_CONFIG: MapConfig = {
     { tileType: TileType.MUD, noiseThreshold: 0.68, noiseCellSize: 6, maxCoverage: 0.10 },
     { tileType: TileType.BRAMBLE, noiseThreshold: 0.85, noiseCellSize: 8, maxCoverage: 0.03 },
   ],
+  mapObstacles: {
+    count: 5,
+    minSpacing: 6,
+    pool: STAGE_2_OBSTACLE_POOL,
+  },
 }
 
 /** Stage 3: Canyon — 46x36 (tighter), denser lava */
@@ -99,6 +121,11 @@ export const STAGE_3_MAP_CONFIG: MapConfig = {
   hazards: [
     { tileType: TileType.LAVA, noiseThreshold: 0.78, noiseCellSize: 7, maxCoverage: 0.06 },
   ],
+  mapObstacles: {
+    count: 8,
+    minSpacing: 5,
+    pool: STAGE_3_OBSTACLE_POOL,
+  },
 }
 
 /** Indexed by stage number (0, 1, 2) */

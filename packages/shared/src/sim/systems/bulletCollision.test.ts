@@ -9,6 +9,8 @@ import {
   EnemyAI, Detection, AttackConfig, Steering, Speed,
 } from '../components'
 import { createTestArena, TILE_SIZE } from '../content/maps/testArena'
+import { MapObstacleType, type MapObstacle } from '../content/maps/mapObstacleDefs'
+import { isSolidAt, setTile, TileType } from '../tilemap'
 
 /** Spawn a minimal enemy at (x, y) with given HP and radius */
 function spawnTestEnemy(world: GameWorld, x: number, y: number, hp = 10, radius = 8): number {
@@ -982,6 +984,161 @@ describe('bulletCollisionSystem', () => {
       bulletCollisionSystem(world, 1 / 60)
 
       expect(hookCalled).toBe(false)
+    })
+  })
+
+  describe('map obstacle collision', () => {
+    /** Helper to place a destructible crate obstacle at a tile position */
+    function placeCrateObstacle(w: GameWorld, tileX: number, tileY: number, hp: number = 3): MapObstacle {
+      const ts = w.tilemap!.tileSize
+      const obs: MapObstacle = {
+        id: w.nextMapObstacleId++,
+        type: MapObstacleType.CRATE,
+        x: (tileX + 0.5) * ts,
+        y: (tileY + 0.5) * ts,
+        tiles: [{ tileX, tileY, tileType: TileType.WALL }],
+        hp,
+        maxHp: hp,
+        jumpable: false,
+        widthTiles: 1,
+        heightTiles: 1,
+      }
+      setTile(w.tilemap!, 0, tileX, tileY, TileType.WALL)
+      w.mapObstacles.push(obs)
+      return obs
+    }
+
+    test('player bullet hits destructible obstacle and decrements HP', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const obs = placeCrateObstacle(world, 7, 5, 3)
+
+      const bulletEid = spawnBullet(world, {
+        x: obs.x, y: obs.y,
+        vx: 100, vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(world.mapObstacles[0]!.hp).toBe(2)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+      expect(world.obstacleHits.length).toBe(1)
+    })
+
+    test('obstacle destroyed when HP reaches 0 → tiles cleared', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const obs = placeCrateObstacle(world, 7, 5, 1)
+
+      // Verify tile is solid before
+      expect(isSolidAt(world.tilemap!, obs.x, obs.y)).toBe(true)
+
+      spawnBullet(world, {
+        x: obs.x, y: obs.y,
+        vx: 100, vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      // Obstacle should be removed
+      expect(world.mapObstacles.length).toBe(0)
+      // Tile should be cleared
+      expect(isSolidAt(world.tilemap!, obs.x, obs.y)).toBe(false)
+      // Destruction event emitted
+      expect(world.obstacleDestructions.length).toBe(1)
+      expect(world.obstacleDestructions[0]!.type).toBe(MapObstacleType.CRATE)
+    })
+
+    test('enemy bullets do NOT damage obstacles', () => {
+      spawnPlayer(world, OPEN_X + 200, OPEN_Y + 200)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y)
+      const obs = placeCrateObstacle(world, 7, 5, 3)
+
+      spawnBullet(world, {
+        x: obs.x, y: obs.y,
+        vx: 100, vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: enemyEid,
+        layer: CollisionLayer.ENEMY_BULLET,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      // Enemy bullets hit the wall tile, not the obstacle logic
+      expect(world.mapObstacles[0]!.hp).toBe(3) // unchanged
+    })
+
+    test('indestructible obstacles are not affected by bullets', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const ts = world.tilemap!.tileSize
+      const obs: MapObstacle = {
+        id: world.nextMapObstacleId++,
+        type: MapObstacleType.FALLEN_TREE,
+        x: (7 + 1.5) * ts,
+        y: (5 + 0.5) * ts,
+        tiles: [
+          { tileX: 7, tileY: 5, tileType: TileType.HALF_WALL },
+          { tileX: 8, tileY: 5, tileType: TileType.HALF_WALL },
+          { tileX: 9, tileY: 5, tileType: TileType.HALF_WALL },
+        ],
+        jumpable: true,
+        widthTiles: 3,
+        heightTiles: 1,
+      }
+      for (const tile of obs.tiles) {
+        setTile(world.tilemap!, 0, tile.tileX, tile.tileY, TileType.HALF_WALL)
+      }
+      world.mapObstacles.push(obs)
+
+      const bulletEid = spawnBullet(world, {
+        x: obs.x, y: obs.y,
+        vx: 100, vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      // Indestructible: no HP, should still be in array
+      expect(world.mapObstacles.length).toBe(1)
+      expect(world.obstacleDestructions.length).toBe(0)
+      // Bullet hits the wall tile (HALF_WALL acts as solid)
+    })
+
+    test('flow field invalidated on obstacle destruction', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const obs = placeCrateObstacle(world, 7, 5, 1)
+      // Set up a dummy flow field
+      world.flowField = {
+        width: 10, height: 10,
+        dirX: new Float32Array(100),
+        dirY: new Float32Array(100),
+        dist: new Uint16Array(100),
+        seedKey: 'cached',
+      }
+
+      spawnBullet(world, {
+        x: obs.x, y: obs.y,
+        vx: 100, vy: 0,
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      expect(world.flowField.seedKey).toBe('')
     })
   })
 

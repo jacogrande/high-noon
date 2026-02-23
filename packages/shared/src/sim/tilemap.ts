@@ -5,6 +5,8 @@
  * Designed to work identically on client and server.
  */
 
+import type { MapObstacle } from './content/maps/mapObstacleDefs'
+
 /** Supported stage base-tile styles */
 export const BASE_TILE_STYLES = ['red_dirt', 'grass', 'stone'] as const
 export type BaseTileStyle = (typeof BASE_TILE_STYLES)[number]
@@ -124,6 +126,8 @@ export interface Tilemap {
   crossAlleys?: SkipZone[]
   /** Full road network with meandering profiles (for tests and debug). */
   roadNetwork?: RoadNetwork
+  /** Map obstacles generated during arena generation */
+  mapObstacles?: MapObstacle[]
 }
 
 /** Tile type constants */

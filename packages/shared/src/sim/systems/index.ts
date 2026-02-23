@@ -47,6 +47,7 @@ import { hazardTileSystem } from './hazardTile'
 import { groundCrackSystem } from './groundCrackSystem'
 import { bossShockwaveSystem } from './bossShockwaveSystem'
 import { trapZoneSystem } from './trapZoneSystem'
+import { mapObstacleSystem } from './mapObstacle'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
@@ -99,6 +100,7 @@ export {
   itemPickupSystem,
   tryVisitorPurchase,
   trapZoneSystem,
+  mapObstacleSystem,
 }
 
 export type { CampVisitorState }
@@ -200,6 +202,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(groundCrackSystem)
   systems.register(bossShockwaveSystem)
   systems.register(trapZoneSystem)
+  systems.register(mapObstacleSystem)
   // -- Post-movement --
   systems.register(healthSystem)
   systems.register(goldRewardSystem)

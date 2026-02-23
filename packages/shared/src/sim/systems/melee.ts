@@ -25,6 +25,7 @@ import { PICKAXE_CHARGE_ARC, MELEE_KNOCKBACK_DURATION, TREMOR_RADIUS } from '../
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { damageMapObstacle } from './damageHelpers'
 
 const meleePlayerQuery = defineQuery([Player, MeleeWeapon, Position])
 
@@ -206,6 +207,17 @@ function executeSwing(
       if (isCharged) killedWithCharge = true
     }
   })
+
+  // Melee vs map obstacles: check for overlap with swing arc
+  if (world.mapObstacles.length > 0 && world.tilemap) {
+    const meleeDmg = isCharged ? 2 : 1
+    for (let oi = world.mapObstacles.length - 1; oi >= 0; oi--) {
+      const obs = world.mapObstacles[oi]!
+      if (obs.hp === undefined) continue // indestructible
+      if (!isInArc(px, py, aimAngle, arcHalf, reach, obs.x, obs.y)) continue
+      damageMapObstacle(world, oi, meleeDmg)
+    }
+  }
 
   // Tunnel Through: charged kill resets swing cooldown
   if (killedWithCharge && hasTunnelThrough) {

@@ -10,6 +10,7 @@ import { SeededRng } from '../../../math/rng'
 import { createTilemap, addLayer, setTile, getTile, TileType, type Tilemap, type PlacedBuilding, type SkipZone, type RoadNetwork, type AlleyProfile, type SpurRoad } from '../../tilemap'
 import type { MapConfig, HazardConfig } from './mapConfig'
 import type { BuildingProfile } from './buildingProfiles'
+import type { MapObstacle, MapObstacleDef, WeightedObstacleDef } from './mapObstacleDefs'
 
 // ── Town layout constants ──────────────────────────────────────────────
 const UNIQUE_BUILDING_IDS = new Set(['general_store', 'saloon', 'barber', 'sheriff', 'bank'])
@@ -412,6 +413,14 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
     genericPlaced++
   }
 
+  // 5b. Place strategic map obstacles (crates, barrels, boulders, etc.)
+  if (config.mapObstacles) {
+    const mapObstacles = placeMapObstacles(
+      map, rng, config.mapObstacles, centerX, centerY, clearR, crossAlleys, placed,
+    )
+    map.mapObstacles = mapObstacles
+  }
+
   // 6. Hazard scattering via interpolated value noise
   for (const hazard of config.hazards) {
     placeHazards(map, rng, hazard, centerX, centerY, clearR)
@@ -440,6 +449,134 @@ function stampObstacle(
       setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.HALF_WALL)
     }
   }
+}
+
+// ── Map obstacle placement ────────────────────────────────────────────
+
+/**
+ * Pick a weighted random obstacle definition from a pool.
+ */
+function pickWeightedObstacle(rng: SeededRng, pool: WeightedObstacleDef[]): MapObstacleDef {
+  let totalWeight = 0
+  for (const entry of pool) totalWeight += entry.weight
+  let roll = rng.nextInt(totalWeight)
+  for (const entry of pool) {
+    roll -= entry.weight
+    if (roll < 0) return entry.def
+  }
+  return pool[pool.length - 1]!.def
+}
+
+/**
+ * Place strategic map obstacles via Poisson-like sampling.
+ * Returns an array of MapObstacle state objects for world.mapObstacles.
+ */
+function placeMapObstacles(
+  map: Tilemap,
+  rng: SeededRng,
+  cfg: { count: number; minSpacing: number; pool: WeightedObstacleDef[] },
+  centerX: number,
+  centerY: number,
+  clearR: number,
+  crossAlleys: SkipZone[],
+  existingPlaced: Array<{ x: number; y: number }>,
+): MapObstacle[] {
+  const { width, height, tileSize } = map
+  const obstacles: MapObstacle[] = []
+  let nextId = 1
+  const maxAttempts = cfg.count * 30
+  let placedCount = 0
+
+  for (let attempt = 0; attempt < maxAttempts && placedCount < cfg.count; attempt++) {
+    const def = pickWeightedObstacle(rng, cfg.pool)
+
+    // Pick a random tile position (inset from borders by 2 tiles)
+    const ox = 2 + rng.nextInt(width - 4 - (def.widthTiles - 1))
+    const oy = 2 + rng.nextInt(height - 4 - (def.heightTiles - 1))
+
+    // Reject if in center exclusion zone
+    if (Math.abs(ox - centerX) <= clearR + 1 && Math.abs(oy - centerY) <= clearR + 1) continue
+
+    // Reject if in a cross alley corridor
+    let inAlley = false
+    for (const alley of crossAlleys) {
+      if (oy >= alley.minY - 1 && oy + def.heightTiles <= alley.maxY + 1) {
+        // Check if any tile row overlaps the alley
+        for (let dy = 0; dy < def.heightTiles; dy++) {
+          if (oy + dy >= alley.minY && oy + dy < alley.maxY) { inAlley = true; break }
+        }
+        if (inAlley) break
+      }
+    }
+    if (inAlley) continue
+
+    // Reject if too close to existing obstacles/buildings
+    const obsCenterX = ox + def.widthTiles / 2
+    const obsCenterY = oy + def.heightTiles / 2
+    let tooClose = false
+    for (const p of existingPlaced) {
+      const dx = obsCenterX - p.x
+      const dy = obsCenterY - p.y
+      if (dx * dx + dy * dy < cfg.minSpacing * cfg.minSpacing) {
+        tooClose = true
+        break
+      }
+    }
+    if (tooClose) continue
+
+    // Collect all tile positions and check they fit
+    const allOffsets = [
+      ...def.walls.map(o => ({ ...o, tileType: TileType.WALL })),
+      ...(def.halfWalls ?? []).map(o => ({ ...o, tileType: TileType.HALF_WALL })),
+    ]
+
+    let fits = true
+    for (const offset of allOffsets) {
+      const tx = ox + offset.dx
+      const ty = oy + offset.dy
+      if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
+      if (Math.abs(tx - centerX) <= clearR && Math.abs(ty - centerY) <= clearR) { fits = false; break }
+      if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
+    }
+    if (!fits) continue
+
+    // Stamp tiles
+    for (const offset of allOffsets) {
+      setTile(map, 0, ox + offset.dx, oy + offset.dy, offset.tileType)
+    }
+
+    // Build tile coordinate list
+    const tiles = allOffsets.map(offset => ({
+      tileX: ox + offset.dx,
+      tileY: oy + offset.dy,
+      tileType: offset.tileType,
+    }))
+
+    // World-space center of the obstacle
+    const worldCenterX = (ox + def.widthTiles / 2) * tileSize
+    const worldCenterY = (oy + def.heightTiles / 2) * tileSize
+
+    const obstacle: MapObstacle = {
+      id: nextId++,
+      type: def.type,
+      x: worldCenterX,
+      y: worldCenterY,
+      tiles,
+      jumpable: def.jumpable,
+      widthTiles: def.widthTiles,
+      heightTiles: def.heightTiles,
+    }
+    if (def.hp !== undefined) {
+      obstacle.hp = def.hp
+      obstacle.maxHp = def.hp
+    }
+    obstacles.push(obstacle)
+
+    existingPlaced.push({ x: obsCenterX, y: obsCenterY })
+    placedCount++
+  }
+
+  return obstacles
 }
 
 // ── Town building placement helpers ────────────────────────────────────

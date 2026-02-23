@@ -365,6 +365,91 @@ export function emitShellCasing(
 }
 
 /**
+ * Wood splinters — burst of brown/tan particles on obstacle destruction.
+ * For crate, barrel, low wall, fallen tree.
+ */
+export function emitWoodSplinters(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(8, 14)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(50, 140)
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-4, 4),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.3, 0.5),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? 0x8b6833 : 0xc4a265,
+    })
+  }
+}
+
+/**
+ * Rock debris — heavier grey particles on boulder destruction.
+ */
+export function emitRockDebris(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(10, 16)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(40, 100)
+    pool.emit({
+      x: x + rand(-6, 6),
+      y: y + rand(-6, 6),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.35, 0.55),
+      startScale: rand(2.5, 5),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? 0x777777 : 0x555555,
+      ay: 120,
+    })
+  }
+}
+
+/**
+ * Obstacle hit — small chip particles per bullet hit (non-destroying).
+ */
+export function emitObstacleHit(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  isWood: boolean,
+): void {
+  const count = randInt(2, 4)
+  const tint = isWood ? 0x8b6833 : 0x888888
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(30, 70)
+    pool.emit({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.1, 0.2),
+      startScale: rand(1, 2.5),
+      endScale: 0,
+      startAlpha: 0.9,
+      endAlpha: 0,
+      tint,
+    })
+  }
+}
+
+/**
  * Movement dust — 1-2 small sandy particles kicked up at feet.
  */
 export function emitMovementDust(

@@ -18,4 +18,7 @@ export {
   emitMovementDust,
   emitRollDust,
   emitDirectionalImpact,
+  emitWoodSplinters,
+  emitRockDebris,
+  emitObstacleHit,
 } from './emitters'

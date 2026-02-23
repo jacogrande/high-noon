@@ -53,6 +53,8 @@ import {
   type CharacterId,
   HP_POTION_MAX_STACK,
   getBulletConfigForCharacter,
+  MapObstacleType,
+  isWoodObstacle,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameApp } from '../../engine/GameApp'
@@ -71,12 +73,13 @@ import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
 import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { BossAttackRenderer } from '../../render/BossAttackRenderer'
 import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
+import { MapObstacleRenderer } from '../../render/MapObstacleRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
-import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust } from '../../fx'
+import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust, emitWoodSplinters, emitRockDebris, emitObstacleHit } from '../../fx'
 import { TimeScale } from '../../engine/TimeScale'
 import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
 import { NpcRenderer } from '../../render/NpcRenderer'
@@ -149,6 +152,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly bossShockwaveRenderer: BossShockwaveRenderer
   private readonly bossAttackRenderer: BossAttackRenderer
   private readonly trapZoneRenderer: TrapZoneRenderer
+  private readonly mapObstacleRenderer: MapObstacleRenderer
   private readonly interactableRenderer: InteractableRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
@@ -214,6 +218,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
     this.bossAttackRenderer = new BossAttackRenderer(this.gameApp.layers.entities)
     this.trapZoneRenderer = new TrapZoneRenderer(this.gameApp.layers.entities)
+    this.mapObstacleRenderer = new MapObstacleRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
@@ -640,6 +645,29 @@ export class SingleplayerModeController implements SceneModeController {
       refreshTilemap(this.world.tilemap, this.tilemapRenderer, this.camera, this.lightingSystem)
     }
 
+    // Map obstacle destruction VFX
+    if (this.world.obstacleDestructions.length > 0) {
+      // Invalidate tilemap render so cleared tiles are updated visually
+      this.tilemapRenderer.invalidate()
+      if (this.world.tilemap) {
+        this.tilemapRenderer.render(this.world.tilemap)
+      }
+      for (const dest of this.world.obstacleDestructions) {
+        if (isWoodObstacle(dest.type)) {
+          emitWoodSplinters(this.particles, dest.x, dest.y)
+        } else {
+          emitRockDebris(this.particles, dest.x, dest.y)
+        }
+        const trauma = dest.type === MapObstacleType.BOULDER ? 0.3 : 0.15
+        this.camera.shake.addTrauma(trauma)
+      }
+    }
+
+    // Map obstacle hit VFX
+    for (const hit of this.world.obstacleHits) {
+      emitObstacleHit(this.particles, hit.x, hit.y, hit.isWood)
+    }
+
     emitShowdownCueEvents(this.gameplayEvents, this.world)
     emitLastRitesCueEvents(this.gameplayEvents, this.world)
     emitDynamiteCueEvents(this.gameplayEvents, this.world, playerEid)
@@ -904,6 +932,9 @@ export class SingleplayerModeController implements SceneModeController {
     // Render trap zones (bear traps, caltrops)
     this.trapZoneRenderer.render(this.world)
 
+    // Render map obstacles (crates, barrels, boulders, etc.)
+    this.mapObstacleRenderer.render(this.world)
+
     // Render dynamite pixel-fuse telegraphs + throw arcs.
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
 
@@ -1001,6 +1032,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.bossShockwaveRenderer.destroy()
     this.bossAttackRenderer.destroy()
     this.trapZoneRenderer.destroy()
+    this.mapObstacleRenderer.destroy()
     this.showdownRenderer.destroy()
     this.tumbleweedRenderer.destroy()
     this.bulletRenderer.destroy()
