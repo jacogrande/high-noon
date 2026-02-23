@@ -16,12 +16,29 @@ import { getAlivePlayers } from '../queries'
 const enemyQuery = defineQuery([Enemy, Detection, Position, EnemyAI])
 
 /**
+ * Check if a tile belongs to a destructible obstacle (has HP).
+ * Used to let enemies "see through" breakable cover.
+ */
+function isDestructibleObstacleTile(world: GameWorld, tileX: number, tileY: number): boolean {
+  for (const obs of world.mapObstacles) {
+    if (obs.hp === undefined) continue
+    for (const t of obs.tiles) {
+      if (t.tileX === tileX && t.tileY === tileY) return true
+    }
+  }
+  return false
+}
+
+/**
  * Bresenham line-of-sight check between two world positions.
  * Returns true if no solid tile blocks the line (excluding start/end tiles).
+ * Destructible obstacle tiles are treated as passable so enemies will
+ * shoot through breakable cover to reach the player.
  * On diagonal steps, checks both adjacent cardinal tiles to prevent
  * seeing through diagonal wall corners.
  */
 function hasLineOfSight(
+  world: GameWorld,
   tilemap: Tilemap,
   x0: number,
   y0: number,
@@ -44,7 +61,8 @@ function hasLineOfSight(
 
   const halfTile = tilemap.tileSize / 2
   const isSolid = (cx: number, cy: number) =>
-    isSolidAt(tilemap, cx * tilemap.tileSize + halfTile, cy * tilemap.tileSize + halfTile)
+    isSolidAt(tilemap, cx * tilemap.tileSize + halfTile, cy * tilemap.tileSize + halfTile) &&
+    !isDestructibleObstacleTile(world, cx, cy)
 
   while (tx !== ex || ty !== ey) {
     const e2 = 2 * err
@@ -170,7 +188,7 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
     if (losReq === 0) {
       EnemyAI.targetEid[eid] = bestEid
     } else if (tilemap && world.tick % 5 === Detection.staggerOffset[eid]!) {
-      if (hasLineOfSight(tilemap, ex, ey, Position.x[bestEid]!, Position.y[bestEid]!)) {
+      if (hasLineOfSight(world, tilemap, ex, ey, Position.x[bestEid]!, Position.y[bestEid]!)) {
         EnemyAI.targetEid[eid] = bestEid
       }
     }

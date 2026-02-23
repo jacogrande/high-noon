@@ -335,8 +335,8 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       }
     }
 
-    // --- Map obstacle collision (player bullets only) ---
-    if (Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET && world.mapObstacles.length > 0) {
+    // --- Map obstacle collision (player + enemy bullets) ---
+    if (world.mapObstacles.length > 0) {
       const ts = world.tilemap!.tileSize
       let hitObs = false
       for (let oi = world.mapObstacles.length - 1; oi >= 0; oi--) {

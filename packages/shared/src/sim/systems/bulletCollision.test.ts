@@ -1055,12 +1055,12 @@ describe('bulletCollisionSystem', () => {
       expect(world.obstacleDestructions[0]!.type).toBe(MapObstacleType.CRATE)
     })
 
-    test('enemy bullets do NOT damage obstacles', () => {
+    test('enemy bullets damage destructible obstacles', () => {
       spawnPlayer(world, OPEN_X + 200, OPEN_Y + 200)
       const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y)
       const obs = placeCrateObstacle(world, 7, 5, 3)
 
-      spawnBullet(world, {
+      const bulletEid = spawnBullet(world, {
         x: obs.x, y: obs.y,
         vx: 100, vy: 0,
         damage: 5,
@@ -1072,8 +1072,9 @@ describe('bulletCollisionSystem', () => {
       rebuildHash(world)
       bulletCollisionSystem(world, 1 / 60)
 
-      // Enemy bullets hit the wall tile, not the obstacle logic
-      expect(world.mapObstacles[0]!.hp).toBe(3) // unchanged
+      expect(world.mapObstacles[0]!.hp).toBe(2)
+      expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
+      expect(world.obstacleHits.length).toBe(1)
     })
 
     test('indestructible obstacles are not affected by bullets', () => {
