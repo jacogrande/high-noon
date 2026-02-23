@@ -11,6 +11,7 @@ import {
   BOULDER_DEF,
   FALLEN_TREE_DEF,
   LOW_WALL_DEF,
+  FENCE_RAIL_DEF,
   STAGE_1_OBSTACLE_POOL,
   STAGE_2_OBSTACLE_POOL,
   STAGE_3_OBSTACLE_POOL,
@@ -24,6 +25,7 @@ const ALL_DEFS: MapObstacleDef[] = [
   BOULDER_DEF,
   FALLEN_TREE_DEF,
   LOW_WALL_DEF,
+  FENCE_RAIL_DEF,
 ]
 
 describe('mapObstacleDefs', () => {
@@ -99,6 +101,7 @@ describe('mapObstacleDefs', () => {
     test('barrel is wood', () => expect(isWoodObstacle(MapObstacleType.BARREL)).toBe(true))
     test('low wall is wood', () => expect(isWoodObstacle(MapObstacleType.LOW_WALL)).toBe(true))
     test('fallen tree is wood', () => expect(isWoodObstacle(MapObstacleType.FALLEN_TREE)).toBe(true))
+    test('fence rail is wood', () => expect(isWoodObstacle(MapObstacleType.FENCE_RAIL)).toBe(true))
     test('boulder is not wood', () => expect(isWoodObstacle(MapObstacleType.BOULDER)).toBe(false))
   })
 
@@ -107,6 +110,7 @@ describe('mapObstacleDefs', () => {
     test('barrel has hp=2', () => expect(BARREL_DEF.hp).toBe(2))
     test('boulder has hp=5', () => expect(BOULDER_DEF.hp).toBe(5))
     test('low wall has hp=4', () => expect(LOW_WALL_DEF.hp).toBe(4))
+    test('fence rail has hp=3', () => expect(FENCE_RAIL_DEF.hp).toBe(3))
     test('fallen tree is indestructible', () => expect(FALLEN_TREE_DEF.hp).toBeUndefined())
   })
 })

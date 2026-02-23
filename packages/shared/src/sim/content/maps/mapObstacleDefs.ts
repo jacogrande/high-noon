@@ -12,6 +12,7 @@ export const MapObstacleType = {
   BOULDER: 2,
   FALLEN_TREE: 3,
   LOW_WALL: 4,
+  FENCE_RAIL: 5,
 } as const
 
 export type MapObstacleTypeValue = (typeof MapObstacleType)[keyof typeof MapObstacleType]
@@ -122,24 +123,37 @@ export const LOW_WALL_DEF: MapObstacleDef = {
   heightTiles: 1,
 }
 
+export const FENCE_RAIL_DEF: MapObstacleDef = {
+  type: MapObstacleType.FENCE_RAIL,
+  name: 'Fence Rail',
+  hp: 3,
+  halfWalls: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }],
+  walls: [],
+  jumpable: true,
+  widthTiles: 3,
+  heightTiles: 1,
+}
+
 /** Per-stage weighted obstacle pools */
 export interface WeightedObstacleDef {
   def: MapObstacleDef
   weight: number
 }
 
-/** Stage 1 (Town): crates (common), barrels, low walls */
+/** Stage 1 (Town): crates (common), barrels, low walls, fence rails */
 export const STAGE_1_OBSTACLE_POOL: WeightedObstacleDef[] = [
   { def: CRATE_DEF, weight: 3 },
   { def: BARREL_DEF, weight: 2 },
   { def: LOW_WALL_DEF, weight: 1 },
+  { def: FENCE_RAIL_DEF, weight: 2 },
 ]
 
-/** Stage 2 (Badlands): fallen trees (common), barrels, crates */
+/** Stage 2 (Badlands): fallen trees (common), barrels, crates, fence rails */
 export const STAGE_2_OBSTACLE_POOL: WeightedObstacleDef[] = [
   { def: FALLEN_TREE_DEF, weight: 3 },
   { def: BARREL_DEF, weight: 1 },
   { def: CRATE_DEF, weight: 1 },
+  { def: FENCE_RAIL_DEF, weight: 1 },
 ]
 
 /** Stage 3 (Canyon): boulders (common), crates */
@@ -148,12 +162,22 @@ export const STAGE_3_OBSTACLE_POOL: WeightedObstacleDef[] = [
   { def: CRATE_DEF, weight: 2 },
 ]
 
-/** Lookup table: obstacle type → whether it uses wood destruction particles */
+/** Lookup table: obstacle type → whether it uses wood destruction particles.
+ *  When adding a new MapObstacleType, add an explicit case here. */
 export function isWoodObstacle(type: MapObstacleTypeValue): boolean {
-  return (
-    type === MapObstacleType.CRATE ||
-    type === MapObstacleType.BARREL ||
-    type === MapObstacleType.LOW_WALL ||
-    type === MapObstacleType.FALLEN_TREE
-  )
+  switch (type) {
+    case MapObstacleType.CRATE:
+    case MapObstacleType.BARREL:
+    case MapObstacleType.LOW_WALL:
+    case MapObstacleType.FALLEN_TREE:
+    case MapObstacleType.FENCE_RAIL:
+      return true
+    case MapObstacleType.BOULDER:
+      return false
+    default: {
+      const _exhaustive: never = type
+      console.warn('isWoodObstacle: unhandled obstacle type', _exhaustive)
+      return false
+    }
+  }
 }

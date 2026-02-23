@@ -2,7 +2,7 @@
  * Map Obstacle Renderer
  *
  * Draws procedural graphics for map obstacles (crates, barrels, boulders,
- * fallen trees, low walls). Redraws when obstacle state changes (count,
+ * fallen trees, low walls, fence rails). Redraws when obstacle state changes (count,
  * positions, or HP values). Damage states shown via tint modulation.
  *
  * Follows the TrapZoneRenderer pattern: single Graphics object with
@@ -31,6 +31,10 @@ const FALLEN_TREE_BRANCH = 0x5a4020
 const LOW_WALL_FILL = 0x888888
 const LOW_WALL_STROKE = 0x666666
 const LOW_WALL_DOT = 0x999999
+
+const FENCE_RAIL_FILL = 0x9b7840
+const FENCE_RAIL_STROKE = 0x6b4c26
+const FENCE_RAIL_POST = 0x7a5c2e
 
 const DAMAGE_CRACK_COLOR = 0x333333
 const DAMAGE_CRITICAL_TINT = 0xff6666
@@ -96,6 +100,13 @@ export class MapObstacleRenderer {
         case MapObstacleType.LOW_WALL:
           this.drawLowWall(left, top, w, h, dmgRatio)
           break
+        case MapObstacleType.FENCE_RAIL:
+          this.drawFenceRail(left, top, w, h, dmgRatio)
+          break
+        default: {
+          const _exhaustive: never = obs.type
+          console.warn('MapObstacleRenderer: unhandled obstacle type', _exhaustive)
+        }
       }
     }
 
@@ -246,6 +257,44 @@ export class MapObstacleRenderer {
       this.graphics
         .moveTo(x + w * 0.4, y + 1)
         .lineTo(x + w * 0.5, y + h - 1)
+        .stroke({ color: DAMAGE_CRACK_COLOR, width: 1, alpha: 0.6 })
+    }
+  }
+
+  private drawFenceRail(x: number, y: number, w: number, h: number, dmgRatio: number): void {
+    const fill = dmgRatio <= 0.34 ? DAMAGE_CRITICAL_TINT : FENCE_RAIL_FILL
+    const alpha = dmgRatio <= 0.5 ? 0.8 : 0.9
+    const postW = 4
+    const plankH = 3
+
+    // Vertical posts at each end
+    this.graphics
+      .rect(x + 2, y + 2, postW, h - 4)
+      .fill({ color: FENCE_RAIL_POST, alpha })
+    this.graphics
+      .rect(x + w - postW - 2, y + 2, postW, h - 4)
+      .fill({ color: FENCE_RAIL_POST, alpha })
+
+    // Horizontal planks (two rails)
+    const plankLeft = x + postW + 2
+    const plankW = w - (postW + 2) * 2
+    this.graphics
+      .rect(plankLeft, y + h * 0.25, plankW, plankH)
+      .fill({ color: fill, alpha })
+    this.graphics
+      .rect(plankLeft, y + h * 0.65, plankW, plankH)
+      .fill({ color: fill, alpha })
+
+    // Outline
+    this.graphics
+      .rect(x + 1, y + 1, w - 2, h - 2)
+      .stroke({ color: FENCE_RAIL_STROKE, width: 1, alpha: 0.6 })
+
+    // Damage cracks
+    if (dmgRatio <= 0.5) {
+      this.graphics
+        .moveTo(x + w * 0.4, y + 2)
+        .lineTo(x + w * 0.45, y + h - 2)
         .stroke({ color: DAMAGE_CRACK_COLOR, width: 1, alpha: 0.6 })
     }
   }
