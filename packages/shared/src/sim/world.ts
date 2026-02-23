@@ -239,6 +239,9 @@ export interface DamageAttribution {
   ownerPlayerEid: number | null
   /** Whether the most recent damaging hit was melee */
   wasMelee: boolean
+  /** Normalized direction of the damaging hit (bullet travel direction) */
+  dirX: number
+  dirY: number
 }
 
 export interface PendingGoldReward {
@@ -443,6 +446,8 @@ export interface GameWorld extends IWorld {
   runIntroSequence: number
   /** Per-tick flag: true on the tick a stage is cleared */
   stageCleared: boolean
+  /** Per-tick flag: true on the tick a wave is cleared */
+  waveClearedThisTick: boolean
   /** Maximum enemy projectiles before fodder stops firing */
   maxProjectiles: number
   /** Initial seed used to create the RNG (stored for replay reset) */
@@ -635,6 +640,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     runIntroText: null,
     runIntroSequence: 0,
     stageCleared: false,
+    waveClearedThisTick: false,
     maxProjectiles: 80,
     initialSeed: resolvedSeed,
     rng: new SeededRng(resolvedSeed),
@@ -744,6 +750,7 @@ export function resetWorld(world: GameWorld): void {
   world.runIntroText = null
   world.runIntroSequence = 0
   world.stageCleared = false
+  world.waveClearedThisTick = false
   world.maxProjectiles = 80
   world.lastPlayerHitDir.clear()
   world.upgradeState = initUpgradeState(charDef)

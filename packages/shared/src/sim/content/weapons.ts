@@ -217,6 +217,41 @@ export const PICKAXE_SPRITE: WeaponSpriteData = {
   scale: 1.1,
 }
 
+// ============================================================================
+// Recoil Profiles — per-character camera kick feel
+// ============================================================================
+
+export interface RecoilProfile {
+  cameraKickStrength: number
+  fireTrauma: number
+  /** Brief freeze on fire in milliseconds (0 = none) */
+  fireSlowdownMs: number
+}
+
+export const REVOLVER_RECOIL: RecoilProfile = {
+  cameraKickStrength: 5,
+  fireTrauma: 0.15,
+  fireSlowdownMs: 0,
+}
+
+export const SAWED_OFF_RECOIL: RecoilProfile = {
+  cameraKickStrength: 8,
+  fireTrauma: 0.25,
+  fireSlowdownMs: 30,
+}
+
+export const PICKAXE_RECOIL: RecoilProfile = {
+  cameraKickStrength: 3,
+  fireTrauma: 0.1,
+  fireSlowdownMs: 0,
+}
+
+export const CHARACTER_RECOIL: Record<CharacterId, RecoilProfile> = {
+  sheriff: REVOLVER_RECOIL,
+  undertaker: SAWED_OFF_RECOIL,
+  prospector: PICKAXE_RECOIL,
+}
+
 /** Character -> primary weapon visual mapping. */
 export const CHARACTER_WEAPON_SPRITES: Record<CharacterId, WeaponSpriteData> = {
   sheriff: REVOLVER_SPRITE,

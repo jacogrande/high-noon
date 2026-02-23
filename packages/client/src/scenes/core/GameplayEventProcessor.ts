@@ -1,20 +1,24 @@
 import {
   emitDeathBurst,
   emitDeathPulse,
+  emitDirectionalImpact,
   emitEntityImpact,
   emitExplosion,
   emitFuseSparks,
   emitLevelUpSparkle,
   emitMuzzleFlash,
+  emitShellCasing,
   emitShotTracer,
   emitSwingArc,
   emitWallImpact,
   FloatingTextPool,
   ParticlePool,
+  KillStreakTracker,
 } from '../../fx'
 import { SoundManager } from '../../audio/SoundManager'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
+import { TimeScale } from '../../engine/TimeScale'
 import { PlayerRenderer } from '../../render/PlayerRenderer'
 import type { GameplayEvent } from './GameplayEvents'
 
@@ -27,6 +31,8 @@ export interface GameplayEventProcessorDeps {
   hitStop?: HitStop
   renderPause?: HitStop
   spawnMuzzleLight?: (x: number, y: number) => void
+  killStreakTracker?: KillStreakTracker
+  timeScale?: TimeScale
 }
 
 export class GameplayEventProcessor {
@@ -38,6 +44,8 @@ export class GameplayEventProcessor {
   private readonly hitStop: HitStop | undefined
   private readonly renderPause: HitStop | undefined
   private readonly spawnMuzzleLight: ((x: number, y: number) => void) | undefined
+  private readonly killStreakTracker: KillStreakTracker | undefined
+  private readonly timeScale: TimeScale | undefined
   private pendingBossIntro: { bossName: string; taunt: string } | null = null
 
   constructor(deps: GameplayEventProcessorDeps) {
@@ -49,6 +57,8 @@ export class GameplayEventProcessor {
     this.hitStop = deps.hitStop
     this.renderPause = deps.renderPause
     this.spawnMuzzleLight = deps.spawnMuzzleLight
+    this.killStreakTracker = deps.killStreakTracker
+    this.timeScale = deps.timeScale
   }
 
   processAll(events: readonly GameplayEvent[]): void {
@@ -61,10 +71,37 @@ export class GameplayEventProcessor {
           }
           for (const death of event.deaths) {
             emitDeathBurst(this.particles, death.x, death.y, death.color, death.isThreat)
+
+            // Kill streak tracking
+            if (this.killStreakTracker) {
+              const now = performance.now() / 1000
+              this.killStreakTracker.registerKill(now)
+              this.camera.addTrauma(this.killStreakTracker.getTraumaBonus())
+              if (this.killStreakTracker.shouldSlowMo() && this.timeScale) {
+                this.timeScale.slowMo(0.3, 0.15)
+              }
+            }
+
+            // Threat deaths get longer hit-stop
+            if (death.isThreat) {
+              this.hitStop?.freeze(0.06)
+            }
           }
+
+          // Impact freeze scaling: base 30ms + 2ms per damage, capped at 100ms
+          if (event.hits.length > 0) {
+            let totalDamage = 0
+            for (const hit of event.hits) {
+              totalDamage += hit.amount
+            }
+            const freezeDuration = Math.min(0.1, 0.03 + totalDamage * 0.002)
+            this.hitStop?.freeze(freezeDuration)
+          }
+
           for (const hit of event.hits) {
-            emitEntityImpact(this.particles, hit.x, hit.y, hit.color)
-            this.floatingText.spawn(hit.x, hit.y, hit.amount, hit.color)
+            emitDirectionalImpact(this.particles, hit.x, hit.y, hit.color, hit.dirX, hit.dirY)
+            const textScale = this.killStreakTracker?.getTextScale() ?? 1
+            this.floatingText.spawn(hit.x, hit.y, hit.amount, hit.color, textScale)
           }
           break
         }
@@ -98,7 +135,11 @@ export class GameplayEventProcessor {
           this.playerRenderer.triggerRecoil(event.eid)
           emitMuzzleFlash(this.particles, event.muzzleX, event.muzzleY, event.angle)
           emitShotTracer(this.particles, event.muzzleX, event.muzzleY, event.angle)
+          emitShellCasing(this.particles, event.muzzleX, event.muzzleY, event.angle)
           this.spawnMuzzleLight?.(event.muzzleX, event.muzzleY)
+          if (event.fireSlowdownMs && event.fireSlowdownMs > 0) {
+            this.hitStop?.freeze(event.fireSlowdownMs / 1000)
+          }
           break
         }
 
@@ -196,6 +237,7 @@ export class GameplayEventProcessor {
           this.camera.addTrauma(0.4)
           this.sound.play('showdown_activate')
           emitDeathPulse(this.particles, event.x, event.y, 80)
+          this.hitStop?.freeze(0.12)
           break
       }
     }

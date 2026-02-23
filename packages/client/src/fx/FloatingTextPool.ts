@@ -49,7 +49,7 @@ export class FloatingTextPool {
     }
   }
 
-  spawn(x: number, y: number, amount: number, color: number): void {
+  spawn(x: number, y: number, amount: number, color: number, scale: number = 1): void {
     if (this.freeList.length === 0) return
 
     const idx = this.freeList.pop()!
@@ -60,6 +60,7 @@ export class FloatingTextPool {
     text.tint = color
     text.position.set(x, y)
     text.alpha = 1
+    text.scale.set(scale)
     text.visible = true
 
     this.life[idx] = FLOAT_DURATION

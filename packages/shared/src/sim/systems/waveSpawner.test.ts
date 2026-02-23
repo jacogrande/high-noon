@@ -379,6 +379,33 @@ describe('waveSpawnerSystem', () => {
       expect(world.encounter!.completed).toBe(true)
     })
 
+    test('waveClearedThisTick is set when wave clears and resets next tick', () => {
+      const encounter = makeEncounter({
+        fodderBudget: 0,
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }],
+        spawnDelay: 0,
+        threatClearRatio: 1.0,
+      })
+      setEncounter(world, encounter)
+
+      // Before any wave clear
+      expect(world.waveClearedThisTick).toBe(false)
+
+      // Activate wave — 1 threat spawns
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.waveClearedThisTick).toBe(false)
+
+      // Kill threat → wave clears
+      const threats = getThreatEids(world)
+      killEnemy(world, threats[0]!)
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.waveClearedThisTick).toBe(true)
+
+      // Next tick → flag resets
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.waveClearedThisTick).toBe(false)
+    })
+
     test('fodder does not block wave progression', () => {
       // Wave with threats + lots of fodder alive, ratio 1.0
       const encounter = makeEncounter({

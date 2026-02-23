@@ -265,20 +265,26 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         return
       }
 
+      // Compute normalized bullet travel direction for directional VFX
+      const bvx = Velocity.x[eid]!
+      const bvy = Velocity.y[eid]!
+      const bspeed = Math.sqrt(bvx * bvx + bvy * bvy)
+      const hitDirX = bspeed > 0 ? bvx / bspeed : 0
+      const hitDirY = bspeed > 0 ? bvy / bspeed : 0
+
       // HIT — apply damage through shared authoritative path.
       applyDamage(world, targetEid, {
         amount: damage,
         attackerEid: eid,
         setIframes: true,
+        dirX: hitDirX,
+        dirY: hitDirY,
       })
 
-      // Store hit direction per-player for camera kick (bullet travel direction)
+      // Store hit direction per-player for camera kick (reuse already-computed unit vector)
       if (Collider.layer[targetEid]! === CollisionLayer.PLAYER) {
-        const bvx = Velocity.x[eid]!
-        const bvy = Velocity.y[eid]!
-        const blen = Math.sqrt(bvx * bvx + bvy * bvy)
-        if (blen > 0) {
-          world.lastPlayerHitDir.set(targetEid, { x: bvx / blen, y: bvy / blen })
+        if (bspeed > 0) {
+          world.lastPlayerHitDir.set(targetEid, { x: hitDirX, y: hitDirY })
         }
       }
 

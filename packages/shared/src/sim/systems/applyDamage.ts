@@ -12,6 +12,9 @@ export interface ApplyDamageOptions {
   trackAttribution?: boolean
   melee?: boolean
   clampToZero?: boolean
+  /** Normalized damage direction (bullet travel dir) for directional VFX */
+  dirX?: number
+  dirY?: number
 }
 
 export interface DamageResult {
@@ -82,6 +85,8 @@ export function applyDamage(world: GameWorld, targetEid: number, options: ApplyD
     world.lastDamageByEntity.set(targetEid, {
       ownerPlayerEid,
       wasMelee: ownerPlayerEid !== null && options.melee === true,
+      dirX: options.dirX ?? 0,
+      dirY: options.dirY ?? 0,
     })
   }
 

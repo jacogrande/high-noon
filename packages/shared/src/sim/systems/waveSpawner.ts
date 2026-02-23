@@ -175,6 +175,8 @@ function spawnEnemy(world: GameWorld, type: number, x: number, y: number): numbe
 }
 
 export function waveSpawnerSystem(world: GameWorld, dt: number): void {
+  world.waveClearedThisTick = false
+
   const enc = world.encounter
   if (!enc || enc.completed) return
   if (world.spawnsPaused) return
@@ -323,6 +325,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
     enc.waveActive = false
     enc.activeWaveThreatEids.clear()
     enc.currentWave++
+    world.waveClearedThisTick = true
     if (enc.currentWave >= enc.definition.waves.length) {
       enc.completed = true
     } else {

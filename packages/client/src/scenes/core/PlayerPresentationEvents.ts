@@ -32,6 +32,7 @@ export interface EmitCylinderPresentationEventsArgs {
   muzzleY: number
   fireTrauma: number
   fireKickStrength: number
+  fireSlowdownMs?: number
 }
 
 export interface EmitShowdownCueFlags {
@@ -66,7 +67,7 @@ export function emitPlayerHitEvent(
 
 export function emitCylinderPresentationEvents(args: EmitCylinderPresentationEventsArgs): number {
   if (didFireRound(args.prevRounds, args.newRounds)) {
-    args.events.push({
+    const fireEvent: Parameters<GameplayEventBuffer['push']>[0] = {
       type: 'player-fire',
       eid: args.actorEid,
       angle: args.aimAngle,
@@ -74,7 +75,11 @@ export function emitCylinderPresentationEvents(args: EmitCylinderPresentationEve
       muzzleY: args.muzzleY,
       trauma: args.fireTrauma,
       kickStrength: args.fireKickStrength,
-    })
+    }
+    if (args.fireSlowdownMs !== undefined) {
+      fireEvent.fireSlowdownMs = args.fireSlowdownMs
+    }
+    args.events.push(fireEvent)
   }
 
   if (didStartReload(args.prevReloading, args.nowReloading)) {

@@ -18,6 +18,8 @@ export interface ParticleConfig {
   startAlpha: number
   endAlpha: number
   tint: number
+  /** Optional vertical acceleration (gravity). Default 0. */
+  ay?: number
 }
 
 const DEFAULT_POOL_SIZE = 512
@@ -27,6 +29,7 @@ export class ParticlePool {
   // SoA arrays
   private readonly vx: Float32Array
   private readonly vy: Float32Array
+  private readonly ay: Float32Array
   private readonly life: Float32Array
   private readonly maxLife: Float32Array
   private readonly startScale: Float32Array
@@ -41,6 +44,7 @@ export class ParticlePool {
     this.sprites = new Array(poolSize)
     this.vx = new Float32Array(poolSize)
     this.vy = new Float32Array(poolSize)
+    this.ay = new Float32Array(poolSize)
     this.life = new Float32Array(poolSize)
     this.maxLife = new Float32Array(poolSize)
     this.startScale = new Float32Array(poolSize)
@@ -76,6 +80,7 @@ export class ParticlePool {
 
     this.vx[idx] = config.vx
     this.vy[idx] = config.vy
+    this.ay[idx] = config.ay ?? 0
     this.life[idx] = config.life
     this.maxLife[idx] = config.life
     this.startScale[idx] = config.startScale
@@ -104,6 +109,9 @@ export class ParticlePool {
 
       const t = 1 - this.life[idx]! / this.maxLife[idx]! // 0 at spawn → 1 at death
       const sprite = this.sprites[idx]!
+
+      // Apply gravity
+      this.vy[idx]! += this.ay[idx]! * dt
 
       // Move
       sprite.x += this.vx[idx]! * dt

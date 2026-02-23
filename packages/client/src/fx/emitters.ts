@@ -317,7 +317,7 @@ export function emitSwingArc(
   const tint = isCharged ? 0xff8822 : 0xcc8844
   const scale = isCharged ? rand(3, 5) : rand(2, 3.5)
   for (let i = 0; i < count; i++) {
-    const t = (i / (count - 1)) * 2 - 1 // -1..1
+    const t = count > 1 ? (i / (count - 1)) * 2 - 1 : 0 // -1..1
     const a = angle + t * arcHalf + rand(-0.1, 0.1)
     const dist = reach * rand(0.4, 1.0)
     const speed = rand(30, 70)
@@ -332,6 +332,123 @@ export function emitSwingArc(
       startAlpha: 1,
       endAlpha: 0,
       tint,
+    })
+  }
+}
+
+/**
+ * Shell casing — 1 tiny brass particle ejected perpendicular to fire direction.
+ * Arcs downward with gravity.
+ */
+export function emitShellCasing(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  aimAngle: number,
+): void {
+  // Eject perpendicular (right side) with upward bias
+  const perpAngle = aimAngle + Math.PI / 2 + rand(-0.3, 0.3)
+  const speed = rand(30, 60)
+  pool.emit({
+    x,
+    y,
+    vx: Math.cos(perpAngle) * speed,
+    vy: Math.sin(perpAngle) * speed - rand(20, 40), // upward bias (Y-down in Pixi, so subtract = up)
+    life: rand(0.4, 0.7),
+    startScale: rand(1.5, 2),
+    endScale: rand(1.2, 1.5),
+    startAlpha: 1,
+    endAlpha: 0.3,
+    tint: 0xddaa44,
+    ay: 300,
+  })
+}
+
+/**
+ * Movement dust — 1-2 small sandy particles kicked up at feet.
+ */
+export function emitMovementDust(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(1, 2)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(8, 20)
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-2, 2),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.2, 0.35),
+      startScale: rand(1.5, 2.5),
+      endScale: rand(3, 5),
+      startAlpha: 0.4,
+      endAlpha: 0,
+      tint: 0xccaa77,
+    })
+  }
+}
+
+/**
+ * Roll dust — larger puff of 6-10 particles on dodge roll start.
+ */
+export function emitRollDust(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(6, 10)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(20, 50)
+    pool.emit({
+      x: x + rand(-3, 3),
+      y: y + rand(-3, 3),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.3, 0.5),
+      startScale: rand(2, 4),
+      endScale: rand(5, 8),
+      startAlpha: 0.5,
+      endAlpha: 0,
+      tint: 0xccaa77,
+    })
+  }
+}
+
+/**
+ * Directional impact — colored particles sprayed in bullet travel direction.
+ * Falls back to omnidirectional if no direction provided.
+ */
+export function emitDirectionalImpact(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+  color: number,
+  dirX: number,
+  dirY: number,
+): void {
+  const hasDir = dirX !== 0 || dirY !== 0
+  const baseAngle = hasDir ? Math.atan2(dirY, dirX) : 0
+  const count = randInt(3, 5)
+  for (let i = 0; i < count; i++) {
+    const angle = hasDir
+      ? baseAngle + rand(-0.8, 0.8) // ~90° cone along bullet travel
+      : rand(0, Math.PI * 2)
+    const speed = rand(30, 80)
+    pool.emit({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.1, 0.15),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: color,
     })
   }
 }

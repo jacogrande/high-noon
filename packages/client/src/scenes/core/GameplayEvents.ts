@@ -10,6 +10,8 @@ export interface EnemyHitEvent {
   y: number
   color: number
   amount: number
+  dirX: number
+  dirY: number
 }
 
 export type GameplayEvent =
@@ -40,6 +42,7 @@ export type GameplayEvent =
       muzzleY: number
       trauma: number
       kickStrength: number
+      fireSlowdownMs?: number
     }
   | {
       type: 'shot-confirmed'

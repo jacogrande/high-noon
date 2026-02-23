@@ -36,6 +36,7 @@ import {
   BossPhase,
   EnemyType,
   getBoss,
+  CHARACTER_RECOIL,
   type GameWorld,
   type SystemRegistry,
   type Tilemap,
@@ -75,7 +76,9 @@ import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRen
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
-import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
+import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust } from '../../fx'
+import { TimeScale } from '../../engine/TimeScale'
+import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
 import { NpcRenderer } from '../../render/NpcRenderer'
 import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import { GameplayEventBuffer } from './GameplayEvents'
@@ -161,9 +164,14 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly pendingVisualShots: number[] = []
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
+  private readonly timeScale: TimeScale
+  private readonly killStreakTracker: KillStreakTracker
+  private readonly tumbleweedRenderer: TumbleweedRenderer
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
   private paused = false
+  private dustAccumulator = 0
+  private wasRolling = false
 
   constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
@@ -247,6 +255,9 @@ export class SingleplayerModeController implements SceneModeController {
     this.particles = new ParticlePool(this.gameApp.layers.fx)
     this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
     this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.entities)
+    this.timeScale = new TimeScale()
+    this.killStreakTracker = new KillStreakTracker()
+    this.tumbleweedRenderer = new TumbleweedRenderer(this.gameApp.layers.entities)
     this.gameplayEvents = new GameplayEventBuffer()
     this.gameplayEventProcessor = new GameplayEventProcessor({
       camera: this.camera,
@@ -256,6 +267,8 @@ export class SingleplayerModeController implements SceneModeController {
       playerRenderer: this.playerRenderer,
       hitStop: this.hitStop,
       spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
+      killStreakTracker: this.killStreakTracker,
+      timeScale: this.timeScale,
     })
 
     this.lastRenderTime = performance.now()
@@ -689,6 +702,7 @@ export class SingleplayerModeController implements SceneModeController {
         )
         this.queuePendingVisualShot(visualBulletId)
       }
+      const recoil = CHARACTER_RECOIL[this.world.characterId]
       this.dryFireCooldown = emitCylinderPresentationEvents({
         events: this.gameplayEvents,
         actorEid: playerEid,
@@ -702,8 +716,9 @@ export class SingleplayerModeController implements SceneModeController {
         aimAngle: angle,
         muzzleX,
         muzzleY,
-        fireTrauma: 0.15,
-        fireKickStrength: 5,
+        fireTrauma: recoil.fireTrauma,
+        fireKickStrength: recoil.cameraKickStrength,
+        fireSlowdownMs: recoil.fireSlowdownMs,
       })
     }
     this.resolvePendingLocalShotResults(playerEid)
@@ -719,6 +734,17 @@ export class SingleplayerModeController implements SceneModeController {
           y: Position.y[playerEid]!,
         })
       }
+    }
+
+    // Wave-clear slow-mo
+    if (this.world.waveClearedThisTick) {
+      this.timeScale.slowMo(0.3, 0.3)
+    }
+
+    // Stage-clear tumbleweeds
+    if (this.world.stageCleared) {
+      const tmBounds = getPlayableBoundsFromTilemap(this.tilemap)
+      this.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
     }
 
     // Apply queued feedback events in one place (shared with multiplayer).
@@ -819,8 +845,36 @@ export class SingleplayerModeController implements SceneModeController {
     }
     this.interactableRenderer.render(interactables, realDt)
 
+    // Apply render time scale for slow-mo effects
+    const scaledDt = this.timeScale.update(realDt)
+
     // Render player with interpolation
     this.playerRenderer.render(this.world, alpha, realDt)
+
+    // Dust clouds from player movement
+    {
+      const eid = this.playerRenderer.getPlayerEntity()
+      if (eid !== null) {
+        const isRolling = PlayerState.state[eid] === PlayerStateType.ROLLING
+        if (isRolling && !this.wasRolling) {
+          emitRollDust(this.particles, Position.x[eid]!, Position.y[eid]!)
+        }
+        this.wasRolling = isRolling
+
+        const vx = Velocity.x[eid]!
+        const vy = Velocity.y[eid]!
+        const speed = Math.sqrt(vx * vx + vy * vy)
+        if (speed > 50 && !isRolling) {
+          this.dustAccumulator += realDt
+          if (this.dustAccumulator >= 0.06) {
+            this.dustAccumulator = 0
+            emitMovementDust(this.particles, Position.x[eid]!, Position.y[eid]!)
+          }
+        } else {
+          this.dustAccumulator = 0
+        }
+      }
+    }
 
     // Advance and render local-only cosmetic player bullets.
     this.bulletRenderer.updateVisualBullets(realDt)
@@ -858,9 +912,12 @@ export class SingleplayerModeController implements SceneModeController {
     this.showdownRenderer.render(this.world, playerEid !== null ? [playerEid] : [], alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
 
-    // Update particles (visual-only, uses real frame dt)
-    this.particles.update(realDt)
-    this.floatingText.update(realDt)
+    // Update tumbleweeds
+    this.tumbleweedRenderer.update(scaledDt)
+
+    // Update particles (visual-only, uses scaled dt for slow-mo)
+    this.particles.update(scaledDt)
+    this.floatingText.update(scaledDt)
     this.chatBubblePool.update(realDt, this.world)
 
     this.deathPresentation.update(this.isPlayerDead())
@@ -945,6 +1002,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.bossAttackRenderer.destroy()
     this.trapZoneRenderer.destroy()
     this.showdownRenderer.destroy()
+    this.tumbleweedRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

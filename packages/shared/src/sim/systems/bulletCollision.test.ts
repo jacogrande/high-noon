@@ -706,6 +706,27 @@ describe('bulletCollisionSystem', () => {
       expect(capturedNewHP).toBe(startHP - 2)
     })
 
+    test('stores damage direction in lastDamageByEntity when enemy is hit', () => {
+      const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
+      const enemyEid = spawnTestEnemy(world, OPEN_X, OPEN_Y, 20)
+
+      spawnBullet(world, {
+        x: OPEN_X, y: OPEN_Y,
+        vx: 100, vy: 0, // bullet traveling right
+        damage: 5,
+        range: 500,
+        ownerId: playerEid,
+      })
+
+      rebuildHash(world)
+      bulletCollisionSystem(world, 1 / 60)
+
+      const attr = world.lastDamageByEntity.get(enemyEid)!
+      expect(attr).toBeDefined()
+      expect(attr.dirX).toBeCloseTo(1)
+      expect(attr.dirY).toBeCloseTo(0)
+    })
+
     test('stores lastPlayerHitDir when player is hit', () => {
       const playerEid = spawnPlayer(world, OPEN_X, OPEN_Y)
       const enemyEid = spawnTestEnemy(world, OPEN_X + 200, OPEN_Y)

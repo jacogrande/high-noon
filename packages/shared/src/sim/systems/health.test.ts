@@ -96,7 +96,7 @@ describe('healthSystem', () => {
       const playerB = spawnPlayer(world, 120, 100)
       const eid = spawnHealthEntity(1)
       Health.current[eid] = 0
-      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerB, wasMelee: false })
+      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerB, wasMelee: false, dirX: 0, dirY: 0 })
 
       let capturedKiller = -1
       world.hooks.register('onKill', 'test_kill_credit', (_world, killerEid) => {
@@ -116,7 +116,7 @@ describe('healthSystem', () => {
       addComponent(world, Enemy, eid)
       Enemy.type[eid] = EnemyType.SWARMER
       Health.current[eid] = 0
-      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerEid, wasMelee: true })
+      world.lastDamageByEntity.set(eid, { ownerPlayerEid: playerEid, wasMelee: true, dirX: 0, dirY: 0 })
 
       healthSystem(world, 1 / 60)
 

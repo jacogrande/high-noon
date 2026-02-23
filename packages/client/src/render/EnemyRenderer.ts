@@ -163,7 +163,7 @@ interface DeathEffect {
 export interface EnemySyncResult {
   deathTrauma: number
   deaths: Array<{ x: number; y: number; color: number; isThreat: boolean }>
-  hits: Array<{ x: number; y: number; color: number; amount: number }>
+  hits: Array<{ x: number; y: number; color: number; amount: number; dirX: number; dirY: number }>
 }
 
 export interface PendingBossIntro {
@@ -309,7 +309,8 @@ export class EnemyRenderer {
             this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
             const cachedType = this.enemyTypes.get(eid)
             const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
-            result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: watermark - currentHP })
+            const dmgAttr = world.lastDamageByEntity.get(eid)
+            result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: watermark - currentHP, dirX: dmgAttr?.dirX ?? 0, dirY: dmgAttr?.dirY ?? 0 })
             this.hpWatermark.set(eid, currentHP)
           } else if (currentHP > watermark && prevHP > watermark) {
             // Two consecutive HP changes both above watermark — the server
@@ -337,7 +338,8 @@ export class EnemyRenderer {
           // Emit final damage for any unshown HP (killing blow)
           const watermark = this.hpWatermark.get(eid) ?? 0
           if (watermark > 0) {
-            result.hits.push({ x: displayObj.x, y: displayObj.y, color, amount: watermark })
+            const dmgAttr = world.lastDamageByEntity.get(eid)
+            result.hits.push({ x: displayObj.x, y: displayObj.y, color, amount: watermark, dirX: dmgAttr?.dirX ?? 0, dirY: dmgAttr?.dirY ?? 0 })
           }
           result.deaths.push({ x: displayObj.x, y: displayObj.y, color, isThreat })
         }

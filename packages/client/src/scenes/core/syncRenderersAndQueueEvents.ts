@@ -34,7 +34,7 @@ export function syncRenderersAndQueueEvents(ctx: RendererSyncContext): void {
       type: 'enemy-sync',
       deathTrauma: enemySync.deathTrauma,
       deaths: enemySync.deaths.map(d => ({ x: d.x, y: d.y, color: d.color, isThreat: d.isThreat })),
-      hits: enemySync.hits.map(h => ({ x: h.x, y: h.y, color: h.color, amount: h.amount })),
+      hits: enemySync.hits.map(h => ({ x: h.x, y: h.y, color: h.color, amount: h.amount, dirX: h.dirX, dirY: h.dirY })),
     })
   }
 
