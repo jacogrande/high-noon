@@ -1,14 +1,18 @@
 /**
- * Shared combat helper: iterate alive enemies within a radius.
+ * Shared combat helpers.
  *
- * Centralizes the repeated pattern of spatial-hash query → Enemy check →
- * Health check → Dead check → distance check → callback.
+ * - forEachAliveEnemyInRadius: spatial-hash query → Enemy → Health → Dead →
+ *   distance check → callback.
+ * - damageMapObstacle: apply damage to a map obstacle, emit events, clear tiles
+ *   on destruction.
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Enemy, Health, Dead, Position } from '../components'
 import { forEachInRadius } from '../SpatialHash'
+import { setTile, TileType } from '../tilemap'
+import { isWoodObstacle, type MapObstacle } from '../content/maps/mapObstacleDefs'
 
 const enemyQuery = defineQuery([Enemy, Health, Position])
 
@@ -51,4 +55,48 @@ export function forEachAliveEnemyInRadius(
   for (const eid of enemyQuery(world)) {
     visitEnemy(eid)
   }
+}
+
+/**
+ * Apply damage to a map obstacle at the given array index.
+ *
+ * Emits hit/destruction events, clears tiles on death, splices the obstacle
+ * from the world array, and invalidates the flow field.
+ *
+ * @returns true if the obstacle was destroyed (removed from array)
+ */
+export function damageMapObstacle(
+  world: GameWorld,
+  obstacleIndex: number,
+  damage: number,
+): boolean {
+  const obs = world.mapObstacles[obstacleIndex]!
+  const tilemap = world.tilemap!
+
+  obs.hp! -= damage
+  world.obstacleHits.push({
+    id: obs.id,
+    x: obs.x,
+    y: obs.y,
+    isWood: isWoodObstacle(obs.type),
+  })
+
+  if (obs.hp! <= 0) {
+    for (const tile of obs.tiles) {
+      setTile(tilemap, 0, tile.tileX, tile.tileY, TileType.EMPTY)
+    }
+    world.obstacleDestructions.push({
+      id: obs.id,
+      type: obs.type,
+      x: obs.x,
+      y: obs.y,
+    })
+    world.mapObstacles.splice(obstacleIndex, 1)
+    if (world.flowField) {
+      world.flowField.seedKey = ''
+    }
+    return true
+  }
+
+  return false
 }

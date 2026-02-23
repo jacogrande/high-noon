@@ -20,6 +20,7 @@ import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { damageMapObstacle } from './damageHelpers'
 
 /** Upper bound on historical enemy samples during lag-comp overlap checks. */
 const MAX_HISTORICAL_OVERLAP_SAMPLES = 16
@@ -327,6 +328,33 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       }
       if (hitTrap) {
         // Rewind catch-up sweep start is only used for the first collision step.
+        if (sweepStart) {
+          world.lagCompBulletSweepStart.delete(eid)
+        }
+        continue
+      }
+    }
+
+    // --- Map obstacle collision (player bullets only) ---
+    if (Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET && world.mapObstacles.length > 0) {
+      const ts = world.tilemap!.tileSize
+      let hitObs = false
+      for (let oi = world.mapObstacles.length - 1; oi >= 0; oi--) {
+        const obs = world.mapObstacles[oi]!
+        if (obs.hp === undefined) continue // indestructible
+
+        // AABB overlap: obstacle world bounds vs bullet position ± radius
+        const halfW = (obs.widthTiles * ts) / 2
+        const halfH = (obs.heightTiles * ts) / 2
+        if (x + radius < obs.x - halfW || x - radius > obs.x + halfW) continue
+        if (y + radius < obs.y - halfH || y - radius > obs.y + halfH) continue
+
+        damageMapObstacle(world, oi, 1)
+        bulletsToRemove.push(eid)
+        hitObs = true
+        break
+      }
+      if (hitObs) {
         if (sweepStart) {
           world.lagCompBulletSweepStart.delete(eid)
         }

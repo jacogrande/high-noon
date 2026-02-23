@@ -689,6 +689,80 @@ describe('mapGenerator', () => {
     })
   })
 
+  describe('map obstacle placement', () => {
+    test('stage 1 generates map obstacles', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      expect(map.mapObstacles).toBeDefined()
+      expect(map.mapObstacles!.length).toBeGreaterThan(0)
+      expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count)
+    })
+
+    test('stage 2 generates map obstacles', () => {
+      const map = generateArena(STAGE_2_MAP_CONFIG, 12345, 1)
+      expect(map.mapObstacles).toBeDefined()
+      expect(map.mapObstacles!.length).toBeGreaterThan(0)
+    })
+
+    test('stage 3 generates map obstacles', () => {
+      const map = generateArena(STAGE_3_MAP_CONFIG, 12345, 2)
+      expect(map.mapObstacles).toBeDefined()
+      expect(map.mapObstacles!.length).toBeGreaterThan(0)
+    })
+
+    test('obstacle tiles are stamped as WALL or HALF_WALL', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const solidLayer = map.layers[0]!
+      for (const obs of map.mapObstacles!) {
+        for (const tile of obs.tiles) {
+          const tileVal = solidLayer.data[tile.tileY * map.width + tile.tileX]!
+          expect(tileVal === TileType.WALL || tileVal === TileType.HALF_WALL).toBe(true)
+        }
+      }
+    })
+
+    test('obstacles not placed in center exclusion zone', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const centerTileX = Math.floor(map.width / 2)
+      const centerTileY = Math.floor(map.height / 2)
+      const clearR = STAGE_1_MAP_CONFIG.centerClearRadius
+      for (const obs of map.mapObstacles!) {
+        for (const tile of obs.tiles) {
+          const inZone =
+            Math.abs(tile.tileX - centerTileX) <= clearR &&
+            Math.abs(tile.tileY - centerTileY) <= clearR
+          expect(inZone).toBe(false)
+        }
+      }
+    })
+
+    test('obstacle IDs are unique', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const ids = new Set(map.mapObstacles!.map(o => o.id))
+      expect(ids.size).toBe(map.mapObstacles!.length)
+    })
+
+    test('obstacles have valid world-space positions', () => {
+      const map = generateArena(STAGE_2_MAP_CONFIG, 42, 1)
+      for (const obs of map.mapObstacles!) {
+        expect(obs.x).toBeGreaterThan(0)
+        expect(obs.y).toBeGreaterThan(0)
+        expect(obs.x).toBeLessThan(map.width * map.tileSize)
+        expect(obs.y).toBeLessThan(map.height * map.tileSize)
+      }
+    })
+
+    test('map obstacles are deterministic', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      expect(map1.mapObstacles!.length).toBe(map2.mapObstacles!.length)
+      for (let i = 0; i < map1.mapObstacles!.length; i++) {
+        expect(map1.mapObstacles![i]!.type).toBe(map2.mapObstacles![i]!.type)
+        expect(map1.mapObstacles![i]!.x).toBe(map2.mapObstacles![i]!.x)
+        expect(map1.mapObstacles![i]!.y).toBe(map2.mapObstacles![i]!.y)
+      }
+    })
+  })
+
   describe('stage configurations', () => {
     test('stage 1 generates 50x38 map', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)

@@ -17,6 +17,7 @@ import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
 import type { CampVisitorState } from './systems/campVisitor'
+import type { MapObstacle, ObstacleDestruction, ObstacleHit } from './content/maps/mapObstacleDefs'
 import {
   cloneRunStages,
   createRunNarrativeSetup,
@@ -606,6 +607,14 @@ export interface GameWorld extends IWorld {
   trapZones: TrapZone[]
   /** Per-tick trap detonation events for client VFX */
   trapDetonations: TrapDetonation[]
+  /** Map obstacles (crates, barrels, boulders, etc.) */
+  mapObstacles: MapObstacle[]
+  /** ID counter for map obstacles */
+  nextMapObstacleId: number
+  /** Per-tick obstacle destruction events for client VFX */
+  obstacleDestructions: ObstacleDestruction[]
+  /** Per-tick obstacle hit events for client VFX */
+  obstacleHits: ObstacleHit[]
   /** Per-tick boss phase change events for client VFX */
   bossPhaseChanges: Array<{ eid: number; newPhase: number; x: number; y: number }>
   /** Resolve historical player position for a rewind tick */
@@ -718,6 +727,10 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     hollowManStorm: null,
     trapZones: [],
     trapDetonations: [],
+    mapObstacles: [],
+    nextMapObstacleId: 1,
+    obstacleDestructions: [],
+    obstacleHits: [],
     bossPhaseChanges: [],
   }
 }
@@ -727,6 +740,10 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
  */
 export function setWorldTilemap(world: GameWorld, tilemap: Tilemap): void {
   world.tilemap = tilemap
+  // Transfer map obstacles from tilemap
+  world.mapObstacles = tilemap.mapObstacles ? [...tilemap.mapObstacles] : []
+  world.obstacleDestructions = []
+  world.obstacleHits = []
 }
 
 /**
@@ -828,6 +845,10 @@ export function resetWorld(world: GameWorld): void {
   world.hollowManStorm = null
   world.trapZones = []
   world.trapDetonations = []
+  world.mapObstacles = []
+  world.nextMapObstacleId = 1
+  world.obstacleDestructions = []
+  world.obstacleHits = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 
@@ -944,6 +965,10 @@ export function swapTilemap(world: GameWorld, tilemap: Tilemap): void {
   world.interactionLastInputSeqByPlayer.clear()
   world.interactionPromptByPlayer.clear()
   world.interactionFeedbackByPlayer.clear()
+  // Transfer map obstacles from tilemap and reset destruction events
+  world.mapObstacles = tilemap.mapObstacles ? [...tilemap.mapObstacles] : []
+  world.obstacleDestructions = []
+  world.obstacleHits = []
 
   const center = getArenaCenterFromTilemap(tilemap)
   for (const eid of playerQuery(world)) {

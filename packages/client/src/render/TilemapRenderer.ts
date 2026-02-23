@@ -5,7 +5,7 @@
  */
 
 import { Container, Sprite, Graphics, Texture, Rectangle } from 'pixi.js'
-import type { Tilemap, BaseTileMetadata } from '@high-noon/shared'
+import type { Tilemap, BaseTileMetadata, MapObstacle } from '@high-noon/shared'
 import { TileType, TOWN_BUILDINGS, type BuildingProfile } from '@high-noon/shared'
 import { AssetLoader } from '../assets'
 import { BUILDING_RENDER_SCALE, BUILDING_SPRITE_REGIONS } from '../assets/buildingSpritesheet'
@@ -100,7 +100,7 @@ export class TilemapRenderer {
 
     const { width, height, tileSize, layers } = map
 
-    // Build set of tile indices covered by buildings (to suppress individual wall sprites)
+    // Build set of tile indices covered by buildings or map obstacles (suppress individual wall sprites)
     const coveredTiles = new Set<number>()
     if (map.placedBuildings) {
       for (const building of map.placedBuildings) {
@@ -113,6 +113,16 @@ export class TilemapRenderer {
             if (tx >= 0 && tx < width && ty >= 0 && ty < height) {
               coveredTiles.add(ty * width + tx)
             }
+          }
+        }
+      }
+    }
+    // Suppress solid tiles under map obstacles (MapObstacleRenderer draws them)
+    if (map.mapObstacles) {
+      for (const obs of map.mapObstacles) {
+        for (const tile of obs.tiles) {
+          if (tile.tileX >= 0 && tile.tileX < width && tile.tileY >= 0 && tile.tileY < height) {
+            coveredTiles.add(tile.tileY * width + tile.tileX)
           }
         }
       }
