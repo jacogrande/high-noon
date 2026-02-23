@@ -25,6 +25,7 @@ export interface CameraBounds {
 }
 
 export interface CameraRenderState {
+  /** Raw interpolated camera position in world space (not snapped). */
   x: number
   y: number
   angle: number
@@ -153,9 +154,10 @@ export class Camera {
     x += this.kick.getOffsetX()
     y += this.kick.getOffsetY()
 
-    // Pixel-round to prevent sub-pixel shimmer on tile sprites
-    this.renderState.x = Math.round(x)
-    this.renderState.y = Math.round(y)
+    // Return raw float position — controllers snap in RT space
+    // and apply sub-pixel offset to the display sprite.
+    this.renderState.x = x
+    this.renderState.y = y
     this.renderState.angle = shakeOffset.angle
 
     return this.renderState

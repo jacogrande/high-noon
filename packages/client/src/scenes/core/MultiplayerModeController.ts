@@ -53,7 +53,7 @@ import {
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
-import type { GameApp } from '../../engine/GameApp'
+import { INTERNAL_WIDTH, INTERNAL_HEIGHT, WORLD_SCALE, type GameApp } from '../../engine/GameApp'
 import { Input } from '../../engine/Input'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
@@ -110,8 +110,6 @@ import { ShotTraceBuffer } from '../../net/ShotTrace'
 import { HitAgreementTracker } from '../../net/HitAgreementTracker'
 import { SessionReplayRecorder, type LagReport } from '../../net/SessionReplay'
 import { NetGraph } from '../../render/NetGraph'
-
-const GAME_ZOOM = 2.75
 
 /** Misprediction smoothing constants */
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
@@ -285,9 +283,9 @@ export class MultiplayerModeController implements SceneModeController {
     // Insert building roof overlay above entities so roofs render over players
     const entitiesIdx = this.gameApp.world.getChildIndex(this.gameApp.layers.entities)
     this.gameApp.world.addChildAt(this.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
-    this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, this.gameApp.width, this.gameApp.height)
-    const uiIndex = this.gameApp.stage.getChildIndex(this.gameApp.layers.ui)
-    this.gameApp.stage.addChildAt(this.lightingSystem.getLightmapSprite(), uiIndex)
+    this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, INTERNAL_WIDTH, INTERNAL_HEIGHT)
+    // Lightmap composites in RT space (overlay, above worldContainer)
+    this.gameApp.overlay.addChild(this.lightingSystem.getLightmapSprite())
     seedHazardLights(this.lightingSystem, tilemap)
     this.currentTilemap = tilemap
 
@@ -309,12 +307,9 @@ export class MultiplayerModeController implements SceneModeController {
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
 
-    // Zoom
-    this.gameApp.world.scale.set(GAME_ZOOM)
-
-    // Camera
+    // Camera — viewport in world units (RT size / world scale)
     this.camera = new Camera()
-    this.camera.setViewport(this.gameApp.width / GAME_ZOOM, this.gameApp.height / GAME_ZOOM)
+    this.camera.setViewport(INTERNAL_WIDTH / WORLD_SCALE, INTERNAL_HEIGHT / WORLD_SCALE)
     const bounds = getPlayableBoundsFromTilemap(tilemap)
     this.camera.setBounds(bounds)
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(tilemap)
@@ -323,8 +318,8 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
-    this.floatingText = new FloatingTextPool(this.gameApp.layers.fx)
-    this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.entities)
+    this.floatingText = new FloatingTextPool(this.gameApp.layers.ui)
+    this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.ui)
 
     // Sound
     this.sound = new SoundManager()
@@ -995,7 +990,8 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Set camera for screen→world conversion
     const camPos = this.camera.getPosition()
-    this.input.setCamera(camPos.x, camPos.y, this.gameApp.width, this.gameApp.height, GAME_ZOOM)
+    const zoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+    this.input.setCamera(camPos.x, camPos.y, this.gameApp.width, this.gameApp.height, zoom)
 
     // Collect and tag input
     const inputState: InputState = this.input.getInputState()
@@ -1128,7 +1124,8 @@ export class MultiplayerModeController implements SceneModeController {
     // Re-sync camera for screen→world conversion after camera update,
     // so the next render frame's mouse position uses the corrected camera.
     const updatedCamPos = this.camera.getPosition()
-    this.input.setCamera(updatedCamPos.x, updatedCamPos.y, this.gameApp.width, this.gameApp.height, GAME_ZOOM)
+    const updatedZoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+    this.input.setCamera(updatedCamPos.x, updatedCamPos.y, this.gameApp.width, this.gameApp.height, updatedZoom)
   }
 
   // ===========================================================================
@@ -1176,30 +1173,42 @@ export class MultiplayerModeController implements SceneModeController {
     })
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
 
-    // Update camera viewport (handles resize)
-    this.camera.setViewport(this.gameApp.width / GAME_ZOOM, this.gameApp.height / GAME_ZOOM)
-
     // Get camera render state using game loop alpha (matches single-player pattern —
     // camera.update() runs at 60Hz in update(), getRenderState interpolates for sub-frame smoothness)
     const camState = this.camera.getRenderState(_loopAlpha, realDt)
 
-    // Apply camera transform to world container
-    const halfW = this.gameApp.width / 2
-    const halfH = this.gameApp.height / 2
-    this.gameApp.world.pivot.set(camState.x, camState.y)
-    this.gameApp.world.position.set(halfW, halfH)
+    // Snap camera in RT space so world pixels align to RT pixel grid.
+    const rtCamX = camState.x * WORLD_SCALE
+    const rtCamY = camState.y * WORLD_SCALE
+    const rtSnappedX = Math.floor(rtCamX)
+    const rtSnappedY = Math.floor(rtCamY)
+    const fracX = rtCamX - rtSnappedX  // fractional RT pixels (0..1)
+    const fracY = rtCamY - rtSnappedY
+
+    // Apply camera transform to world container (pivot in world space)
+    this.gameApp.world.pivot.set(rtSnappedX / WORLD_SCALE, rtSnappedY / WORLD_SCALE)
+    this.gameApp.world.position.set(INTERNAL_WIDTH / 2, INTERNAL_HEIGHT / 2)
     this.gameApp.world.rotation = camState.angle
 
     this.lightingSystem.updateLights(realDt)
-    this.lightingSystem.resize(this.gameApp.width, this.gameApp.height)
-    this.lightingSystem.render(camState.x, camState.y, GAME_ZOOM)
+    this.lightingSystem.resize(INTERNAL_WIDTH, INTERNAL_HEIGHT)
+    this.lightingSystem.render(camState.x, camState.y, WORLD_SCALE)
+
+    // Scale low-res sprite to fill canvas (handles window resize)
+    this.gameApp.resize()
 
     // Update per-building dither visibility
     if (this.myClientEid >= 0) {
       const px = Position.x[this.myClientEid]!
       const py = Position.y[this.myClientEid]!
-      const screenPos = this.gameApp.world.toGlobal({ x: px, y: py })
-      this.tilemapRenderer.updateBuildingVisibility(px, py, screenPos.x, screenPos.y)
+      const screenZoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+      const dx = px - camState.x
+      const dy = py - camState.y
+      const cos = Math.cos(camState.angle)
+      const sin = Math.sin(camState.angle)
+      const screenX = (dx * cos - dy * sin) * screenZoom + this.gameApp.width / 2
+      const screenY = (dx * sin + dy * cos) * screenZoom + this.gameApp.height / 2
+      this.tilemapRenderer.updateBuildingVisibility(px, py, screenX, screenY)
     }
 
     // Clear debug
@@ -1251,8 +1260,32 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Update particles
     this.particles.update(realDt)
-    this.floatingText.update(realDt)
-    this.chatBubblePool.update(realDt, this.world)
+    {
+      const screenZoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+      this.floatingText.update(realDt, {
+        x: camState.x,
+        y: camState.y,
+        zoom: screenZoom,
+        halfW: this.gameApp.width / 2,
+        halfH: this.gameApp.height / 2,
+      })
+    }
+    {
+      const screenZoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+      this.chatBubblePool.update(realDt, this.world, {
+        x: camState.x,
+        y: camState.y,
+        zoom: screenZoom,
+        halfW: this.gameApp.width / 2,
+        halfH: this.gameApp.height / 2,
+      })
+    }
+
+    // Flush world container into the low-res RenderTexture
+    this.gameApp.renderWorld()
+
+    // Smooth sub-pixel camera scrolling (frac is in RT pixels)
+    this.gameApp.applyCameraSubPixelOffset(fracX, fracY)
 
     const isDead = this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid)
     this.deathPresentation.update(isDead)

@@ -1,8 +1,9 @@
 /**
- * ChatBubblePool - Pooled world-space speech bubbles with typewriter text.
+ * ChatBubblePool - Pooled speech bubbles rendered in screen space (UI layer).
  *
  * Uses SoA layout and swap-remove, same pattern as FloatingTextPool.
- * Bubbles track NPC position via ECS reads and fade out before expiring.
+ * Bubbles track NPC position via ECS reads, convert world→screen each frame,
+ * and fade out before expiring. Rendered at native resolution for crisp text.
  */
 
 import { Container, Graphics, Text, TextStyle } from 'pixi.js'
@@ -10,21 +11,37 @@ import { hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import { Npc, Position } from '@high-noon/shared'
 
+/** Camera state needed for world→screen conversion. */
+export interface ChatBubbleCameraState {
+  /** Camera world position (raw, not snapped). */
+  x: number
+  y: number
+  /** World→screen zoom factor. */
+  zoom: number
+  /** Screen center X. */
+  halfW: number
+  /** Screen center Y. */
+  halfH: number
+}
+
 const POOL_SIZE = 8
 const CHARS_PER_SECOND = 30
 const FADE_DURATION = 0.5
+/** Offset in world units above the NPC position. */
 const BUBBLE_OFFSET_Y = -28
-const MAX_WIDTH = 160
-const PADDING_X = 8
-const PADDING_Y = 6
-const BORDER_RADIUS = 6
-const TAIL_SIZE = 5
+
+// Screen-space bubble dimensions (native resolution, no scaling needed).
+const MAX_WIDTH = 420
+const PADDING_X = 20
+const PADDING_Y = 14
+const BORDER_RADIUS = 16
+const TAIL_SIZE = 12
 const BG_COLOR = 0xfff8e7
 const BORDER_COLOR = 0x5c3a1e
 
 const TEXT_STYLE = new TextStyle({
   fontFamily: 'monospace',
-  fontSize: 10,
+  fontSize: 26,
   fill: '#3b2507',
   wordWrap: true,
   wordWrapWidth: MAX_WIDTH - PADDING_X * 2,
@@ -42,7 +59,7 @@ export class ChatBubblePool {
   private readonly freeList: number[]
   private readonly activeList: number[]
 
-  constructor(worldLayer: Container, poolSize = POOL_SIZE) {
+  constructor(uiLayer: Container, poolSize = POOL_SIZE) {
     this.containers = new Array(poolSize)
     this.backgrounds = new Array(poolSize)
     this.textObjects = new Array(poolSize)
@@ -64,7 +81,7 @@ export class ChatBubblePool {
       const text = new Text({ text: '', style: TEXT_STYLE })
       container.addChild(text)
 
-      worldLayer.addChild(container)
+      uiLayer.addChild(container)
 
       this.containers[i] = container
       this.backgrounds[i] = bg
@@ -73,7 +90,7 @@ export class ChatBubblePool {
     }
   }
 
-  show(eid: number, x: number, y: number, text: string, duration: number): void {
+  show(eid: number, _x: number, _y: number, text: string, duration: number): void {
     if (this.freeList.length === 0) return
 
     const idx = this.freeList.pop()!
@@ -122,12 +139,11 @@ export class ChatBubblePool {
     textObj.y = -bgHeight - TAIL_SIZE + PADDING_Y
 
     const container = this.containers[idx]!
-    container.position.set(x, y + BUBBLE_OFFSET_Y)
     container.alpha = 1
     container.visible = true
   }
 
-  update(dt: number, world: GameWorld): void {
+  update(dt: number, world: GameWorld, camera?: ChatBubbleCameraState): void {
     for (let i = this.activeList.length - 1; i >= 0; i--) {
       const idx = this.activeList[i]!
       const eid = this.npcEid[idx]!
@@ -160,11 +176,17 @@ export class ChatBubblePool {
         this.containers[idx]!.alpha = remaining / FADE_DURATION
       }
 
-      // Track NPC position
-      this.containers[idx]!.position.set(
-        Position.x[eid]!,
-        Position.y[eid]! + BUBBLE_OFFSET_Y,
-      )
+      // Track NPC position — convert to screen space if camera provided
+      const worldX = Position.x[eid]!
+      const worldY = Position.y[eid]! + BUBBLE_OFFSET_Y
+      if (camera) {
+        const screenX = (worldX - camera.x) * camera.zoom + camera.halfW
+        const screenY = (worldY - camera.y) * camera.zoom + camera.halfH
+        this.containers[idx]!.position.set(screenX, screenY)
+        // No container scaling — bubble is drawn at native screen resolution
+      } else {
+        this.containers[idx]!.position.set(worldX, worldY)
+      }
     }
   }
 

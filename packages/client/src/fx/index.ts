@@ -1,6 +1,6 @@
 export { ParticlePool, type ParticleConfig } from './ParticlePool'
-export { FloatingTextPool } from './FloatingTextPool'
-export { ChatBubblePool } from './ChatBubblePool'
+export { FloatingTextPool, type FloatingTextCameraState } from './FloatingTextPool'
+export { ChatBubblePool, type ChatBubbleCameraState } from './ChatBubblePool'
 export { KillStreakTracker } from './KillStreakTracker'
 export {
   emitMuzzleFlash,
