@@ -53,6 +53,7 @@ import {
   type CharacterId,
   HP_POTION_MAX_STACK,
   getBulletConfigForCharacter,
+  FOOLS_ERRAND_ID,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameApp } from '../../engine/GameApp'
@@ -401,8 +402,10 @@ export class SingleplayerModeController implements SceneModeController {
           description: def?.description ?? '',
           rarity: def?.rarity ?? 'brass',
           stacks,
+          downside: def?.downside,
         }
       }),
+      hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
       minimap: buildSingleplayerMinimapState(this.world, playerEid),
       objective: this.world.objective
         ? (() => {
@@ -454,6 +457,7 @@ export class SingleplayerModeController implements SceneModeController {
                   rarity: def?.rarity ?? 'brass',
                   price: o.price,
                   sold: o.sold,
+                  downside: def?.downside,
                 }
               }),
             }

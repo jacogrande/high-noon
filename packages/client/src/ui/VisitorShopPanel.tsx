@@ -5,6 +5,7 @@ interface VisitorOffer {
   rarity: string
   price: number
   sold: boolean
+  downside?: string | undefined
 }
 
 interface VisitorShopPanelProps {
@@ -62,6 +63,9 @@ export function VisitorShopPanel({
               </div>
               <div style={styles.itemName}>{offer.itemName}</div>
               <div style={styles.itemDesc}>{offer.itemDescription}</div>
+              {offer.downside && (
+                <div style={styles.itemDownside}>{offer.downside}</div>
+              )}
               <div style={styles.priceRow}>
                 <span style={{
                   ...styles.price,
@@ -158,6 +162,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#999999',
     textAlign: 'center' as const,
     lineHeight: '1.3',
+  },
+  itemDownside: {
+    fontSize: 9,
+    color: '#cc4466',
+    textAlign: 'center' as const,
+    lineHeight: '1.3',
+    fontStyle: 'italic',
   },
   priceRow: {
     display: 'flex',

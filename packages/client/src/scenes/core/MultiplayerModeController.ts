@@ -1441,6 +1441,7 @@ export class MultiplayerModeController implements SceneModeController {
       isDead: this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid),
       interactionFeedbackDescription: hud?.interactionFeedbackDescription ?? null,
       items: hud?.items ?? [],
+      hasFoolsErrand: hud?.hasFoolsErrand ?? false,
       minimap,
       objective: hud?.objective ?? null,
       campVisitor: hud?.campVisitor ?? null,

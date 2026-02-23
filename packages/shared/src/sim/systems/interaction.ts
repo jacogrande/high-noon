@@ -12,8 +12,19 @@ import {
 import { generateCampSalesmanSpawn, generateStagePoiLayout } from '../content/maps/poiGenerator'
 import { Dead, Player, Position } from '../components'
 import type { GameWorld, StashState } from '../world'
+import { getUpgradeStateForPlayer, UNMARKED_GRAVE_ID } from '../upgrade'
 
 const playerQuery = defineQuery([Player, Position])
+
+/** Shovel price multiplier applied by Unmarked Grave. */
+const UNMARKED_GRAVE_PRICE_MULTIPLIER = 3
+
+function getEffectiveShovelPrice(world: GameWorld, playerEid: number, stageIndex: number): number {
+  let price = getShovelPrice(stageIndex)
+  const us = getUpgradeStateForPlayer(world, playerEid)
+  if ((us.items.get(UNMARKED_GRAVE_ID) ?? 0) > 0) price *= UNMARKED_GRAVE_PRICE_MULTIPLIER
+  return price
+}
 
 interface InteractionTarget {
   key: string
@@ -115,7 +126,7 @@ function getNearestTarget(world: GameWorld, playerEid: number): InteractionTarge
     const distSq = dx * dx + dy * dy
     const radiusSq = SALESMAN_INTERACT_RADIUS * SALESMAN_INTERACT_RADIUS
     if (distSq <= radiusSq) {
-      const price = getShovelPrice(salesman.stageIndex)
+      const price = getEffectiveShovelPrice(world, playerEid, salesman.stageIndex)
       best = {
         key: `salesman:${salesman.stageIndex}:${salesman.camp ? 1 : 0}`,
         prompt: `Hold E: Buy Shovel ($${price})`,
@@ -199,7 +210,7 @@ function tryBuyShovel(world: GameWorld, playerEid: number, stageIndex: number): 
     return
   }
 
-  const price = getShovelPrice(stageIndex)
+  const price = getEffectiveShovelPrice(world, playerEid, stageIndex)
   if (world.goldCollected < price) {
     setFeedback(world, playerEid, `Need $${price}`)
     return

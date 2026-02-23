@@ -21,6 +21,15 @@ const FOOLS_GOLD_NUGGET_ID = getItemDefByKey('fools_gold_nugget')!.id
 const PROSPECTORS_MAP_ID = getItemDefByKey('prospectors_map')!.id
 const WORN_SADDLEBAG_ID = getItemDefByKey('worn_saddlebag')!.id
 const DEVILS_BARGAIN_ID = getItemDefByKey('devils_bargain')!.id
+/** Loaded Dice: damage multiplier applied to all damage types. */
+const LOADED_DICE_DAMAGE_MULTIPLIER = 0.7
+/** Loaded Dice: proc chance multiplier applied to all proc-based items. */
+const LOADED_DICE_PROC_MULTIPLIER = 2
+
+export const HANGMANS_NOOSE_ID = getItemDefByKey('hangmans_noose')!.id
+export const FOOLS_ERRAND_ID = getItemDefByKey('fools_errand')!.id
+export const LOADED_DICE_ID = getItemDefByKey('loaded_dice')!.id
+export const UNMARKED_GRAVE_ID = getItemDefByKey('unmarked_grave')!.id
 
 export interface UpgradeState {
   characterDef: CharacterDef
@@ -135,6 +144,10 @@ export interface UpgradeState {
   desertRoseHealQueued: number
   /** Computed max item slots (base + Worn Saddlebag stacks) */
   maxItems: number
+  /** Hangman's Noose: accumulator for 5s HP drain */
+  hangmansNooseDrainTimer: number
+  /** Loaded Dice: multiplier for proc chances (default 1, set to 2 by Loaded Dice) */
+  procChanceMultiplier: number
 }
 
 export function initUpgradeState(charDef: CharacterDef): UpgradeState {
@@ -211,6 +224,8 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     witchingHourTimer: 0,
     desertRoseHealQueued: 0,
     maxItems: MAX_ITEM_SLOTS,
+    hangmansNooseDrainTimer: 0,
+    procChanceMultiplier: 1,
   }
 }
 
@@ -336,6 +351,18 @@ export function recomputePlayerStats(state: UpgradeState): void {
   if (devilsStacks > 0) {
     state.bulletDamage *= (1 + 0.40 * devilsStacks)
     state.maxHP = Math.ceil(state.maxHP / (1 + devilsStacks))
+  }
+
+  // Loaded Dice: all proc chances doubled, all damage -30%
+  const loadedDiceStacks = state.items.get(LOADED_DICE_ID) ?? 0
+  if (loadedDiceStacks > 0) {
+    state.bulletDamage *= LOADED_DICE_DAMAGE_MULTIPLIER
+    state.swingDamage *= LOADED_DICE_DAMAGE_MULTIPLIER
+    state.dynamiteDamage *= LOADED_DICE_DAMAGE_MULTIPLIER
+    state.pulseDamage *= LOADED_DICE_DAMAGE_MULTIPLIER
+    state.procChanceMultiplier = LOADED_DICE_PROC_MULTIPLIER
+  } else {
+    state.procChanceMultiplier = 1
   }
 }
 

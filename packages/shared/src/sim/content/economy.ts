@@ -46,22 +46,51 @@ export function rollRandomItem(rng: SeededRng, rarity: ItemRarity): number | nul
 }
 
 /**
+ * Upgrade a rarity by one tier (Fool's Errand effect).
+ * brass→silver, silver→gold, gold→gold, cursed→cursed
+ */
+export function upgradeItemRarity(rarity: ItemRarity): ItemRarity {
+  if (rarity === 'brass') return 'silver'
+  if (rarity === 'silver') return 'gold'
+  return rarity
+}
+
+/**
  * Roll stash reward — items only, no gold:
  * - 65% brass item
  * - 25% silver item
  * -  8% gold item (rare)
  * -  2% cursed item (rare)
+ *
+ * @param rarityUpgrade — if true, upgrade rolled rarity one tier (Fool's Errand)
+ * @param rarityFloorSilver — if true, brass band (65%) rolls silver instead (Unmarked Grave)
  */
-export function rollStashReward(rng: SeededRng, _stageIndex: number): StashRewardRoll {
+export function rollStashReward(
+  rng: SeededRng,
+  _stageIndex: number,
+  rarityUpgrade?: boolean,
+  rarityFloorSilver?: boolean,
+): StashRewardRoll {
   const roll = rng.next()
 
+  let rarity: ItemRarity
+
   if (roll < 0.65) {
-    return { gold: 0, rare: false, itemId: rollRandomItem(rng, 'brass') }
+    rarity = rarityFloorSilver ? 'silver' : 'brass'
   } else if (roll < 0.90) {
-    return { gold: 0, rare: false, itemId: rollRandomItem(rng, 'silver') }
+    rarity = 'silver'
   } else if (roll < 0.98) {
-    return { gold: 0, rare: true, itemId: rollRandomItem(rng, 'gold') }
+    rarity = 'gold'
   } else {
-    return { gold: 0, rare: true, itemId: rollRandomItem(rng, 'cursed') }
+    rarity = 'cursed'
   }
+
+  if (rarityUpgrade) {
+    rarity = upgradeItemRarity(rarity)
+  }
+
+  // Compute rare based on final resolved rarity (after upgrades/floor)
+  const rare = rarity === 'gold' || rarity === 'cursed'
+
+  return { gold: 0, rare, itemId: rollRandomItem(rng, rarity) }
 }

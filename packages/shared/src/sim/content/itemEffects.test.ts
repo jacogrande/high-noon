@@ -16,7 +16,7 @@ import {
   Collider,
   SlowDebuff,
 } from '../components'
-import { getUpgradeStateForPlayer } from '../upgrade'
+import { getUpgradeStateForPlayer, LOADED_DICE_ID } from '../upgrade'
 import { spatialHashSystem } from '../systems/spatialHash'
 import { getItemDefByKey } from './items'
 import { BONUS_GOLD_DROP_VALUE } from './gold'
@@ -45,6 +45,65 @@ function spawnBullet(world: GameWorld, ownerEid: number): number {
   const bulletEid = addEntity(world)
   return bulletEid
 }
+
+describe("Hangman's Noose", () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('fully heals on kill', () => {
+    applyItemEffect(world, 'hangmans_noose', 1, playerEid)
+
+    Health.current[playerEid] = 3
+    Health.max[playerEid] = 10
+
+    const enemy = spawnEnemy(world, 150, 150, 10)
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(Health.current[playerEid]).toBe(10) // Fully healed
+  })
+
+  test('does not heal dead players (HP = 0)', () => {
+    applyItemEffect(world, 'hangmans_noose', 1, playerEid)
+
+    Health.current[playerEid] = 0
+    Health.max[playerEid] = 10
+
+    const enemy = spawnEnemy(world, 150, 150, 10)
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(Health.current[playerEid]).toBe(0) // Still dead
+  })
+
+  test('does not trigger for other players', () => {
+    const player2 = spawnPlayer(world, 300, 300)
+    applyItemEffect(world, 'hangmans_noose', 1, playerEid)
+
+    Health.current[player2] = 3
+    Health.max[player2] = 10
+
+    const enemy = spawnEnemy(world, 150, 150, 10)
+    world.hooks.fireKill(world, player2, enemy)
+
+    expect(Health.current[player2]).toBe(3) // Not healed
+  })
+
+  test('does nothing if already at full HP', () => {
+    applyItemEffect(world, 'hangmans_noose', 1, playerEid)
+
+    Health.current[playerEid] = 10
+    Health.max[playerEid] = 10
+
+    const enemy = spawnEnemy(world, 150, 150, 10)
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(Health.current[playerEid]).toBe(10)
+  })
+})
 
 describe('Rattlesnake Fang', () => {
   let world: GameWorld
@@ -1026,5 +1085,83 @@ describe('Desert Rose', () => {
     world.hooks.fireWaveStart(world, 1)
 
     expect(Health.current[playerEid]).toBe(0) // still dead
+  })
+})
+
+// ============================================================================
+// Loaded Dice procChanceMultiplier interaction
+// ============================================================================
+
+describe('Loaded Dice + proc items', () => {
+  let world: GameWorld
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    playerEid = spawnPlayer(world, 100, 100)
+  })
+
+  test('Rattlesnake Fang reaches 100% at 7 stacks with Loaded Dice', () => {
+    // Without Loaded Dice: 7 * 0.08 = 0.56 (56%)
+    // With Loaded Dice: 7 * 0.08 * 2 = 1.12 → clamped to 1.0 (100%)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(LOADED_DICE_ID, 1)
+    us.procChanceMultiplier = 2
+
+    applyItemEffect(world, 'rattlesnake_fang', 7, playerEid)
+
+    // Fire multiple times — all should proc at 100%
+    for (let i = 0; i < 5; i++) {
+      const bullet = spawnBullet(world, playerEid)
+      const enemy = spawnEnemy(world, 150, 150, 100)
+      const result = world.hooks.fireBulletHit(world, bullet, enemy, 10)
+      expect(result.damage).toBe(13) // 10 + 3 bonus
+    }
+  })
+
+  test('Bounty Notice reaches 100% at 5 stacks with Loaded Dice', () => {
+    // Without Loaded Dice: 5 * 0.10 = 0.50 (50%)
+    // With Loaded Dice: 5 * 0.10 * 2 = 1.0 (100%)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(LOADED_DICE_ID, 1)
+    us.procChanceMultiplier = 2
+
+    applyItemEffect(world, 'bounty_notice', 5, playerEid)
+
+    const enemy = spawnEnemy(world, 200, 200, 10)
+    const nuggetsBefore = world.goldNuggets.length
+
+    world.hooks.fireKill(world, playerEid, enemy)
+
+    expect(world.goldNuggets.length).toBe(nuggetsBefore + 1)
+  })
+
+  test('Lightning Rod reaches 100% at 7 stacks with Loaded Dice', () => {
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(LOADED_DICE_ID, 1)
+    us.procChanceMultiplier = 2
+
+    applyItemEffect(world, 'lightning_rod', 7, playerEid)
+
+    const victim = spawnEnemy(world, 200, 200, 10)
+    const nearby = spawnEnemy(world, 250, 200, 50) // within 128px
+
+    spatialHashSystem(world, 1 / 60)
+    world.hooks.fireKill(world, playerEid, victim)
+
+    expect(Health.current[nearby]).toBe(25) // 50 - 25 chain damage
+  })
+
+  test('proc chance stays at baseline without Loaded Dice', () => {
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    expect(us.procChanceMultiplier).toBe(1) // default
+
+    // 13 stacks × 0.08 × 1 = 1.04 → 100%
+    applyItemEffect(world, 'rattlesnake_fang', 13, playerEid)
+
+    const bullet = spawnBullet(world, playerEid)
+    const enemy = spawnEnemy(world, 150, 150, 100)
+    const result = world.hooks.fireBulletHit(world, bullet, enemy, 10)
+    expect(result.damage).toBe(13) // procs at 13 stacks without multiplier
   })
 })

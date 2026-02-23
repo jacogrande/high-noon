@@ -37,7 +37,8 @@ function registerRattlesnakeFang(world: GameWorld, stacks: number, playerEid: nu
     targetEid: number,
     damage: number,
   ): BulletHitResult => {
-    const chance = Math.min(0.08 * stacks, 1.0)
+    const procMul = getUpgradeStateForPlayer(w, playerEid).procChanceMultiplier
+    const chance = Math.min(0.08 * stacks * procMul, 1.0)
     if (w.rng.next() < chance) {
       return { damage: damage + 3, pierce: false }
     }
@@ -176,7 +177,8 @@ function registerLightningRod(world: GameWorld, stacks: number, ownerEid: number
     victimEid: number,
   ) => {
     if (playerEid !== ownerEid) return
-    const chance = Math.min(0.08 * stacks, 1.0)
+    const procMul = getUpgradeStateForPlayer(w, ownerEid).procChanceMultiplier
+    const chance = Math.min(0.08 * stacks * procMul, 1.0)
     if (w.rng.next() >= chance) return
 
     const vx = Position.x[victimEid]!
@@ -279,7 +281,8 @@ function registerBountyNotice(world: GameWorld, stacks: number, ownerEid: number
     victimEid: number,
   ) => {
     if (playerEid !== ownerEid) return
-    const chance = Math.min(0.10 * stacks, 1.0)
+    const procMul = getUpgradeStateForPlayer(w, ownerEid).procChanceMultiplier
+    const chance = Math.min(0.10 * stacks * procMul, 1.0)
     if (w.rng.next() < chance) {
       w.goldNuggets.push({
         x: Position.x[victimEid]!,
@@ -345,6 +348,25 @@ function registerDesertRose(world: GameWorld, stacks: number, ownerEid: number):
   })
 }
 
+/**
+ * Hangman's Noose — on kill, fully heal.
+ * Downside (1 HP drain every 5s) is in buffSystem.ts (ticked per-frame, not hook-based).
+ */
+function registerHangmansNoose(world: GameWorld, _stacks: number, ownerEid: number): void {
+  world.hooks.register('onKill', itemHookId('hangmans_noose', ownerEid), (
+    w: GameWorld,
+    playerEid: number,
+    _victimEid: number,
+  ) => {
+    if (playerEid !== ownerEid) return
+    const current = Health.current[playerEid]!
+    const max = Health.max[playerEid]!
+    if (current > 0 && current < max) {
+      Health.current[playerEid] = max
+    }
+  })
+}
+
 // ============================================================================
 // Effect Registry
 // ============================================================================
@@ -366,6 +388,7 @@ const ITEM_EFFECT_REGISTRY: Record<string, ItemEffectRegistrar> = {
   peacemaker: registerPeacemaker,
   witching_hour: registerWitchingHour,
   desert_rose: registerDesertRose,
+  hangmans_noose: registerHangmansNoose,
 }
 
 /**

@@ -8,7 +8,7 @@ interface RunEndPanelProps {
   level: number
   goldCollected: number
   killCount: number
-  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number; downside?: string | undefined }>
   resolutionText: string | null
   onPlayAgain: () => void
   onQuitToMenu: () => void
@@ -108,6 +108,7 @@ export function RunEndPanel({
                       description={item.description}
                       rarity={item.rarity}
                       stacks={item.stacks}
+                      downside={item.downside}
                     />
                   )}
                 </div>

@@ -8,10 +8,18 @@
  * is already set for this tick.
  */
 
+import { defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
+import { Player, Health } from '../components'
+import { getUpgradeStateForPlayer, HANGMANS_NOOSE_ID } from '../upgrade'
 import { applySlow } from './slowDebuff'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { applyDamage } from './applyDamage'
+
+const playerHealthQuery = defineQuery([Player, Health])
+
+/** Hangman's Noose drains 1 HP every this many seconds. */
+const NOOSE_DRAIN_INTERVAL_S = 5.0
 
 export function buffSystem(world: GameWorld, dt: number): void {
   const states = world.playerUpgradeStates.size > 0
@@ -98,5 +106,24 @@ export function buffSystem(world: GameWorld, dt: number): void {
     }
     // Remove after processing (one-shot)
     world.rockslideShockwaves.splice(i, 1)
+  }
+
+  // --- Hangman's Noose HP drain (downside; upside heal-on-kill is in itemEffects.ts) ---
+  const phPlayers = playerHealthQuery(world)
+  for (const eid of phPlayers) {
+    const us = getUpgradeStateForPlayer(world, eid)
+    const nooseStacks = us.items.get(HANGMANS_NOOSE_ID) ?? 0
+    if (nooseStacks <= 0) {
+      us.hangmansNooseDrainTimer = 0
+      continue
+    }
+    us.hangmansNooseDrainTimer += dt
+    while (us.hangmansNooseDrainTimer >= NOOSE_DRAIN_INTERVAL_S) {
+      us.hangmansNooseDrainTimer -= NOOSE_DRAIN_INTERVAL_S
+      const hp = Health.current[eid]!
+      if (hp > 1) {
+        Health.current[eid] = hp - 1
+      }
+    }
   }
 }

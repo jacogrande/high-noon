@@ -569,6 +569,7 @@ export function MultiplayerGame() {
           playerGold={hudState.goldCollected}
           campVisitor={hudState.campVisitor}
           items={hudState.items}
+          hasFoolsErrand={hudState.hasFoolsErrand}
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
           onVisitorPurchase={(index) => {

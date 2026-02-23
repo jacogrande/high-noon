@@ -19,9 +19,11 @@ interface CampPanelProps {
       rarity: string
       price: number
       sold: boolean
+      downside?: string | undefined
     }>
   } | null
-  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number; downside?: string | undefined }>
+  hasFoolsErrand: boolean
   onOpenSkillTree: () => void
   onRideOut: () => void
   onVisitorPurchase: (index: number) => void
@@ -43,6 +45,7 @@ export function CampPanel({
   playerGold,
   campVisitor,
   items,
+  hasFoolsErrand,
   onOpenSkillTree,
   onRideOut,
   onVisitorPurchase,
@@ -87,6 +90,7 @@ export function CampPanel({
                       description={item.description}
                       rarity={item.rarity}
                       stacks={item.stacks}
+                      downside={item.downside}
                     />
                   )}
                 </div>
@@ -97,13 +101,15 @@ export function CampPanel({
 
         {/* Visitor shop */}
         {campVisitor && (
-          <VisitorShopPanel
-            visitorName={campVisitor.visitorName}
-            greeting={campVisitor.greeting}
-            offers={campVisitor.offers}
-            playerGold={playerGold}
-            onPurchase={onVisitorPurchase}
-          />
+          hasFoolsErrand
+            ? <div style={styles.foolsErrandBlock}>CURSED: Cannot trade with visitors</div>
+            : <VisitorShopPanel
+                visitorName={campVisitor.visitorName}
+                greeting={campVisitor.greeting}
+                offers={campVisitor.offers}
+                playerGold={playerGold}
+                onPurchase={onVisitorPurchase}
+              />
         )}
 
         <div style={styles.actions}>
@@ -228,6 +234,18 @@ const styles: Record<string, React.CSSProperties> = {
   stackCount: {
     fontSize: 9,
     color: '#888888',
+  },
+  foolsErrandBlock: {
+    fontSize: 11,
+    color: '#bb44ff',
+    fontStyle: 'italic',
+    letterSpacing: '0.05em',
+    textShadow: '0 0 8px rgba(187, 68, 255, 0.4)',
+    padding: '8px 16px',
+    border: '1px solid rgba(187, 68, 255, 0.3)',
+    borderRadius: 3,
+    backgroundColor: 'rgba(187, 68, 255, 0.08)',
+    marginTop: 12,
   },
   actions: {
     display: 'flex',

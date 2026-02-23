@@ -10,6 +10,7 @@ import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { Dead, Position } from '../components'
 import { addComponent } from 'bitecs'
+import { getUpgradeStateForPlayer, UNMARKED_GRAVE_ID } from '../upgrade'
 
 function createInput(buttons = 0) {
   return {
@@ -198,6 +199,79 @@ describe('interactionSystem', () => {
     expect(world.shovelCount).toBe(SHOVEL_MAX_STACK)
     expect(world.goldCollected).toBe(999)
     expect(world.interactionPromptByPlayer.get(playerEid)).toContain('Shovels full')
+  })
+
+  test('Unmarked Grave triples shovel price', () => {
+    const { world, playerEid } = createStageWorld(785)
+    runTick(world, playerEid, 0)
+
+    const salesman = world.salesman
+    if (!salesman) throw new Error('Expected salesman to be generated')
+
+    Position.x[playerEid] = salesman.x
+    Position.y[playerEid] = salesman.y
+
+    const basePrice = getShovelPrice(salesman.stageIndex)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(UNMARKED_GRAVE_ID, 1)
+
+    world.goldCollected = basePrice * 3
+    world.shovelCount = 0
+
+    for (let i = 0; i < INTERACT_HOLD_TICKS; i++) {
+      runTick(world, playerEid, Button.INTERACT)
+    }
+
+    expect(world.shovelCount).toBe(1)
+    expect(world.goldCollected).toBe(0) // Spent 3x base price
+  })
+
+  test('Unmarked Grave shows 3x price in prompt', () => {
+    const { world, playerEid } = createStageWorld(786)
+    runTick(world, playerEid, 0)
+
+    const salesman = world.salesman
+    if (!salesman) throw new Error('Expected salesman to be generated')
+
+    Position.x[playerEid] = salesman.x
+    Position.y[playerEid] = salesman.y
+
+    const basePrice = getShovelPrice(salesman.stageIndex)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(UNMARKED_GRAVE_ID, 1)
+
+    world.goldCollected = 999
+
+    runTick(world, playerEid, 0)
+
+    const prompt = world.interactionPromptByPlayer.get(playerEid)
+    expect(prompt).toContain(`$${basePrice * 3}`)
+  })
+
+  test('Unmarked Grave rejects purchase when gold only covers base price', () => {
+    const { world, playerEid } = createStageWorld(787)
+    runTick(world, playerEid, 0)
+
+    const salesman = world.salesman
+    if (!salesman) throw new Error('Expected salesman to be generated')
+
+    Position.x[playerEid] = salesman.x
+    Position.y[playerEid] = salesman.y
+
+    const basePrice = getShovelPrice(salesman.stageIndex)
+    const us = getUpgradeStateForPlayer(world, playerEid)
+    us.items.set(UNMARKED_GRAVE_ID, 1)
+
+    // Only enough for base price, not 3x
+    world.goldCollected = basePrice
+    world.shovelCount = 0
+
+    for (let i = 0; i < INTERACT_HOLD_TICKS; i++) {
+      runTick(world, playerEid, Button.INTERACT)
+    }
+
+    expect(world.shovelCount).toBe(0)
+    expect(world.goldCollected).toBe(basePrice) // No gold spent
   })
 
   test('dead players clear hold-tracking entries', () => {

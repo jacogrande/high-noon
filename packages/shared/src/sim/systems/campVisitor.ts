@@ -7,7 +7,7 @@
 
 import type { SeededRng } from '../../math/rng'
 import type { GameWorld } from '../world'
-import { getUpgradeStateForPlayer, addItemToPlayer } from '../upgrade'
+import { getUpgradeStateForPlayer, addItemToPlayer, FOOLS_ERRAND_ID } from '../upgrade'
 import { reapplyAllItemEffects } from '../content/itemEffects'
 import {
   type VisitorDef,
@@ -156,6 +156,10 @@ export function tryVisitorPurchase(
 
   const offer = visitor.offers[offerIndex]
   if (!offer || offer.sold) return false
+
+  // Fool's Errand blocks all visitor purchases
+  const buyerState = getUpgradeStateForPlayer(world, playerEid)
+  if ((buyerState.items.get(FOOLS_ERRAND_ID) ?? 0) > 0) return false
 
   if (world.goldCollected < offer.price) return false
 

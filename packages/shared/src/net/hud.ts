@@ -89,7 +89,8 @@ export interface HudData {
   interactionFeedbackDescription?: string
 
   // Items
-  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number }>
+  items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number; downside?: string | undefined }>
+  hasFoolsErrand: boolean
 
   // Stage objective
   objective: {
@@ -107,7 +108,7 @@ export interface HudData {
     visitorId: number
     visitorName: string
     greeting: string
-    offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean }>
+    offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean; downside?: string | undefined }>
   } | null
 
   // Boss HP bar (top-of-screen)

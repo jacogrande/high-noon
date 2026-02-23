@@ -7,7 +7,7 @@ import {
 } from '../content/hpPotion'
 import { getItemDef } from '../content/items'
 import { Position } from '../components'
-import { addItemToPlayer, getUpgradeStateForPlayer } from '../upgrade'
+import { addItemToPlayer, getUpgradeStateForPlayer, FOOLS_ERRAND_ID, UNMARKED_GRAVE_ID } from '../upgrade'
 import { reapplyAllItemEffects } from '../content/itemEffects'
 import type { GameWorld } from '../world'
 
@@ -28,7 +28,10 @@ export function stashRewardSystem(world: GameWorld, _dt: number): void {
   for (let i = 0; i < world.pendingStashRewards.length; i++) {
     const pending = world.pendingStashRewards[i]!
     const base = getStashBasePosition(world, pending.playerEid, pending.stashId)
-    const reward = rollStashReward(world.rng, pending.stageIndex)
+    const playerState = getUpgradeStateForPlayer(world, pending.playerEid)
+    const hasFoolsErrand = (playerState.items.get(FOOLS_ERRAND_ID) ?? 0) > 0
+    const hasUnmarkedGrave = (playerState.items.get(UNMARKED_GRAVE_ID) ?? 0) > 0
+    const reward = rollStashReward(world.rng, pending.stageIndex, hasFoolsErrand, hasUnmarkedGrave)
 
     const itemDef = reward.itemId !== null ? getItemDef(reward.itemId) : undefined
     let feedbackText = 'Empty stash...'

@@ -53,6 +53,7 @@ import {
   getItemDef,
   getVisitorDef,
   tryVisitorPurchase,
+  FOOLS_ERRAND_ID,
   type SelectNodeRequest,
   type SelectNodeResponse,
   type CharacterId,
@@ -1248,7 +1249,7 @@ export class GameRoom extends Room<GameRoomState> {
       for (const [itemId, stacks] of state.items) {
         const def = getItemDef(itemId)
         if (def) {
-          items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks })
+          items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
         }
       }
 
@@ -1273,6 +1274,7 @@ export class GameRoom extends Room<GameRoomState> {
                   rarity: oDef?.rarity ?? 'brass',
                   price: o.price,
                   sold: o.sold,
+                  downside: oDef?.downside,
                 }
               }),
             }
@@ -1356,6 +1358,7 @@ export class GameRoom extends Room<GameRoomState> {
         runIntroText,
         runIntroSequence,
         items,
+        hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
         objective: objectiveHud,
         campVisitor: campVisitorHud,
         boss: bossHud,
@@ -1466,7 +1469,7 @@ export class GameRoom extends Room<GameRoomState> {
     for (const [itemId, stacks] of state.items) {
       const def = getItemDef(itemId)
       if (def) {
-        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks })
+        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
       }
     }
 
@@ -1489,6 +1492,7 @@ export class GameRoom extends Room<GameRoomState> {
                 rarity: oDef?.rarity ?? 'brass',
                 price: o.price,
                 sold: o.sold,
+                downside: oDef?.downside,
               }
             }),
           }
@@ -1577,6 +1581,7 @@ export class GameRoom extends Room<GameRoomState> {
       runIntroText: this.world.runIntroText,
       runIntroSequence: this.world.runIntroSequence,
       items,
+      hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
       objective: objectiveHud,
       campVisitor: campVisitorHud,
       boss: bossHud,

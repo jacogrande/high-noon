@@ -16,6 +16,7 @@ const RARITY_COLORS: Record<string, number> = {
   brass: 0xd4a046,
   silver: 0xb0b0c0,
   gold: 0xffc800,
+  cursed: 0xbb44ff,
 }
 
 export class InteractableRenderer {

@@ -15,6 +15,7 @@ const RARITY_BORDER_COLORS: Record<string, string> = {
   brass: '#d4a046',
   silver: '#b0b0c0',
   gold: '#ffc800',
+  cursed: '#bb44ff',
 }
 
 const RARITY_MINIMAP_COLORS: Record<string, string> = {
@@ -331,6 +332,7 @@ export const GameHUD = memo(function GameHUD({ state }: { state: HUDState }) {
                   description={item.description}
                   rarity={item.rarity}
                   stacks={item.stacks}
+                  downside={item.downside}
                 />
               )}
             </div>

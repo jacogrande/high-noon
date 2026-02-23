@@ -12,9 +12,10 @@ interface ItemTooltipProps {
   description: string
   rarity: string
   stacks: number
+  downside?: string | undefined
 }
 
-export const ItemTooltip = memo(function ItemTooltip({ name, description, rarity, stacks }: ItemTooltipProps) {
+export const ItemTooltip = memo(function ItemTooltip({ name, description, rarity, stacks, downside }: ItemTooltipProps) {
   const color = RARITY_COLORS[rarity] ?? RARITY_COLORS.brass
 
   return (
@@ -24,6 +25,7 @@ export const ItemTooltip = memo(function ItemTooltip({ name, description, rarity
     }}>
       <div style={{ ...styles.name, color }}>{name}</div>
       {description && <div style={styles.description}>{description}</div>}
+      {downside && <div style={styles.downside}>{downside}</div>}
       {stacks > 1 && <div style={styles.stacks}>x{stacks}</div>}
     </div>
   )
@@ -59,6 +61,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#aaaaaa',
     lineHeight: 1.3,
     marginTop: 3,
+  },
+  downside: {
+    fontSize: 9,
+    color: '#cc4466',
+    lineHeight: 1.3,
+    marginTop: 3,
+    fontStyle: 'italic',
   },
   stacks: {
     fontSize: 8,
