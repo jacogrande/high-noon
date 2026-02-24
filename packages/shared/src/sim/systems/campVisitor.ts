@@ -45,6 +45,8 @@ export interface CampVisitorState {
   greetingIndex: number
   offers: VisitorOffer[]
   modOffers: WeaponModOffer[]
+  /** Per-player mod offers for co-op (keyed by player EID) */
+  modOffersByPlayer: Map<number, WeaponModOffer[]>
 }
 
 // ============================================================================
@@ -222,14 +224,17 @@ export function tryTinkererModSelect(
 ): boolean {
   const visitor = world.campVisitor
   if (!visitor) return false
-  if (visitor.modOffers.length === 0) return false
 
-  if (offerIndex < 0 || offerIndex >= visitor.modOffers.length) return false
-  const offer = visitor.modOffers[offerIndex]!
+  // Use per-player offers if available, fall back to shared modOffers
+  const offers = visitor.modOffersByPlayer.get(playerEid) ?? visitor.modOffers
+  if (offers.length === 0) return false
+
+  if (offerIndex < 0 || offerIndex >= offers.length) return false
+  const offer = offers[offerIndex]!
   if (offer.taken) return false
 
   // Only one mod per visit
-  if (visitor.modOffers.some(o => o.taken)) return false
+  if (offers.some(o => o.taken)) return false
 
   // Validate mod is for this player's character
   const modDef = getWeaponModDef(offer.modId)

@@ -328,7 +328,7 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.holdFireRate = calc('holdFireRate')
   state.lastRoundMultiplier = calc('lastRoundMultiplier')
   const rawPellets = calc('pelletCount')
-  state.pelletCount = rawPellets > 0 ? Math.max(1, rawPellets) : 0
+  state.pelletCount = Math.max(1, rawPellets)
   state.spreadAngle = Math.max(0, calc('spreadAngle'))
   state.showdownDuration = calc('showdownDuration')
   state.showdownCooldown = calc('showdownCooldown')

@@ -454,7 +454,8 @@ export class GameRoom extends Room<GameRoomState> {
       if (!run || run.completed || run.transition !== 'camp') return
       if (typeof data?.offerIndex !== 'number' || !Number.isInteger(data.offerIndex)) return
 
-      tryTinkererModSelect(this.world, slot.eid, data.offerIndex)
+      const success = tryTinkererModSelect(this.world, slot.eid, data.offerIndex)
+      client.send('tinkerer-mod-result', { success, offerIndex: data.offerIndex })
     })
 
     this.onMessage('set-character', (client, data) => {
@@ -664,6 +665,7 @@ export class GameRoom extends Room<GameRoomState> {
       characterId: slot.characterId,
       roster: this.getPlayerRoster(),
       nodesTaken: us.nodesTaken.size > 0 ? Array.from(us.nodesTaken) : undefined,
+      weaponMods: us.weaponMods.size > 0 ? Array.from(us.weaponMods) : undefined,
     })
   }
 
@@ -1290,7 +1292,7 @@ export class GameRoom extends Room<GameRoomState> {
                   downside: oDef?.downside,
                 }
               }),
-              modOffers: cv.modOffers.map(mo => {
+              modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
                 const mDef = getWeaponModDef(mo.modId)
                 return {
                   modId: mo.modId,
@@ -1518,7 +1520,7 @@ export class GameRoom extends Room<GameRoomState> {
                 downside: oDef?.downside,
               }
             }),
-            modOffers: cv.modOffers.map(mo => {
+            modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
               const mDef = getWeaponModDef(mo.modId)
               return {
                 modId: mo.modId,

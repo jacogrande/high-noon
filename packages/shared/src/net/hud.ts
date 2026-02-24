@@ -122,6 +122,7 @@ export interface HudData {
 
 export interface SelectNodeRequest { nodeId: string }
 export interface SelectNodeResponse { success: boolean; nodeId: string }
+export interface TinkererModResponse { success: boolean; offerIndex: number }
 
 /**
  * Shared ability HUD derivation used by single-player, multiplayer, and server HUD push.

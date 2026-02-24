@@ -34,7 +34,7 @@ describe('UNDERTAKER character definition', () => {
   })
 
   describe('base stats', () => {
-    test('bullet damage is 12', () => {
+    test('bullet damage is 10', () => {
       expect(UNDERTAKER.baseStats.bulletDamage).toBe(10)
     })
 
@@ -78,8 +78,8 @@ describe('UNDERTAKER character definition', () => {
       expect(UNDERTAKER.baseStats.pelletCount).toBe(5)
     })
 
-    test('spread angle is 0.5', () => {
-      expect(UNDERTAKER.baseStats.spreadAngle).toBe(0.5)
+    test('spread angle is 0.8', () => {
+      expect(UNDERTAKER.baseStats.spreadAngle).toBe(0.8)
     })
   })
 

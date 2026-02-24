@@ -172,6 +172,11 @@ describe('PROSPECTOR character definition', () => {
       const state = initUpgradeState(PROSPECTOR)
       recomputePlayerStats(state)
       for (const [key, value] of Object.entries(PROSPECTOR.baseStats)) {
+        // pelletCount is clamped to minimum 1 even when base is 0 (melee character)
+        if (key === 'pelletCount') {
+          expect((state as any)[key]).toBe(Math.max(1, value as number))
+          continue
+        }
         expect((state as any)[key]).toBe(value)
       }
     })

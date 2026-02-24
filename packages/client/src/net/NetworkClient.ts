@@ -20,6 +20,7 @@ import {
   type InteractablesData,
   type SelectNodeRequest,
   type SelectNodeResponse,
+  type TinkererModResponse,
   type CharacterId,
   type LobbyState,
   type LobbyPlayerState,
@@ -34,6 +35,7 @@ export interface GameConfig {
   characterId: CharacterId
   roster?: PlayerRosterEntry[]
   nodesTaken?: string[]
+  weaponMods?: number[]
 }
 
 export interface JoinOptions {
@@ -59,6 +61,7 @@ export type NetworkEventMap = {
   hud: (data: HudData) => void
   interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
+  'tinkerer-mod-result': (result: TinkererModResponse) => void
   'state-hash': (data: { tick: number; hash: number }) => void
   'incompatible-protocol': (reason: string) => void
   'reconnect-state': (state: ReconnectState) => void
@@ -264,6 +267,10 @@ export class NetworkClient {
 
     cleanup.push(room.onMessage('select-node-result', (data: SelectNodeResponse) => {
       this.emit('select-node-result', data)
+    }))
+
+    cleanup.push(room.onMessage('tinkerer-mod-result', (data: TinkererModResponse) => {
+      this.emit('tinkerer-mod-result', data)
     }))
 
     cleanup.push(room.onMessage('incompatible-protocol', (reason: string) => {

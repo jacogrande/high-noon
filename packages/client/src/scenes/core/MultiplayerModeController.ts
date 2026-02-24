@@ -35,6 +35,7 @@ import {
   computeQuickHash,
   type UpgradeState,
   type SelectNodeResponse,
+  type TinkererModResponse,
   type SystemRegistry,
   DEFAULT_RUN_STAGES,
   type Tilemap,
@@ -481,6 +482,12 @@ export class MultiplayerModeController implements SceneModeController {
       }
     })
 
+    this.net.on('tinkerer-mod-result', (_result: TinkererModResponse) => {
+      // Server ACK for tinkerer mod selection.
+      // HUD broadcast already updates the client's modOffers taken state,
+      // so this is primarily for future rollback if needed.
+    })
+
     this.net.on('pong', (clientTime, serverTime) => {
       this.clockSync.onPong(clientTime, serverTime)
       if (this.clockSync.isConverged()) {
@@ -584,6 +591,11 @@ export class MultiplayerModeController implements SceneModeController {
     if (config.nodesTaken) {
       for (const id of config.nodesTaken) {
         this.upgradeStateCache.nodesTaken.add(id)
+      }
+    }
+    if (config.weaponMods) {
+      for (const modId of config.weaponMods) {
+        this.upgradeStateCache.weaponMods.add(modId)
       }
     }
     this.world.characterId = config.characterId

@@ -281,19 +281,17 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
   const isTinkerer = visitorDef?.key === 'tinkerer'
 
   if (isTinkerer) {
-    // Tinkerer: generate weapon mod offers instead of item shop
-    // TODO(co-op): Currently uses first alive player's character + taken mods.
-    // In co-op with different characters, Player 2 may see wrong mods.
-    // Fix: generate per-player mod offers or use each player's own character.
-    const firstPlayer = alivePlayers[0]
-    const characterId = firstPlayer !== undefined
-      ? getCharacterIdForPlayer(world, firstPlayer)
-      : world.characterId
-    const takenMods = firstPlayer !== undefined
-      ? getUpgradeStateForPlayer(world, firstPlayer).weaponMods
-      : new Set<number>()
-    const modOffers = generateTinkererModOffers(world.rng, characterId, takenMods)
-    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers: [], modOffers }
+    // Tinkerer: generate per-player weapon mod offers
+    const modOffersByPlayer = new Map<number, import('./campVisitor').WeaponModOffer[]>()
+    let firstPlayerOffers: import('./campVisitor').WeaponModOffer[] = []
+    for (const pEid of alivePlayers) {
+      const characterId = getCharacterIdForPlayer(world, pEid)
+      const takenMods = getUpgradeStateForPlayer(world, pEid).weaponMods
+      const offers = generateTinkererModOffers(world.rng, characterId, takenMods)
+      modOffersByPlayer.set(pEid, offers)
+      if (pEid === alivePlayers[0]) firstPlayerOffers = offers
+    }
+    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers: [], modOffers: firstPlayerOffers, modOffersByPlayer }
   } else {
     // Other visitors: generate item offers
     const allPlayerItems = new Map<number, number>()
@@ -304,7 +302,7 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
       }
     }
     const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
-    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers, modOffers: [] }
+    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers, modOffers: [], modOffersByPlayer: new Map() }
   }
   selectCampNarrativeLine(world)
 }
