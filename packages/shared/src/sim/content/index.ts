@@ -6,6 +6,7 @@
 
 export * from './player'
 export * from './weapons'
+export * from './enemyRegistry'
 export * from './enemies'
 export * from './economy'
 export * from './gold'

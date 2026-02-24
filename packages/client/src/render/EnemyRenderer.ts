@@ -10,8 +10,9 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
-  AttackConfig, Health, BossPhase, NO_TARGET,
+  AttackConfig, Health, BossPhase, FrontArmor, NO_TARGET,
   isBoss, allBosses, getBoss,
+  getEnemyDef, allEnemyDefs,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
@@ -51,54 +52,48 @@ const BOSS_BAR_Y_OFFSET = 30
 const ENEMY_BAR_BG_ID_OFFSET = 20000
 const ENEMY_BAR_FILL_ID_OFFSET = 30000
 
-/** Colors per enemy type (rendering data, client-only) */
+/** Colors per enemy type — populated from enemy registry + boss registry */
 const ENEMY_COLORS: Record<number, number> = {
-  [EnemyType.SWARMER]: 0xffaaaa,          // pale pink
-  [EnemyType.GRUNT]: 0xff6633,            // red-orange
-  [EnemyType.SHOOTER]: 0xaa44dd,          // purple
-  [EnemyType.CHARGER]: 0xaa1111,          // dark red
-  [EnemyType.GOBLIN_BARBARIAN]: 0x44aa44, // forest green
-  [EnemyType.GOBLIN_ROGUE]: 0x66cc66,     // light green
-  [EnemyType.RUNNER]: 0x44ddff,           // bright cyan (fast, urgent)
-  [EnemyType.DUELIST]: 0xddaa33,         // dark amber/gold (duel challenger)
-  [EnemyType.COYOTE]: 0xc4a35a,          // sandy tan (desert coyote)
-  [EnemyType.AFTERIMAGE]: 0x8888aa,      // ghostly blue-grey
+  [EnemyType.AFTERIMAGE]: 0x8888aa,      // ghostly blue-grey (not in registry)
 }
 
-// Populate boss colors from registry
+// Populate from enemy registry
+for (const def of allEnemyDefs()) {
+  ENEMY_COLORS[def.type] = def.color
+}
+
+// Populate boss colors from boss registry
 for (const boss of allBosses()) {
   ENEMY_COLORS[boss.type] = boss.color
 }
 
-/** Enemy type → sprite sheet ID (only for sprite-based enemies) */
-const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
-  [EnemyType.SWARMER]: 'swarmer',
-  [EnemyType.GRUNT]: 'grunt',
-  [EnemyType.SHOOTER]: 'shooter',
-  [EnemyType.CHARGER]: 'charger',
-  [EnemyType.RUNNER]: 'runner',
-  [EnemyType.DUELIST]: 'duelist',
-  [EnemyType.GOBLIN_BARBARIAN]: 'goblin_barbarian',
-  [EnemyType.GOBLIN_ROGUE]: 'goblin_rogue',
-  [EnemyType.MAD_DOG]: 'mad_dog',
-  [EnemyType.BOOMSTICK]: 'boomstick',
-  [EnemyType.COYOTE_JANE]: 'coyote_jane',
-  [EnemyType.COYOTE]: 'coyote',
+/** Enemy type → sprite sheet ID — populated from enemy registry */
+const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {}
+
+// Populate from enemy registry
+for (const def of allEnemyDefs()) {
+  if (def.spriteId) ENEMY_SPRITE_ID[def.type] = def.spriteId
 }
 
-/** Per-type sprite scale overrides (defaults to GOBLIN_SPRITE_SCALE) */
-const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
-  [EnemyType.SWARMER]: 1.5,
-  [EnemyType.CHARGER]: 2.5,
-  [EnemyType.RUNNER]: 1.5,
-  [EnemyType.DUELIST]: 2.5,
-  [EnemyType.MAD_DOG]: 2.5,
-  [EnemyType.BOOMSTICK]: 2.5,
-  [EnemyType.DALTON]: 2.5,
-  [EnemyType.COYOTE_JANE]: 2.5,
-  [EnemyType.COYOTE]: 1.5,
-  [EnemyType.HOLLOW_MAN]: 2.5,
+// Boss sprites not in enemy registry — add manually
+ENEMY_SPRITE_ID[EnemyType.MAD_DOG] = 'mad_dog'
+ENEMY_SPRITE_ID[EnemyType.BOOMSTICK] = 'boomstick'
+ENEMY_SPRITE_ID[EnemyType.COYOTE_JANE] = 'coyote_jane'
+
+/** Per-type sprite scale — populated from enemy registry */
+const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {}
+
+// Populate from enemy registry
+for (const def of allEnemyDefs()) {
+  ENEMY_SPRITE_SCALE[def.type] = def.spriteScale
 }
+
+// Boss scales not in enemy registry — add manually
+ENEMY_SPRITE_SCALE[EnemyType.MAD_DOG] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.BOOMSTICK] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.DALTON] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.COYOTE_JANE] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.HOLLOW_MAN] = 2.5
 
 function isSpriteEnemy(type: number): boolean {
   return ENEMY_SPRITE_ID[type] !== undefined || type === EnemyType.DALTON
@@ -541,6 +536,23 @@ export class EnemyRenderer {
 
         this.updateEnemyHealthBar(eid, renderX, renderY, a)
 
+        // Armored Bandit: front armor arc indicator (sprite enemies)
+        if (hasComponent(world, FrontArmor, eid) && this.debug) {
+          const facing = FrontArmor.facingAngle[eid]!
+          const halfArc = FrontArmor.arcHalfAngle[eid]!
+          const arcRadius = Collider.radius[eid]! + 5
+          const segments = 8
+          for (let s = 0; s < segments; s++) {
+            const a0 = facing - halfArc + (2 * halfArc * s) / segments
+            const a1 = facing - halfArc + (2 * halfArc * (s + 1)) / segments
+            this.debug.line(
+              renderX + Math.cos(a0) * arcRadius, renderY + Math.sin(a0) * arcRadius,
+              renderX + Math.cos(a1) * arcRadius, renderY + Math.sin(a1) * arcRadius,
+              0xaaaaaa, 2,
+            )
+          }
+        }
+
         continue // skip circle rendering path
       }
 
@@ -607,6 +619,23 @@ export class EnemyRenderer {
           const tx = Position.x[targetEid]!
           const ty = Position.y[targetEid]!
           this.debug.line(renderX, renderY, tx, ty, 0xff0000, 1)
+        }
+      }
+
+      // Armored Bandit: front armor arc indicator (drawn as line segments)
+      if (hasComponent(world, FrontArmor, eid) && this.debug) {
+        const facing = FrontArmor.facingAngle[eid]!
+        const halfArc = FrontArmor.arcHalfAngle[eid]!
+        const arcRadius = Collider.radius[eid]! + 5
+        const segments = 8
+        for (let s = 0; s < segments; s++) {
+          const a0 = facing - halfArc + (2 * halfArc * s) / segments
+          const a1 = facing - halfArc + (2 * halfArc * (s + 1)) / segments
+          this.debug.line(
+            renderX + Math.cos(a0) * arcRadius, renderY + Math.sin(a0) * arcRadius,
+            renderX + Math.cos(a1) * arcRadius, renderY + Math.sin(a1) * arcRadius,
+            0xaaaaaa, 2,
+          )
         }
       }
     }

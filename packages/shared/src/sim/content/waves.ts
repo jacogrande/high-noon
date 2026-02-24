@@ -110,11 +110,12 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
         { type: EnemyType.SWARMER, weight: 2 },
         { type: EnemyType.GRUNT, weight: 3 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
+        { type: EnemyType.DYNAMITE_TOSSER, weight: 1 },
       ],
       maxFodderAlive: 6,
       threats: [
         { type: EnemyType.SHOOTER, count: 1 },
-        { type: EnemyType.CHARGER, count: 1 },
+        { type: EnemyType.LASSO_BANDIT, count: 1 },
       ],
       spawnDelay: 0,
       threatClearRatio: 1.0,
@@ -127,6 +128,7 @@ export const STAGE_2_ENCOUNTER: StageEncounter = {
         { type: EnemyType.GRUNT, weight: 2 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
         { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
+        { type: EnemyType.DYNAMITE_TOSSER, weight: 1 },
       ],
       maxFodderAlive: 7,
       threats: [
@@ -144,7 +146,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
   objective: STAGE_3_INTERCEPT,
   bossPool: [EnemyType.HOLLOW_MAN],
   waves: [
-    // Wave 1: Pressure + 1 shooter + 1 charger
+    // Wave 1: Pressure + mixed threats
     {
       fodderBudget: 15,
       fodderPool: [
@@ -152,11 +154,12 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
         { type: EnemyType.GRUNT, weight: 3 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
         { type: EnemyType.GOBLIN_BARBARIAN, weight: 2 },
+        { type: EnemyType.DYNAMITE_TOSSER, weight: 2 },
       ],
       maxFodderAlive: 7,
       threats: [
-        { type: EnemyType.SHOOTER, count: 1 },
-        { type: EnemyType.CHARGER, count: 1 },
+        { type: EnemyType.LASSO_BANDIT, count: 1 },
+        { type: EnemyType.ARMORED_BANDIT, count: 1 },
       ],
       spawnDelay: 0,
       threatClearRatio: 1.0,
@@ -169,6 +172,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
         { type: EnemyType.GRUNT, weight: 2 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 3 },
         { type: EnemyType.GOBLIN_BARBARIAN, weight: 3 },
+        { type: EnemyType.DYNAMITE_TOSSER, weight: 2 },
       ],
       maxFodderAlive: 8,
       threats: [

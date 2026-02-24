@@ -283,6 +283,22 @@ export const SlowDebuff = {
   duration: new Float32Array(MAX_ENTITIES),
 }
 
+/** Root debuff — prevents all movement (broken by rolling) */
+export const Root = {
+  /** Remaining duration in seconds */
+  duration: new Float32Array(MAX_ENTITIES),
+}
+
+/** Directional front armor — reduces frontal bullet damage */
+export const FrontArmor = {
+  /** Facing angle in radians (toward current target) */
+  facingAngle: new Float32Array(MAX_ENTITIES),
+  /** Damage multiplier for frontal hits (0.4 = 60% reduction) */
+  reductionMultiplier: new Float32Array(MAX_ENTITIES),
+  /** Half-angle of armored arc in radians */
+  arcHalfAngle: new Float32Array(MAX_ENTITIES),
+}
+
 // ============================================================================
 // Enemy Components
 // ============================================================================
@@ -309,6 +325,9 @@ export const EnemyType = {
   COYOTE: 12,
   HOLLOW_MAN: 13,
   AFTERIMAGE: 14,
+  LASSO_BANDIT: 15,
+  DYNAMITE_TOSSER: 16,
+  ARMORED_BANDIT: 17,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
@@ -479,6 +498,8 @@ export const AllComponents = [
   MeleeWeapon,
   Knockback,
   SlowDebuff,
+  Root,
+  FrontArmor,
   Enemy,
   BossPhase,
   EnemyAI,

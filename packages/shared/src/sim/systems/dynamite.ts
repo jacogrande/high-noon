@@ -238,7 +238,7 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
     return
   }
 
-  // Enemy-owned dynamite: damages nearby players (not enemies).
+  // Enemy-owned dynamite: damages nearby players and nearby enemies (friendly fire).
   for (const playerEid of explosionPlayerQuery(world)) {
     if (hasComponent(world, Dead, playerEid)) continue
     if (hasComponent(world, Invincible, playerEid)) continue
@@ -265,4 +265,17 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
     Knockback.vy[playerEid] = ny * EXPLOSION_KB_SPEED
     Knockback.duration[playerEid] = DYNAMITE_EXPLOSION_KB_DURATION
   }
+
+  // Enemy-owned dynamite friendly fire: also damages nearby enemies
+  forEachAliveEnemyInRadius(world, dyn.x, dyn.y, dyn.radius, (enemyEid, dx, dy, distSq) => {
+    if (enemyEid === dyn.ownerId) return // don't damage self
+    applyDamage(world, enemyEid, { amount: dyn.damage, attackerEid: dyn.ownerId })
+    const dist = Math.sqrt(distSq)
+    if (dist > 0) {
+      addComponent(world, Knockback, enemyEid)
+      Knockback.vx[enemyEid] = (dx / dist) * EXPLOSION_KB_SPEED
+      Knockback.vy[enemyEid] = (dy / dist) * EXPLOSION_KB_SPEED
+      Knockback.duration[enemyEid] = DYNAMITE_EXPLOSION_KB_DURATION
+    }
+  })
 }

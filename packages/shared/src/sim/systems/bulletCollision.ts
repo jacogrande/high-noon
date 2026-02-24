@@ -13,7 +13,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType } from '../components'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType, FrontArmor } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET, removeBullet } from '../prefabs'
 import { clampDamage } from '../damage'
 import { isSolidAt } from '../tilemap'
@@ -224,6 +224,21 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       let damage = Bullet.damage[eid]!
       let shouldRemoveBullet = true
       let shouldStopIteration = true
+
+      // FrontArmor: reduce damage for frontal player bullet hits
+      if (hasComponent(world, FrontArmor, targetEid) &&
+          Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET) {
+        const bulletAngle = Math.atan2(Velocity.y[eid]!, Velocity.x[eid]!)
+        const facingAngle = FrontArmor.facingAngle[targetEid]!
+        // Bullet hits "from the front" when bullet direction ≈ opposite of facing
+        let angleDiff = bulletAngle - (facingAngle + Math.PI)
+        // Normalize to [-PI, PI]. +PI maps to -PI which is fine since
+        // abs(-PI) > arcHalfAngle (PI/2) so armor won't trigger at the seam.
+        angleDiff = ((angleDiff % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI
+        if (Math.abs(angleDiff) <= FrontArmor.arcHalfAngle[targetEid]!) {
+          damage = clampDamage(damage * FrontArmor.reductionMultiplier[targetEid]!)
+        }
+      }
 
       if (ownerHasShowdown && targetEid !== showdownTarget) {
         // Pierce: bullet passes through non-target

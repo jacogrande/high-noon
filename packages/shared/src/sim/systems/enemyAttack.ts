@@ -15,21 +15,15 @@ import type { GameWorld } from '../world'
 import {
   EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
   Position, Velocity, Collider, Health, Invincible, Dead, Bullet, Knockback, Player,
+  Root,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
-import {
-  CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION,
-  GOBLIN_BARBARIAN_MELEE_REACH, GOBLIN_BARBARIAN_ATTACK_DURATION,
-  GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_ATTACK_DURATION,
-  GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
-  DUELIST_MELEE_REACH, DUELIST_ATTACK_DURATION,
-  DUELIST_MELEE_KB_SPEED, DUELIST_MELEE_KB_DURATION,
-  COYOTE_DART_SPEED, COYOTE_DART_DURATION,
-} from '../content/enemies'
-import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER, type BulletSpriteIdValue } from '../content/weapons'
+import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
+import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS } from '../content/enemies'
 import { applyDamage } from './applyDamage'
 import { isBoss, getBoss } from '../content/bosses'
+import { getEnemyDef } from '../content/enemyRegistry'
 
 /**
  * Shared rush-attack handler for charger and coyote (dart-and-bite).
@@ -77,24 +71,24 @@ function handleRushAttack(
   }
 }
 
-function isMeleeEnemy(type: number): boolean {
-  return type === EnemyType.GOBLIN_BARBARIAN || type === EnemyType.GOBLIN_ROGUE || type === EnemyType.DUELIST
-}
-
-const BARBARIAN_MELEE_CFG = { meleeReach: GOBLIN_BARBARIAN_MELEE_REACH, attackDuration: GOBLIN_BARBARIAN_ATTACK_DURATION, kbSpeed: GOBLIN_MELEE_KB_SPEED, kbDuration: GOBLIN_MELEE_KB_DURATION }
-const ROGUE_MELEE_CFG = { meleeReach: GOBLIN_ROGUE_MELEE_REACH, attackDuration: GOBLIN_ROGUE_ATTACK_DURATION, kbSpeed: GOBLIN_MELEE_KB_SPEED, kbDuration: GOBLIN_MELEE_KB_DURATION }
-const DUELIST_MELEE_CFG = { meleeReach: DUELIST_MELEE_REACH, attackDuration: DUELIST_ATTACK_DURATION, kbSpeed: DUELIST_MELEE_KB_SPEED, kbDuration: DUELIST_MELEE_KB_DURATION }
-
+/** Get melee config from registry. Falls back to safe defaults. */
 function getMeleeConfig(type: number) {
-  if (type === EnemyType.DUELIST) return DUELIST_MELEE_CFG
-  return type === EnemyType.GOBLIN_BARBARIAN ? BARBARIAN_MELEE_CFG : ROGUE_MELEE_CFG
+  const def = getEnemyDef(type)
+  return {
+    meleeReach: def?.meleeReach ?? 10,
+    attackDuration: def?.attackDuration ?? 0.25,
+    kbSpeed: def?.knockbackSpeed ?? 200,
+    kbDuration: def?.knockbackDuration ?? 0.12,
+  }
 }
 
-/** Per-enemy-type bullet sprite. Melee/rush enemies are absent (they don't fire bullets). */
-const ENEMY_BULLET_SPRITE: Partial<Record<number, BulletSpriteIdValue>> = {
-  [EnemyType.SWARMER]: BulletSpriteId.FIRE_ANIM,
-  [EnemyType.GRUNT]: BulletSpriteId.SLUG_ANIM,
-  [EnemyType.SHOOTER]: BulletSpriteId.SPIRIT_ANIM,
+/** Get rush config from registry. Falls back to safe defaults. */
+function getRushConfig(type: number) {
+  const def = getEnemyDef(type)
+  return {
+    rushSpeed: def?.rushSpeed ?? 300,
+    rushDuration: def?.rushDuration ?? 0.4,
+  }
 }
 
 const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
@@ -111,11 +105,14 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const targetEid = EnemyAI.targetEid[eid]!
     const hasTarget = targetEid !== NO_TARGET && hasComponent(world, Position, targetEid) && !hasComponent(world, Dead, targetEid)
 
-    // Lock charger/coyote aim direction on first tick of TELEGRAPH
+    const type = Enemy.type[eid]!
+    const def = getEnemyDef(type)
+
+    // Lock rush-attack aim direction on first tick of TELEGRAPH
     if (
       state === AIState.TELEGRAPH &&
       EnemyAI.stateTimer[eid]! === 0 &&
-      (Enemy.type[eid] === EnemyType.CHARGER || Enemy.type[eid] === EnemyType.COYOTE) &&
+      def?.attackStyle === 'rush' &&
       hasTarget
     ) {
       const dx = Position.x[targetEid]! - Position.x[eid]!
@@ -141,23 +138,26 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const targetX = Position.x[targetEid]!
     const targetY = Position.y[targetEid]!
 
-    const type = Enemy.type[eid]!
+    // Determine attack style: boss > registry > fallback projectile
+    const attackStyle = def?.attackStyle
 
-    // Zero velocity for non-charger, non-coyote, non-boss attackers (bosses manage their own velocity)
-    if (type !== EnemyType.CHARGER && type !== EnemyType.COYOTE && !isBoss(type)) {
+    // Zero velocity for non-rush, non-boss attackers (bosses manage their own velocity)
+    if (attackStyle !== 'rush' && !isBoss(type)) {
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
     }
 
-    if (type === EnemyType.COYOTE) {
-      handleRushAttack(world, eid, targetEid, COYOTE_DART_SPEED, COYOTE_DART_DURATION, false)
-    } else if (type === EnemyType.CHARGER) {
-      // Duel guard: non-duelist chargers can't damage player during active duel
+    if (isBoss(type)) {
+      // Delegate to boss module's attack handler
+      getBoss(type)!.attack(world, eid, _dt)
+    } else if (attackStyle === 'rush') {
+      const rushCfg = getRushConfig(type)
+      // Duel guard: non-duelist rush enemies can't damage player during active duel
       const obj = world.objective
       const duelActive = obj && obj.type === 'duel' && obj.status === 'active'
       const blockedByDuel = !!duelActive && eid !== obj!.duelistEid && hasComponent(world, Player, targetEid)
-      handleRushAttack(world, eid, targetEid, CHARGER_CHARGE_SPEED, CHARGER_CHARGE_DURATION, blockedByDuel)
-    } else if (isMeleeEnemy(type)) {
+      handleRushAttack(world, eid, targetEid, rushCfg.rushSpeed, rushCfg.rushDuration, blockedByDuel)
+    } else if (attackStyle === 'melee') {
       // Melee enemy: proximity check + contact damage
       const meleeCfg = getMeleeConfig(type)
       const meleeR = Collider.radius[eid]!
@@ -202,10 +202,50 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         // Whiffed — transition to recovery
         transition(eid, AIState.RECOVERY)
       }
-    } else if (isBoss(type)) {
-      // Delegate to boss module's attack handler
-      getBoss(type)!.attack(world, eid, _dt)
+    } else if (type === EnemyType.LASSO_BANDIT && attackStyle === 'custom') {
+      // Lasso Bandit: fire a slow lasso projectile that roots on hit
+      const angle = Math.atan2(targetY - ey, targetX - ex)
+      const speed = AttackConfig.projectileSpeed[eid]!
+      const damage = AttackConfig.damage[eid]!
+      spawnBullet(world, {
+        x: ex,
+        y: ey,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        damage,
+        range: ENEMY_BULLET_RANGE,
+        ownerId: eid,
+        layer: CollisionLayer.ENEMY_BULLET,
+        spriteId: BulletSpriteId.SPIRIT_ANIM,
+        size: ENEMY_BULLET_SIZE_THREAT * 1.5,
+        onCollide: (w, _bulletEid, info) => {
+          if (info.type === 'entity' && info.hitEntity !== undefined && hasComponent(w, Player, info.hitEntity)) {
+            addComponent(w, Root, info.hitEntity)
+            Root.duration[info.hitEntity] = LASSO_ROOT_DURATION
+          }
+        },
+      })
+      activeBulletCount += 1
+      transition(eid, AIState.RECOVERY)
+    } else if (type === EnemyType.DYNAMITE_TOSSER && attackStyle === 'custom') {
+      // Dynamite Tosser: lob a dynamite at target position (reuses existing dynamiteSystem)
+      const damage = AttackConfig.damage[eid]!
+      world.dynamites.push({
+        x: targetX,
+        y: targetY,
+        startX: ex,
+        startY: ey,
+        fuseRemaining: DYNAMITE_TOSSER_FUSE_TIME,
+        maxFuse: DYNAMITE_TOSSER_FUSE_TIME,
+        damage,
+        radius: DYNAMITE_TOSSER_BLAST_RADIUS,
+        knockback: 150,
+        ownerId: eid,
+      })
+      transition(eid, AIState.RECOVERY)
     } else {
+      // Projectile attack (default for 'projectile', 'custom' with projectile config, or unknown)
+
       // Fodder projectile cap — skip shot if at limit
       if (Enemy.tier[eid] === EnemyTier.FODDER) {
         if (activeBulletCount >= world.maxProjectiles) {
@@ -225,6 +265,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
 
       const isThreat = Enemy.tier[eid] === EnemyTier.THREAT
       const enemyBulletSize = isThreat ? ENEMY_BULLET_SIZE_THREAT : ENEMY_BULLET_SIZE_FODDER
+      const bulletSprite = def?.bulletSpriteId ?? BulletSpriteId.SLUG
 
       for (let i = 0; i < count; i++) {
         let bulletAngle: number
@@ -245,7 +286,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
           range: ENEMY_BULLET_RANGE,
           ownerId: eid,
           layer: CollisionLayer.ENEMY_BULLET,
-          spriteId: ENEMY_BULLET_SPRITE[type] ?? BulletSpriteId.SLUG,
+          spriteId: bulletSprite,
           size: enemyBulletSize,
         })
       }

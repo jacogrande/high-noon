@@ -20,6 +20,7 @@ import {
   ZPosition,
   Position,
   Dead,
+  Root,
 } from '../components'
 import { JUMP_VELOCITY } from '../content/jump'
 import { getUpgradeStateForPlayer } from '../upgrade'
@@ -60,8 +61,49 @@ export function playerInputSystem(
       continue
     }
 
-    // Update aim angle
+    // Update aim angle (always, even while rooted)
     Player.aimAngle[eid] = input.aimAngle
+
+    // Root check: if rooted and not rolling, zero velocity but still allow roll initiation
+    const isRooted = hasComponent(world, Root, eid)
+    const currentStatePreRoot = PlayerState.state[eid]!
+    if (isRooted && currentStatePreRoot !== PlayerStateType.ROLLING) {
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+
+      // Still allow roll to break free
+      const wantsRollRoot = hasButton(input, Button.ROLL)
+      const wasRollDownRoot = Player.rollButtonWasDown[eid] === 1
+      if (wantsRollRoot && !wasRollDownRoot && !hasComponent(world, Roll, eid)) {
+        const moveX = input.moveX
+        const moveY = input.moveY
+        let rollDirX = moveX
+        let rollDirY = moveY
+        if (moveX === 0 && moveY === 0) {
+          rollDirX = Math.cos(input.aimAngle)
+          rollDirY = Math.sin(input.aimAngle)
+        }
+        const len = Math.sqrt(rollDirX * rollDirX + rollDirY * rollDirY)
+        if (len > 0) { rollDirX /= len; rollDirY /= len }
+        else { rollDirX = 1; rollDirY = 0 }
+
+        const us = getUpgradeStateForPlayer(world, eid)
+        addComponent(world, Roll, eid)
+        Roll.duration[eid] = us.rollDuration
+        Roll.elapsed[eid] = 0
+        Roll.iframeRatio[eid] = us.rollIframeRatio
+        Roll.speedMultiplier[eid] = us.rollSpeedMultiplier
+        Roll.directionX[eid] = rollDirX
+        Roll.directionY[eid] = rollDirY
+        Roll.startX[eid] = Position.x[eid]!
+        Roll.startY[eid] = Position.y[eid]!
+        PlayerState.state[eid] = PlayerStateType.ROLLING
+      }
+
+      Player.rollButtonWasDown[eid] = wantsRollRoot ? 1 : 0
+      Player.jumpButtonWasDown[eid] = hasButton(input, Button.JUMP) ? 1 : 0
+      continue
+    }
 
     // Get movement from input (already normalized in Input.ts)
     const moveX = input.moveX

@@ -6,7 +6,7 @@
  */
 
 import { Assets, Texture, Rectangle } from "pixi.js";
-import { TileType, BulletSpriteId, type BaseTileStyle } from "@high-noon/shared";
+import { TileType, BulletSpriteId, allEnemyDefs, type BaseTileStyle } from "@high-noon/shared";
 import type { Spritesheet } from "pixi.js";
 import {
   ANIMATION_STATES,
@@ -58,23 +58,22 @@ const WEAPON_SPRITES: Record<string, string> = {
   pickaxe: "/assets/sprites/weapons/pickaxe.png",
 };
 
-/** Enemy sprite manifest: enemyId → path */
-const ENEMY_SPRITES: Record<string, string> = {
-  swarmer: "/assets/sprites/enemies/swarmer.png",
-  grunt: "/assets/sprites/enemies/grunt.png",
-  shooter: "/assets/sprites/enemies/shooter.png",
-  charger: "/assets/sprites/enemies/charger.png",
-  runner: "/assets/sprites/enemies/runner.png",
-  duelist: "/assets/sprites/enemies/duelist.png",
-  goblin_barbarian: "/assets/sprites/enemies/goblin_barbarian.png",
-  goblin_rogue: "/assets/sprites/enemies/goblin_rogue.png",
-  mad_dog: "/assets/sprites/enemies/mad_dog.png",
-  boomstick: "/assets/sprites/enemies/boomstick.png",
-  dalton_emmett: "/assets/sprites/enemies/dalton_emmett.png",
-  dalton_bob: "/assets/sprites/enemies/dalton_bob.png",
-  coyote_jane: "/assets/sprites/enemies/coyote_jane.png",
-  coyote: "/assets/sprites/enemies/coyote.png",
-};
+/** Enemy sprite manifest: enemyId → path — built from registry + boss overrides */
+const ENEMY_SPRITES: Record<string, string> = {};
+
+// Populate from enemy registry (all registered enemies with spriteId)
+for (const def of allEnemyDefs()) {
+  if (def.spriteId) {
+    ENEMY_SPRITES[def.spriteId] = `/assets/sprites/enemies/${def.spriteId}.png`;
+  }
+}
+
+// Boss sprites not in enemy registry — add manually
+ENEMY_SPRITES['mad_dog'] = '/assets/sprites/enemies/mad_dog.png';
+ENEMY_SPRITES['boomstick'] = '/assets/sprites/enemies/boomstick.png';
+ENEMY_SPRITES['dalton_emmett'] = '/assets/sprites/enemies/dalton_emmett.png';
+ENEMY_SPRITES['dalton_bob'] = '/assets/sprites/enemies/dalton_bob.png';
+ENEMY_SPRITES['coyote_jane'] = '/assets/sprites/enemies/coyote_jane.png';
 
 /** Item icon manifest: itemKey → path */
 const ITEM_SPRITES: Record<string, string> = {

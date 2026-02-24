@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole, BossPhase } from '../components'
+import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole, BossPhase, FrontArmor } from '../components'
 import { NO_TARGET } from '../prefabs'
 import { getFloorTileTypeAt, isSolidAt, TileType, worldToTile } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -131,6 +131,13 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       if (state === AIState.TELEGRAPH && hasComponent(world, BossPhase, eid)) continue
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
+      // Update FrontArmor facing toward target even when not chasing
+      if (hasComponent(world, FrontArmor, eid) && EnemyAI.targetEid[eid]! !== NO_TARGET) {
+        const tgt = EnemyAI.targetEid[eid]!
+        FrontArmor.facingAngle[eid] = Math.atan2(
+          Position.y[tgt]! - Position.y[eid]!, Position.x[tgt]! - Position.x[eid]!
+        )
+      }
       continue
     }
     if (state === AIState.ATTACK) continue
@@ -285,5 +292,10 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
     const floorMul = world.floorSpeedMul.get(eid) ?? 1.0
     Velocity.x[eid] = desiredX * speed * floorMul
     Velocity.y[eid] = desiredY * speed * floorMul
+
+    // Update FrontArmor facing toward target while chasing
+    if (hasComponent(world, FrontArmor, eid) && hasTarget) {
+      FrontArmor.facingAngle[eid] = Math.atan2(targetY - ey, targetX - ex)
+    }
   }
 }

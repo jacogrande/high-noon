@@ -26,6 +26,7 @@ import {
   Collider,
   Bullet,
   Player,
+  Root,
 } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
 import { forEachInRadius } from '../SpatialHash'
@@ -45,6 +46,11 @@ export function rollSystem(world: GameWorld, dt: number): void {
   const rollingEntities = rollingQuery(world)
 
   for (const eid of rollingEntities) {
+    // Roll instantly breaks root
+    if (hasComponent(world, Root, eid)) {
+      removeComponent(world, Root, eid)
+    }
+
     const duration = Roll.duration[eid]!
     const elapsed = Roll.elapsed[eid]!
     const iframeRatio = Roll.iframeRatio[eid]!

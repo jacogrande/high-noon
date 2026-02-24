@@ -38,6 +38,7 @@ import { npcMovementSystem } from './npcMovement'
 import { npcDialogueSystem } from './npcDialogue'
 import { buffSystem } from './buffSystem'
 import { slowDebuffSystem } from './slowDebuff'
+import { rootSystem } from './root'
 import { meleeSystem } from './melee'
 import { knockbackSystem } from './knockback'
 import { dynamiteSystem } from './dynamite'
@@ -87,6 +88,7 @@ export {
   npcDialogueSystem,
   buffSystem,
   slowDebuffSystem,
+  rootSystem,
   meleeSystem,
   knockbackSystem,
   dynamiteSystem,
@@ -115,6 +117,7 @@ export type { CampVisitorState, WeaponModOffer }
  */
 export function registerPredictionSystems(systems: SystemRegistry): void {
   systems.register(playerInputSystem)
+  systems.register(rootSystem)
   systems.register(rollSystem)
   systems.register(jumpSystem)
   systems.register(showdownSystem)
@@ -194,6 +197,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)
+  systems.register(rootSystem)
   systems.register(enemySteeringSystem)
   systems.register(enemyAttackSystem)
   // -- Physics --

@@ -11,45 +11,17 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
 import { Enemy, EnemyType, EnemyTier, Position, Dead, ObjectiveRole } from '../components'
-import {
-  spawnSwarmer,
-  spawnGrunt,
-  spawnShooter,
-  spawnCharger,
-  spawnGoblinBarbarian,
-  spawnGoblinRogue,
-} from '../prefabs'
+import { spawnFromRegistry, spawnArmoredBandit } from '../prefabs'
 import { getBoss } from '../content/bosses'
+import { getEnemyDef } from '../content/enemyRegistry'
 import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
-import {
-  SWARMER_BUDGET_COST, GRUNT_BUDGET_COST,
-  GOBLIN_BARBARIAN_BUDGET_COST, GOBLIN_ROGUE_BUDGET_COST,
-} from '../content/enemies'
 import type { FodderPool } from '../content/waves'
 
 /** Fodder spawn rate in enemies per second */
 const FODDER_SPAWN_RATE = 3.0
 
 const enemyQuery = defineQuery([Enemy, Position])
-
-/** Spawn function lookup by EnemyType */
-const SPAWN_FN: Record<number, (world: GameWorld, x: number, y: number) => number> = {
-  [EnemyType.SWARMER]: spawnSwarmer,
-  [EnemyType.GRUNT]: spawnGrunt,
-  [EnemyType.SHOOTER]: spawnShooter,
-  [EnemyType.CHARGER]: spawnCharger,
-  [EnemyType.GOBLIN_BARBARIAN]: spawnGoblinBarbarian,
-  [EnemyType.GOBLIN_ROGUE]: spawnGoblinRogue,
-}
-
-/** Budget cost lookup by EnemyType (only fodder types have costs) */
-const BUDGET_COST: Record<number, number> = {
-  [EnemyType.SWARMER]: SWARMER_BUDGET_COST,
-  [EnemyType.GRUNT]: GRUNT_BUDGET_COST,
-  [EnemyType.GOBLIN_BARBARIAN]: GOBLIN_BARBARIAN_BUDGET_COST,
-  [EnemyType.GOBLIN_ROGUE]: GOBLIN_ROGUE_BUDGET_COST,
-}
 
 function getSpawnBounds(tilemap: Tilemap) {
   const bounds = getPlayableBoundsFromTilemap(tilemap)
@@ -161,6 +133,11 @@ function pickFromPool(rng: SeededRng, pool: FodderPool[]): number {
   return pool[pool.length - 1]!.type
 }
 
+/** Get budget cost for a fodder type from the enemy registry */
+function getBudgetCost(type: number): number {
+  return getEnemyDef(type)?.budgetCost ?? 1
+}
+
 /**
  * Spawn an enemy of the given type at the given position
  */
@@ -169,9 +146,10 @@ function spawnEnemy(world: GameWorld, type: number, x: number, y: number): numbe
   const bossMod = getBoss(type)
   if (bossMod) return bossMod.spawn(world, x, y)
 
-  const fn = SPAWN_FN[type]
-  if (!fn) throw new Error(`Unknown enemy type: ${type}`)
-  return fn(world, x, y)
+  // Armored Bandit needs FrontArmor component added post-spawn
+  if (type === EnemyType.ARMORED_BANDIT) return spawnArmoredBandit(world, x, y)
+
+  return spawnFromRegistry(world, type, x, y)
 }
 
 export function waveSpawnerSystem(world: GameWorld, dt: number): void {
@@ -257,7 +235,7 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       const burstCount = Math.floor(waveDef.maxFodderAlive / 2)
       for (let i = 0; i < burstCount && enc.fodderBudgetRemaining > 0; i++) {
         const type = pickFromPool(rng, waveDef.fodderPool)
-        const cost = BUDGET_COST[type] ?? 1
+        const cost = getBudgetCost(type)
         if (enc.fodderBudgetRemaining < cost) continue
         const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 280, 60)
         spawnEnemy(world, type, pos.x, pos.y)
@@ -284,12 +262,12 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
     enc.fodderBudgetRemaining > 0
   ) {
     const type = pickFromPool(rng, waveDef.fodderPool)
-    const cost = BUDGET_COST[type] ?? 1
+    const cost = getBudgetCost(type)
     if (enc.fodderBudgetRemaining < cost) {
       // Can't afford this type — try to find an affordable one
       let found = false
       for (const entry of waveDef.fodderPool) {
-        const entryCost = BUDGET_COST[entry.type] ?? 1
+        const entryCost = getBudgetCost(entry.type)
         if (enc.fodderBudgetRemaining >= entryCost) {
           const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 280, 60)
           spawnEnemy(world, entry.type, pos.x, pos.y)

@@ -31,6 +31,7 @@ import {
   AIState,
   Showdown,
   MeleeWeapon,
+  FrontArmor,
   Npc,
   NpcMovement,
   NpcMovementType,
@@ -51,41 +52,14 @@ import {
 } from './content/weapons'
 import { getNpcDef } from './content/npcs'
 import { clampDamage } from './damage'
+import { getEnemyDef, type EnemyDefinition } from './content/enemyRegistry'
 import {
-  SWARMER_SPEED, SWARMER_RADIUS, SWARMER_HP, SWARMER_AGGRO_RANGE, SWARMER_ATTACK_RANGE,
-  SWARMER_TELEGRAPH, SWARMER_RECOVERY, SWARMER_COOLDOWN, SWARMER_DAMAGE, SWARMER_BULLET_SPEED,
-  SWARMER_BULLET_ACCEL, SWARMER_BULLET_DRAG,
-  SWARMER_SEPARATION_RADIUS, SWARMER_TIER,
-  GRUNT_SPEED, GRUNT_RADIUS, GRUNT_HP, GRUNT_AGGRO_RANGE, GRUNT_ATTACK_RANGE,
-  GRUNT_TELEGRAPH, GRUNT_RECOVERY, GRUNT_COOLDOWN, GRUNT_DAMAGE, GRUNT_BULLET_SPEED,
-  GRUNT_BULLET_ACCEL, GRUNT_BULLET_DRAG,
-  GRUNT_SEPARATION_RADIUS, GRUNT_TIER,
-  SHOOTER_SPEED, SHOOTER_RADIUS, SHOOTER_HP, SHOOTER_AGGRO_RANGE, SHOOTER_ATTACK_RANGE,
-  SHOOTER_TELEGRAPH, SHOOTER_RECOVERY, SHOOTER_COOLDOWN, SHOOTER_DAMAGE, SHOOTER_BULLET_SPEED,
-  SHOOTER_BULLET_ACCEL, SHOOTER_BULLET_DRAG,
-  SHOOTER_BULLET_COUNT, SHOOTER_SPREAD_ANGLE, SHOOTER_PREFERRED_RANGE,
-  SHOOTER_SEPARATION_RADIUS, SHOOTER_TIER,
-  CHARGER_SPEED, CHARGER_RADIUS, CHARGER_HP, CHARGER_AGGRO_RANGE, CHARGER_ATTACK_RANGE,
-  CHARGER_TELEGRAPH, CHARGER_RECOVERY, CHARGER_COOLDOWN, CHARGER_DAMAGE,
-  CHARGER_SEPARATION_RADIUS, CHARGER_TIER,
-  GOBLIN_BARBARIAN_SPEED, GOBLIN_BARBARIAN_RADIUS, GOBLIN_BARBARIAN_HP,
-  GOBLIN_BARBARIAN_AGGRO_RANGE, GOBLIN_BARBARIAN_ATTACK_RANGE,
-  GOBLIN_BARBARIAN_TELEGRAPH, GOBLIN_BARBARIAN_RECOVERY, GOBLIN_BARBARIAN_COOLDOWN,
-  GOBLIN_BARBARIAN_DAMAGE, GOBLIN_BARBARIAN_SEPARATION_RADIUS, GOBLIN_BARBARIAN_TIER,
-  GOBLIN_ROGUE_SPEED, GOBLIN_ROGUE_RADIUS, GOBLIN_ROGUE_HP,
-  GOBLIN_ROGUE_AGGRO_RANGE, GOBLIN_ROGUE_ATTACK_RANGE,
-  GOBLIN_ROGUE_TELEGRAPH, GOBLIN_ROGUE_RECOVERY, GOBLIN_ROGUE_COOLDOWN,
-  GOBLIN_ROGUE_DAMAGE, GOBLIN_ROGUE_SEPARATION_RADIUS, GOBLIN_ROGUE_TIER,
   RUNNER_SPEED, RUNNER_RADIUS, RUNNER_HP, RUNNER_TIER,
-  DUELIST_SPEED, DUELIST_RADIUS, DUELIST_HP,
-  DUELIST_AGGRO_RANGE, DUELIST_ATTACK_RANGE,
-  DUELIST_TELEGRAPH, DUELIST_RECOVERY, DUELIST_COOLDOWN,
-  DUELIST_DAMAGE, DUELIST_SEPARATION_RADIUS, DUELIST_TIER,
-  COYOTE_SPEED, COYOTE_RADIUS, COYOTE_HP,
-  COYOTE_AGGRO_RANGE, COYOTE_ATTACK_RANGE, COYOTE_PREFERRED_RANGE,
-  COYOTE_TELEGRAPH, COYOTE_RECOVERY, COYOTE_COOLDOWN,
-  COYOTE_DAMAGE, COYOTE_SEPARATION_RADIUS, COYOTE_TIER,
+  DUELIST_HP, DUELIST_DAMAGE,
+  ARMORED_BANDIT_FRONT_REDUCTION, ARMORED_BANDIT_ARC_HALF_ANGLE,
 } from './content/enemies'
+import { allEnemyDefs } from './content/enemyRegistry'
+
 /** Boss radii inlined here to avoid circular dep (bosses → prefabs → bosses) */
 const BOOMSTICK_RADIUS = 18
 
@@ -93,18 +67,14 @@ const BOOMSTICK_RADIUS = 18
 const MAD_DOG_RADIUS = 20
 
 /** Largest collider radius across all entity types (for spatial hash query padding) */
-export const MAX_COLLIDER_RADIUS = Math.max(
-  PLAYER_RADIUS,
-  SWARMER_RADIUS,
-  GRUNT_RADIUS,
-  SHOOTER_RADIUS,
-  CHARGER_RADIUS,
-  BOOMSTICK_RADIUS,
-  GOBLIN_BARBARIAN_RADIUS,
-  GOBLIN_ROGUE_RADIUS,
-  DUELIST_RADIUS,
-  MAD_DOG_RADIUS,
-)
+function computeMaxColliderRadius(): number {
+  let max = Math.max(PLAYER_RADIUS, BOOMSTICK_RADIUS, MAD_DOG_RADIUS)
+  for (const def of allEnemyDefs()) {
+    if (def.radius > max) max = def.radius
+  }
+  return max
+}
+export const MAX_COLLIDER_RADIUS = computeMaxColliderRadius()
 
 /** Collision layers */
 export const CollisionLayer = {
@@ -375,261 +345,115 @@ function setEnemyDefaults(world: GameWorld, eid: number, x: number, y: number): 
 }
 
 /**
- * Spawn a Swarmer enemy — fast, fragile fodder
+ * Apply an EnemyDefinition to an entity's ECS components.
+ * Called by spawnFromRegistry and also usable for per-entity overrides.
  */
+function applyEnemyDef(world: GameWorld, eid: number, def: EnemyDefinition): void {
+  Enemy.type[eid] = def.type
+  Enemy.tier[eid] = def.tier
+  Speed.current[eid] = def.speed
+  Speed.max[eid] = def.speed
+  Collider.radius[eid] = def.radius
+  Health.current[eid] = def.hp
+  Health.max[eid] = def.hp
+  Detection.aggroRange[eid] = def.aggroRange
+  Detection.attackRange[eid] = def.attackRange
+  Detection.losRequired[eid] = def.losRequired ? 1 : 0
+  AttackConfig.telegraphDuration[eid] = def.telegraphDuration
+  AttackConfig.recoveryDuration[eid] = def.recoveryDuration
+  AttackConfig.cooldown[eid] = def.cooldown
+  AttackConfig.damage[eid] = def.damage
+  AttackConfig.projectileSpeed[eid] = def.projectileSpeed ?? 0
+  AttackConfig.projectileAccel[eid] = def.projectileAccel ?? 0
+  AttackConfig.projectileDrag[eid] = def.projectileDrag ?? 0
+  AttackConfig.projectileCount[eid] = def.projectileCount ?? 0
+  AttackConfig.spreadAngle[eid] = def.spreadAngle ?? 0
+  Steering.preferredRange[eid] = def.preferredRange
+  Steering.separationRadius[eid] = def.separationRadius
+  EnemyAI.initialDelay[eid] = world.rng.nextRange(def.initialDelayMin, def.initialDelayMax)
+}
+
+/**
+ * Spawn any registered enemy type by its EnemyType value.
+ * Reads all stats from the enemy registry. Throws if type is not registered.
+ */
+export function spawnFromRegistry(world: GameWorld, type: number, x: number, y: number): number {
+  const def = getEnemyDef(type)
+  if (!def) throw new Error(`Enemy type ${type} not found in registry`)
+  const eid = addEntity(world)
+  addEnemyComponents(world, eid)
+  setEnemyDefaults(world, eid, x, y)
+  applyEnemyDef(world, eid, def)
+  return eid
+}
+
+/** Spawn a Swarmer enemy */
 export function spawnSwarmer(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.SWARMER
-  Enemy.tier[eid] = SWARMER_TIER
-  Speed.current[eid] = SWARMER_SPEED
-  Speed.max[eid] = SWARMER_SPEED
-  Collider.radius[eid] = SWARMER_RADIUS
-  Health.current[eid] = SWARMER_HP
-  Health.max[eid] = SWARMER_HP
-  Detection.aggroRange[eid] = SWARMER_AGGRO_RANGE
-  Detection.attackRange[eid] = SWARMER_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = SWARMER_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = SWARMER_RECOVERY
-  AttackConfig.cooldown[eid] = SWARMER_COOLDOWN
-  AttackConfig.damage[eid] = SWARMER_DAMAGE
-  AttackConfig.projectileSpeed[eid] = SWARMER_BULLET_SPEED
-  AttackConfig.projectileAccel[eid] = SWARMER_BULLET_ACCEL
-  AttackConfig.projectileDrag[eid] = SWARMER_BULLET_DRAG
-  AttackConfig.projectileCount[eid] = 1
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = SWARMER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
-
-  return eid
+  return spawnFromRegistry(world, EnemyType.SWARMER, x, y)
 }
 
-/**
- * Spawn a Grunt enemy — sturdy melee fodder
- */
+/** Spawn a Grunt enemy */
 export function spawnGrunt(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.GRUNT
-  Enemy.tier[eid] = GRUNT_TIER
-  Speed.current[eid] = GRUNT_SPEED
-  Speed.max[eid] = GRUNT_SPEED
-  Collider.radius[eid] = GRUNT_RADIUS
-  Health.current[eid] = GRUNT_HP
-  Health.max[eid] = GRUNT_HP
-  Detection.aggroRange[eid] = GRUNT_AGGRO_RANGE
-  Detection.attackRange[eid] = GRUNT_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = GRUNT_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = GRUNT_RECOVERY
-  AttackConfig.cooldown[eid] = GRUNT_COOLDOWN
-  AttackConfig.damage[eid] = GRUNT_DAMAGE
-  AttackConfig.projectileSpeed[eid] = GRUNT_BULLET_SPEED
-  AttackConfig.projectileAccel[eid] = GRUNT_BULLET_ACCEL
-  AttackConfig.projectileDrag[eid] = GRUNT_BULLET_DRAG
-  AttackConfig.projectileCount[eid] = 1
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = GRUNT_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
-
-  return eid
+  return spawnFromRegistry(world, EnemyType.GRUNT, x, y)
 }
 
-/**
- * Spawn a Shooter enemy — ranged threat that keeps distance
- */
+/** Spawn a Shooter enemy */
 export function spawnShooter(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.SHOOTER
-  Enemy.tier[eid] = SHOOTER_TIER
-  Speed.current[eid] = SHOOTER_SPEED
-  Speed.max[eid] = SHOOTER_SPEED
-  Collider.radius[eid] = SHOOTER_RADIUS
-  Health.current[eid] = SHOOTER_HP
-  Health.max[eid] = SHOOTER_HP
-  Detection.aggroRange[eid] = SHOOTER_AGGRO_RANGE
-  Detection.attackRange[eid] = SHOOTER_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = SHOOTER_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = SHOOTER_RECOVERY
-  AttackConfig.cooldown[eid] = SHOOTER_COOLDOWN
-  AttackConfig.damage[eid] = SHOOTER_DAMAGE
-  AttackConfig.projectileSpeed[eid] = SHOOTER_BULLET_SPEED
-  AttackConfig.projectileAccel[eid] = SHOOTER_BULLET_ACCEL
-  AttackConfig.projectileDrag[eid] = SHOOTER_BULLET_DRAG
-  AttackConfig.projectileCount[eid] = SHOOTER_BULLET_COUNT
-  AttackConfig.spreadAngle[eid] = SHOOTER_SPREAD_ANGLE
-  Steering.preferredRange[eid] = SHOOTER_PREFERRED_RANGE
-  Steering.separationRadius[eid] = SHOOTER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
-
-  return eid
+  return spawnFromRegistry(world, EnemyType.SHOOTER, x, y)
 }
 
-/**
- * Spawn a Charger enemy — heavy threat with contact damage
- */
+/** Spawn a Charger enemy */
 export function spawnCharger(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.CHARGER
-  Enemy.tier[eid] = CHARGER_TIER
-  Speed.current[eid] = CHARGER_SPEED
-  Speed.max[eid] = CHARGER_SPEED
-  Collider.radius[eid] = CHARGER_RADIUS
-  Health.current[eid] = CHARGER_HP
-  Health.max[eid] = CHARGER_HP
-  Detection.aggroRange[eid] = CHARGER_AGGRO_RANGE
-  Detection.attackRange[eid] = CHARGER_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = CHARGER_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = CHARGER_RECOVERY
-  AttackConfig.cooldown[eid] = CHARGER_COOLDOWN
-  AttackConfig.damage[eid] = CHARGER_DAMAGE
-  AttackConfig.projectileSpeed[eid] = 0
-  AttackConfig.projectileCount[eid] = 0
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = CHARGER_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.5, 1.0)
-
-  return eid
+  return spawnFromRegistry(world, EnemyType.CHARGER, x, y)
 }
 
-/**
- * Spawn a Goblin Barbarian enemy — heavy melee fodder
- */
+/** Spawn a Goblin Barbarian enemy */
 export function spawnGoblinBarbarian(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.GOBLIN_BARBARIAN
-  Enemy.tier[eid] = GOBLIN_BARBARIAN_TIER
-  Speed.current[eid] = GOBLIN_BARBARIAN_SPEED
-  Speed.max[eid] = GOBLIN_BARBARIAN_SPEED
-  Collider.radius[eid] = GOBLIN_BARBARIAN_RADIUS
-  Health.current[eid] = GOBLIN_BARBARIAN_HP
-  Health.max[eid] = GOBLIN_BARBARIAN_HP
-  Detection.aggroRange[eid] = GOBLIN_BARBARIAN_AGGRO_RANGE
-  Detection.attackRange[eid] = GOBLIN_BARBARIAN_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = GOBLIN_BARBARIAN_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = GOBLIN_BARBARIAN_RECOVERY
-  AttackConfig.cooldown[eid] = GOBLIN_BARBARIAN_COOLDOWN
-  AttackConfig.damage[eid] = GOBLIN_BARBARIAN_DAMAGE
-  AttackConfig.projectileSpeed[eid] = 0
-  AttackConfig.projectileCount[eid] = 0
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = GOBLIN_BARBARIAN_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
-
-  return eid
+  return spawnFromRegistry(world, EnemyType.GOBLIN_BARBARIAN, x, y)
 }
 
-/**
- * Spawn a Goblin Rogue enemy — fast agile melee fodder
- */
+/** Spawn a Goblin Rogue enemy */
 export function spawnGoblinRogue(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
+  return spawnFromRegistry(world, EnemyType.GOBLIN_ROGUE, x, y)
+}
 
-  Enemy.type[eid] = EnemyType.GOBLIN_ROGUE
-  Enemy.tier[eid] = GOBLIN_ROGUE_TIER
-  Speed.current[eid] = GOBLIN_ROGUE_SPEED
-  Speed.max[eid] = GOBLIN_ROGUE_SPEED
-  Collider.radius[eid] = GOBLIN_ROGUE_RADIUS
-  Health.current[eid] = GOBLIN_ROGUE_HP
-  Health.max[eid] = GOBLIN_ROGUE_HP
-  Detection.aggroRange[eid] = GOBLIN_ROGUE_AGGRO_RANGE
-  Detection.attackRange[eid] = GOBLIN_ROGUE_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = GOBLIN_ROGUE_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = GOBLIN_ROGUE_RECOVERY
-  AttackConfig.cooldown[eid] = GOBLIN_ROGUE_COOLDOWN
-  AttackConfig.damage[eid] = GOBLIN_ROGUE_DAMAGE
-  AttackConfig.projectileSpeed[eid] = 0
-  AttackConfig.projectileCount[eid] = 0
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = GOBLIN_ROGUE_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
+/** Spawn a Coyote enemy */
+export function spawnCoyote(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.COYOTE, x, y)
+}
 
+/** Spawn a Lasso Bandit enemy */
+export function spawnLassoBandit(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.LASSO_BANDIT, x, y)
+}
+
+/** Spawn a Dynamite Tosser enemy */
+export function spawnDynamiteTosser(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.DYNAMITE_TOSSER, x, y)
+}
+
+/** Spawn an Armored Bandit enemy (adds FrontArmor component) */
+export function spawnArmoredBandit(world: GameWorld, x: number, y: number): number {
+  const eid = spawnFromRegistry(world, EnemyType.ARMORED_BANDIT, x, y)
+  addComponent(world, FrontArmor, eid)
+  FrontArmor.reductionMultiplier[eid] = ARMORED_BANDIT_FRONT_REDUCTION
+  FrontArmor.arcHalfAngle[eid] = ARMORED_BANDIT_ARC_HALF_ANGLE
+  FrontArmor.facingAngle[eid] = 0
   return eid
 }
 
 /**
- * Spawn a Duelist enemy — tough melee challenger for duel ring objective
+ * Spawn a Duelist enemy — supports optional HP/damage overrides for difficulty scaling
  */
 export function spawnDuelist(world: GameWorld, x: number, y: number, hp?: number, damage?: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.DUELIST
-  Enemy.tier[eid] = DUELIST_TIER
-  Speed.current[eid] = DUELIST_SPEED
-  Speed.max[eid] = DUELIST_SPEED
-  Collider.radius[eid] = DUELIST_RADIUS
-  Health.current[eid] = hp ?? DUELIST_HP
-  Health.max[eid] = hp ?? DUELIST_HP
-  Detection.aggroRange[eid] = DUELIST_AGGRO_RANGE
-  Detection.attackRange[eid] = DUELIST_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = DUELIST_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = DUELIST_RECOVERY
-  AttackConfig.cooldown[eid] = DUELIST_COOLDOWN
-  AttackConfig.damage[eid] = damage ?? DUELIST_DAMAGE
-  AttackConfig.projectileSpeed[eid] = 0
-  AttackConfig.projectileCount[eid] = 0
-  AttackConfig.spreadAngle[eid] = 0
-  Steering.preferredRange[eid] = 0
-  Steering.separationRadius[eid] = DUELIST_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = 0.1
-
-  return eid
-}
-
-/**
- * Spawn a Coyote enemy — fast, fragile pack animal (summoned by Coyote Jane)
- */
-export function spawnCoyote(world: GameWorld, x: number, y: number): number {
-  const eid = addEntity(world)
-  addEnemyComponents(world, eid)
-  setEnemyDefaults(world, eid, x, y)
-
-  Enemy.type[eid] = EnemyType.COYOTE
-  Enemy.tier[eid] = COYOTE_TIER
-  Speed.current[eid] = COYOTE_SPEED
-  Speed.max[eid] = COYOTE_SPEED
-  Collider.radius[eid] = COYOTE_RADIUS
-  Health.current[eid] = COYOTE_HP
-  Health.max[eid] = COYOTE_HP
-  Detection.aggroRange[eid] = COYOTE_AGGRO_RANGE
-  Detection.attackRange[eid] = COYOTE_ATTACK_RANGE
-  Detection.losRequired[eid] = 0
-  AttackConfig.telegraphDuration[eid] = COYOTE_TELEGRAPH
-  AttackConfig.recoveryDuration[eid] = COYOTE_RECOVERY
-  AttackConfig.cooldown[eid] = COYOTE_COOLDOWN
-  AttackConfig.damage[eid] = COYOTE_DAMAGE
-  Steering.preferredRange[eid] = COYOTE_PREFERRED_RANGE
-  Steering.separationRadius[eid] = COYOTE_SEPARATION_RADIUS
-  EnemyAI.initialDelay[eid] = world.rng.nextRange(0.2, 0.5)
-
+  const eid = spawnFromRegistry(world, EnemyType.DUELIST, x, y)
+  if (hp !== undefined) {
+    Health.current[eid] = hp
+    Health.max[eid] = hp
+  }
+  if (damage !== undefined) {
+    AttackConfig.damage[eid] = damage
+  }
   return eid
 }
 

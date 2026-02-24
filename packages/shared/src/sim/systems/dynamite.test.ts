@@ -165,7 +165,8 @@ describe('dynamiteSystem', () => {
   describe('fuse and detonation', () => {
     test('fuse ticks down each frame', () => {
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 1.0,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 1.0, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -177,7 +178,8 @@ describe('dynamiteSystem', () => {
 
     test('dynamite detonates when fuse reaches 0', () => {
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 0.05,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 0.05, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -193,7 +195,8 @@ describe('dynamiteSystem', () => {
       rebuildHash(world)
 
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 0.01,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -209,7 +212,8 @@ describe('dynamiteSystem', () => {
       rebuildHash(world)
 
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 0.01,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -225,7 +229,8 @@ describe('dynamiteSystem', () => {
       rebuildHash(world)
 
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 0.01,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -242,7 +247,8 @@ describe('dynamiteSystem', () => {
       const startHP = Health.current[playerEid]!
 
       world.dynamites.push({
-        x: 100, y: 100, fuseRemaining: 0.01,
+        x: 100, y: 100, startX: 220, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: 9, radius: 80,
         knockback: 60, ownerId: enemyOwner,
       })
@@ -267,7 +273,8 @@ describe('dynamiteSystem', () => {
       })
 
       world.dynamites.push({
-        x: 100, y: 100, fuseRemaining: 0.01,
+        x: 100, y: 100, startX: 220, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: 9, radius: 80,
         knockback: 60, ownerId: enemyOwner,
       })
@@ -278,21 +285,27 @@ describe('dynamiteSystem', () => {
       expect(newHP).toBe(oldHP - 9)
     })
 
-    test('enemy-owned dynamite does not damage enemies', () => {
-      const enemyOwner = spawnSwarmer(world, 220, 100)
-      const nearbyEnemy = spawnSwarmer(world, 100, 100)
+    test('enemy-owned dynamite damages other enemies (friendly fire) but not self', () => {
+      // Place owner INSIDE blast radius to exercise the self-skip guard
+      const enemyOwner = spawnSwarmer(world, 110, 100)
+      const nearbyEnemy = spawnSwarmer(world, 100, 115)
       rebuildHash(world)
       const nearbyEnemyHP = Health.current[nearbyEnemy]!
+      const ownerHP = Health.current[enemyOwner]!
 
       world.dynamites.push({
-        x: 100, y: 100, fuseRemaining: 0.01,
+        x: 100, y: 100, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: 9, radius: 80,
         knockback: 60, ownerId: enemyOwner,
       })
 
       dynamiteSystem(world, 0.02)
 
-      expect(Health.current[nearbyEnemy]).toBe(nearbyEnemyHP)
+      // Nearby enemy takes friendly fire damage
+      expect(Health.current[nearbyEnemy]).toBe(nearbyEnemyHP - 9)
+      // Owner is inside blast but self-skip guard prevents self-damage
+      expect(Health.current[enemyOwner]).toBe(ownerHP)
     })
   })
 
@@ -302,7 +315,8 @@ describe('dynamiteSystem', () => {
       const startHP = Health.current[playerEid]!
 
       world.dynamites.push({
-        x: 100, y: 100, fuseRemaining: 0.01,
+        x: 100, y: 100, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -318,7 +332,8 @@ describe('dynamiteSystem', () => {
       const startHP = Health.current[playerEid]!
 
       world.dynamites.push({
-        x: 100, y: 100, fuseRemaining: 0.01,
+        x: 100, y: 100, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: DYNAMITE_RADIUS,
         knockback: 60, ownerId: playerEid,
       })
@@ -366,7 +381,8 @@ describe('dynamiteSystem', () => {
 
       // Use small blast radius so nearby enemy is only hit by nitro
       world.dynamites.push({
-        x: 200, y: 200, fuseRemaining: 0.01,
+        x: 200, y: 200, startX: 100, startY: 100,
+        fuseRemaining: 0.01, maxFuse: 1.5,
         damage: DYNAMITE_DAMAGE, radius: 20, // small primary radius
         knockback: 60, ownerId: playerEid,
       })

@@ -370,3 +370,8 @@ The Western theme should be a design pillar, not aesthetic wallpaper. These idea
 ---
 
 _This document is a living brainstorm. Items are not commitments. Priority tiers reflect current thinking — informed by game design, technical feasibility, and strategic review — and will shift based on player feedback post-launch._
+
+### MY IDEAS
+
+- A swamp map. Maybe with will-o-wisps as npcs that can turn into enemies
+- American folklore bosses and enemies. Thunderbird, Wendigo, Hoop Snake, Cactus Cat, Jackalope, etc

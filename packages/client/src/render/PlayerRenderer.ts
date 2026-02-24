@@ -28,6 +28,7 @@ import {
   Health,
   Dead,
   ZPosition,
+  Root,
   JUMP_HEIGHT,
   getWeaponSpriteForCharacter,
   type WeaponSpriteData,
@@ -405,6 +406,12 @@ export class PlayerRenderer {
         const flash = Math.floor(flashTick / 3) % 2 === 0
         bodySprite.tint = flash ? 0xFF4444 : baseTint
         weaponSprite.tint = flash ? 0xFF4444 : baseTint
+      } else if (!isDead && hasComponent(world, Root, eid)) {
+        // Root visual: brownish tint + slight pulse
+        const pulse = Math.sin(performance.now() * 0.008) * 0.3 + 0.7
+        const rootTint = lerpColor(0xCC8844, 0x996633, pulse)
+        bodySprite.tint = rootTint
+        weaponSprite.tint = rootTint
       } else if (!isDead) {
         const upgradeState = world.playerUpgradeStates.get(eid)
         if (upgradeState?.dynamiteCooking) {
