@@ -7,10 +7,11 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, ObjectiveRole, ObjRole, BossPhase, FrontArmor } from '../components'
+import { EnemyAI, AIState, Steering, Position, Velocity, Speed, Enemy, EnemyType, ObjectiveRole, ObjRole, BossPhase, FrontArmor, Health, Dead } from '../components'
 import { NO_TARGET } from '../prefabs'
 import { getFloorTileTypeAt, isSolidAt, TileType, worldToTile } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
+import { forEachAliveEnemyInRadius } from './damageHelpers'
 
 const steeringQuery = defineQuery([EnemyAI, Steering, Position, Velocity, Speed, Enemy])
 
@@ -32,6 +33,8 @@ const SAFE_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
 
 /** Golden angle in radians (~137.5°) — maximally distributes overlapping entities */
 const GOLDEN_ANGLE = 2.399
+/** Healer Shaman seeks injured allies within this radius */
+const HEALER_ALLY_SEEK_RADIUS = 200
 
 /**
  * Returns true if the given floor tile type is a hazard that enemies should avoid walking into.
@@ -127,6 +130,24 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
 
     // Non-CHASE states: stop movement (except ATTACK, managed by enemyAttackSystem)
     if (state !== AIState.CHASE && state !== AIState.ATTACK) {
+      // FLEE: move directly away from target at 1.5× speed
+      if (state === AIState.FLEE) {
+        const fleeTarget = EnemyAI.targetEid[eid]!
+        if (fleeTarget !== NO_TARGET) {
+          const ex = Position.x[eid]!
+          const ey = Position.y[eid]!
+          const dx = ex - Position.x[fleeTarget]!
+          const dy = ey - Position.y[fleeTarget]!
+          const len = Math.sqrt(dx * dx + dy * dy)
+          if (len > 0) {
+            const floorMul = world.floorSpeedMul.get(eid) ?? 1.0
+            const fleeSpeed = Speed.current[eid]! * 1.5 * floorMul
+            Velocity.x[eid] = (dx / len) * fleeSpeed
+            Velocity.y[eid] = (dy / len) * fleeSpeed
+          }
+        }
+        continue
+      }
       // Bosses manage their own velocity during TELEGRAPH (set by tick())
       if (state === AIState.TELEGRAPH && hasComponent(world, BossPhase, eid)) continue
       Velocity.x[eid] = 0
@@ -180,7 +201,32 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       }
     }
 
-    // b) Shooter preferred-range orbiting (relative to assigned target)
+    // b) Healer Shaman: override seek toward injured allies
+    if (Enemy.type[eid] === EnemyType.HEALER_SHAMAN) {
+      let bestAlly = NO_TARGET
+      let bestRatio = 1.0
+      let bestDx = 0
+      let bestDy = 0
+      forEachAliveEnemyInRadius(world, ex, ey, HEALER_ALLY_SEEK_RADIUS, (other, dx, dy) => {
+        if (other === eid) return
+        const ratio = Health.current[other]! / Health.max[other]!
+        if (ratio < bestRatio) {
+          bestRatio = ratio
+          bestAlly = other
+          bestDx = dx
+          bestDy = dy
+        }
+      })
+      if (bestAlly !== NO_TARGET) {
+        const alen = Math.sqrt(bestDx * bestDx + bestDy * bestDy)
+        if (alen > 0) {
+          seekX = bestDx / alen
+          seekY = bestDy / alen
+        }
+      }
+    }
+
+    // c) Shooter preferred-range orbiting (relative to assigned target)
     const preferredRange = Steering.preferredRange[eid]!
     if (preferredRange > 0 && hasTarget) {
       const dx = targetX - ex
@@ -210,7 +256,7 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       continue
     }
 
-    // c) Separation force
+    // d) Separation force
     let sepX = 0
     let sepY = 0
     const sepRadius = Steering.separationRadius[eid]!
@@ -242,7 +288,7 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
       })
     }
 
-    // d) Combine and set velocity
+    // e) Combine and set velocity
     const seekWeight = Steering.seekWeight[eid]!
     const separationWeight = Steering.separationWeight[eid]!
 

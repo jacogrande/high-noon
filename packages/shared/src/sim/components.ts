@@ -289,6 +289,14 @@ export const Root = {
   duration: new Float32Array(MAX_ENTITIES),
 }
 
+/** Poison damage-over-time debuff */
+export const Poison = {
+  /** Damage per second */
+  dps: new Float32Array(MAX_ENTITIES),
+  /** Remaining duration in seconds */
+  duration: new Float32Array(MAX_ENTITIES),
+}
+
 /** Directional front armor — reduces frontal bullet damage */
 export const FrontArmor = {
   /** Facing angle in radians (toward current target) */
@@ -328,6 +336,8 @@ export const EnemyType = {
   LASSO_BANDIT: 15,
   DYNAMITE_TOSSER: 16,
   ARMORED_BANDIT: 17,
+  HEALER_SHAMAN: 18,
+  RATTLESNAKE: 19,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
@@ -499,6 +509,7 @@ export const AllComponents = [
   Knockback,
   SlowDebuff,
   Root,
+  Poison,
   FrontArmor,
   Enemy,
   BossPhase,

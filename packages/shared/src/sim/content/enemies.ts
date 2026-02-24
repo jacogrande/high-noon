@@ -576,6 +576,73 @@ registerEnemy({
   spriteScale: 2.5,
 })
 
+// ============================================================================
+// Healer Shaman — support threat that heals nearby allies
+// ============================================================================
+
+registerEnemy({
+  type: EnemyType.HEALER_SHAMAN,
+  name: 'Healer Shaman',
+  tier: EnemyTier.THREAT,
+  speed: 50,
+  radius: 10,
+  hp: 22,
+  budgetCost: 3,
+  dropChance: 0.06,
+  aggroRange: 350,
+  attackRange: 80, // also used as heal radius; matches HEALER_FLEE_DIST_SQ in enemyAI.ts
+  losRequired: false,
+  telegraphDuration: 0.3,
+  recoveryDuration: 2.0,
+  cooldown: 3.0,
+  damage: 4,
+  attackStyle: 'custom',
+  preferredRange: 150,
+  separationRadius: 24,
+  initialDelayMin: 0.3,
+  initialDelayMax: 0.7,
+  color: 0x44ddaa,
+  spriteId: 'healer_shaman',
+  spriteScale: 2,
+})
+
+// ============================================================================
+// Rattlesnake — fast melee fodder with poison bite
+// ============================================================================
+
+export const RATTLESNAKE_POISON_DPS = 2
+export const RATTLESNAKE_POISON_DURATION = 3.0
+
+registerEnemy({
+  type: EnemyType.RATTLESNAKE,
+  name: 'Rattlesnake',
+  tier: EnemyTier.FODDER,
+  speed: 130,
+  radius: 6,
+  hp: 8,
+  budgetCost: 1,
+  dropChance: 0.02,
+  aggroRange: 300,
+  attackRange: 25,
+  losRequired: false,
+  telegraphDuration: 0.15,
+  recoveryDuration: 0.4,
+  cooldown: 2.0,
+  damage: 1,
+  attackStyle: 'melee',
+  meleeReach: 8,
+  attackDuration: 0.2,
+  knockbackSpeed: 100,
+  knockbackDuration: 0.08,
+  preferredRange: 0,
+  separationRadius: 14,
+  initialDelayMin: 0.1,
+  initialDelayMax: 0.3,
+  color: 0x889944,
+  spriteId: 'rattlesnake',
+  spriteScale: 1.5,
+})
+
 registerEnemy({
   type: EnemyType.COYOTE,
   name: 'Coyote',

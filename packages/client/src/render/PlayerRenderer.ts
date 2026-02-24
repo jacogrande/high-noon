@@ -29,6 +29,7 @@ import {
   Dead,
   ZPosition,
   Root,
+  Poison,
   JUMP_HEIGHT,
   getWeaponSpriteForCharacter,
   type WeaponSpriteData,
@@ -412,6 +413,12 @@ export class PlayerRenderer {
         const rootTint = lerpColor(0xCC8844, 0x996633, pulse)
         bodySprite.tint = rootTint
         weaponSprite.tint = rootTint
+      } else if (!isDead && hasComponent(world, Poison, eid)) {
+        // Poison visual: green tint + pulse
+        const pulse = Math.sin(performance.now() * 0.006) * 0.3 + 0.7
+        const poisonTint = lerpColor(0x88CC44, 0x44AA22, pulse)
+        bodySprite.tint = poisonTint
+        weaponSprite.tint = poisonTint
       } else if (!isDead) {
         const upgradeState = world.playerUpgradeStates.get(eid)
         if (upgradeState?.dynamiteCooking) {

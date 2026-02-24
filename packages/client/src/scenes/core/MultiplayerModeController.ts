@@ -298,7 +298,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.bossAttackRenderer = new BossAttackRenderer(this.gameApp.layers.entities)
     this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
     this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
-    this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer)
+    this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer, this.gameApp.layers.entities)
     this.npcRenderer = new NpcRenderer(this.spriteRegistry)
     this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)

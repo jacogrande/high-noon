@@ -1,6 +1,6 @@
-import { defineQuery, hasComponent } from 'bitecs'
+import { defineQuery, hasComponent, removeComponent } from 'bitecs'
 import { Button, hasButton } from '../../net/input'
-import { Health, Player, Dead } from '../components'
+import { Health, Player, Dead, Poison } from '../components'
 import { INTERACTION_FEEDBACK_DURATION } from '../content/economy'
 import { HP_POTION_HEAL_AMOUNT, HP_POTION_MAX_STACK } from '../content/hpPotion'
 import { getUpgradeStateForPlayer } from '../upgrade'
@@ -37,6 +37,9 @@ export function hpPotionUseSystem(world: GameWorld, _dt: number): void {
 
     state.hpPotionCount -= 1
     Health.current[playerEid] = newHP
+    if (hasComponent(world, Poison, playerEid)) {
+      removeComponent(world, Poison, playerEid)
+    }
     world.hooks.fireHealthChanged(world, playerEid, currentHP, newHP)
     world.interactionFeedbackByPlayer.set(playerEid, {
       text: `Used HP Potion (+${Math.round(newHP - currentHP)} HP)`,

@@ -7,13 +7,17 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Enemy, Detection, AttackConfig, Position, ObjectiveRole, ObjRole } from '../components'
+import { EnemyAI, AIState, Enemy, EnemyType, Detection, AttackConfig, Position, ObjectiveRole, ObjRole } from '../components'
 import { NO_TARGET } from '../prefabs'
 
 const aiQuery = defineQuery([EnemyAI, Enemy, Detection, AttackConfig, Position])
 
 /** Duration of stun state in seconds */
 const STUN_DURATION = 0.2
+/** Duration of flee state in seconds */
+const FLEE_DURATION = 1.0
+/** Healer Shaman flees when player is within this distance squared */
+const HEALER_FLEE_DIST_SQ = 80 * 80
 
 export function transition(eid: number, newState: number): void {
   EnemyAI.state[eid] = newState
@@ -54,6 +58,20 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
     const targetEid = EnemyAI.targetEid[eid]!
     const stateTimer = EnemyAI.stateTimer[eid]!
 
+    // Healer Shaman: interrupt TELEGRAPH/RECOVERY to flee if player closes in
+    if (
+      Enemy.type[eid] === EnemyType.HEALER_SHAMAN &&
+      targetEid !== NO_TARGET &&
+      (state === AIState.TELEGRAPH || state === AIState.RECOVERY)
+    ) {
+      const dx = Position.x[targetEid]! - Position.x[eid]!
+      const dy = Position.y[targetEid]! - Position.y[eid]!
+      if (dx * dx + dy * dy < HEALER_FLEE_DIST_SQ) {
+        transition(eid, AIState.FLEE)
+        continue
+      }
+    }
+
     switch (state) {
       case AIState.IDLE: {
         // Stay idle during spawn-in period so enemies visibly materialize in place
@@ -79,6 +97,12 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
         const dx = tx - ex
         const dy = ty - ey
         const distSq = dx * dx + dy * dy
+
+        // Healer Shaman flees when player gets too close
+        if (Enemy.type[eid] === EnemyType.HEALER_SHAMAN && distSq < HEALER_FLEE_DIST_SQ) {
+          transition(eid, AIState.FLEE)
+          break
+        }
 
         if (distSq <= attackRange * attackRange && AttackConfig.cooldownRemaining[eid]! <= 0) {
           // Gate: initial delay must have expired
@@ -116,8 +140,23 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
         break
       }
 
+      case AIState.FLEE: {
+        if (stateTimer >= FLEE_DURATION) {
+          // Re-check distance before leaving FLEE — stay fleeing if player still close
+          if (Enemy.type[eid] === EnemyType.HEALER_SHAMAN && targetEid !== NO_TARGET) {
+            const fdx = Position.x[targetEid]! - Position.x[eid]!
+            const fdy = Position.y[targetEid]! - Position.y[eid]!
+            if (fdx * fdx + fdy * fdy < HEALER_FLEE_DIST_SQ) {
+              EnemyAI.stateTimer[eid] = 0 // reset timer, stay in FLEE
+              break
+            }
+          }
+          transition(eid, AIState.CHASE)
+        }
+        break
+      }
+
       default: {
-        // FLEE and any unknown state → fall back to IDLE
         transition(eid, AIState.IDLE)
         break
       }

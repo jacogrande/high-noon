@@ -7,6 +7,7 @@
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
+import { Graphics, type Container } from 'pixi.js'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
@@ -144,6 +145,16 @@ function getHealthBarColor(ratio: number): number {
   return (r << 16) | (g << 8) | b
 }
 
+/** Heal pulse ring animation data */
+interface HealPulseAnim {
+  x: number
+  y: number
+  radius: number
+  timer: number
+}
+
+const HEAL_PULSE_DURATION = 0.5
+
 /** Death effect data for ephemeral scale-down + fade */
 interface DeathEffect {
   eid: number
@@ -195,6 +206,7 @@ export class EnemyRenderer {
   private readonly healthBarWidths = new Map<number, number>()
   private readonly healthBarYOffsets = new Map<number, number>()
   private readonly deathEffects: DeathEffect[] = []
+  private readonly healPulseAnims: HealPulseAnim[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
   private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
   /** Entity ID of the Showdown-marked target (set by GameScene each tick) */
@@ -203,10 +215,17 @@ export class EnemyRenderer {
   lastRitesZone: { x: number; y: number; radius: number } | null = null
   /** Set when a boss entity is first seen; consumed by presentation layer. */
   private pendingBossIntro: PendingBossIntro | null = null
+  /** Dedicated graphics for healer pulse ring VFX (always visible, not debug-only) */
+  private readonly healPulseGraphics: Graphics | null = null
 
-  constructor(registry: SpriteRegistry, debug?: DebugRenderer) {
+  constructor(registry: SpriteRegistry, debug?: DebugRenderer, entityLayer?: Container) {
     this.registry = registry
     this.debug = debug
+    if (entityLayer) {
+      this.healPulseGraphics = new Graphics()
+      this.healPulseGraphics.visible = false
+      entityLayer.addChild(this.healPulseGraphics)
+    }
   }
 
   /**
@@ -640,6 +659,36 @@ export class EnemyRenderer {
       }
     }
 
+    // Collect new healer pulse events
+    for (const pulse of world.healerPulses) {
+      this.healPulseAnims.push({ x: pulse.x, y: pulse.y, radius: pulse.radius, timer: 0 })
+    }
+
+    // Animate healer pulse rings (production-visible via dedicated Graphics)
+    if (this.healPulseGraphics) {
+      if (this.healPulseAnims.length === 0) {
+        this.healPulseGraphics.visible = false
+      } else {
+        this.healPulseGraphics.clear()
+        for (let i = this.healPulseAnims.length - 1; i >= 0; i--) {
+          const anim = this.healPulseAnims[i]!
+          anim.timer += realDt
+          const t = Math.min(anim.timer / HEAL_PULSE_DURATION, 1)
+          const currentRadius = anim.radius * t
+          const lineAlpha = 0.8 * (1 - t)
+          if (lineAlpha > 0) {
+            this.healPulseGraphics
+              .circle(anim.x, anim.y, currentRadius)
+              .stroke({ color: 0x44ddaa, width: 2 + (1 - t) * 2, alpha: lineAlpha })
+          }
+          if (t >= 1) {
+            this.healPulseAnims.splice(i, 1)
+          }
+        }
+        this.healPulseGraphics.visible = true
+      }
+    }
+
     // Animate death effects
     for (let i = this.deathEffects.length - 1; i >= 0; i--) {
       const effect = this.deathEffects[i]!
@@ -741,5 +790,6 @@ export class EnemyRenderer {
     this.healthBarWidths.clear()
     this.healthBarYOffsets.clear()
     this.pendingBossIntro = null
+    this.healPulseGraphics?.destroy()
   }
 }

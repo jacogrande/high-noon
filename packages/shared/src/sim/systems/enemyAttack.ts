@@ -13,17 +13,19 @@
 import { addComponent, defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import {
-  EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig,
+  EnemyAI, AIState, Enemy, EnemyType, EnemyTier, AttackConfig, Detection,
   Position, Velocity, Collider, Health, Invincible, Dead, Bullet, Knockback, Player,
   Root,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
-import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS } from '../content/enemies'
+import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION } from '../content/enemies'
 import { applyDamage } from './applyDamage'
+import { applyPoison } from './poison'
 import { isBoss, getBoss } from '../content/bosses'
 import { getEnemyDef } from '../content/enemyRegistry'
+import { forEachAliveEnemyInRadius } from './damageHelpers'
 
 /**
  * Shared rush-attack handler for charger and coyote (dart-and-bite).
@@ -96,6 +98,9 @@ const bulletQuery = defineQuery([Bullet])
 
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
+
+  // Clear healer pulse events from previous tick
+  world.healerPulses.length = 0
 
   // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
   let activeBulletCount = bulletQuery(world).length
@@ -197,6 +202,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         Knockback.vy[targetEid] = ny * meleeCfg.kbSpeed
         Knockback.duration[targetEid] = meleeCfg.kbDuration
 
+        // Rattlesnake bite applies poison
+        if (type === EnemyType.RATTLESNAKE && hasComponent(world, Player, targetEid)) {
+          applyPoison(world, targetEid, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION)
+        }
+
         transition(eid, AIState.RECOVERY)
       } else if (EnemyAI.stateTimer[eid]! >= meleeCfg.attackDuration) {
         // Whiffed — transition to recovery
@@ -242,6 +252,20 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         knockback: 150,
         ownerId: eid,
       })
+      transition(eid, AIState.RECOVERY)
+    } else if (type === EnemyType.HEALER_SHAMAN && attackStyle === 'custom') {
+      // Healer Shaman: heal nearby allies (not self)
+      const healAmount = AttackConfig.damage[eid]!
+      const healRadius = Detection.attackRange[eid]!
+      forEachAliveEnemyInRadius(world, ex, ey, healRadius, (allyEid) => {
+        if (allyEid === eid) return
+        const cur = Health.current[allyEid]!
+        const max = Health.max[allyEid]!
+        if (cur < max && cur > 0) {
+          Health.current[allyEid] = Math.min(max, cur + healAmount)
+        }
+      })
+      world.healerPulses.push({ x: ex, y: ey, radius: healRadius })
       transition(eid, AIState.RECOVERY)
     } else {
       // Projectile attack (default for 'projectile', 'custom' with projectile config, or unknown)

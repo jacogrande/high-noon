@@ -39,6 +39,7 @@ import { npcDialogueSystem } from './npcDialogue'
 import { buffSystem } from './buffSystem'
 import { slowDebuffSystem } from './slowDebuff'
 import { rootSystem } from './root'
+import { poisonSystem, applyPoison } from './poison'
 import { meleeSystem } from './melee'
 import { knockbackSystem } from './knockback'
 import { dynamiteSystem } from './dynamite'
@@ -89,6 +90,8 @@ export {
   buffSystem,
   slowDebuffSystem,
   rootSystem,
+  poisonSystem,
+  applyPoison,
   meleeSystem,
   knockbackSystem,
   dynamiteSystem,
@@ -198,6 +201,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)
   systems.register(rootSystem)
+  systems.register(poisonSystem)
   systems.register(enemySteeringSystem)
   systems.register(enemyAttackSystem)
   // -- Physics --

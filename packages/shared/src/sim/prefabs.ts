@@ -432,6 +432,16 @@ export function spawnDynamiteTosser(world: GameWorld, x: number, y: number): num
   return spawnFromRegistry(world, EnemyType.DYNAMITE_TOSSER, x, y)
 }
 
+/** Spawn a Healer Shaman enemy */
+export function spawnHealerShaman(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.HEALER_SHAMAN, x, y)
+}
+
+/** Spawn a Rattlesnake enemy */
+export function spawnRattlesnake(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.RATTLESNAKE, x, y)
+}
+
 /** Spawn an Armored Bandit enemy (adds FrontArmor component) */
 export function spawnArmoredBandit(world: GameWorld, x: number, y: number): number {
   const eid = spawnFromRegistry(world, EnemyType.ARMORED_BANDIT, x, y)
