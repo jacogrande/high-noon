@@ -65,32 +65,6 @@ const VISITORS: VisitorDef[] = [
     priceMultiplier: 1.0,
     rarityWeights: {},
   },
-  {
-    id: 3,
-    key: 'sawbones',
-    name: 'Sawbones',
-    greeting: [
-      'Patch you up for a price.',
-      'Prevention is cheaper than the cure.',
-      "You look like you've seen better days.",
-    ],
-    offerCount: 2,
-    priceMultiplier: 1.0,
-    rarityWeights: { brass: 30, silver: 45, gold: 20, cursed: 5 },
-  },
-  {
-    id: 4,
-    key: 'gambler',
-    name: 'Gambler',
-    greeting: [
-      "Feelin' lucky, stranger?",
-      'High risk, high reward.',
-      'Every card I deal is a winner... mostly.',
-    ],
-    offerCount: 3,
-    priceMultiplier: 0.7,
-    rarityWeights: { brass: 25, silver: 25, gold: 20, cursed: 30 },
-  },
 ]
 
 // ============================================================================
