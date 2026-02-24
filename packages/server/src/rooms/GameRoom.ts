@@ -52,7 +52,9 @@ import {
   type InteractablesData,
   getItemDef,
   getVisitorDef,
+  getWeaponModDef,
   tryVisitorPurchase,
+  tryTinkererModSelect,
   FOOLS_ERRAND_ID,
   type SelectNodeRequest,
   type SelectNodeResponse,
@@ -442,6 +444,17 @@ export class GameRoom extends Room<GameRoomState> {
       if (typeof data?.offerIndex !== 'number') return
 
       tryVisitorPurchase(this.world, slot.eid, data.offerIndex)
+    })
+
+    this.onMessage('tinkerer-mod-select', (client, data) => {
+      if (this.state.phase !== 'playing') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const run = this.world.run
+      if (!run || run.completed || run.transition !== 'camp') return
+      if (typeof data?.offerIndex !== 'number' || !Number.isInteger(data.offerIndex)) return
+
+      tryTinkererModSelect(this.world, slot.eid, data.offerIndex)
     })
 
     this.onMessage('set-character', (client, data) => {
@@ -1277,6 +1290,16 @@ export class GameRoom extends Room<GameRoomState> {
                   downside: oDef?.downside,
                 }
               }),
+              modOffers: cv.modOffers.map(mo => {
+                const mDef = getWeaponModDef(mo.modId)
+                return {
+                  modId: mo.modId,
+                  modName: mDef?.name ?? '???',
+                  modDescription: mDef?.description ?? '',
+                  taken: mo.taken,
+                  flavor: mDef?.flavor,
+                }
+              }),
             }
           })()
         : null
@@ -1493,6 +1516,16 @@ export class GameRoom extends Room<GameRoomState> {
                 price: o.price,
                 sold: o.sold,
                 downside: oDef?.downside,
+              }
+            }),
+            modOffers: cv.modOffers.map(mo => {
+              const mDef = getWeaponModDef(mo.modId)
+              return {
+                modId: mo.modId,
+                modName: mDef?.name ?? '???',
+                modDescription: mDef?.description ?? '',
+                taken: mo.taken,
+                flavor: mDef?.flavor,
               }
             }),
           }

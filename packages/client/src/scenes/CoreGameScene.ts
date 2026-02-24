@@ -72,6 +72,10 @@ export class CoreGameScene {
     return this.controller.handleVisitorPurchase?.(offerIndex) ?? false
   }
 
+  handleTinkererModSelect(offerIndex: number): boolean {
+    return this.controller.handleTinkererModSelect?.(offerIndex) ?? false
+  }
+
   setWorldVisible(visible: boolean): void {
     this.controller.setWorldVisible(visible)
   }

@@ -51,7 +51,7 @@ import { mapObstacleSystem } from './mapObstacle'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
-import { tryVisitorPurchase, type CampVisitorState } from './campVisitor'
+import { tryVisitorPurchase, tryTinkererModSelect, type CampVisitorState, type WeaponModOffer } from './campVisitor'
 
 export {
   movementSystem,
@@ -99,11 +99,12 @@ export {
   stashRewardSystem,
   itemPickupSystem,
   tryVisitorPurchase,
+  tryTinkererModSelect,
   trapZoneSystem,
   mapObstacleSystem,
 }
 
-export type { CampVisitorState }
+export type { CampVisitorState, WeaponModOffer }
 
 /**
  * Register prediction systems for client-side forward ticks.

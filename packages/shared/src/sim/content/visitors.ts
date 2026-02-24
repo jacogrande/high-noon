@@ -55,13 +55,15 @@ const VISITORS: VisitorDef[] = [
     key: 'tinkerer',
     name: 'Tinkerer',
     greeting: [
-      'Modified these myself. Handle with care.',
-      'Precision-crafted. Worth every coin.',
-      'Only the finest for a discerning gunslinger.',
+      'Let me take a look at that iron...',
+      'I can rework this. Pick your poison.',
+      'Every weapon\'s got room for improvement.',
     ],
-    offerCount: 2,
-    priceMultiplier: 1.4,
-    rarityWeights: { brass: 10, silver: 50, gold: 35, cursed: 5 },
+    // Tinkerer uses weapon mod offers, not item offers.
+    // offerCount/priceMultiplier/rarityWeights are unused but kept for VisitorDef conformance.
+    offerCount: 0,
+    priceMultiplier: 1.0,
+    rarityWeights: {},
   },
   {
     id: 3,

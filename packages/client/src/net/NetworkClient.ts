@@ -162,6 +162,10 @@ export class NetworkClient {
     this.room?.send('camp-purchase', { offerIndex })
   }
 
+  sendTinkererModSelect(offerIndex: number): void {
+    this.room?.send('tinkerer-mod-select', { offerIndex })
+  }
+
   sendCharacter(characterId: CharacterId): void {
     this.room?.send('set-character', { characterId })
   }

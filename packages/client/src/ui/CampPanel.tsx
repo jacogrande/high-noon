@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { VisitorShopPanel } from './VisitorShopPanel'
+import { TinkererModPanel } from './TinkererModPanel'
 import { ItemTooltip } from './ItemTooltip'
 
 interface CampPanelProps {
@@ -21,12 +22,20 @@ interface CampPanelProps {
       sold: boolean
       downside?: string | undefined
     }>
+    modOffers: Array<{
+      modId: number
+      modName: string
+      modDescription: string
+      taken: boolean
+      flavor?: string | undefined
+    }>
   } | null
   items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number; downside?: string | undefined }>
   hasFoolsErrand: boolean
   onOpenSkillTree: () => void
   onRideOut: () => void
   onVisitorPurchase: (index: number) => void
+  onTinkererModSelect: (index: number) => void
 }
 
 const RARITY_COLORS: Record<string, string> = {
@@ -49,6 +58,7 @@ export function CampPanel({
   onOpenSkillTree,
   onRideOut,
   onVisitorPurchase,
+  onTinkererModSelect,
 }: CampPanelProps) {
   const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
 
@@ -99,17 +109,24 @@ export function CampPanel({
           </div>
         )}
 
-        {/* Visitor shop */}
+        {/* Visitor shop or Tinkerer mod panel */}
         {campVisitor && (
-          hasFoolsErrand
-            ? <div style={styles.foolsErrandBlock}>CURSED: Cannot trade with visitors</div>
-            : <VisitorShopPanel
+          campVisitor.modOffers.length > 0
+            ? <TinkererModPanel
                 visitorName={campVisitor.visitorName}
                 greeting={campVisitor.greeting}
-                offers={campVisitor.offers}
-                playerGold={playerGold}
-                onPurchase={onVisitorPurchase}
+                modOffers={campVisitor.modOffers}
+                onModSelect={onTinkererModSelect}
               />
+            : hasFoolsErrand
+              ? <div style={styles.foolsErrandBlock}>CURSED: Cannot trade with visitors</div>
+              : <VisitorShopPanel
+                  visitorName={campVisitor.visitorName}
+                  greeting={campVisitor.greeting}
+                  offers={campVisitor.offers}
+                  playerGold={playerGold}
+                  onPurchase={onVisitorPurchase}
+                />
         )}
 
         <div style={styles.actions}>

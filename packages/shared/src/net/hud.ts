@@ -109,6 +109,7 @@ export interface HudData {
     visitorName: string
     greeting: string
     offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean; downside?: string | undefined }>
+    modOffers: Array<{ modId: number; modName: string; modDescription: string; taken: boolean; flavor?: string | undefined }>
   } | null
 
   // Boss HP bar (top-of-screen)

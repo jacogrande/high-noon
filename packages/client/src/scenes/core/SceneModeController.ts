@@ -12,6 +12,7 @@ export interface SceneModeController {
   selectNode(nodeId: string): boolean
   completeCamp(): void
   handleVisitorPurchase?(offerIndex: number): boolean
+  handleTinkererModSelect?(offerIndex: number): boolean
   setWorldVisible(visible: boolean): void
   isDisconnected(): boolean
   setPaused(paused: boolean): void

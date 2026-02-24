@@ -575,6 +575,9 @@ export function MultiplayerGame() {
           onVisitorPurchase={(index) => {
             sceneRef.current?.handleVisitorPurchase(index)
           }}
+          onTinkererModSelect={(index) => {
+            sceneRef.current?.handleTinkererModSelect(index)
+          }}
         />
       )}
       {showSkillTree && skillTreeData && (

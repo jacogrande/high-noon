@@ -20,9 +20,11 @@ import { getTile, TileType } from '../tilemap'
 import {
   selectCampVisitor,
   generateVisitorOffers,
+  generateTinkererModOffers,
   pickVisitorGreeting,
 } from './campVisitor'
-import { getUpgradeStateForPlayer } from '../upgrade'
+import { getUpgradeStateForPlayer, getCharacterIdForPlayer } from '../upgrade'
+import { getVisitorDef } from '../content/visitors'
 import { getAlivePlayers } from '../queries'
 import { getThread, pickNarrativeLine } from '../content/narrative'
 import type { ObjectiveConfig } from '../content/waves'
@@ -272,18 +274,38 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
   // Generate camp visitor
   const visitor = selectCampVisitor(world.rng, run.previousVisitorIds)
   const alivePlayers = getAlivePlayers(world)
-  // Union all players' items for duplicate avoidance in co-op
-  const allPlayerItems = new Map<number, number>()
-  for (const pEid of alivePlayers) {
-    const state = getUpgradeStateForPlayer(world, pEid)
-    for (const [itemId, stacks] of state.items) {
-      allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
-    }
-  }
-  const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
   const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
   run.lastGreetingIndex = greetingIdx
-  world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers }
+
+  const visitorDef = getVisitorDef(visitor.id)
+  const isTinkerer = visitorDef?.key === 'tinkerer'
+
+  if (isTinkerer) {
+    // Tinkerer: generate weapon mod offers instead of item shop
+    // TODO(co-op): Currently uses first alive player's character + taken mods.
+    // In co-op with different characters, Player 2 may see wrong mods.
+    // Fix: generate per-player mod offers or use each player's own character.
+    const firstPlayer = alivePlayers[0]
+    const characterId = firstPlayer !== undefined
+      ? getCharacterIdForPlayer(world, firstPlayer)
+      : world.characterId
+    const takenMods = firstPlayer !== undefined
+      ? getUpgradeStateForPlayer(world, firstPlayer).weaponMods
+      : new Set<number>()
+    const modOffers = generateTinkererModOffers(world.rng, characterId, takenMods)
+    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers: [], modOffers }
+  } else {
+    // Other visitors: generate item offers
+    const allPlayerItems = new Map<number, number>()
+    for (const pEid of alivePlayers) {
+      const state = getUpgradeStateForPlayer(world, pEid)
+      for (const [itemId, stacks] of state.items) {
+        allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
+      }
+    }
+    const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
+    world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers, modOffers: [] }
+  }
   selectCampNarrativeLine(world)
 }
 

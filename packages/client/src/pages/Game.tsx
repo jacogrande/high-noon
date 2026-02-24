@@ -245,6 +245,12 @@ export function Game() {
     scene.handleVisitorPurchase(offerIndex)
   }, [])
 
+  const handleTinkererModSelect = useCallback((offerIndex: number) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.handleTinkererModSelect(offerIndex)
+  }, [])
+
   const navigate = useNavigate()
 
   const handleResume = useCallback(() => {
@@ -412,6 +418,7 @@ export function Game() {
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
           onVisitorPurchase={handleVisitorPurchase}
+          onTinkererModSelect={handleTinkererModSelect}
         />
       )}
       {showRunEnd && (

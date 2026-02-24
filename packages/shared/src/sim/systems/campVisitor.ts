@@ -7,7 +7,8 @@
 
 import type { SeededRng } from '../../math/rng'
 import type { GameWorld } from '../world'
-import { getUpgradeStateForPlayer, addItemToPlayer, FOOLS_ERRAND_ID } from '../upgrade'
+import type { CharacterId } from '../content/characters'
+import { getUpgradeStateForPlayer, recomputePlayerStats, writeStatsToECS, FOOLS_ERRAND_ID, addItemToPlayer, getCharacterIdForPlayer } from '../upgrade'
 import { reapplyAllItemEffects } from '../content/itemEffects'
 import {
   type VisitorDef,
@@ -20,6 +21,8 @@ import {
   getItemsByRarity,
   type ItemDef,
 } from '../content/items'
+import { getModsForCharacter, getWeaponModDef } from '../content/weaponMods'
+import { applyWeaponModEffect } from '../content/weaponModEffects'
 
 // ============================================================================
 // Types
@@ -31,11 +34,17 @@ export interface VisitorOffer {
   sold: boolean
 }
 
+export interface WeaponModOffer {
+  modId: number
+  taken: boolean
+}
+
 export interface CampVisitorState {
   visitorId: number
   greeting: string
   greetingIndex: number
   offers: VisitorOffer[]
+  modOffers: WeaponModOffer[]
 }
 
 // ============================================================================
@@ -169,6 +178,72 @@ export function tryVisitorPurchase(
 
   world.goldCollected -= offer.price
   offer.sold = true
+  return true
+}
+
+// ============================================================================
+// Tinkerer Weapon Mods
+// ============================================================================
+
+/**
+ * Generate weapon mod offers for the Tinkerer.
+ * Filters by character and already-taken mods, shuffles, picks 2-3.
+ */
+export function generateTinkererModOffers(
+  rng: SeededRng,
+  characterId: CharacterId,
+  takenModIds: Set<number>,
+): WeaponModOffer[] {
+  const pool = getModsForCharacter(characterId).filter(m => !takenModIds.has(m.id))
+  if (pool.length === 0) return []
+
+  // Fisher-Yates shuffle
+  const shuffled = [...pool]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1))
+    const temp = shuffled[i]!
+    shuffled[i] = shuffled[j]!
+    shuffled[j] = temp
+  }
+
+  const offerCount = Math.min(shuffled.length, pool.length >= 3 ? 3 : 2)
+  return shuffled.slice(0, offerCount).map(m => ({ modId: m.id, taken: false }))
+}
+
+/**
+ * Attempt to select a Tinkerer weapon mod offer.
+ * Validates visitor is tinkerer, offer exists, and none already taken.
+ * Returns true on success.
+ */
+export function tryTinkererModSelect(
+  world: GameWorld,
+  playerEid: number,
+  offerIndex: number,
+): boolean {
+  const visitor = world.campVisitor
+  if (!visitor) return false
+  if (visitor.modOffers.length === 0) return false
+
+  if (offerIndex < 0 || offerIndex >= visitor.modOffers.length) return false
+  const offer = visitor.modOffers[offerIndex]!
+  if (offer.taken) return false
+
+  // Only one mod per visit
+  if (visitor.modOffers.some(o => o.taken)) return false
+
+  // Validate mod is for this player's character
+  const modDef = getWeaponModDef(offer.modId)
+  if (modDef) {
+    const charId = getCharacterIdForPlayer(world, playerEid)
+    if (!modDef.characters.includes(charId)) return false
+  }
+
+  const state = getUpgradeStateForPlayer(world, playerEid)
+  state.weaponMods.add(offer.modId)
+  offer.taken = true
+  recomputePlayerStats(state)
+  writeStatsToECS(world, playerEid, state)
+  applyWeaponModEffect(world, offer.modId, playerEid)
   return true
 }
 

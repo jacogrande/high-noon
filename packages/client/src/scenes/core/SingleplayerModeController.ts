@@ -50,6 +50,8 @@ import {
   getVisitorDef,
   getThread,
   tryVisitorPurchase,
+  tryTinkererModSelect,
+  getWeaponModDef,
   type CharacterId,
   HP_POTION_MAX_STACK,
   getBulletConfigForCharacter,
@@ -442,12 +444,13 @@ export class SingleplayerModeController implements SceneModeController {
       })(),
       campVisitor: this.world.campVisitor
         ? (() => {
-            const vDef = getVisitorDef(this.world.campVisitor!.visitorId)
+            const cv = this.world.campVisitor!
+            const vDef = getVisitorDef(cv.visitorId)
             return {
-              visitorId: this.world.campVisitor!.visitorId,
+              visitorId: cv.visitorId,
               visitorName: vDef?.name ?? 'Visitor',
-              greeting: this.world.campVisitor!.greeting,
-              offers: this.world.campVisitor!.offers.map(o => {
+              greeting: cv.greeting,
+              offers: cv.offers.map(o => {
                 const def = getItemDef(o.itemId)
                 return {
                   itemId: o.itemId,
@@ -457,6 +460,16 @@ export class SingleplayerModeController implements SceneModeController {
                   price: o.price,
                   sold: o.sold,
                   downside: def?.downside,
+                }
+              }),
+              modOffers: cv.modOffers.map(mo => {
+                const mDef = getWeaponModDef(mo.modId)
+                return {
+                  modId: mo.modId,
+                  modName: mDef?.name ?? '???',
+                  modDescription: mDef?.description ?? '',
+                  taken: mo.taken,
+                  flavor: mDef?.flavor,
                 }
               }),
             }
@@ -536,6 +549,12 @@ export class SingleplayerModeController implements SceneModeController {
     const playerEid = this.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
     return tryVisitorPurchase(this.world, playerEid, offerIndex)
+  }
+
+  handleTinkererModSelect(offerIndex: number): boolean {
+    const playerEid = this.playerRenderer.getPlayerEntity()
+    if (playerEid === null) return false
+    return tryTinkererModSelect(this.world, playerEid, offerIndex)
   }
 
   completeCamp(): void {

@@ -1538,6 +1538,11 @@ export class MultiplayerModeController implements SceneModeController {
     return true // optimistic; server will confirm via HUD update
   }
 
+  handleTinkererModSelect(offerIndex: number): boolean {
+    this.net.sendTinkererModSelect(offerIndex)
+    return true // optimistic; server will confirm via HUD update
+  }
+
   setWorldVisible(visible: boolean): void {
     this.gameApp.world.visible = visible
   }

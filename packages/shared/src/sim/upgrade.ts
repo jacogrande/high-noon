@@ -14,6 +14,7 @@ import {
   PROSPECTORS_MAP_PER_STACK,
   MAX_ITEM_SLOTS,
 } from './content/items'
+import { getWeaponModDef } from './content/weaponMods'
 
 // Resolve item IDs once at module load to avoid hardcoding
 const TIN_STAR_BADGE_ID = getItemDefByKey('tin_star_badge')!.id
@@ -109,6 +110,9 @@ export interface UpgradeState {
   lastStandActive: boolean
   lastStandTimer: number
 
+  // Weapon mods (Tinkerer, unique per run)
+  weaponMods: Set<number>
+
   // Item inventory (itemId → stack count)
   items: Map<number, number>
   /** Current HP potion count in the dedicated consumable slot */
@@ -200,6 +204,7 @@ export function initUpgradeState(charDef: CharacterDef): UpgradeState {
     goldFeverDuration: b.goldFeverDuration,
     goldFeverStacks: 0,
     goldFeverTimer: 0,
+    weaponMods: new Set(),
     items: new Map(),
     hpPotionCount: 0,
     blockChance: 0,
@@ -289,6 +294,19 @@ export function recomputePlayerStats(state: UpgradeState): void {
     }
   }
 
+  // Weapon mod stat mods (Tinkerer)
+  for (const modId of state.weaponMods) {
+    const def = getWeaponModDef(modId)
+    if (!def) continue
+    for (const mod of def.mods) {
+      if (mod.op === 'add') {
+        addTotals[mod.stat] = (addTotals[mod.stat] ?? 0) + mod.value
+      } else {
+        mulTotals[mod.stat] = (mulTotals[mod.stat] ?? 1) * mod.value
+      }
+    }
+  }
+
   const base = state.characterDef.baseStats
   const calc = (stat: StatName): number =>
     (base[stat] + (addTotals[stat] ?? 0)) * (mulTotals[stat] ?? 1)
@@ -303,13 +321,15 @@ export function recomputePlayerStats(state: UpgradeState): void {
   state.rollDuration = calc('rollDuration')
   state.rollIframeRatio = calc('rollIframeRatio')
   state.rollSpeedMultiplier = calc('rollSpeedMultiplier')
-  state.cylinderSize = calc('cylinderSize')
+  const rawCylinder = calc('cylinderSize')
+  state.cylinderSize = rawCylinder > 0 ? Math.max(1, rawCylinder) : 0
   state.reloadTime = calc('reloadTime')
   state.minFireInterval = calc('minFireInterval')
   state.holdFireRate = calc('holdFireRate')
   state.lastRoundMultiplier = calc('lastRoundMultiplier')
-  state.pelletCount = calc('pelletCount')
-  state.spreadAngle = calc('spreadAngle')
+  const rawPellets = calc('pelletCount')
+  state.pelletCount = rawPellets > 0 ? Math.max(1, rawPellets) : 0
+  state.spreadAngle = Math.max(0, calc('spreadAngle'))
   state.showdownDuration = calc('showdownDuration')
   state.showdownCooldown = calc('showdownCooldown')
   state.showdownKillRefund = calc('showdownKillRefund')
