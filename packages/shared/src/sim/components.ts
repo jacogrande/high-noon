@@ -297,6 +297,12 @@ export const Poison = {
   duration: new Float32Array(MAX_ENTITIES),
 }
 
+/** Flying state — airborne entities ignore terrain and are immune to bullets */
+export const Flying = {
+  /** 0 = grounded (hittable), 1 = airborne (immune to bullets) */
+  airborne: new Uint8Array(MAX_ENTITIES),
+}
+
 /** Directional front armor — reduces frontal bullet damage */
 export const FrontArmor = {
   /** Facing angle in radians (toward current target) */
@@ -338,6 +344,7 @@ export const EnemyType = {
   ARMORED_BANDIT: 17,
   HEALER_SHAMAN: 18,
   RATTLESNAKE: 19,
+  VULTURE: 20,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
@@ -510,6 +517,7 @@ export const AllComponents = [
   SlowDebuff,
   Root,
   Poison,
+  Flying,
   FrontArmor,
   Enemy,
   BossPhase,

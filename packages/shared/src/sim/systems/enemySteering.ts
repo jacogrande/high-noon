@@ -181,7 +181,7 @@ export function enemySteeringSystem(world: GameWorld, _dt: number): void {
     // Try flow field first
     const ff = world.flowField
     const tilemap = world.tilemap
-    if (ff && tilemap) {
+    if (ff && tilemap && Enemy.type[eid] !== EnemyType.VULTURE) {
       const { tileX, tileY } = worldToTile(tilemap, ex, ey)
       if (tileX >= 0 && tileX < ff.width && tileY >= 0 && tileY < ff.height) {
         const idx = tileY * ff.width + tileX

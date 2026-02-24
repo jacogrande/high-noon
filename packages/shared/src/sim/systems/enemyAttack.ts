@@ -20,7 +20,7 @@ import {
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
-import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION } from '../content/enemies'
+import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION, VULTURE_DIVE_SPEED, VULTURE_DIVE_AOE_RADIUS, VULTURE_DIVE_DURATION } from '../content/enemies'
 import { applyDamage } from './applyDamage'
 import { applyPoison } from './poison'
 import { isBoss, getBoss } from '../content/bosses'
@@ -101,6 +101,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
 
   // Clear healer pulse events from previous tick
   world.healerPulses.length = 0
+  world.vultureDiveImpacts.length = 0
 
   // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
   let activeBulletCount = bulletQuery(world).length
@@ -113,11 +114,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const type = Enemy.type[eid]!
     const def = getEnemyDef(type)
 
-    // Lock rush-attack aim direction on first tick of TELEGRAPH
+    // Lock aim direction on first tick of TELEGRAPH (rush + Vulture dive)
     if (
       state === AIState.TELEGRAPH &&
       EnemyAI.stateTimer[eid]! === 0 &&
-      def?.attackStyle === 'rush' &&
+      (def?.attackStyle === 'rush' || type === EnemyType.VULTURE) &&
       hasTarget
     ) {
       const dx = Position.x[targetEid]! - Position.x[eid]!
@@ -146,8 +147,12 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     // Determine attack style: boss > registry > fallback projectile
     const attackStyle = def?.attackStyle
 
-    // Zero velocity for non-rush, non-boss attackers (bosses manage their own velocity)
-    if (attackStyle !== 'rush' && !isBoss(type)) {
+    // Vulture: set dive velocity during ATTACK
+    if (type === EnemyType.VULTURE && attackStyle === 'custom') {
+      Velocity.x[eid] = AttackConfig.aimX[eid]! * VULTURE_DIVE_SPEED
+      Velocity.y[eid] = AttackConfig.aimY[eid]! * VULTURE_DIVE_SPEED
+    } else if (attackStyle !== 'rush' && !isBoss(type)) {
+      // Zero velocity for non-rush, non-boss, non-Vulture attackers
       Velocity.x[eid] = 0
       Velocity.y[eid] = 0
     }
@@ -267,6 +272,27 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       })
       world.healerPulses.push({ x: ex, y: ey, radius: healRadius })
       transition(eid, AIState.RECOVERY)
+    } else if (type === EnemyType.VULTURE && attackStyle === 'custom') {
+      // Vulture dive-bomb: AoE damage at landing position after dive duration
+      if (EnemyAI.stateTimer[eid]! >= VULTURE_DIVE_DURATION) {
+        const dmg = AttackConfig.damage[eid]!
+        // Damage players in AoE radius
+        for (const [playerEid] of world.playerInputs) {
+          if (hasComponent(world, Dead, playerEid)) continue
+          if (hasComponent(world, Invincible, playerEid)) continue
+          if (Health.iframes[playerEid]! > 0) continue
+          const pdx = Position.x[playerEid]! - ex
+          const pdy = Position.y[playerEid]! - ey
+          if (pdx * pdx + pdy * pdy <= VULTURE_DIVE_AOE_RADIUS * VULTURE_DIVE_AOE_RADIUS) {
+            applyDamage(world, playerEid, { amount: dmg, attackerEid: eid, setIframes: true })
+          }
+        }
+        // Emit dive impact event for client VFX
+        world.vultureDiveImpacts.push({ x: ex, y: ey, radius: VULTURE_DIVE_AOE_RADIUS })
+        Velocity.x[eid] = 0
+        Velocity.y[eid] = 0
+        transition(eid, AIState.RECOVERY)
+      }
     } else {
       // Projectile attack (default for 'projectile', 'custom' with projectile config, or unknown)
 

@@ -11,7 +11,7 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
 import { Enemy, EnemyType, EnemyTier, Position, Dead, ObjectiveRole } from '../components'
-import { spawnFromRegistry, spawnArmoredBandit } from '../prefabs'
+import { spawnFromRegistry, spawnArmoredBandit, spawnVulture } from '../prefabs'
 import { getBoss } from '../content/bosses'
 import { getEnemyDef } from '../content/enemyRegistry'
 import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
@@ -148,6 +148,8 @@ function spawnEnemy(world: GameWorld, type: number, x: number, y: number): numbe
 
   // Armored Bandit needs FrontArmor component added post-spawn
   if (type === EnemyType.ARMORED_BANDIT) return spawnArmoredBandit(world, x, y)
+  // Vulture needs Flying component added post-spawn
+  if (type === EnemyType.VULTURE) return spawnVulture(world, x, y)
 
   return spawnFromRegistry(world, type, x, y)
 }

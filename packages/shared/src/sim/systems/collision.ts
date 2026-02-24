@@ -13,7 +13,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Position, Velocity, Collider, Bullet, ZPosition } from '../components'
+import { Position, Velocity, Collider, Bullet, ZPosition, Flying } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import { MAX_COLLIDER_RADIUS } from '../prefabs'
 import type { Tilemap } from '../tilemap'
@@ -274,6 +274,9 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
   const tilemap = world.tilemap
   if (tilemap) {
     for (const eid of movingEntities) {
+      // Flying enemies ignore terrain
+      if (hasComponent(world, Flying, eid)) continue
+
       const x = Position.x[eid]!
       const y = Position.y[eid]!
       const radius = Collider.radius[eid]!
@@ -316,6 +319,8 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
 
         // Skip all bullet pairs — bullets are handled by bulletCollisionSystem.
         if (hasComponent(world, Bullet, eid1) || hasComponent(world, Bullet, eid2)) return
+        if ((hasComponent(world, Flying, eid1) && Flying.airborne[eid1] === 1) ||
+            (hasComponent(world, Flying, eid2) && Flying.airborne[eid2] === 1)) return
         if (getEntityZ(world, eid1) > JUMP_AIRBORNE_THRESHOLD || getEntityZ(world, eid2) > JUMP_AIRBORNE_THRESHOLD) {
           return
         }

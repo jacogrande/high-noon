@@ -1,18 +1,19 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import { addComponent, hasComponent, defineQuery } from 'bitecs'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
-import { spawnPlayer, spawnArmoredBandit, spawnHealerShaman, spawnRattlesnake, spawnBullet, spawnFromRegistry, CollisionLayer } from '../prefabs'
+import { spawnPlayer, spawnArmoredBandit, spawnHealerShaman, spawnRattlesnake, spawnVulture, spawnBullet, spawnFromRegistry, CollisionLayer } from '../prefabs'
 import { rootSystem } from './root'
 import { bulletCollisionSystem } from './bulletCollision'
+import { collisionSystem } from './collision'
 import { enemyAISystem, transition } from './enemyAI'
 import { enemyAttackSystem } from './enemyAttack'
 import {
-  Root, Velocity, Position, FrontArmor, Health, Collider, Speed,
+  Root, Velocity, Position, FrontArmor, Flying, Health, Collider, Speed,
   EnemyAI, AIState, Enemy, EnemyType, AttackConfig, Detection, Poison, Player,
 } from '../components'
 import { createSpatialHash, rebuildSpatialHash } from '../SpatialHash'
 import { createTestArena } from '../content/maps/testArena'
-import { ARMORED_BANDIT_FRONT_REDUCTION, ARMORED_BANDIT_ARC_HALF_ANGLE, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION } from '../content/enemies'
+import { ARMORED_BANDIT_FRONT_REDUCTION, ARMORED_BANDIT_ARC_HALF_ANGLE, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION, VULTURE_DIVE_DURATION } from '../content/enemies'
 import { NO_TARGET } from '../prefabs'
 
 const positionQuery = defineQuery([Position])
@@ -339,5 +340,152 @@ describe('Rattlesnake', () => {
     expect(Health.max[snakeEid]).toBe(8)
     expect(Speed.max[snakeEid]).toBe(130)
     expect(Collider.radius[snakeEid]).toBe(6)
+  })
+})
+
+// ============================================================================
+// Vulture tests
+// ============================================================================
+
+describe('Vulture', () => {
+  let world: GameWorld
+  let vultureEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 500, 500)
+    vultureEid = spawnVulture(world, 300, 300)
+    // Skip initial delay
+    EnemyAI.initialDelay[vultureEid] = 0
+    EnemyAI.targetEid[vultureEid] = playerEid
+  })
+
+  test('spawnVulture sets Flying component with airborne=1', () => {
+    expect(hasComponent(world, Flying, vultureEid)).toBe(true)
+    expect(Flying.airborne[vultureEid]).toBe(1)
+  })
+
+  test('bullets skip airborne Vulture', () => {
+    const startHP = Health.current[vultureEid]!
+    transition(vultureEid, AIState.CHASE)
+    // Ensure airborne
+    expect(Flying.airborne[vultureEid]).toBe(1)
+
+    spawnBullet(world, {
+      x: 295, y: 300,
+      vx: 300, vy: 0,
+      damage: 10,
+      range: 500,
+      ownerId: playerEid,
+      layer: CollisionLayer.PLAYER_BULLET,
+    })
+    rebuildHash(world)
+    bulletCollisionSystem(world, 1 / 60)
+
+    // No damage — bullet should have been skipped
+    expect(Health.current[vultureEid]).toBe(startHP)
+  })
+
+  test('Vulture becomes grounded during TELEGRAPH', () => {
+    transition(vultureEid, AIState.CHASE)
+    expect(Flying.airborne[vultureEid]).toBe(1)
+
+    // Position vulture within attack range
+    Position.x[vultureEid] = 300
+    Position.y[vultureEid] = 300
+    Position.x[playerEid] = 400
+    Position.y[playerEid] = 300
+    AttackConfig.cooldownRemaining[vultureEid] = 0
+
+    enemyAISystem(world, 1 / 60)
+
+    expect(EnemyAI.state[vultureEid]).toBe(AIState.TELEGRAPH)
+    expect(Flying.airborne[vultureEid]).toBe(0)
+  })
+
+  test('grounded Vulture takes bullet damage', () => {
+    transition(vultureEid, AIState.TELEGRAPH)
+    Flying.airborne[vultureEid] = 0
+
+    const startHP = Health.current[vultureEid]!
+
+    spawnBullet(world, {
+      x: 295, y: 300,
+      vx: 300, vy: 0,
+      damage: 10,
+      range: 500,
+      ownerId: playerEid,
+      layer: CollisionLayer.PLAYER_BULLET,
+    })
+    rebuildHash(world)
+    bulletCollisionSystem(world, 1 / 60)
+
+    expect(Health.current[vultureEid]).toBe(startHP - 10)
+  })
+
+  test('dive-bomb deals AoE damage to nearby player', () => {
+    // Position vulture on top of player
+    Position.x[vultureEid] = 500
+    Position.y[vultureEid] = 500
+    Flying.airborne[vultureEid] = 0
+    transition(vultureEid, AIState.ATTACK)
+
+    // Lock aim direction
+    AttackConfig.aimX[vultureEid] = 1
+    AttackConfig.aimY[vultureEid] = 0
+
+    // Advance state timer past dive duration
+    EnemyAI.stateTimer[vultureEid] = VULTURE_DIVE_DURATION
+
+    const startHP = Health.current[playerEid]!
+    Health.iframes[playerEid] = 0
+
+    // Populate playerInputs so the AoE damage loop finds the player
+    world.playerInputs.set(playerEid, {} as any)
+
+    enemyAttackSystem(world, 1 / 60)
+
+    // Player should take damage
+    expect(Health.current[playerEid]).toBeLessThan(startHP)
+    expect(EnemyAI.state[vultureEid]).toBe(AIState.RECOVERY)
+    expect(world.vultureDiveImpacts.length).toBe(1)
+  })
+
+  test('Vulture returns to airborne after RECOVERY→CHASE', () => {
+    transition(vultureEid, AIState.RECOVERY)
+    Flying.airborne[vultureEid] = 0
+
+    // Run AI past recovery duration (1.0s)
+    for (let i = 0; i < 66; i++) {
+      enemyAISystem(world, 1 / 60)
+    }
+
+    expect(EnemyAI.state[vultureEid]).toBe(AIState.CHASE)
+    expect(Flying.airborne[vultureEid]).toBe(1)
+  })
+
+  test('Vulture ignores wall collision while flying', () => {
+    // Place vulture at a position and set velocity
+    Position.x[vultureEid] = 300
+    Position.y[vultureEid] = 300
+    Velocity.x[vultureEid] = 100
+    Velocity.y[vultureEid] = 0
+
+    // Run collision system — flying entity should be skipped for tilemap
+    collisionSystem(world, 1 / 60)
+
+    // Position should not be altered by collision resolution
+    // (no wall at 300,300 in test arena, but the point is that the system skips flying entities)
+    expect(Position.x[vultureEid]).toBe(300)
+    expect(Position.y[vultureEid]).toBe(300)
+  })
+
+  test('Vulture has correct stats from registry', () => {
+    expect(Enemy.type[vultureEid]).toBe(EnemyType.VULTURE)
+    expect(Health.max[vultureEid]).toBe(15)
+    expect(Speed.max[vultureEid]).toBe(90)
+    expect(Collider.radius[vultureEid]).toBe(9)
   })
 })

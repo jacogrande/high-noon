@@ -32,6 +32,7 @@ import {
   Showdown,
   MeleeWeapon,
   FrontArmor,
+  Flying,
   Npc,
   NpcMovement,
   NpcMovementType,
@@ -440,6 +441,14 @@ export function spawnHealerShaman(world: GameWorld, x: number, y: number): numbe
 /** Spawn a Rattlesnake enemy */
 export function spawnRattlesnake(world: GameWorld, x: number, y: number): number {
   return spawnFromRegistry(world, EnemyType.RATTLESNAKE, x, y)
+}
+
+/** Spawn a Vulture enemy (adds Flying component, starts airborne) */
+export function spawnVulture(world: GameWorld, x: number, y: number): number {
+  const eid = spawnFromRegistry(world, EnemyType.VULTURE, x, y)
+  addComponent(world, Flying, eid)
+  Flying.airborne[eid] = 1
+  return eid
 }
 
 /** Spawn an Armored Bandit enemy (adds FrontArmor component) */

@@ -13,7 +13,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType, FrontArmor } from '../components'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType, FrontArmor, Flying } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET, removeBullet } from '../prefabs'
 import { clampDamage } from '../damage'
 import { isSolidAt } from '../tilemap'
@@ -178,6 +178,8 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       if (hasComponent(world, Invincible, targetEid)) return
       // Skip entities in damage i-frames
       if (Health.iframes[targetEid]! > 0) return
+      // Skip airborne flying enemies (Vulture while circling)
+      if (hasComponent(world, Flying, targetEid) && Flying.airborne[targetEid] === 1) return
 
       // Layer check
       if (!canBulletHitTarget(Collider.layer[eid]!, Collider.layer[targetEid]!)) return

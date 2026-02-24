@@ -165,6 +165,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
         { type: EnemyType.LASSO_BANDIT, count: 1 },
         { type: EnemyType.ARMORED_BANDIT, count: 1 },
         { type: EnemyType.HEALER_SHAMAN, count: 1 },
+        { type: EnemyType.VULTURE, count: 1 },
       ],
       spawnDelay: 0,
       threatClearRatio: 1.0,
@@ -183,6 +184,7 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
       maxFodderAlive: 8,
       threats: [
         { type: EnemyType.HOLLOW_MAN, count: 1 },
+        { type: EnemyType.VULTURE, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,

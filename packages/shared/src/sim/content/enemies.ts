@@ -643,6 +643,40 @@ registerEnemy({
   spriteScale: 1.5,
 })
 
+// ============================================================================
+// Vulture — flying threat that dive-bombs the player
+// ============================================================================
+
+export const VULTURE_DIVE_SPEED = 250
+export const VULTURE_DIVE_AOE_RADIUS = 32
+export const VULTURE_DIVE_DURATION = 0.5
+
+registerEnemy({
+  type: EnemyType.VULTURE,
+  name: 'Vulture',
+  tier: EnemyTier.THREAT,
+  speed: 90,
+  radius: 9,
+  hp: 15,
+  budgetCost: 3,
+  dropChance: 0.06,
+  aggroRange: 400,
+  attackRange: 300,
+  losRequired: false,
+  telegraphDuration: 0.6,
+  recoveryDuration: 1.0,
+  cooldown: 4.0,
+  damage: 8,
+  attackStyle: 'custom',
+  preferredRange: 250,
+  separationRadius: 20,
+  initialDelayMin: 0.3,
+  initialDelayMax: 0.7,
+  color: 0x554433,
+  spriteId: 'vulture',
+  spriteScale: 2,
+})
+
 registerEnemy({
   type: EnemyType.COYOTE,
   name: 'Coyote',

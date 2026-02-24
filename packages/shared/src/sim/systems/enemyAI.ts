@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { EnemyAI, AIState, Enemy, EnemyType, Detection, AttackConfig, Position, ObjectiveRole, ObjRole } from '../components'
+import { EnemyAI, AIState, Enemy, EnemyType, Detection, AttackConfig, Position, ObjectiveRole, ObjRole, Flying } from '../components'
 import { NO_TARGET } from '../prefabs'
 
 const aiQuery = defineQuery([EnemyAI, Enemy, Detection, AttackConfig, Position])
@@ -109,6 +109,10 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
           if (EnemyAI.initialDelay[eid]! > 0) break
 
           transition(eid, AIState.TELEGRAPH)
+          // Vulture becomes grounded (vulnerable) when entering telegraph
+          if (Enemy.type[eid] === EnemyType.VULTURE && hasComponent(world, Flying, eid)) {
+            Flying.airborne[eid] = 0
+          }
         }
         break
       }
@@ -129,6 +133,10 @@ export function enemyAISystem(world: GameWorld, dt: number): void {
         if (stateTimer >= AttackConfig.recoveryDuration[eid]!) {
           AttackConfig.cooldownRemaining[eid] = AttackConfig.cooldown[eid]!
           transition(eid, AIState.CHASE)
+          // Vulture returns to airborne (immune) when resuming chase
+          if (Enemy.type[eid] === EnemyType.VULTURE && hasComponent(world, Flying, eid)) {
+            Flying.airborne[eid] = 1
+          }
         }
         break
       }

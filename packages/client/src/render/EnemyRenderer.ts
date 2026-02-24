@@ -11,7 +11,7 @@ import { Graphics, type Container } from 'pixi.js'
 import type { GameWorld } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
-  AttackConfig, Health, BossPhase, FrontArmor, NO_TARGET,
+  AttackConfig, Health, BossPhase, FrontArmor, Flying, NO_TARGET,
   isBoss, allBosses, getBoss,
   getEnemyDef, allEnemyDefs,
 } from '@high-noon/shared'
@@ -154,6 +154,15 @@ interface HealPulseAnim {
 }
 
 const HEAL_PULSE_DURATION = 0.5
+const DIVE_IMPACT_DURATION = 0.4
+
+/** Vulture dive impact ring animation data */
+interface DiveImpactAnim {
+  x: number
+  y: number
+  radius: number
+  timer: number
+}
 
 /** Death effect data for ephemeral scale-down + fade */
 interface DeathEffect {
@@ -217,6 +226,9 @@ export class EnemyRenderer {
   private pendingBossIntro: PendingBossIntro | null = null
   /** Dedicated graphics for healer pulse ring VFX (always visible, not debug-only) */
   private readonly healPulseGraphics: Graphics | null = null
+  /** Dedicated graphics for Vulture shadow + dive impact VFX */
+  private readonly vultureGraphics: Graphics | null = null
+  private readonly diveImpactAnims: DiveImpactAnim[] = []
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer, entityLayer?: Container) {
     this.registry = registry
@@ -225,6 +237,9 @@ export class EnemyRenderer {
       this.healPulseGraphics = new Graphics()
       this.healPulseGraphics.visible = false
       entityLayer.addChild(this.healPulseGraphics)
+      this.vultureGraphics = new Graphics()
+      this.vultureGraphics.visible = false
+      entityLayer.addChild(this.vultureGraphics)
     }
   }
 
@@ -689,6 +704,63 @@ export class EnemyRenderer {
       }
     }
 
+    // Collect new dive impact events
+    for (const impact of world.vultureDiveImpacts) {
+      this.diveImpactAnims.push({ x: impact.x, y: impact.y, radius: impact.radius, timer: 0 })
+    }
+
+    // Vulture shadows + dive impact rings
+    if (this.vultureGraphics) {
+      const hasVultures = this.diveImpactAnims.length > 0
+      let needsDraw = hasVultures
+
+      // Check for alive vultures
+      for (const eid of this.enemyEntities) {
+        if (this.enemyTypes.get(eid) !== EnemyType.VULTURE) continue
+        needsDraw = true
+        break
+      }
+
+      if (!needsDraw) {
+        this.vultureGraphics.visible = false
+      } else {
+        this.vultureGraphics.clear()
+
+        // Draw ground shadows for alive vultures
+        for (const eid of this.enemyEntities) {
+          if (this.enemyTypes.get(eid) !== EnemyType.VULTURE) continue
+          const airborne = hasComponent(world, Flying, eid) && Flying.airborne[eid] === 1
+          const shadowAlpha = airborne ? 0.2 : 0.4
+          const shadowScale = airborne ? 0.6 : 1.0
+          const rx = Position.x[eid]!
+          const ry = Position.y[eid]!
+          const radius = Collider.radius[eid]! * shadowScale
+          this.vultureGraphics
+            .ellipse(rx, ry + 4, radius * 1.5, radius * 0.6)
+            .fill({ color: 0x000000, alpha: shadowAlpha })
+        }
+
+        // Animate dive impact expanding rings
+        for (let i = this.diveImpactAnims.length - 1; i >= 0; i--) {
+          const anim = this.diveImpactAnims[i]!
+          anim.timer += realDt
+          const t = Math.min(anim.timer / DIVE_IMPACT_DURATION, 1)
+          const currentRadius = anim.radius * (0.5 + t * 0.5)
+          const ringAlpha = 0.6 * (1 - t)
+          if (ringAlpha > 0) {
+            this.vultureGraphics
+              .circle(anim.x, anim.y, currentRadius)
+              .stroke({ color: 0x554433, width: 3 * (1 - t), alpha: ringAlpha })
+          }
+          if (t >= 1) {
+            this.diveImpactAnims.splice(i, 1)
+          }
+        }
+
+        this.vultureGraphics.visible = true
+      }
+    }
+
     // Animate death effects
     for (let i = this.deathEffects.length - 1; i >= 0; i--) {
       const effect = this.deathEffects[i]!
@@ -791,5 +863,8 @@ export class EnemyRenderer {
     this.healthBarYOffsets.clear()
     this.pendingBossIntro = null
     this.healPulseGraphics?.destroy()
+    this.healPulseAnims.length = 0
+    this.vultureGraphics?.destroy()
+    this.diveImpactAnims.length = 0
   }
 }
