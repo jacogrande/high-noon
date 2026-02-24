@@ -71,10 +71,12 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       fodderPool: [
         { type: EnemyType.SWARMER, weight: 3 },
         { type: EnemyType.GRUNT, weight: 1 },
+        { type: EnemyType.RATTLESNAKE, weight: 1 },
       ],
       maxFodderAlive: 4,
       threats: [
         { type: EnemyType.SHOOTER, count: 1 },
+        { type: EnemyType.LASSO_BANDIT, count: 1 },
       ],
       spawnDelay: 0,
       threatClearRatio: 1.0,
@@ -87,10 +89,13 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
         { type: EnemyType.GRUNT, weight: 2 },
         { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
         { type: EnemyType.RATTLESNAKE, weight: 1 },
+        { type: EnemyType.DYNAMITE_TOSSER, weight: 1 },
       ],
       maxFodderAlive: 5,
       threats: [
         { type: EnemyType.BOOMSTICK, count: 1 },
+        { type: EnemyType.ARMORED_BANDIT, count: 1 },
+        { type: EnemyType.VULTURE, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,
