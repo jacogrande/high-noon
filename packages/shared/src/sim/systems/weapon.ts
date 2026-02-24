@@ -518,11 +518,12 @@ export function weaponSystem(
       const missX = rewoundFire.originX + centerDirX * missDistance
       const missY = rewoundFire.originY + centerDirY * missDistance
 
-      let didHit = false
-      let firstHitTarget = NO_TARGET
-      let firstHitX = missX
-      let firstHitY = missY
-      let totalDamageApplied = 0
+      // Track targets hit during this volley so we can suppress i-frames
+      // between pellets (otherwise pellet 1 sets i-frames and pellets 2-N
+      // skip the target in getHitscanCandidates).
+      const volleyHitTargets = new Set<number>()
+      const shootSeq = extractShootSeq(input)
+      const rewindTicks = rewoundFire.shotTick !== null ? world.tick - rewoundFire.shotTick : 0
 
       for (let i = 0; i < pelletCount; i++) {
         const angleOffset = pelletCount > 1
@@ -544,28 +545,34 @@ export function weaponSystem(
           rewoundFire.shotTick,
         )
 
-        totalDamageApplied += pellet.damageApplied
-        if (!didHit && pellet.hit) {
-          didHit = true
-          firstHitTarget = pellet.targetEid
-          firstHitX = pellet.hitX
-          firstHitY = pellet.hitY
+        if (pellet.hit) {
+          volleyHitTargets.add(pellet.targetEid)
+          // Clear i-frames so subsequent pellets in this volley can still hit
+          if (i < pelletCount - 1) {
+            Health.iframes[pellet.targetEid] = 0
+          }
+        }
+
+        // Push one result per pellet so each visual bullet gets an impact point
+        if (world.simulationScope === 'all') {
+          world.pendingShotResults.push({
+            shooterEid: eid,
+            shootSeq,
+            tick: world.tick,
+            hit: pellet.hit,
+            hitX: pellet.hitX,
+            hitY: pellet.hitY,
+            targetEid: pellet.targetEid,
+            damageApplied: pellet.damageApplied,
+            rewindTicks,
+            rewindClamped: false,
+          })
         }
       }
 
-      if (world.simulationScope === 'all') {
-        world.pendingShotResults.push({
-          shooterEid: eid,
-          shootSeq: extractShootSeq(input),
-          tick: world.tick,
-          hit: didHit,
-          hitX: firstHitX,
-          hitY: firstHitY,
-          targetEid: firstHitTarget,
-          damageApplied: totalDamageApplied,
-          rewindTicks: rewoundFire.shotTick !== null ? world.tick - rewoundFire.shotTick : 0,
-          rewindClamped: false, // Server overrides in sendShotResults()
-        })
+      // Re-apply i-frames on all targets hit by this volley
+      for (const targetEid of volleyHitTargets) {
+        Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
       }
     } else {
       const bulletCfg = getBulletConfigForCharacter(us.characterDef.id)

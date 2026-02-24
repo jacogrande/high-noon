@@ -25,6 +25,8 @@ export type BulletSpriteIdValue = typeof BulletSpriteId[keyof typeof BulletSprit
 export interface BulletConfig {
   size: number              // render scale multiplier
   spriteId: BulletSpriteIdValue
+  visualSpeed: number       // pixels per second for cosmetic bullets
+  visualMaxLifetime: number // seconds before cosmetic bullet expires
 }
 
 // ============================================================================
@@ -132,8 +134,8 @@ export const SAWED_OFF_LAST_ROUND_MULTIPLIER = 1.75
 /** Number of pellets per sawed-off shot */
 export const SAWED_OFF_PELLET_COUNT = 5
 
-/** Spread angle in radians (~29° fan) */
-export const SAWED_OFF_SPREAD_ANGLE = 0.5
+/** Spread angle in radians (~45° fan) */
+export const SAWED_OFF_SPREAD_ANGLE = 0.8
 
 /** Sawed-off visual data */
 export const SAWED_OFF_SPRITE: WeaponSpriteData = {
@@ -365,11 +367,15 @@ export const ENEMY_BULLET_SIZE_FODDER = 1.2
 export const SHERIFF_BULLET: BulletConfig = {
   size: 1.5,
   spriteId: BulletSpriteId.SLUG_ANIM,
+  visualSpeed: 2400,
+  visualMaxLifetime: 0.65,
 }
 
 export const UNDERTAKER_BULLET: BulletConfig = {
-  size: 1.0,
+  size: 1.8,
   spriteId: BulletSpriteId.PELLET,
+  visualSpeed: 900,
+  visualMaxLifetime: 0.25,
 }
 
 /**
@@ -380,6 +386,8 @@ export const UNDERTAKER_BULLET: BulletConfig = {
 export const PROSPECTOR_BULLET: BulletConfig = {
   size: 1.0,
   spriteId: BulletSpriteId.SLUG,
+  visualSpeed: 2400,
+  visualMaxLifetime: 0.65,
 }
 
 export const CHARACTER_BULLET_CONFIG: Record<CharacterId, BulletConfig> = {

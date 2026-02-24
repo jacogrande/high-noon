@@ -113,8 +113,6 @@ import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
 import { buildSingleplayerMinimapState } from './minimap'
 
-const VISUAL_PLAYER_BULLET_SPEED = 2400
-const VISUAL_PLAYER_BULLET_MAX_LIFETIME = 0.65
 const MAX_PENDING_VISUAL_SHOTS = 256
 
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
@@ -720,16 +718,23 @@ export class SingleplayerModeController implements SceneModeController {
       const muzzleY = barrelTip?.y ?? Position.y[playerEid]!
       if (this.world.playerFireMode === 'hitscan' && didFireRound(prevRounds, newRounds)) {
         const bulletCfg = getBulletConfigForCharacter(this.world.characterId)
-        const visualBulletId = this.bulletRenderer.spawnVisualBullet(
-          muzzleX,
-          muzzleY,
-          angle,
-          VISUAL_PLAYER_BULLET_SPEED,
-          VISUAL_PLAYER_BULLET_MAX_LIFETIME,
-          bulletCfg.spriteId,
-          bulletCfg.size,
-        )
-        this.queuePendingVisualShot(visualBulletId)
+        const pelletCount = Math.max(1, Math.round(this.world.upgradeState.pelletCount))
+        const spreadAngle = this.world.upgradeState.spreadAngle
+        for (let i = 0; i < pelletCount; i++) {
+          const angleOffset = pelletCount > 1
+            ? spreadAngle * (i / (pelletCount - 1) - 0.5)
+            : 0
+          const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+            muzzleX,
+            muzzleY,
+            angle + angleOffset,
+            bulletCfg.visualSpeed,
+            bulletCfg.visualMaxLifetime,
+            bulletCfg.spriteId,
+            bulletCfg.size,
+          )
+          this.queuePendingVisualShot(visualBulletId)
+        }
       }
       const recoil = CHARACTER_RECOIL[this.world.characterId]
       this.dryFireCooldown = emitCylinderPresentationEvents({

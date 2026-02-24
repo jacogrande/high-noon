@@ -133,8 +133,6 @@ const MAX_SNAPSHOT_APPLIES_PER_UPDATE = 4
 const MAX_PENDING_BULLET_EVENTS = 128
 const MAX_PENDING_SHOT_RESULTS = 128
 const REMOTE_BULLET_MAX_AGE_TICKS = 30
-const VISUAL_PLAYER_BULLET_SPEED = 2400
-const VISUAL_PLAYER_BULLET_MAX_LIFETIME = 0.65
 const MAX_PENDING_VISUAL_SHOTS = 256
 
 interface PendingVisualShot {
@@ -732,7 +730,7 @@ export class MultiplayerModeController implements SceneModeController {
           const remoteBulletCfg = getBulletConfigForCharacter(remoteCharId)
           const visualId = this.bulletRenderer.spawnVisualBullet(
             startX, startY, angle,
-            VISUAL_PLAYER_BULLET_SPEED, VISUAL_PLAYER_BULLET_MAX_LIFETIME,
+            remoteBulletCfg.visualSpeed, remoteBulletCfg.visualMaxLifetime,
             remoteBulletCfg.spriteId, remoteBulletCfg.size,
           )
           this.bulletRenderer.resolveVisualBulletImpact(
@@ -1061,16 +1059,23 @@ export class MultiplayerModeController implements SceneModeController {
         const muzzleX = barrelTip?.x ?? Position.x[this.myClientEid]!
         const muzzleY = barrelTip?.y ?? Position.y[this.myClientEid]!
         const localBulletCfg = getBulletConfigForCharacter(this.authoritativeCharacterId)
-        const visualBulletId = this.bulletRenderer.spawnVisualBullet(
-          muzzleX,
-          muzzleY,
-          angle,
-          VISUAL_PLAYER_BULLET_SPEED,
-          VISUAL_PLAYER_BULLET_MAX_LIFETIME,
-          localBulletCfg.spriteId,
-          localBulletCfg.size,
-        )
-        this.queuePendingVisualShot(this.shootSeq, visualBulletId)
+        const pelletCount = Math.max(1, Math.round(this.world.upgradeState.pelletCount))
+        const spreadAngle = this.world.upgradeState.spreadAngle
+        for (let i = 0; i < pelletCount; i++) {
+          const angleOffset = pelletCount > 1
+            ? spreadAngle * (i / (pelletCount - 1) - 0.5)
+            : 0
+          const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+            muzzleX,
+            muzzleY,
+            angle + angleOffset,
+            localBulletCfg.visualSpeed,
+            localBulletCfg.visualMaxLifetime,
+            localBulletCfg.spriteId,
+            localBulletCfg.size,
+          )
+          this.queuePendingVisualShot(this.shootSeq, visualBulletId)
+        }
       }
 
       this.dryFireCooldown = emitCylinderPresentationEvents({
