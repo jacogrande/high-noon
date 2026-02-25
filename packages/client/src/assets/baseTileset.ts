@@ -9,4 +9,5 @@ export const BASE_TILE_STYLE_ROW: Record<BaseTileStyle, number> = {
   red_dirt: 0,
   grass: 1,
   stone: 2,
+  crossroads_dirt: 3,
 }

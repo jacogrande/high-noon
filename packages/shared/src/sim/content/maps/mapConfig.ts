@@ -128,9 +128,26 @@ export const STAGE_3_MAP_CONFIG: MapConfig = {
   },
 }
 
-/** Indexed by stage number (0, 1, 2) */
+/** Stage 4: Crossroads — 48x48 (square), hand-crafted + shape, no procedural obstacles */
+export const STAGE_4_MAP_CONFIG: MapConfig = {
+  width: 48,
+  height: 48,
+  tileSize: 32,
+  baseTiles: { style: 'crossroads_dirt', variantCount: 4 },
+  centerClearRadius: 8,
+  obstacles: {
+    count: 0,
+    minSpacing: 0,
+    templates: [],
+  },
+  hazards: [],
+  // No mapObstacles — hand-crafted layout, hazards spawned dynamically by boss phases
+}
+
+/** Indexed by stage number (0, 1, 2, 3) */
 export const STAGE_MAP_CONFIGS: MapConfig[] = [
   STAGE_1_MAP_CONFIG,
   STAGE_2_MAP_CONFIG,
   STAGE_3_MAP_CONFIG,
+  STAGE_4_MAP_CONFIG,
 ]

@@ -10,7 +10,10 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Position, Health, Dead, ZPosition } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
-import { LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL } from '../content/hazards'
+import {
+  LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL,
+  BRIMSTONE_DPS, DARKNESS_DPS, DARKNESS_SPEED_MUL,
+} from '../content/hazards'
 import { getFloorTileTypeAt, TileType } from '../tilemap'
 import { applyDamage } from './applyDamage'
 
@@ -43,6 +46,11 @@ export function hazardTileSystem(world: GameWorld, dt: number): void {
     } else if (tileType === TileType.BRAMBLE) {
       applyDamage(world, eid, { amount: BRAMBLE_DPS * dt, ownerPlayerEid: null })
       world.floorSpeedMul.set(eid, BRAMBLE_SPEED_MUL)
+    } else if (tileType === TileType.BRIMSTONE) {
+      applyDamage(world, eid, { amount: BRIMSTONE_DPS * dt, ownerPlayerEid: null })
+    } else if (tileType === TileType.DARKNESS) {
+      applyDamage(world, eid, { amount: DARKNESS_DPS * dt, ownerPlayerEid: null })
+      world.floorSpeedMul.set(eid, DARKNESS_SPEED_MUL)
     }
   }
 }

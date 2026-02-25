@@ -8,7 +8,7 @@
 import type { MapObstacle } from './content/maps/mapObstacleDefs'
 
 /** Supported stage base-tile styles */
-export const BASE_TILE_STYLES = ['red_dirt', 'grass', 'stone'] as const
+export const BASE_TILE_STYLES = ['red_dirt', 'grass', 'stone', 'crossroads_dirt'] as const
 export type BaseTileStyle = (typeof BASE_TILE_STYLES)[number]
 
 /** Number of base-tile variants per style in base_tileset.png */
@@ -128,6 +128,21 @@ export interface Tilemap {
   roadNetwork?: RoadNetwork
   /** Map obstacles generated during arena generation */
   mapObstacles?: MapObstacle[]
+  /** Crossroads arena landmark positions (Stage 4 only) */
+  crossroadsLandmarks?: CrossroadsLandmarks
+}
+
+/**
+ * Landmark positions for the crossroads arena (Stage 4).
+ * All positions are in world coordinates (pixels).
+ */
+export interface CrossroadsLandmarks {
+  /** Center signpost position */
+  signpost: { x: number; y: number }
+  /** Four lantern positions at the corners of the center clearing */
+  lanterns: Array<{ x: number; y: number }>
+  /** Four road endpoint positions (spawn points for Ghost Riders) */
+  roadEndpoints: Array<{ x: number; y: number }>
 }
 
 /** Tile type constants */
@@ -141,6 +156,8 @@ export const TileType = {
   BRAMBLE: 6,
   WOOD_FLOOR: 7,
   ROAD: 8,
+  BRIMSTONE: 9,
+  DARKNESS: 10,
 } as const
 
 export type TileTypeValue = (typeof TileType)[keyof typeof TileType]
@@ -391,5 +408,49 @@ export function getArenaCenterFromTilemap(map: Tilemap): { x: number; y: number 
   return {
     x: (map.width * map.tileSize) / 2,
     y: (map.height * map.tileSize) / 2,
+  }
+}
+
+// ============================================================================
+// Dynamic tile modification (for mid-encounter arena changes)
+// ============================================================================
+
+/**
+ * Set a tile type at grid coordinates on a specific layer.
+ * Used for mid-encounter arena changes (arena shrink, brimstone placement).
+ */
+export function setTileAt(
+  map: Tilemap,
+  layerIndex: number,
+  tileX: number,
+  tileY: number,
+  type: number,
+): void {
+  setTile(map, layerIndex, tileX, tileY, type)
+}
+
+/**
+ * Convert a rectangular range of tiles to a different type.
+ * Inclusive on all bounds. Used for arena shrinking (FLOOR → WALL)
+ * and brimstone crack placement (FLOOR → BRIMSTONE).
+ */
+export function collapseTileRange(
+  map: Tilemap,
+  layerIndex: number,
+  minTileX: number,
+  minTileY: number,
+  maxTileX: number,
+  maxTileY: number,
+  newType: number,
+): void {
+  const clampMinX = Math.max(0, minTileX)
+  const clampMinY = Math.max(0, minTileY)
+  const clampMaxX = Math.min(map.width - 1, maxTileX)
+  const clampMaxY = Math.min(map.height - 1, maxTileY)
+
+  for (let y = clampMinY; y <= clampMaxY; y++) {
+    for (let x = clampMinX; x <= clampMaxX; x++) {
+      setTile(map, layerIndex, x, y, newType)
+    }
   }
 }
