@@ -345,6 +345,9 @@ export const EnemyType = {
   HEALER_SHAMAN: 18,
   RATTLESNAKE: 19,
   VULTURE: 20,
+  OLD_SCRATCH: 21,
+  GHOST_RIDER: 22,
+  HELLFIRE_PILLAR: 23,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */
