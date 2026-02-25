@@ -330,6 +330,11 @@ Each attack is a function: `deadEyeShot()`, `devilsFan()`, `brimstoneBlast()`, e
 **Files:**
 
 - `packages/shared/src/sim/content/bosses/oldScratch.ts` — Phase 1 attack implementations
+- `packages/shared/src/sim/content/bosses/oldScratch.test.ts` — 24 new tests
+- `packages/shared/src/sim/content/bosses/index.ts` — new constant exports
+
+> **Status: COMPLETE** (2026-02-25)
+> Implemented all 10 Phase 1 attacks across 3 character cycles (Sheriff: Dead-Eye, Sidewinder, Devil's Fan, Black Iron Reload; Undertaker: Brimstone Blast, Coffin Nail, Shadow Step; Prospector: Hellpick Swing, Infernal Charge, Devil's Dynamite). Character ID cached on first tick via `getCharacterIdForPlayer`. Coffin Nail zones and fire trails stored in `OldScratchState` with per-tick damage and telegraph rendering. Infernal Charge is multi-tick via `isCharging` flag. Devil's Dynamite reuses existing dynamite system. Sidewinder direction pre-picked at telegraph entry so telegraph matches dash. Brimstone Blast re-aims at execution (shotgun tracks). 54 tests pass (24 new), full suite 1302/1302.
 
 ---
 

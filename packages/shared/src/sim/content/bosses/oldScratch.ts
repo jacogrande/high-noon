@@ -7,8 +7,8 @@
  *  Phase 3 — The Devil Unleashed: Hellfire Pillars, stationary true form
  *  Phase 4 — The Final Draw: quick-draw reaction duel
  *
- * This file implements the core spawn, state machine, phase transitions,
- * and Infernal Counter passive. Attack logic is added in later phases.
+ * This file implements spawn, state machine, phase transitions,
+ * Infernal Counter passive, and Phase 1 character-adaptive attacks.
  */
 
 import { addEntity, addComponent, hasComponent, defineQuery } from 'bitecs'
@@ -16,12 +16,16 @@ import type { GameWorld } from '../../world'
 import type { BossModule } from './registry'
 import { registerBoss } from './registry'
 import {
-  Position, Velocity, Speed, Collider, Health,
+  Position, Velocity, Speed, Collider, Health, Knockback,
   Enemy, EnemyType, EnemyTier, BossPhase,
   EnemyAI, AIState, Detection, AttackConfig, Steering,
   Player, Bullet, Dead,
 } from '../../components'
 import { CollisionLayer, spawnBullet } from '../../prefabs'
+import { transition } from '../../systems/enemyAI'
+import { applyDamage } from '../../systems/applyDamage'
+import { isInArc } from '../../systems/melee'
+import { getCharacterIdForPlayer } from '../../upgrade'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import {
   TileType,
@@ -30,6 +34,7 @@ import {
   type TileTypeValue,
 } from '../../tilemap'
 import { ENEMY_BULLET_RANGE, ENEMY_BULLET_SIZE_THREAT, BulletSpriteId } from '../weapons'
+import { PLAYER_RADIUS } from '../player'
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -79,8 +84,123 @@ const P3_ROAD_SHRINK_TILES = 10
 const COUNTER_HOOK_ID_PREFIX = 'old-scratch-counter-'
 
 // ============================================================================
+// Phase 1 Attack Enum, Constants & Cycles
+// ============================================================================
+
+export const enum P1Attack {
+  // Sheriff
+  DEAD_EYE_SHOT = 0,
+  DEVILS_FAN = 1,
+  BLACK_IRON_RELOAD = 2,
+  SIDEWINDER = 3,
+  // Undertaker
+  BRIMSTONE_BLAST = 4,
+  COFFIN_NAIL = 5,
+  SHADOW_STEP = 6,
+  // Prospector
+  HELLPICK_SWING = 7,
+  INFERNAL_CHARGE = 8,
+  DEVILS_DYNAMITE = 9,
+}
+
+const SHERIFF_CYCLE: P1Attack[] = [
+  P1Attack.DEAD_EYE_SHOT,
+  P1Attack.SIDEWINDER,
+  P1Attack.DEVILS_FAN,
+  P1Attack.BLACK_IRON_RELOAD,
+]
+const UNDERTAKER_CYCLE: P1Attack[] = [
+  P1Attack.BRIMSTONE_BLAST,
+  P1Attack.COFFIN_NAIL,
+  P1Attack.SHADOW_STEP,
+]
+const PROSPECTOR_CYCLE: P1Attack[] = [
+  P1Attack.HELLPICK_SWING,
+  P1Attack.INFERNAL_CHARGE,
+  P1Attack.DEVILS_DYNAMITE,
+]
+
+// --- Sheriff attack constants ---
+const DEAD_EYE_TELEGRAPH = 0.4
+const DEAD_EYE_DAMAGE = 14
+const DEAD_EYE_SPEED = 700
+
+const DEVILS_FAN_TELEGRAPH = 0.3
+const DEVILS_FAN_DAMAGE = 8
+const DEVILS_FAN_BULLETS = 4
+const DEVILS_FAN_SPEED = 500
+const DEVILS_FAN_SPREAD = 0.5
+const DEVILS_FAN_RANGE = 250
+
+const BLACK_IRON_RECOVERY = 0.7
+
+const SIDEWINDER_TELEGRAPH = 0.2
+const SIDEWINDER_DIST = 200
+const SIDEWINDER_COOLDOWN = 2.0
+
+// --- Undertaker attack constants ---
+const BRIMSTONE_BLAST_TELEGRAPH = 0.3
+const BRIMSTONE_BLAST_DAMAGE = 10
+const BRIMSTONE_BLAST_PELLETS = 5
+const BRIMSTONE_BLAST_SPEED = 400
+const BRIMSTONE_BLAST_SPREAD = 0.4
+const BRIMSTONE_BLAST_RANGE = 150
+
+const COFFIN_NAIL_TELEGRAPH = 0.5
+const COFFIN_NAIL_DAMAGE = 6
+const COFFIN_NAIL_DPS = 4
+const COFFIN_NAIL_RADIUS = 100
+const COFFIN_NAIL_DELAY = 0.8
+const COFFIN_NAIL_DURATION = 2.0
+
+const SHADOW_STEP_TELEGRAPH = 0.15
+const SHADOW_STEP_DIST = 150
+const SHADOW_STEP_COOLDOWN = 3.0
+
+// --- Prospector attack constants ---
+const HELLPICK_TELEGRAPH = 0.25
+const HELLPICK_DAMAGE = 12
+const HELLPICK_ARC = (100 * Math.PI) / 180  // 100° in radians
+const HELLPICK_REACH = 70
+const HELLPICK_KNOCKBACK_SPEED = 300
+const HELLPICK_KNOCKBACK_DURATION = 0.2
+
+const INFERNAL_CHARGE_TELEGRAPH = 0.4
+const INFERNAL_CHARGE_DAMAGE = 15
+const INFERNAL_CHARGE_SPEED = 350
+const INFERNAL_CHARGE_DIST = 200
+const FIRE_TRAIL_DPS = 4
+const FIRE_TRAIL_DURATION = 3.0
+const FIRE_TRAIL_RADIUS = 20
+const FIRE_TRAIL_SPACING = 30
+
+const DEVILS_DYNAMITE_TELEGRAPH = 0.3
+const DEVILS_DYNAMITE_DAMAGE = 18
+const DEVILS_DYNAMITE_RADIUS = 80
+const DEVILS_DYNAMITE_FUSE = 1.2
+const DEVILS_DYNAMITE_KNOCKBACK = 200
+
+// Default recovery for most attacks
+const DEFAULT_P1_RECOVERY = 0.3
+
+// ============================================================================
 // Per-boss state (stored in world.bossState)
 // ============================================================================
+
+export interface CoffinNailZone {
+  x: number
+  y: number
+  delay: number       // countdown before activation
+  active: boolean
+  duration: number    // time remaining after activation
+  hitEntities: Set<number>  // track initial hit per entity
+}
+
+export interface FireTrailSegment {
+  x: number
+  y: number
+  timer: number       // time remaining
+}
 
 export interface OldScratchState {
   phase: number                    // 1-4
@@ -90,6 +210,28 @@ export interface OldScratchState {
   counterCooldown: number          // infernal counter internal CD
   counterWindowActive: boolean     // true during idle stance counter window
   counterWindowTimer: number       // time remaining in current counter window
+
+  // Phase 1 attack state
+  selectedAttack: number           // current P1Attack value
+  attackExecuted: boolean          // guards against double-execution
+  aimAngle: number                 // locked aim direction at telegraph entry
+  characterId: string              // cached player character id ('' = undetected)
+  sidewinderCooldown: number       // per-move cooldown for Sidewinder
+  sidewinderSign: number           // pre-picked perpendicular direction (+1 or -1)
+  shadowStepCooldown: number       // per-move cooldown for Shadow Step
+
+  // Undertaker: delayed damage zones
+  coffinNails: CoffinNailZone[]
+
+  // Prospector: fire trail from Infernal Charge
+  fireTrails: FireTrailSegment[]
+  isCharging: boolean
+  chargeTimer: number
+  chargeAimX: number
+  chargeAimY: number
+  chargeStartX: number
+  chargeStartY: number
+  lastTrailDist: number            // distance traveled since last trail segment
 
   // Phase 2
   ghostRiderCooldown: number
@@ -121,6 +263,24 @@ function createOldScratchState(): OldScratchState {
     counterCooldown: 0,
     counterWindowActive: false,
     counterWindowTimer: 0,
+
+    // Phase 1 attack state
+    selectedAttack: P1Attack.DEAD_EYE_SHOT,
+    attackExecuted: false,
+    aimAngle: 0,
+    characterId: '',
+    sidewinderCooldown: 0,
+    sidewinderSign: 1,
+    shadowStepCooldown: 0,
+    coffinNails: [],
+    fireTrails: [],
+    isCharging: false,
+    chargeTimer: 0,
+    chargeAimX: 0,
+    chargeAimY: 0,
+    chargeStartX: 0,
+    chargeStartY: 0,
+    lastTrailDist: 0,
 
     ghostRiderCooldown: 0,
     ghostRiderCount: 0,
@@ -308,6 +468,7 @@ function enterPhase2(world: GameWorld, eid: number, state: OldScratchState): voi
   AttackConfig.cooldownRemaining[eid] = 0
   EnemyAI.state[eid] = AIState.TELEGRAPH
   EnemyAI.stateTimer[eid] = 0
+  state.attackCycleIndex = 0
 
   // Arena changes
   const tilemap = world.tilemap
@@ -358,7 +519,257 @@ function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): voi
 }
 
 // ============================================================================
-// Tick (phase transitions + counter window management)
+// Helpers: get cycle for character
+// ============================================================================
+
+function getCycleForCharacter(charId: string): P1Attack[] {
+  if (charId === 'undertaker') return UNDERTAKER_CYCLE
+  if (charId === 'prospector') return PROSPECTOR_CYCLE
+  return SHERIFF_CYCLE  // default
+}
+
+// ============================================================================
+// Tick helpers — zone damage, charge movement, telegraph rendering
+// ============================================================================
+
+function tickCoffinNails(
+  world: GameWorld, bossEid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  for (let i = state.coffinNails.length - 1; i >= 0; i--) {
+    const nail = state.coffinNails[i]!
+    if (!nail.active) {
+      nail.delay -= dt
+      if (nail.delay <= 0) {
+        nail.active = true
+        if (playerEid >= 0) {
+          const dx = Position.x[playerEid]! - nail.x
+          const dy = Position.y[playerEid]! - nail.y
+          if (dx * dx + dy * dy <= COFFIN_NAIL_RADIUS * COFFIN_NAIL_RADIUS) {
+            if (!nail.hitEntities.has(playerEid)) {
+              nail.hitEntities.add(playerEid)
+              applyDamage(world, playerEid, {
+                amount: COFFIN_NAIL_DAMAGE,
+                attackerEid: bossEid,
+                setIframes: true,
+              })
+            }
+          }
+        }
+      }
+    } else {
+      nail.duration -= dt
+      if (playerEid >= 0) {
+        const dx = Position.x[playerEid]! - nail.x
+        const dy = Position.y[playerEid]! - nail.y
+        if (dx * dx + dy * dy <= COFFIN_NAIL_RADIUS * COFFIN_NAIL_RADIUS) {
+          applyDamage(world, playerEid, {
+            amount: COFFIN_NAIL_DPS * dt,
+            attackerEid: bossEid,
+          })
+        }
+      }
+      if (nail.duration <= 0) {
+        state.coffinNails.splice(i, 1)
+        continue
+      }
+    }
+    world.bossTelegraphs.push({
+      kind: 'circle',
+      x: nail.x, y: nail.y,
+      radius: COFFIN_NAIL_RADIUS,
+      color: nail.active ? 0xff4400 : 0xaa4400,
+      alpha: nail.active ? 0.35 : 0.2,
+      progress: nail.active ? 1 : 1 - (nail.delay / COFFIN_NAIL_DELAY),
+    })
+  }
+}
+
+function tickFireTrails(
+  world: GameWorld, bossEid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  for (let i = state.fireTrails.length - 1; i >= 0; i--) {
+    const seg = state.fireTrails[i]!
+    seg.timer -= dt
+    if (seg.timer <= 0) {
+      state.fireTrails.splice(i, 1)
+      continue
+    }
+    if (playerEid >= 0) {
+      const dx = Position.x[playerEid]! - seg.x
+      const dy = Position.y[playerEid]! - seg.y
+      if (dx * dx + dy * dy <= FIRE_TRAIL_RADIUS * FIRE_TRAIL_RADIUS) {
+        applyDamage(world, playerEid, {
+          amount: FIRE_TRAIL_DPS * dt,
+          attackerEid: bossEid,
+        })
+      }
+    }
+    world.bossTelegraphs.push({
+      kind: 'circle',
+      x: seg.x, y: seg.y,
+      radius: FIRE_TRAIL_RADIUS,
+      color: 0xff6600,
+      alpha: 0.25 * (seg.timer / FIRE_TRAIL_DURATION),
+      progress: 1,
+    })
+  }
+}
+
+function tickInfernalCharge(
+  world: GameWorld, eid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  const dirX = state.chargeAimX
+  const dirY = state.chargeAimY
+  Position.x[eid] = Position.x[eid]! + dirX * INFERNAL_CHARGE_SPEED * dt
+  Position.y[eid] = Position.y[eid]! + dirY * INFERNAL_CHARGE_SPEED * dt
+
+  const traveledX = Position.x[eid]! - state.chargeStartX
+  const traveledY = Position.y[eid]! - state.chargeStartY
+  const totalDist = Math.sqrt(traveledX * traveledX + traveledY * traveledY)
+  while (totalDist - state.lastTrailDist >= FIRE_TRAIL_SPACING) {
+    state.lastTrailDist += FIRE_TRAIL_SPACING
+    state.fireTrails.push({
+      x: state.chargeStartX + dirX * state.lastTrailDist,
+      y: state.chargeStartY + dirY * state.lastTrailDist,
+      timer: FIRE_TRAIL_DURATION,
+    })
+  }
+
+  if (playerEid >= 0) {
+    const cdx = Position.x[playerEid]! - Position.x[eid]!
+    const cdy = Position.y[playerEid]! - Position.y[eid]!
+    const contactDist = RADIUS + PLAYER_RADIUS
+    if (cdx * cdx + cdy * cdy <= contactDist * contactDist) {
+      applyDamage(world, playerEid, {
+        amount: INFERNAL_CHARGE_DAMAGE,
+        attackerEid: eid,
+        setIframes: true,
+      })
+    }
+  }
+
+  state.chargeTimer -= dt
+  if (state.chargeTimer <= 0 || totalDist >= INFERNAL_CHARGE_DIST) {
+    state.isCharging = false
+    Velocity.x[eid] = 0
+    Velocity.y[eid] = 0
+    state.attackCycleIndex++
+    transition(eid, AIState.RECOVERY)
+  }
+}
+
+function pushAttackTelegraph(
+  world: GameWorld, eid: number, state: OldScratchState,
+  playerEid: number, stateTimer: number,
+): void {
+  const telegraphDur = AttackConfig.telegraphDuration[eid]!
+  const progress = telegraphDur > 0 ? Math.min(1, stateTimer / telegraphDur) : 1
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+
+  switch (state.selectedAttack) {
+    case P1Attack.DEAD_EYE_SHOT: {
+      const endX = ex + Math.cos(state.aimAngle) * 350
+      const endY = ey + Math.sin(state.aimAngle) * 350
+      world.bossTelegraphs.push({
+        kind: 'line', x: ex, y: ey, radius: 0,
+        endX, endY, color: 0xff2222, alpha: 0.3, progress,
+      })
+      break
+    }
+    case P1Attack.SIDEWINDER: {
+      const perpAngle = state.aimAngle + (Math.PI / 2) * state.sidewinderSign
+      const endX = ex + Math.cos(perpAngle) * SIDEWINDER_DIST
+      const endY = ey + Math.sin(perpAngle) * SIDEWINDER_DIST
+      world.bossTelegraphs.push({
+        kind: 'line', x: ex, y: ey, radius: 0,
+        endX, endY, color: 0xffaa00, alpha: 0.25, progress,
+      })
+      break
+    }
+    case P1Attack.DEVILS_FAN: {
+      world.bossTelegraphs.push({
+        kind: 'arc', x: ex, y: ey,
+        radius: DEVILS_FAN_RANGE,
+        angle: state.aimAngle, arcHalf: DEVILS_FAN_SPREAD / 2,
+        color: 0xff4400, alpha: 0.25, progress,
+      })
+      break
+    }
+    case P1Attack.BRIMSTONE_BLAST: {
+      world.bossTelegraphs.push({
+        kind: 'arc', x: ex, y: ey,
+        radius: BRIMSTONE_BLAST_RANGE,
+        angle: state.aimAngle, arcHalf: BRIMSTONE_BLAST_SPREAD / 2,
+        color: 0xff6600, alpha: 0.25, progress,
+      })
+      break
+    }
+    case P1Attack.COFFIN_NAIL: {
+      if (playerEid >= 0) {
+        world.bossTelegraphs.push({
+          kind: 'circle',
+          x: Position.x[playerEid]!, y: Position.y[playerEid]!,
+          radius: COFFIN_NAIL_RADIUS,
+          color: 0x884400, alpha: 0.25, progress,
+        })
+      }
+      break
+    }
+    case P1Attack.SHADOW_STEP: {
+      if (playerEid >= 0) {
+        const dx = Position.x[playerEid]! - ex
+        const dy = Position.y[playerEid]! - ey
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 0) {
+          const endX = ex + (dx / dist) * SHADOW_STEP_DIST
+          const endY = ey + (dy / dist) * SHADOW_STEP_DIST
+          world.bossTelegraphs.push({
+            kind: 'line', x: ex, y: ey, radius: 0,
+            endX, endY, color: 0x660088, alpha: 0.25, progress,
+          })
+        }
+      }
+      break
+    }
+    case P1Attack.HELLPICK_SWING: {
+      world.bossTelegraphs.push({
+        kind: 'arc', x: ex, y: ey,
+        radius: HELLPICK_REACH,
+        angle: state.aimAngle, arcHalf: HELLPICK_ARC / 2,
+        color: 0xcc6600, alpha: 0.3, progress,
+      })
+      break
+    }
+    case P1Attack.INFERNAL_CHARGE: {
+      const endX = ex + Math.cos(state.aimAngle) * INFERNAL_CHARGE_DIST
+      const endY = ey + Math.sin(state.aimAngle) * INFERNAL_CHARGE_DIST
+      world.bossTelegraphs.push({
+        kind: 'line', x: ex, y: ey, radius: 0,
+        endX, endY, color: 0xff4400, alpha: 0.3, progress,
+      })
+      break
+    }
+    case P1Attack.DEVILS_DYNAMITE: {
+      if (playerEid >= 0) {
+        const predX = Position.x[playerEid]! + Velocity.x[playerEid]! * DEVILS_DYNAMITE_FUSE
+        const predY = Position.y[playerEid]! + Velocity.y[playerEid]! * DEVILS_DYNAMITE_FUSE
+        world.bossTelegraphs.push({
+          kind: 'circle', x: predX, y: predY,
+          radius: DEVILS_DYNAMITE_RADIUS,
+          color: 0xff8800, alpha: 0.25, progress,
+        })
+      }
+      break
+    }
+  }
+}
+
+// ============================================================================
+// Tick (phase transitions + counter window + P1 attack state)
 // ============================================================================
 
 function tick(world: GameWorld, eid: number, dt: number): void {
@@ -384,19 +795,119 @@ function tick(world: GameWorld, eid: number, dt: number): void {
   state.phase = finalPhase
   state.phaseTimer += dt
 
+  // 3a. Cache character ID on first tick with a player present
+  if (state.characterId === '') {
+    const peid = findPlayerEid(world)
+    if (peid >= 0) {
+      state.characterId = getCharacterIdForPlayer(world, peid)
+    }
+  }
+
   // Tick counter cooldown
   if (state.counterCooldown > 0) {
     state.counterCooldown -= dt
   }
 
-  // Manage counter window: opens once when entering idle stance, closes after 0.4s.
-  // Does NOT reopen until the boss completes another attack cycle (leaves and re-enters idle).
-  // While attack() is a stub, the boss stays in IDLE so the window reopens each time it expires
-  // — this will self-correct once attacks cycle through TELEGRAPH→ATTACK→RECOVERY→IDLE.
+  // Tick per-move cooldowns
+  if (state.sidewinderCooldown > 0) state.sidewinderCooldown -= dt
+  if (state.shadowStepCooldown > 0) state.shadowStepCooldown -= dt
+
   const aiState = EnemyAI.state[eid]!
+  const stateTimer = EnemyAI.stateTimer[eid]!
+
+  // 3b. Attack selection at TELEGRAPH entry (stateTimer === 0, first tick)
+  if (aiState === AIState.TELEGRAPH && stateTimer === 0 && state.phase < 4) {
+    const cycle = getCycleForCharacter(state.characterId)
+    const idx = state.attackCycleIndex % cycle.length
+    state.selectedAttack = cycle[idx]!
+    state.attackExecuted = false
+
+    // Lock aim toward player
+    const peid = findPlayerEid(world)
+    if (peid >= 0) {
+      const dx = Position.x[peid]! - Position.x[eid]!
+      const dy = Position.y[peid]! - Position.y[eid]!
+      state.aimAngle = Math.atan2(dy, dx)
+    }
+
+    // Set telegraph/recovery durations per attack
+    switch (state.selectedAttack) {
+      case P1Attack.DEAD_EYE_SHOT:
+        AttackConfig.telegraphDuration[eid] = DEAD_EYE_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.DEVILS_FAN:
+        AttackConfig.telegraphDuration[eid] = DEVILS_FAN_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.BLACK_IRON_RELOAD:
+        // Vulnerability window: skip straight to RECOVERY (no telegraph/attack)
+        AttackConfig.recoveryDuration[eid] = BLACK_IRON_RECOVERY
+        state.attackCycleIndex++
+        transition(eid, AIState.RECOVERY)
+        return
+      case P1Attack.SIDEWINDER:
+        AttackConfig.telegraphDuration[eid] = SIDEWINDER_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        state.sidewinderSign = world.rng.next() < 0.5 ? 1 : -1
+        break
+      case P1Attack.BRIMSTONE_BLAST:
+        AttackConfig.telegraphDuration[eid] = BRIMSTONE_BLAST_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.COFFIN_NAIL:
+        AttackConfig.telegraphDuration[eid] = COFFIN_NAIL_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.SHADOW_STEP:
+        AttackConfig.telegraphDuration[eid] = SHADOW_STEP_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.HELLPICK_SWING:
+        AttackConfig.telegraphDuration[eid] = HELLPICK_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.INFERNAL_CHARGE:
+        AttackConfig.telegraphDuration[eid] = INFERNAL_CHARGE_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P1Attack.DEVILS_DYNAMITE:
+        AttackConfig.telegraphDuration[eid] = DEVILS_DYNAMITE_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+    }
+
+    // Adjust attack range per character
+    if (state.characterId === 'undertaker') {
+      Detection.attackRange[eid] = 120
+    } else if (state.characterId === 'prospector') {
+      Detection.attackRange[eid] = HELLPICK_REACH + RADIUS
+    } else {
+      Detection.attackRange[eid] = ATTACK_RANGE
+    }
+  }
+
+  const playerEid = findPlayerEid(world)
+
+  tickCoffinNails(world, eid, state, playerEid, dt)
+  tickFireTrails(world, eid, state, playerEid, dt)
+
+  // Tick Infernal Charge movement
+  if (state.isCharging) {
+    tickInfernalCharge(world, eid, state, playerEid, dt)
+    return  // skip normal AI while charging
+  }
+
+  // Telegraph rendering during TELEGRAPH state
+  if (aiState === AIState.TELEGRAPH && state.phase < 4) {
+    Velocity.x[eid] = 0
+    Velocity.y[eid] = 0
+    pushAttackTelegraph(world, eid, state, playerEid, stateTimer)
+  }
+
+  // Manage counter window
   const inAttackState = aiState === AIState.ATTACK || aiState === AIState.TELEGRAPH || aiState === AIState.RECOVERY
   if (!inAttackState && state.phase < 4) {
-    // Open counter window once per idle period
     if (!state.counterWindowActive && state.counterWindowTimer <= 0) {
       state.counterWindowActive = true
       state.counterWindowTimer = COUNTER_WINDOW_DURATION
@@ -409,7 +920,6 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     }
   } else {
     state.counterWindowActive = false
-    // Reset timer so window reopens on next idle entry
     state.counterWindowTimer = 0
   }
 
@@ -510,12 +1020,254 @@ function handleCounterHook(
 }
 
 // ============================================================================
-// Attack execution (stub — attack logic added in Phase 3+)
+// Attack execution — Phase 1 (The Wager)
 // ============================================================================
 
-function attack(_world: GameWorld, _eid: number, _dt: number): void {
-  // Attack implementations are added in Sprint 19 Phases 3-6.
-  // For now, the boss transitions through phases via tick() but has no attacks.
+function attack(world: GameWorld, eid: number, _dt: number): void {
+  const state = getState(world, eid)
+  if (!state) return
+
+  // Only Phase 1 attacks implemented here; P2-P4 attacks added in later phases
+  if (state.phase !== 1) {
+    transition(eid, AIState.RECOVERY)
+    return
+  }
+
+  if (state.attackExecuted) {
+    transition(eid, AIState.RECOVERY)
+    return
+  }
+  state.attackExecuted = true
+
+  switch (state.selectedAttack) {
+    case P1Attack.DEAD_EYE_SHOT:
+      attackDeadEye(world, eid, state)
+      break
+    case P1Attack.DEVILS_FAN:
+      attackDevilsFan(world, eid, state)
+      break
+    case P1Attack.SIDEWINDER:
+      attackSidewinder(world, eid, state)
+      break
+    case P1Attack.BRIMSTONE_BLAST:
+      attackBrimstoneBlast(world, eid, state)
+      break
+    case P1Attack.COFFIN_NAIL:
+      attackCoffinNail(world, eid, state)
+      break
+    case P1Attack.SHADOW_STEP:
+      attackShadowStep(world, eid, state)
+      break
+    case P1Attack.HELLPICK_SWING:
+      attackHellpickSwing(world, eid, state)
+      break
+    case P1Attack.INFERNAL_CHARGE:
+      attackInfernalCharge(world, eid, state)
+      return  // multi-tick — don't transition to RECOVERY here
+    case P1Attack.DEVILS_DYNAMITE:
+      attackDevilsDynamite(world, eid, state)
+      break
+    default:
+      break
+  }
+
+  state.attackCycleIndex++
+  transition(eid, AIState.RECOVERY)
+}
+
+// --- Individual attack implementations ---
+
+function attackDeadEye(world: GameWorld, eid: number, state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  spawnBullet(world, {
+    x: ex, y: ey,
+    vx: Math.cos(state.aimAngle) * DEAD_EYE_SPEED,
+    vy: Math.sin(state.aimAngle) * DEAD_EYE_SPEED,
+    damage: DEAD_EYE_DAMAGE,
+    range: ENEMY_BULLET_RANGE,
+    ownerId: eid,
+    layer: CollisionLayer.ENEMY_BULLET,
+    spriteId: BulletSpriteId.FIRE_ANIM,
+    size: ENEMY_BULLET_SIZE_THREAT,
+  })
+}
+
+function attackDevilsFan(world: GameWorld, eid: number, state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  for (let i = 0; i < DEVILS_FAN_BULLETS; i++) {
+    const offset = DEVILS_FAN_SPREAD * (i / (DEVILS_FAN_BULLETS - 1) - 0.5)
+    const angle = state.aimAngle + offset
+    spawnBullet(world, {
+      x: ex, y: ey,
+      vx: Math.cos(angle) * DEVILS_FAN_SPEED,
+      vy: Math.sin(angle) * DEVILS_FAN_SPEED,
+      damage: DEVILS_FAN_DAMAGE,
+      range: DEVILS_FAN_RANGE,
+      ownerId: eid,
+      layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.FIRE_ANIM,
+      size: ENEMY_BULLET_SIZE_THREAT,
+    })
+  }
+}
+
+function attackSidewinder(world: GameWorld, eid: number, state: OldScratchState): void {
+  if (state.sidewinderCooldown > 0) return  // cooldown active, skip
+
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  const bx = Position.x[eid]!
+  const by = Position.y[eid]!
+  const px = Position.x[playerEid]!
+  const py = Position.y[playerEid]!
+  const dx = px - bx
+  const dy = py - by
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist <= 0) return
+
+  // Perpendicular direction (side pre-picked at telegraph entry)
+  const perpX = (-dy / dist) * state.sidewinderSign
+  const perpY = (dx / dist) * state.sidewinderSign
+  Position.x[eid] = bx + perpX * SIDEWINDER_DIST
+  Position.y[eid] = by + perpY * SIDEWINDER_DIST
+
+  state.sidewinderCooldown = SIDEWINDER_COOLDOWN
+}
+
+function attackBrimstoneBlast(world: GameWorld, eid: number, state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+
+  // Re-aim at player (shotgun tracks)
+  const playerEid = findPlayerEid(world)
+  let angle = state.aimAngle
+  if (playerEid >= 0) {
+    const dx = Position.x[playerEid]! - ex
+    const dy = Position.y[playerEid]! - ey
+    angle = Math.atan2(dy, dx)
+  }
+
+  for (let i = 0; i < BRIMSTONE_BLAST_PELLETS; i++) {
+    const offset = BRIMSTONE_BLAST_SPREAD * (i / (BRIMSTONE_BLAST_PELLETS - 1) - 0.5)
+    const a = angle + offset
+    spawnBullet(world, {
+      x: ex, y: ey,
+      vx: Math.cos(a) * BRIMSTONE_BLAST_SPEED,
+      vy: Math.sin(a) * BRIMSTONE_BLAST_SPEED,
+      damage: BRIMSTONE_BLAST_DAMAGE,
+      range: BRIMSTONE_BLAST_RANGE,
+      ownerId: eid,
+      layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.FIRE_ANIM,
+      size: ENEMY_BULLET_SIZE_THREAT,
+    })
+  }
+}
+
+function attackCoffinNail(world: GameWorld, _eid: number, state: OldScratchState): void {
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  state.coffinNails.push({
+    x: Position.x[playerEid]!,
+    y: Position.y[playerEid]!,
+    delay: COFFIN_NAIL_DELAY,
+    active: false,
+    duration: COFFIN_NAIL_DURATION,
+    hitEntities: new Set(),
+  })
+}
+
+function attackShadowStep(world: GameWorld, eid: number, state: OldScratchState): void {
+  if (state.shadowStepCooldown > 0) return  // cooldown active, skip
+
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  const bx = Position.x[eid]!
+  const by = Position.y[eid]!
+  const px = Position.x[playerEid]!
+  const py = Position.y[playerEid]!
+  const dx = px - bx
+  const dy = py - by
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist <= 0) return
+
+  const teleportDist = Math.min(SHADOW_STEP_DIST, dist)
+  Position.x[eid] = bx + (dx / dist) * teleportDist
+  Position.y[eid] = by + (dy / dist) * teleportDist
+
+  state.shadowStepCooldown = SHADOW_STEP_COOLDOWN
+}
+
+function attackHellpickSwing(world: GameWorld, eid: number, state: OldScratchState): void {
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  const px = Position.x[playerEid]!
+  const py = Position.y[playerEid]!
+
+  if (isInArc(ex, ey, state.aimAngle, HELLPICK_ARC / 2, HELLPICK_REACH, px, py)) {
+    applyDamage(world, playerEid, {
+      amount: HELLPICK_DAMAGE,
+      attackerEid: eid,
+      setIframes: true,
+    })
+    // Apply knockback away from boss
+    const dx = px - ex
+    const dy = py - ey
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist > 0) {
+      addComponent(world, Knockback, playerEid)
+      Knockback.vx[playerEid] = (dx / dist) * HELLPICK_KNOCKBACK_SPEED
+      Knockback.vy[playerEid] = (dy / dist) * HELLPICK_KNOCKBACK_SPEED
+      Knockback.duration[playerEid] = HELLPICK_KNOCKBACK_DURATION
+    }
+  }
+}
+
+function attackInfernalCharge(world: GameWorld, eid: number, state: OldScratchState): void {
+  // Set up multi-tick charge; movement handled in tick()
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  const cos = Math.cos(state.aimAngle)
+  const sin = Math.sin(state.aimAngle)
+  state.isCharging = true
+  state.chargeTimer = INFERNAL_CHARGE_DIST / INFERNAL_CHARGE_SPEED
+  state.chargeAimX = cos
+  state.chargeAimY = sin
+  state.chargeStartX = ex
+  state.chargeStartY = ey
+  state.lastTrailDist = 0
+  state.attackExecuted = true
+}
+
+function attackDevilsDynamite(world: GameWorld, eid: number, _state: OldScratchState): void {
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+
+  // Predicted position: player pos + velocity * fuse time
+  const predX = Position.x[playerEid]! + Velocity.x[playerEid]! * DEVILS_DYNAMITE_FUSE
+  const predY = Position.y[playerEid]! + Velocity.y[playerEid]! * DEVILS_DYNAMITE_FUSE
+
+  world.dynamites.push({
+    x: predX, y: predY,
+    startX: ex, startY: ey,
+    fuseRemaining: DEVILS_DYNAMITE_FUSE,
+    maxFuse: DEVILS_DYNAMITE_FUSE,
+    damage: DEVILS_DYNAMITE_DAMAGE,
+    radius: DEVILS_DYNAMITE_RADIUS,
+    knockback: DEVILS_DYNAMITE_KNOCKBACK,
+    ownerId: eid,
+  })
 }
 
 // ============================================================================
@@ -559,3 +1311,35 @@ export const OLD_SCRATCH_COUNTER_SHOT_DAMAGE = COUNTER_SHOT_DAMAGE
 export const OLD_SCRATCH_COUNTER_SHOT_SPEED = COUNTER_SHOT_SPEED
 export const OLD_SCRATCH_P2_ROAD_SHRINK_TILES = P2_ROAD_SHRINK_TILES
 export const OLD_SCRATCH_P3_ROAD_SHRINK_TILES = P3_ROAD_SHRINK_TILES
+
+// Phase 1 attack constants
+export const OLD_SCRATCH_DEAD_EYE_DAMAGE = DEAD_EYE_DAMAGE
+export const OLD_SCRATCH_DEAD_EYE_SPEED = DEAD_EYE_SPEED
+export const OLD_SCRATCH_DEAD_EYE_TELEGRAPH = DEAD_EYE_TELEGRAPH
+export const OLD_SCRATCH_DEVILS_FAN_DAMAGE = DEVILS_FAN_DAMAGE
+export const OLD_SCRATCH_DEVILS_FAN_BULLETS = DEVILS_FAN_BULLETS
+export const OLD_SCRATCH_DEVILS_FAN_SPEED = DEVILS_FAN_SPEED
+export const OLD_SCRATCH_DEVILS_FAN_SPREAD = DEVILS_FAN_SPREAD
+export const OLD_SCRATCH_BLACK_IRON_RECOVERY = BLACK_IRON_RECOVERY
+export const OLD_SCRATCH_SIDEWINDER_DIST = SIDEWINDER_DIST
+export const OLD_SCRATCH_SIDEWINDER_COOLDOWN = SIDEWINDER_COOLDOWN
+export const OLD_SCRATCH_BRIMSTONE_BLAST_DAMAGE = BRIMSTONE_BLAST_DAMAGE
+export const OLD_SCRATCH_BRIMSTONE_BLAST_PELLETS = BRIMSTONE_BLAST_PELLETS
+export const OLD_SCRATCH_BRIMSTONE_BLAST_SPEED = BRIMSTONE_BLAST_SPEED
+export const OLD_SCRATCH_COFFIN_NAIL_DAMAGE = COFFIN_NAIL_DAMAGE
+export const OLD_SCRATCH_COFFIN_NAIL_DPS = COFFIN_NAIL_DPS
+export const OLD_SCRATCH_COFFIN_NAIL_RADIUS = COFFIN_NAIL_RADIUS
+export const OLD_SCRATCH_COFFIN_NAIL_DELAY = COFFIN_NAIL_DELAY
+export const OLD_SCRATCH_COFFIN_NAIL_DURATION = COFFIN_NAIL_DURATION
+export const OLD_SCRATCH_SHADOW_STEP_DIST = SHADOW_STEP_DIST
+export const OLD_SCRATCH_SHADOW_STEP_COOLDOWN = SHADOW_STEP_COOLDOWN
+export const OLD_SCRATCH_HELLPICK_DAMAGE = HELLPICK_DAMAGE
+export const OLD_SCRATCH_HELLPICK_ARC = HELLPICK_ARC
+export const OLD_SCRATCH_HELLPICK_REACH = HELLPICK_REACH
+export const OLD_SCRATCH_INFERNAL_CHARGE_DAMAGE = INFERNAL_CHARGE_DAMAGE
+export const OLD_SCRATCH_INFERNAL_CHARGE_SPEED = INFERNAL_CHARGE_SPEED
+export const OLD_SCRATCH_FIRE_TRAIL_DPS = FIRE_TRAIL_DPS
+export const OLD_SCRATCH_FIRE_TRAIL_DURATION = FIRE_TRAIL_DURATION
+export const OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE = DEVILS_DYNAMITE_DAMAGE
+export const OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS = DEVILS_DYNAMITE_RADIUS
+export const OLD_SCRATCH_DEVILS_DYNAMITE_FUSE = DEVILS_DYNAMITE_FUSE

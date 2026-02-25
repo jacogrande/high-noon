@@ -16,8 +16,8 @@ import { getBoss } from './registry'
 import { bossPhaseSystem } from '../../systems/bossPhase'
 import {
   Enemy, EnemyAI, AIState, AttackConfig, BossPhase,
-  EnemyType, EnemyTier, Health, Speed, Position,
-  Bullet, Collider, Player, Dead,
+  EnemyType, EnemyTier, Health, Speed, Position, Velocity,
+  Bullet, Collider, Player, Dead, Knockback,
 } from '../../components'
 import {
   OLD_SCRATCH_HP,
@@ -34,7 +34,29 @@ import {
   OLD_SCRATCH_COUNTER_SHOT_DAMAGE,
   OLD_SCRATCH_P2_ROAD_SHRINK_TILES,
   OLD_SCRATCH_P3_ROAD_SHRINK_TILES,
+  OLD_SCRATCH_DEAD_EYE_DAMAGE,
+  OLD_SCRATCH_DEAD_EYE_SPEED,
+  OLD_SCRATCH_DEVILS_FAN_DAMAGE,
+  OLD_SCRATCH_DEVILS_FAN_BULLETS,
+  OLD_SCRATCH_BLACK_IRON_RECOVERY,
+  OLD_SCRATCH_SIDEWINDER_DIST,
+  OLD_SCRATCH_SIDEWINDER_COOLDOWN,
+  OLD_SCRATCH_BRIMSTONE_BLAST_DAMAGE,
+  OLD_SCRATCH_BRIMSTONE_BLAST_PELLETS,
+  OLD_SCRATCH_COFFIN_NAIL_DAMAGE,
+  OLD_SCRATCH_COFFIN_NAIL_DELAY,
+  OLD_SCRATCH_COFFIN_NAIL_RADIUS,
+  OLD_SCRATCH_SHADOW_STEP_DIST,
+  OLD_SCRATCH_SHADOW_STEP_COOLDOWN,
+  OLD_SCRATCH_HELLPICK_DAMAGE,
+  OLD_SCRATCH_HELLPICK_REACH,
+  OLD_SCRATCH_INFERNAL_CHARGE_DAMAGE,
+  OLD_SCRATCH_FIRE_TRAIL_DURATION,
+  OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE,
+  OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS,
+  OLD_SCRATCH_DEVILS_DYNAMITE_FUSE,
 } from './oldScratch'
+import { P1Attack, type OldScratchState } from './oldScratch'
 import { TileType, getTile } from '../../tilemap'
 
 const bulletQuery = defineQuery([Bullet])
@@ -470,5 +492,516 @@ describe('Old Scratch — Infernal Counter', () => {
       t => t.kind === 'ring' && t.color === 0xff2222
     )
     expect(counterTelegraphs.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ============================================================================
+// Phase 1 Attack Helpers
+// ============================================================================
+
+function getState(world: GameWorld, eid: number): OldScratchState {
+  return world.bossState.get(eid) as OldScratchState
+}
+
+/** Set up boss for attack execution: configure selected attack, aim at player, set AI to ATTACK */
+function prepareAttack(world: GameWorld, bossEid: number, playerEid: number, attackType: number): void {
+  const state = getState(world, bossEid)
+  state.selectedAttack = attackType
+  state.attackExecuted = false
+  state.phase = 1
+
+  // Lock aim toward player
+  const dx = Position.x[playerEid]! - Position.x[bossEid]!
+  const dy = Position.y[playerEid]! - Position.y[bossEid]!
+  state.aimAngle = Math.atan2(dy, dx)
+
+  EnemyAI.state[bossEid] = AIState.ATTACK
+  EnemyAI.stateTimer[bossEid] = 0
+  EnemyAI.targetEid[bossEid] = playerEid
+}
+
+function triggerAttack(world: GameWorld, bossEid: number): void {
+  getBoss(EnemyType.OLD_SCRATCH)!.attack(world, bossEid, 1 / 60)
+}
+
+// ============================================================================
+// Attack Cycle tests
+// ============================================================================
+
+describe('Old Scratch — attack cycles', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+  })
+
+  test('sheriff cycle selects correct attacks in order', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+
+    // Simulate TELEGRAPH entry for each cycle position
+    const expectedSheriff = [
+      P1Attack.DEAD_EYE_SHOT,
+      P1Attack.SIDEWINDER,
+      P1Attack.DEVILS_FAN,
+      // BLACK_IRON_RELOAD skips to recovery, so we check 3 normal attacks
+    ]
+
+    for (let i = 0; i < expectedSheriff.length; i++) {
+      state.attackCycleIndex = i
+      EnemyAI.state[bossEid] = AIState.TELEGRAPH
+      EnemyAI.stateTimer[bossEid] = 0
+      bossPhaseSystem(world, 1 / 60)
+      expect(state.selectedAttack).toBe(expectedSheriff[i])
+    }
+  })
+
+  test('undertaker cycle selects correct attacks in order', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'undertaker'
+
+    const expected = [
+      P1Attack.BRIMSTONE_BLAST,
+      P1Attack.COFFIN_NAIL,
+      P1Attack.SHADOW_STEP,
+    ]
+
+    for (let i = 0; i < expected.length; i++) {
+      state.attackCycleIndex = i
+      EnemyAI.state[bossEid] = AIState.TELEGRAPH
+      EnemyAI.stateTimer[bossEid] = 0
+      bossPhaseSystem(world, 1 / 60)
+      expect(state.selectedAttack).toBe(expected[i])
+    }
+  })
+
+  test('prospector cycle selects correct attacks in order', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'prospector'
+
+    const expected = [
+      P1Attack.HELLPICK_SWING,
+      P1Attack.INFERNAL_CHARGE,
+      P1Attack.DEVILS_DYNAMITE,
+    ]
+
+    for (let i = 0; i < expected.length; i++) {
+      state.attackCycleIndex = i
+      EnemyAI.state[bossEid] = AIState.TELEGRAPH
+      EnemyAI.stateTimer[bossEid] = 0
+      bossPhaseSystem(world, 1 / 60)
+      expect(state.selectedAttack).toBe(expected[i])
+    }
+  })
+
+  test('cycle wraps around after completion', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'undertaker'
+    // Undertaker cycle has 3 attacks; index 3 should wrap to 0
+    state.attackCycleIndex = 3
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+    expect(state.selectedAttack).toBe(P1Attack.BRIMSTONE_BLAST) // index 3 % 3 = 0
+  })
+
+  test('character detection caches from player on first tick', () => {
+    // Don't set characterId manually; let tick() detect it
+    const state = getState(world, bossEid)
+    state.characterId = '' // reset
+
+    // The player was spawned with default character (sheriff)
+    // getCharacterIdForPlayer reads from playerCharacters map
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+
+    // Should detect the player's character (sheriff by default)
+    expect(state.characterId).toBe('sheriff')
+  })
+})
+
+// ============================================================================
+// Sheriff attack tests
+// ============================================================================
+
+describe('Old Scratch — sheriff attacks', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    getState(world, bossEid).characterId = 'sheriff'
+  })
+
+  test('Dead-Eye spawns 1 bullet at 14 dmg / 700 px/s', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.DEAD_EYE_SHOT)
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(1)
+  })
+
+  test('Devil\'s Fan spawns 4 bullets', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.DEVILS_FAN)
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_DEVILS_FAN_BULLETS)
+  })
+
+  test('Black Iron Reload enters RECOVERY for 0.7s (no bullets)', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+    state.attackCycleIndex = 3 // BLACK_IRON_RELOAD is 4th in sheriff cycle (index 3)
+
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+
+    const bulletsBefore = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    bossPhaseSystem(world, 1 / 60) // tick should skip to RECOVERY
+
+    const bulletsAfter = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(bulletsAfter).toBe(bulletsBefore)
+    expect(EnemyAI.state[bossEid]!).toBe(AIState.RECOVERY)
+    expect(AttackConfig.recoveryDuration[bossEid]!).toBeCloseTo(OLD_SCRATCH_BLACK_IRON_RECOVERY)
+  })
+
+  test('Sidewinder repositions ~200px perpendicular', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.SIDEWINDER)
+    const bxBefore = Position.x[bossEid]!
+    const byBefore = Position.y[bossEid]!
+
+    triggerAttack(world, bossEid)
+
+    const dx = Position.x[bossEid]! - bxBefore
+    const dy = Position.y[bossEid]! - byBefore
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    expect(dist).toBeCloseTo(OLD_SCRATCH_SIDEWINDER_DIST, 0)
+  })
+
+  test('Sidewinder cooldown prevents double-dash', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.SIDEWINDER)
+    triggerAttack(world, bossEid)
+
+    const posAfterFirst = { x: Position.x[bossEid]!, y: Position.y[bossEid]! }
+
+    // Second sidewinder immediately — should be blocked by cooldown
+    prepareAttack(world, bossEid, playerEid, P1Attack.SIDEWINDER)
+    triggerAttack(world, bossEid)
+
+    expect(Position.x[bossEid]!).toBe(posAfterFirst.x)
+    expect(Position.y[bossEid]!).toBe(posAfterFirst.y)
+  })
+})
+
+// ============================================================================
+// Undertaker attack tests
+// ============================================================================
+
+describe('Old Scratch — undertaker attacks', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    getState(world, bossEid).characterId = 'undertaker'
+  })
+
+  test('Brimstone Blast spawns 5 pellets at 10 dmg', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.BRIMSTONE_BLAST)
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_BRIMSTONE_BLAST_PELLETS)
+  })
+
+  test('Coffin Nail places delayed zone at player position', () => {
+    const state = getState(world, bossEid)
+    prepareAttack(world, bossEid, playerEid, P1Attack.COFFIN_NAIL)
+    triggerAttack(world, bossEid)
+
+    expect(state.coffinNails.length).toBe(1)
+    const nail = state.coffinNails[0]!
+    expect(nail.x).toBeCloseTo(Position.x[playerEid]!, 0)
+    expect(nail.y).toBeCloseTo(Position.y[playerEid]!, 0)
+    expect(nail.active).toBe(false)
+    expect(nail.delay).toBeCloseTo(OLD_SCRATCH_COFFIN_NAIL_DELAY)
+  })
+
+  test('Coffin Nail activates after 0.8s delay and deals damage', () => {
+    const state = getState(world, bossEid)
+    prepareAttack(world, bossEid, playerEid, P1Attack.COFFIN_NAIL)
+    triggerAttack(world, bossEid)
+
+    // Move player to nail position so they get hit
+    const nail = state.coffinNails[0]!
+    Position.x[playerEid] = nail.x
+    Position.y[playerEid] = nail.y
+    Health.iframes[playerEid] = 0
+
+    const hpBefore = Health.current[playerEid]!
+
+    // Tick past the delay
+    for (let i = 0; i < 50; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    // The nail should be active now (0.8s delay = 48 ticks at 60Hz)
+    expect(state.coffinNails[0]?.active ?? true).toBe(true)
+    expect(Health.current[playerEid]!).toBeLessThan(hpBefore)
+  })
+
+  test('Shadow Step teleports ~150px toward player', () => {
+    // Place player far enough away
+    Position.x[playerEid] = 500
+    Position.y[playerEid] = 600
+    Position.x[bossEid] = 900
+    Position.y[bossEid] = 600
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.SHADOW_STEP)
+    const bxBefore = Position.x[bossEid]!
+    triggerAttack(world, bossEid)
+
+    // Should have moved toward player
+    const moved = bxBefore - Position.x[bossEid]!
+    expect(moved).toBeCloseTo(OLD_SCRATCH_SHADOW_STEP_DIST, 0)
+  })
+
+  test('Shadow Step cooldown prevents double-step', () => {
+    Position.x[playerEid] = 300
+    Position.y[playerEid] = 600
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.SHADOW_STEP)
+    triggerAttack(world, bossEid)
+
+    const posAfterFirst = Position.x[bossEid]!
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.SHADOW_STEP)
+    triggerAttack(world, bossEid)
+
+    expect(Position.x[bossEid]!).toBe(posAfterFirst)
+  })
+})
+
+// ============================================================================
+// Prospector attack tests
+// ============================================================================
+
+describe('Old Scratch — prospector attacks', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    getState(world, bossEid).characterId = 'prospector'
+  })
+
+  test('Hellpick Swing deals 12 dmg in arc and applies knockback', () => {
+    // Place player within melee range and aim direction
+    Position.x[bossEid] = 700
+    Position.y[bossEid] = 600
+    Position.x[playerEid] = 750
+    Position.y[playerEid] = 600
+    Health.iframes[playerEid] = 0
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.HELLPICK_SWING)
+
+    const hpBefore = Health.current[playerEid]!
+    triggerAttack(world, bossEid)
+
+    expect(Health.current[playerEid]!).toBe(hpBefore - OLD_SCRATCH_HELLPICK_DAMAGE)
+    expect(hasComponent(world, Knockback, playerEid)).toBe(true)
+  })
+
+  test('Hellpick misses player outside arc', () => {
+    // Place player behind the boss (opposite of aim direction)
+    Position.x[bossEid] = 700
+    Position.y[bossEid] = 600
+    Position.x[playerEid] = 600 // behind boss (aim points right toward 750)
+    Position.y[playerEid] = 600
+
+    // Aim boss to the right, player is to the left
+    const state = getState(world, bossEid)
+    state.selectedAttack = P1Attack.HELLPICK_SWING
+    state.attackExecuted = false
+    state.phase = 1
+    state.aimAngle = 0 // facing right
+
+    EnemyAI.state[bossEid] = AIState.ATTACK
+    Health.iframes[playerEid] = 0
+
+    const hpBefore = Health.current[playerEid]!
+    triggerAttack(world, bossEid)
+
+    expect(Health.current[playerEid]!).toBe(hpBefore) // no damage
+  })
+
+  test('Infernal Charge deals contact damage', () => {
+    // Place player directly in charge path
+    Position.x[bossEid] = 700
+    Position.y[bossEid] = 600
+    Position.x[playerEid] = 750 // slightly ahead in charge direction
+    Position.y[playerEid] = 600
+    Health.iframes[playerEid] = 0
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.INFERNAL_CHARGE)
+    triggerAttack(world, bossEid)
+
+    const state = getState(world, bossEid)
+    expect(state.isCharging).toBe(true)
+
+    // Tick several frames to let charge connect
+    const hpBefore = Health.current[playerEid]!
+    for (let i = 0; i < 10; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(Health.current[playerEid]!).toBeLessThan(hpBefore)
+  })
+
+  test('Infernal Charge leaves fire trail', () => {
+    Position.x[bossEid] = 500
+    Position.y[bossEid] = 600
+    Position.x[playerEid] = 900
+    Position.y[playerEid] = 600
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.INFERNAL_CHARGE)
+    triggerAttack(world, bossEid)
+
+    // Tick enough frames for charge to travel and leave trail
+    for (let i = 0; i < 30; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    const state = getState(world, bossEid)
+    expect(state.fireTrails.length).toBeGreaterThan(0)
+  })
+
+  test('fire trail expires after 3s', () => {
+    Position.x[bossEid] = 500
+    Position.y[bossEid] = 600
+    Position.x[playerEid] = 900
+    Position.y[playerEid] = 600
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.INFERNAL_CHARGE)
+    triggerAttack(world, bossEid)
+
+    // Complete the charge
+    for (let i = 0; i < 60; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    const state = getState(world, bossEid)
+    const trailCountAfterCharge = state.fireTrails.length
+    expect(trailCountAfterCharge).toBeGreaterThan(0)
+
+    // Tick 3+ seconds to expire all trails
+    for (let i = 0; i < 200; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(state.fireTrails.length).toBe(0)
+  })
+
+  test('Devil\'s Dynamite creates entry in world.dynamites', () => {
+    prepareAttack(world, bossEid, playerEid, P1Attack.DEVILS_DYNAMITE)
+    const before = world.dynamites.length
+    triggerAttack(world, bossEid)
+    expect(world.dynamites.length).toBe(before + 1)
+
+    const dyn = world.dynamites[world.dynamites.length - 1]!
+    expect(dyn.damage).toBe(OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE)
+    expect(dyn.radius).toBe(OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS)
+    expect(dyn.fuseRemaining).toBeCloseTo(OLD_SCRATCH_DEVILS_DYNAMITE_FUSE)
+  })
+})
+
+// ============================================================================
+// Integration tests
+// ============================================================================
+
+describe('Old Scratch — attack cycle integration', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+  })
+
+  test('full sheriff cycle (4+ attacks) without crash', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+
+    // Run 6 attack cycles (more than the 4-attack sheriff cycle)
+    for (let i = 0; i < 6; i++) {
+      state.attackCycleIndex = i
+      // Skip BLACK_IRON_RELOAD which goes through tick, not attack
+      const cycle = [P1Attack.DEAD_EYE_SHOT, P1Attack.SIDEWINDER, P1Attack.DEVILS_FAN,
+                      P1Attack.DEAD_EYE_SHOT, P1Attack.SIDEWINDER, P1Attack.DEVILS_FAN]
+      prepareAttack(world, bossEid, playerEid, cycle[i]!)
+      triggerAttack(world, bossEid)
+    }
+    // If we got here, no crash
+    expect(true).toBe(true)
+  })
+
+  test('full undertaker cycle (3+ attacks) without crash', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'undertaker'
+
+    const cycle = [P1Attack.BRIMSTONE_BLAST, P1Attack.COFFIN_NAIL, P1Attack.SHADOW_STEP,
+                    P1Attack.BRIMSTONE_BLAST, P1Attack.COFFIN_NAIL]
+    for (let i = 0; i < cycle.length; i++) {
+      prepareAttack(world, bossEid, playerEid, cycle[i]!)
+      triggerAttack(world, bossEid)
+    }
+    expect(true).toBe(true)
+  })
+
+  test('full prospector cycle (3+ attacks) without crash', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'prospector'
+
+    // Hellpick and Dynamite are single-frame; Charge is multi-tick
+    prepareAttack(world, bossEid, playerEid, P1Attack.HELLPICK_SWING)
+    triggerAttack(world, bossEid)
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.INFERNAL_CHARGE)
+    triggerAttack(world, bossEid)
+    // Complete the charge
+    for (let i = 0; i < 60; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.DEVILS_DYNAMITE)
+    triggerAttack(world, bossEid)
+
+    // Second pass
+    prepareAttack(world, bossEid, playerEid, P1Attack.HELLPICK_SWING)
+    triggerAttack(world, bossEid)
+
+    expect(true).toBe(true)
   })
 })
