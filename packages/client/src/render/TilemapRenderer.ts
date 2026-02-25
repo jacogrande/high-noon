@@ -22,7 +22,9 @@ function isStageBaseTile(tileType: number): boolean {
     tileType === TileType.LAVA ||
     tileType === TileType.MUD ||
     tileType === TileType.BRAMBLE ||
-    tileType === TileType.ROAD
+    tileType === TileType.ROAD ||
+    tileType === TileType.BRIMSTONE ||
+    tileType === TileType.DARKNESS
   )
 }
 
@@ -62,6 +64,7 @@ export class TilemapRenderer {
   private readonly roofSprites: Sprite[] = []
   private readonly buildingData: BuildingRoofData[] = []
   private currentMap: Tilemap | null = null
+  private currentTileVersion = -1
   private roofDitherFilter: RoofDitherFilter | null = null
 
   constructor(parentContainer: Container, gameZoom: number = 2) {
@@ -80,12 +83,13 @@ export class TilemapRenderer {
    * Only re-renders if the map changes.
    */
   render(map: Tilemap): void {
-    // Skip if same map already rendered
-    if (this.currentMap === map) {
+    // Skip if same map already rendered and no dynamic tile changes
+    if (this.currentMap === map && this.currentTileVersion === map.tileVersion) {
       return
     }
 
     this.currentMap = map
+    this.currentTileVersion = map.tileVersion
 
     // Clear existing sprites
     for (const sprite of this.sprites) {
@@ -155,6 +159,10 @@ export class TilemapRenderer {
             sprite.tint = 0x3A7A3A
           } else if (tile === TileType.ROAD) {
             sprite.tint = 0xC8A878
+          } else if (tile === TileType.BRIMSTONE) {
+            sprite.tint = 0xFF4400
+          } else if (tile === TileType.DARKNESS) {
+            sprite.tint = 0x110022
           }
 
           this.container.addChild(sprite)

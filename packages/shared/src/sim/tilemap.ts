@@ -116,6 +116,8 @@ export interface Tilemap {
   tileSize: number
   /** Map layers (bottom to top) */
   layers: TileLayer[]
+  /** Incremented by dynamic tile modification APIs to signal renderer invalidation */
+  tileVersion: number
   /** Optional base-tile visual metadata for stage-aware rendering */
   baseTiles?: BaseTileMetadata
   /** Buildings placed by the map generator (for client rendering) */
@@ -175,6 +177,7 @@ export function createTilemap(
     height,
     tileSize,
     layers: [],
+    tileVersion: 0,
   }
 }
 
@@ -418,15 +421,17 @@ export function getArenaCenterFromTilemap(map: Tilemap): { x: number; y: number 
 /**
  * Set a tile type at grid coordinates on a specific layer.
  * Used for mid-encounter arena changes (arena shrink, brimstone placement).
+ * Increments tileVersion to signal renderer invalidation.
  */
 export function setTileAt(
   map: Tilemap,
   layerIndex: number,
   tileX: number,
   tileY: number,
-  type: number,
+  type: TileTypeValue,
 ): void {
   setTile(map, layerIndex, tileX, tileY, type)
+  map.tileVersion++
 }
 
 /**
@@ -441,7 +446,7 @@ export function collapseTileRange(
   minTileY: number,
   maxTileX: number,
   maxTileY: number,
-  newType: number,
+  newType: TileTypeValue,
 ): void {
   const clampMinX = Math.max(0, minTileX)
   const clampMinY = Math.max(0, minTileY)
@@ -453,4 +458,5 @@ export function collapseTileRange(
       setTile(map, layerIndex, x, y, newType)
     }
   }
+  map.tileVersion++
 }

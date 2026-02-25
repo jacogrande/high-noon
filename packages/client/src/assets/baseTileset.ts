@@ -11,3 +11,11 @@ export const BASE_TILE_STYLE_ROW: Record<BaseTileStyle, number> = {
   stone: 2,
   crossroads_dirt: 3,
 }
+
+/** Actual variant count per style (crossroads_dirt has fewer than the default 6). */
+export const BASE_TILE_STYLE_VARIANTS: Record<BaseTileStyle, number> = {
+  red_dirt: 6,
+  grass: 6,
+  stone: 6,
+  crossroads_dirt: 4,
+}

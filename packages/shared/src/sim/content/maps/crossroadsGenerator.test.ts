@@ -138,15 +138,51 @@ describe('crossroadsGenerator', () => {
       }
     })
 
-    test('roads are correct width', () => {
+    test('north road is correct width', () => {
       const map = makeMap()
-      const centerTileX = Math.floor(map.width / 2)
-      const halfRoad = Math.floor(ROAD_WIDTH / 2)
 
-      // Check north road width at row 2 (well inside the road)
       let openCount = 0
       for (let x = 0; x < map.width; x++) {
         const { worldX, worldY } = tileToWorld(map, x, 2)
+        if (!isSolidAt(map, worldX + TILE_SIZE / 2, worldY + TILE_SIZE / 2)) {
+          openCount++
+        }
+      }
+      expect(openCount).toBe(ROAD_WIDTH)
+    })
+
+    test('south road is correct width', () => {
+      const map = makeMap()
+
+      let openCount = 0
+      for (let x = 0; x < map.width; x++) {
+        const { worldX, worldY } = tileToWorld(map, x, map.height - 3)
+        if (!isSolidAt(map, worldX + TILE_SIZE / 2, worldY + TILE_SIZE / 2)) {
+          openCount++
+        }
+      }
+      expect(openCount).toBe(ROAD_WIDTH)
+    })
+
+    test('west road is correct width', () => {
+      const map = makeMap()
+
+      let openCount = 0
+      for (let y = 0; y < map.height; y++) {
+        const { worldX, worldY } = tileToWorld(map, 2, y)
+        if (!isSolidAt(map, worldX + TILE_SIZE / 2, worldY + TILE_SIZE / 2)) {
+          openCount++
+        }
+      }
+      expect(openCount).toBe(ROAD_WIDTH)
+    })
+
+    test('east road is correct width', () => {
+      const map = makeMap()
+
+      let openCount = 0
+      for (let y = 0; y < map.height; y++) {
+        const { worldX, worldY } = tileToWorld(map, map.width - 3, y)
         if (!isSolidAt(map, worldX + TILE_SIZE / 2, worldY + TILE_SIZE / 2)) {
           openCount++
         }
@@ -250,14 +286,13 @@ describe('crossroadsGenerator', () => {
       expect(map.crossroadsLandmarks).toBeDefined()
     })
 
-    test('signpost is at arena center', () => {
+    test('signpost is at exact arena center', () => {
       const map = makeMap()
       const center = getArenaCenterFromTilemap(map)
       const lm = map.crossroadsLandmarks!
 
-      // Signpost should be within 1 tile of center
-      expect(Math.abs(lm.signpost.x - center.x)).toBeLessThan(TILE_SIZE)
-      expect(Math.abs(lm.signpost.y - center.y)).toBeLessThan(TILE_SIZE)
+      expect(lm.signpost.x).toBe(center.x)
+      expect(lm.signpost.y).toBe(center.y)
     })
 
     test('has 4 lantern positions', () => {

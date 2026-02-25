@@ -47,6 +47,17 @@ export const ROAD_LENGTH = 16
 export function generateCrossroads(config: MapConfig): Tilemap {
   const { width, height, tileSize } = config
 
+  if (width !== height) {
+    throw new Error(`generateCrossroads requires a square map (got ${width}×${height})`)
+  }
+  const derivedRoadLength = Math.floor(width / 2) - Math.floor(CENTER_SIZE / 2)
+  if (derivedRoadLength !== ROAD_LENGTH) {
+    throw new Error(
+      `Map width ${width} produces road length ${derivedRoadLength}, expected ROAD_LENGTH=${ROAD_LENGTH}. ` +
+      `Update ROAD_LENGTH or adjust map dimensions.`
+    )
+  }
+
   const map = createTilemap(width, height, tileSize)
 
   // Layer 0: solid (walls + collision)
@@ -129,8 +140,12 @@ export function generateCrossroads(config: MapConfig): Tilemap {
     y: (ty + 0.5) * tileSize,
   })
 
-  // Signpost: dead center
-  const signpost = toWorld(centerTileX, centerTileY)
+  // Exact pixel center of the clearing (midpoint between centerMin and centerMax)
+  const clearingCenterX = ((centerMinX + centerMaxX + 1) / 2) * tileSize
+  const clearingCenterY = ((centerMinY + centerMaxY + 1) / 2) * tileSize
+
+  // Signpost: dead center of clearing
+  const signpost = { x: clearingCenterX, y: clearingCenterY }
 
   // Lanterns: four corners of the center clearing (just inside corners)
   const lanternInset = 1 // 1 tile inset from corners
@@ -141,12 +156,12 @@ export function generateCrossroads(config: MapConfig): Tilemap {
     toWorld(centerMaxX - lanternInset, centerMaxY - lanternInset),     // SE
   ]
 
-  // Road endpoints: center of each road at the map edge
+  // Road endpoints: center of each road at the map edge (aligned with clearing center axis)
   const roadEndpoints = [
-    toWorld(centerTileX, 1),                // North
-    toWorld(centerTileX, height - 2),       // South
-    toWorld(1, centerTileY),                // West
-    toWorld(width - 2, centerTileY),        // East
+    { x: clearingCenterX, y: toWorld(0, 1).y },           // North
+    { x: clearingCenterX, y: toWorld(0, height - 2).y },  // South
+    { x: toWorld(1, 0).x, y: clearingCenterY },           // West
+    { x: toWorld(width - 2, 0).x, y: clearingCenterY },   // East
   ]
 
   const landmarks: CrossroadsLandmarks = {

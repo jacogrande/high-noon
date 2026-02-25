@@ -25,6 +25,7 @@ import {
   BASE_TILE_SIZE,
   BASE_TILE_VARIANTS,
   BASE_TILE_STYLE_ROW,
+  BASE_TILE_STYLE_VARIANTS,
 } from "./baseTileset";
 import {
   BUILDING_SPRITESHEET_PATH,
@@ -113,6 +114,8 @@ const TILE_FRAME_MAP: Record<number, string> = {
   [TileType.BRAMBLE]: "tile_floor",
   [TileType.WOOD_FLOOR]: "tile_floor", // fallback; overridden by dedicated texture
   [TileType.ROAD]: "tile_floor",
+  [TileType.BRIMSTONE]: "tile_floor",
+  [TileType.DARKNESS]: "tile_floor",
 };
 
 /** Sprite directions that exist in the sprite sheet (W mirrors E) */
@@ -443,7 +446,8 @@ export class AssetLoader {
     this.baseTileTextures.clear();
 
     for (const [style, row] of Object.entries(BASE_TILE_STYLE_ROW)) {
-      for (let variant = 0; variant < BASE_TILE_VARIANTS; variant++) {
+      const variantCount = BASE_TILE_STYLE_VARIANTS[style as BaseTileStyle] ?? BASE_TILE_VARIANTS;
+      for (let variant = 0; variant < variantCount; variant++) {
         const rect = new Rectangle(
           variant * BASE_TILE_SIZE,
           row * BASE_TILE_SIZE,
@@ -499,9 +503,9 @@ export class AssetLoader {
     style: BaseTileStyle,
     variantIndex: number,
   ): Texture {
+    const count = BASE_TILE_STYLE_VARIANTS[style] ?? BASE_TILE_VARIANTS;
     const wrappedVariant =
-      ((Math.floor(variantIndex) % BASE_TILE_VARIANTS) + BASE_TILE_VARIANTS) %
-      BASE_TILE_VARIANTS;
+      ((Math.floor(variantIndex) % count) + count) % count;
     const key = `${style}_${wrappedVariant}`;
     const texture = this.baseTileTextures.get(key);
     if (!texture) {

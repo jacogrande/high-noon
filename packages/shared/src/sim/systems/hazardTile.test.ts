@@ -105,12 +105,19 @@ function createDarknessMap() {
 }
 
 describe('hazardTileSystem — brimstone', () => {
+  let world: GameWorld
+
   const brimX = 1 * 32 + 16
   const brimY = 1 * 32 + 16
+  const safeX = 2 * 32 + 16
+  const safeY = 2 * 32 + 16
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createBrimstoneMap())
+  })
 
   test('entity on brimstone takes DPS-scaled damage', () => {
-    const world = createGameWorld(42)
-    setWorldTilemap(world, createBrimstoneMap())
     const eid = spawnPlayer(world, brimX, brimY)
     const startHp = Health.current[eid]!
 
@@ -120,23 +127,46 @@ describe('hazardTileSystem — brimstone', () => {
   })
 
   test('brimstone does not apply speed debuff', () => {
-    const world = createGameWorld(42)
-    setWorldTilemap(world, createBrimstoneMap())
     const eid = spawnPlayer(world, brimX, brimY)
 
     hazardTileSystem(world, TICK_S)
 
     expect(world.floorSpeedMul.has(eid)).toBe(false)
   })
+
+  test('airborne entity on brimstone takes no damage', () => {
+    const eid = spawnPlayer(world, brimX, brimY)
+    ZPosition.z[eid] = JUMP_AIRBORNE_THRESHOLD + 1
+    const startHp = Health.current[eid]!
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(Health.current[eid]).toBe(startHp)
+  })
+
+  test('dead entity on brimstone is skipped', () => {
+    const eid = spawnPlayer(world, brimX, brimY)
+    const startHp = Health.current[eid]!
+    addComponent(world, Dead, eid)
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(Health.current[eid]).toBe(startHp)
+  })
 })
 
 describe('hazardTileSystem — darkness', () => {
+  let world: GameWorld
+
   const darkX = 1 * 32 + 16
   const darkY = 1 * 32 + 16
 
-  test('entity on darkness takes DPS-scaled damage', () => {
-    const world = createGameWorld(42)
+  beforeEach(() => {
+    world = createGameWorld(42)
     setWorldTilemap(world, createDarknessMap())
+  })
+
+  test('entity on darkness takes DPS-scaled damage', () => {
     const eid = spawnPlayer(world, darkX, darkY)
     const startHp = Health.current[eid]!
 
@@ -146,12 +176,30 @@ describe('hazardTileSystem — darkness', () => {
   })
 
   test('entity on darkness gets speed debuff', () => {
-    const world = createGameWorld(42)
-    setWorldTilemap(world, createDarknessMap())
     const eid = spawnPlayer(world, darkX, darkY)
 
     hazardTileSystem(world, TICK_S)
 
     expect(world.floorSpeedMul.get(eid)).toBe(DARKNESS_SPEED_MUL)
+  })
+
+  test('airborne entity on darkness takes no damage', () => {
+    const eid = spawnPlayer(world, darkX, darkY)
+    ZPosition.z[eid] = JUMP_AIRBORNE_THRESHOLD + 1
+    const startHp = Health.current[eid]!
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(Health.current[eid]).toBe(startHp)
+  })
+
+  test('dead entity on darkness is skipped', () => {
+    const eid = spawnPlayer(world, darkX, darkY)
+    const startHp = Health.current[eid]!
+    addComponent(world, Dead, eid)
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(Health.current[eid]).toBe(startHp)
   })
 })
