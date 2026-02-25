@@ -14,6 +14,7 @@ import {
   AttackConfig, Health, BossPhase, FrontArmor, Flying, NO_TARGET,
   isBoss, allBosses, getBoss,
   getEnemyDef, allEnemyDefs,
+  VULTURE_DIVE_SPEED, VULTURE_DIVE_DURATION, VULTURE_DIVE_AOE_RADIUS,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
 import type { DebugRenderer } from './DebugRenderer'
@@ -179,6 +180,7 @@ export interface EnemySyncResult {
   deathTrauma: number
   deaths: Array<{ x: number; y: number; color: number; isThreat: boolean }>
   hits: Array<{ x: number; y: number; color: number; amount: number; dirX: number; dirY: number }>
+  vultureDiveTrails: Array<{ x: number; y: number }>
 }
 
 export interface PendingBossIntro {
@@ -217,7 +219,7 @@ export class EnemyRenderer {
   private readonly deathEffects: DeathEffect[] = []
   private readonly healPulseAnims: HealPulseAnim[] = []
   /** Reused result object (mutated every sync() call) — consumer must read immediately */
-  private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [] }
+  private readonly syncResult: EnemySyncResult = { deathTrauma: 0, deaths: [], hits: [], vultureDiveTrails: [] }
   /** Entity ID of the Showdown-marked target (set by GameScene each tick) */
   showdownTargetEid: number = NO_TARGET
   /** Active Last Rites zone for enemy tinting (set by scene controller each tick). */
@@ -229,6 +231,10 @@ export class EnemyRenderer {
   /** Dedicated graphics for Vulture shadow + dive impact VFX */
   private readonly vultureGraphics: Graphics | null = null
   private readonly diveImpactAnims: DiveImpactAnim[] = []
+  /** Dedicated graphics for production-visible armor arc indicator */
+  private readonly armorArcGraphics: Graphics | null = null
+  /** Cached interpolated positions for post-loop rendering (armor arc, etc.) */
+  private readonly posCache = new Map<number, { x: number; y: number }>()
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer, entityLayer?: Container) {
     this.registry = registry
@@ -240,6 +246,9 @@ export class EnemyRenderer {
       this.vultureGraphics = new Graphics()
       this.vultureGraphics.visible = false
       entityLayer.addChild(this.vultureGraphics)
+      this.armorArcGraphics = new Graphics()
+      this.armorArcGraphics.visible = false
+      entityLayer.addChild(this.armorArcGraphics)
     }
   }
 
@@ -253,6 +262,7 @@ export class EnemyRenderer {
     result.deathTrauma = 0
     result.deaths.length = 0
     result.hits.length = 0
+    result.vultureDiveTrails.length = 0
 
     const enemies = enemyRenderQuery(world)
 
@@ -408,6 +418,14 @@ export class EnemyRenderer {
       }
     }
 
+    // Detect vultures in dive (ATTACK state) and emit trail positions
+    for (const eid of this.enemyEntities) {
+      if (this.enemyTypes.get(eid) !== EnemyType.VULTURE) continue
+      if (!hasComponent(world, EnemyAI, eid)) continue
+      if (EnemyAI.state[eid] !== AIState.ATTACK) continue
+      result.vultureDiveTrails.push({ x: Position.x[eid]!, y: Position.y[eid]! })
+    }
+
     return result
   }
 
@@ -415,6 +433,9 @@ export class EnemyRenderer {
    * Update enemy sprite positions with interpolation and AI state visuals
    */
   render(world: GameWorld, alpha: number, realDt: number): void {
+    const posCache = this.posCache
+    posCache.clear()
+
     for (const eid of this.enemyEntities) {
       if (!hasComponent(world, Enemy, eid)) continue
 
@@ -425,6 +446,9 @@ export class EnemyRenderer {
 
       let renderX = prevX + (currX - prevX) * alpha
       let renderY = prevY + (currY - prevY) * alpha
+
+      // Cache interpolated position for post-loop rendering
+      posCache.set(eid, { x: renderX, y: renderY })
 
       // AI state visuals
       const state = EnemyAI.state[eid]!
@@ -599,6 +623,12 @@ export class EnemyRenderer {
         renderY += Math.cos(world.tick * 2.1) * jitter
       }
 
+      // Dynamite Tosser telegraph wind-up jitter
+      if (type === EnemyType.DYNAMITE_TOSSER && state === AIState.TELEGRAPH) {
+        renderX += Math.sin(world.tick * 1.5) * 1.5
+        renderY += Math.cos(world.tick * 2.1) * 1.5
+      }
+
       // Charger attack stretch
       if (type === EnemyType.CHARGER && state === AIState.ATTACK) {
         const aimX = AttackConfig.aimX[eid]!
@@ -674,6 +704,29 @@ export class EnemyRenderer {
       }
     }
 
+    // Production armor arc (always visible, not debug-only) — single pass
+    if (this.armorArcGraphics) {
+      this.armorArcGraphics.clear()
+      let hasArmored = false
+      for (const eid of this.enemyEntities) {
+        if (!hasComponent(world, FrontArmor, eid)) continue
+        const pos = posCache.get(eid)
+        if (!pos) continue
+        hasArmored = true
+        const facing = FrontArmor.facingAngle[eid]!
+        const halfArc = FrontArmor.arcHalfAngle[eid]!
+        const arcRadius = Collider.radius[eid]! + 5
+        this.armorArcGraphics
+          .moveTo(
+            pos.x + Math.cos(facing - halfArc) * arcRadius,
+            pos.y + Math.sin(facing - halfArc) * arcRadius,
+          )
+          .arc(pos.x, pos.y, arcRadius, facing - halfArc, facing + halfArc)
+          .stroke({ color: 0xcccccc, width: 2.5, alpha: 0.7 })
+      }
+      this.armorArcGraphics.visible = hasArmored
+    }
+
     // Collect new healer pulse events
     for (const pulse of world.healerPulses) {
       this.healPulseAnims.push({ x: pulse.x, y: pulse.y, radius: pulse.radius, timer: 0 })
@@ -726,7 +779,7 @@ export class EnemyRenderer {
       } else {
         this.vultureGraphics.clear()
 
-        // Draw ground shadows for alive vultures
+        // Draw ground shadows and pre-dive warning zones for alive vultures
         for (const eid of this.enemyEntities) {
           if (this.enemyTypes.get(eid) !== EnemyType.VULTURE) continue
           const airborne = hasComponent(world, Flying, eid) && Flying.airborne[eid] === 1
@@ -738,6 +791,24 @@ export class EnemyRenderer {
           this.vultureGraphics
             .ellipse(rx, ry + 4, radius * 1.5, radius * 0.6)
             .fill({ color: 0x000000, alpha: shadowAlpha })
+
+          // Pre-dive warning zone during TELEGRAPH state
+          if (hasComponent(world, EnemyAI, eid) && EnemyAI.state[eid] === AIState.TELEGRAPH) {
+            const aimX = AttackConfig.aimX[eid]!
+            const aimY = AttackConfig.aimY[eid]!
+            const landX = rx + aimX * VULTURE_DIVE_SPEED * VULTURE_DIVE_DURATION
+            const landY = ry + aimY * VULTURE_DIVE_SPEED * VULTURE_DIVE_DURATION
+            const telegraphElapsed = EnemyAI.stateTimer[eid]!
+            const def = getEnemyDef(EnemyType.VULTURE)
+            const maxTelegraph = def?.telegraphDuration ?? 0.6
+            const progress = Math.min(telegraphElapsed / maxTelegraph, 1)
+            const pulseAlpha = 0.15 + 0.15 * Math.sin(progress * Math.PI * 4)
+            this.vultureGraphics
+              .circle(landX, landY, VULTURE_DIVE_AOE_RADIUS)
+              .fill({ color: 0xaa4400, alpha: pulseAlpha })
+              .circle(landX, landY, VULTURE_DIVE_AOE_RADIUS)
+              .stroke({ color: 0xff4400, width: 2, alpha: pulseAlpha + 0.15 })
+          }
         }
 
         // Animate dive impact expanding rings
@@ -866,5 +937,6 @@ export class EnemyRenderer {
     this.healPulseAnims.length = 0
     this.vultureGraphics?.destroy()
     this.diveImpactAnims.length = 0
+    this.armorArcGraphics?.destroy()
   }
 }

@@ -99,8 +99,10 @@ const bulletQuery = defineQuery([Bullet])
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   const enemies = attackQuery(world)
 
-  // Clear healer pulse events from previous tick
+  // Clear per-tick VFX events from previous tick
   world.healerPulses.length = 0
+  world.healEvents.length = 0
+  world.rattlesnakeBites.length = 0
   world.vultureDiveImpacts.length = 0
 
   // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
@@ -210,6 +212,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         // Rattlesnake bite applies poison
         if (type === EnemyType.RATTLESNAKE && hasComponent(world, Player, targetEid)) {
           applyPoison(world, targetEid, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION)
+          world.rattlesnakeBites.push({ x: targetX, y: targetY })
         }
 
         transition(eid, AIState.RECOVERY)
@@ -231,7 +234,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         range: ENEMY_BULLET_RANGE,
         ownerId: eid,
         layer: CollisionLayer.ENEMY_BULLET,
-        spriteId: BulletSpriteId.SPIRIT_ANIM,
+        spriteId: BulletSpriteId.LASSO_ANIM,
         size: ENEMY_BULLET_SIZE_THREAT * 1.5,
         onCollide: (w, _bulletEid, info) => {
           if (info.type === 'entity' && info.hitEntity !== undefined && hasComponent(w, Player, info.hitEntity)) {
@@ -267,7 +270,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         const cur = Health.current[allyEid]!
         const max = Health.max[allyEid]!
         if (cur < max && cur > 0) {
-          Health.current[allyEid] = Math.min(max, cur + healAmount)
+          const actualHeal = Math.min(healAmount, max - cur)
+          Health.current[allyEid] = cur + actualHeal
+          if (actualHeal > 0) {
+            world.healEvents.push({ x: Position.x[allyEid]!, y: Position.y[allyEid]!, amount: actualHeal })
+          }
         }
       })
       world.healerPulses.push({ x: ex, y: ey, radius: healRadius })

@@ -539,6 +539,60 @@ export function emitDirectionalImpact(
 }
 
 /**
+ * Poison splash — green venom particles on rattlesnake bite impact.
+ */
+export function emitPoisonSplash(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(6, 10)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(30, 70)
+    pool.emit({
+      x: x + rand(-3, 3),
+      y: y + rand(-3, 3),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.25, 0.45),
+      startScale: rand(2, 4),
+      endScale: rand(4, 6),
+      startAlpha: 0.8,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? 0x88cc44 : 0x66aa22,
+    })
+  }
+}
+
+/**
+ * Vulture dive trail — 1-2 brown dust particles emitted during dive.
+ */
+export function emitVultureDiveTrail(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(1, 2)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(10, 25)
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-4, 4),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.15, 0.3),
+      startScale: rand(2, 3),
+      endScale: rand(4, 6),
+      startAlpha: 0.5,
+      endAlpha: 0,
+      tint: 0x554433,
+    })
+  }
+}
+
+/**
  * Level-up sparkle — gold particles with upward bias from player position.
  */
 export function emitLevelUpSparkle(

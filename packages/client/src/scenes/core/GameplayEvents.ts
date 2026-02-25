@@ -77,6 +77,9 @@ export type GameplayEvent =
   | { type: 'boss-intro'; bossName: string; taunt: string; x: number; y: number }
   | { type: 'trap-detonation'; kind: string; x: number; y: number; radius: number }
   | { type: 'boss-phase-transition'; x: number; y: number; newPhase: number }
+  | { type: 'enemy-healed'; heals: Array<{ x: number; y: number; amount: number }> }
+  | { type: 'rattlesnake-bite'; bites: Array<{ x: number; y: number }> }
+  | { type: 'vulture-dive-trail'; trails: Array<{ x: number; y: number }> }
 
 export class GameplayEventBuffer {
   private readonly events: GameplayEvent[] = []

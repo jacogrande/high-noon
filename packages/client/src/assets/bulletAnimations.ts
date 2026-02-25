@@ -38,4 +38,10 @@ export const BULLET_ANIM_CONFIG: Partial<Record<BulletSpriteIdValue, BulletAnimC
     cellSize: 16,
     fps: 8,
   },
+  [BulletSpriteId.LASSO_ANIM]: {
+    asset: 'bullet_lasso_anim',
+    path: '/assets/sprites/bullet_lasso_anim.png',
+    cellSize: 16,
+    fps: 8,
+  },
 }

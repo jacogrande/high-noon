@@ -11,6 +11,8 @@ import {
   emitShotTracer,
   emitSwingArc,
   emitWallImpact,
+  emitPoisonSplash,
+  emitVultureDiveTrail,
   FloatingTextPool,
   ParticlePool,
   KillStreakTracker,
@@ -238,6 +240,24 @@ export class GameplayEventProcessor {
           this.sound.play('showdown_activate')
           emitDeathPulse(this.particles, event.x, event.y, 80)
           this.hitStop?.freeze(0.12)
+          break
+
+        case 'enemy-healed':
+          for (const heal of event.heals) {
+            this.floatingText.spawn(heal.x, heal.y, heal.amount, 0x44ddaa, 0.8)
+          }
+          break
+
+        case 'rattlesnake-bite':
+          for (const bite of event.bites) {
+            emitPoisonSplash(this.particles, bite.x, bite.y)
+          }
+          break
+
+        case 'vulture-dive-trail':
+          for (const trail of event.trails) {
+            emitVultureDiveTrail(this.particles, trail.x, trail.y)
+          }
           break
       }
     }

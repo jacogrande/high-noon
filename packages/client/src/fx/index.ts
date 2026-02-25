@@ -21,4 +21,6 @@ export {
   emitWoodSplinters,
   emitRockDebris,
   emitObstacleHit,
+  emitPoisonSplash,
+  emitVultureDiveTrail,
 } from './emitters'

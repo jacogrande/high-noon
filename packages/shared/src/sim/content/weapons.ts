@@ -17,6 +17,7 @@ export const BulletSpriteId = {
   SLUG_ANIM: 2,   // Animated pulsing slug (bullet_slug_anim.png strip)
   FIRE_ANIM: 3,   // Animated fiery bullet (bullet_fire_anim.png strip)
   SPIRIT_ANIM: 4, // Animated spectral bullet (bullet_spirit_anim.png strip)
+  LASSO_ANIM: 5,  // Animated lasso rope loop (bullet_lasso_anim.png strip)
 } as const
 
 export type BulletSpriteIdValue = typeof BulletSpriteId[keyof typeof BulletSpriteId]

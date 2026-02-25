@@ -38,6 +38,17 @@ export function syncRenderersAndQueueEvents(ctx: RendererSyncContext): void {
     })
   }
 
+  // Queue heal / bite / vulture-trail events from enemy sync
+  if (world.healEvents.length > 0) {
+    events.push({ type: 'enemy-healed', heals: world.healEvents.map(h => ({ x: h.x, y: h.y, amount: h.amount })) })
+  }
+  if (world.rattlesnakeBites.length > 0) {
+    events.push({ type: 'rattlesnake-bite', bites: world.rattlesnakeBites.map(b => ({ x: b.x, y: b.y })) })
+  }
+  if (enemySync.vultureDiveTrails.length > 0) {
+    events.push({ type: 'vulture-dive-trail', trails: enemySync.vultureDiveTrails.map(t => ({ x: t.x, y: t.y })) })
+  }
+
   bulletRenderer.sync(world)
   if (bulletRenderer.removedPositions.length > 0) {
     events.push({

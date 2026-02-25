@@ -601,6 +601,10 @@ export interface GameWorld extends IWorld {
   bossTelegraphs: BossTelegraph[]
   /** Healer Shaman pulse events for client VFX */
   healerPulses: Array<{ x: number; y: number; radius: number }>
+  /** Healer Shaman heal events for floating text VFX */
+  healEvents: Array<{ x: number; y: number; amount: number }>
+  /** Rattlesnake bite events for poison splash VFX */
+  rattlesnakeBites: Array<{ x: number; y: number }>
   /** Vulture dive-bomb impact events for client VFX */
   vultureDiveImpacts: Array<{ x: number; y: number; radius: number }>
   /** Hollow Man dust veils (obscuration zones left on teleport) */
@@ -728,6 +732,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     bossShockwaves: [],
     bossTelegraphs: [],
     healerPulses: [],
+    healEvents: [],
+    rattlesnakeBites: [],
     vultureDiveImpacts: [],
     hollowManVeils: [],
     hollowManStorm: null,
@@ -848,6 +854,8 @@ export function resetWorld(world: GameWorld): void {
   world.bossShockwaves = []
   world.bossTelegraphs = []
   world.healerPulses = []
+  world.healEvents = []
+  world.rattlesnakeBites = []
   world.vultureDiveImpacts = []
   world.hollowManVeils = []
   world.hollowManStorm = null
