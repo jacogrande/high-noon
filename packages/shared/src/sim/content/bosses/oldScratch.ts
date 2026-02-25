@@ -66,9 +66,9 @@ const TRANSITION_IFRAMES = 0.45
 // Mid-fight heal (Phase 3 entry)
 const P3_HEAL_HP = 250
 
-// Phase cooldowns
+// Phase cooldowns (absolute values in seconds)
 const P1_COOLDOWN = 1.0
-const P2_COOLDOWN = 0.85
+const P2_COOLDOWN = 0.85    // = P1_COOLDOWN × 0.85
 
 // Infernal Counter
 const COUNTER_WINDOW_DURATION = 0.4
@@ -195,9 +195,9 @@ export const enum P2Attack {
   SUMMON_GHOST_RIDER = 12,
 }
 
-// Phase 2 timing multipliers
+// Phase 2 timing multipliers (applied to P1 attack durations)
 const P2_TELEGRAPH_MUL = 0.8    // 20% faster telegraphs
-const P2_COOLDOWN_MUL = 0.85    // 15% shorter cooldowns
+const P2_COOLDOWN_MUL = 0.85    // 15% shorter cooldowns (distinct from P2_COOLDOWN absolute value)
 
 // Snap-shot after reposition (Sidewinder/Shadow Step landing shot)
 const SNAP_SHOT_DAMAGE = 8
@@ -707,6 +707,11 @@ function tickBrimstoneLash(
 
   lash.timer -= dt
 
+  if (lash.timer <= 0) {
+    state.brimstoneLash = null
+    return
+  }
+
   // Damage player if within BRIMSTONE_LASH_WIDTH of the line segment
   if (playerEid >= 0) {
     const px = Position.x[playerEid]!
@@ -726,12 +731,8 @@ function tickBrimstoneLash(
     x: lash.startX, y: lash.startY, radius: BRIMSTONE_LASH_WIDTH,
     endX: lash.endX, endY: lash.endY,
     color: 0xff4400, alpha: 0.4,
-    progress: 1 - (lash.timer / BRIMSTONE_LASH_DURATION),
+    progress: lash.timer / BRIMSTONE_LASH_DURATION,
   })
-
-  if (lash.timer <= 0) {
-    state.brimstoneLash = null
-  }
 }
 
 /** Distance from point (px,py) to line segment (ax,ay)-(bx,by) */
@@ -750,6 +751,22 @@ function pointToSegmentDist(px: number, py: number, ax: number, ay: number, bx: 
   const dx = px - cx
   const dy = py - cy
   return Math.sqrt(dx * dx + dy * dy)
+}
+
+/** Pick road endpoint closest to the given angle from (bx, by). Returns index or -1. */
+function pickRoadByAngle(
+  endpoints: readonly { x: number; y: number }[],
+  bx: number, by: number, angle: number,
+): number {
+  let bestIdx = -1
+  let bestDot = -Infinity
+  for (let i = 0; i < endpoints.length; i++) {
+    const dx = endpoints[i]!.x - bx
+    const dy = endpoints[i]!.y - by
+    const dot = dx * Math.cos(angle) + dy * Math.sin(angle)
+    if (dot > bestDot) { bestDot = dot; bestIdx = i }
+  }
+  return bestIdx
 }
 
 function countAliveGhostRiders(world: GameWorld): number {
@@ -917,18 +934,9 @@ function pushAttackTelegraph(
       break
     }
     case P2Attack.BRIMSTONE_LASH: {
-      // Line telegraph along chosen road direction (from boss to road endpoint)
       const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
       if (endpoints && endpoints.length > 0) {
-        // Pick road closest to aimAngle
-        let bestIdx = 0
-        let bestDot = -Infinity
-        for (let i = 0; i < endpoints.length; i++) {
-          const edx = endpoints[i]!.x - ex
-          const edy = endpoints[i]!.y - ey
-          const dot = edx * Math.cos(state.aimAngle) + edy * Math.sin(state.aimAngle)
-          if (dot > bestDot) { bestDot = dot; bestIdx = i }
-        }
+        const bestIdx = pickRoadByAngle(endpoints, ex, ey, state.aimAngle)
         const ep = endpoints[bestIdx]!
         world.bossTelegraphs.push({
           kind: 'line', x: ex, y: ey, radius: BRIMSTONE_LASH_WIDTH,
@@ -1003,13 +1011,14 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     let idx = state.attackCycleIndex % cycle.length
     let selected = cycle[idx]!
 
-    // Ghost Rider summon: skip if on cooldown or capped
-    if (selected === P2Attack.SUMMON_GHOST_RIDER) {
-      if (state.ghostRiderCooldown > 0 || countAliveGhostRiders(world) >= GHOST_RIDER_MAX_ALIVE) {
-        state.attackCycleIndex++
-        idx = state.attackCycleIndex % cycle.length
-        selected = cycle[idx]!
-      }
+    // Skip unavailable attacks (e.g. Ghost Rider on cooldown or capped)
+    const maxSkips = cycle.length
+    for (let skip = 0; skip < maxSkips; skip++) {
+      if (selected !== P2Attack.SUMMON_GHOST_RIDER) break
+      if (state.ghostRiderCooldown <= 0 && countAliveGhostRiders(world) < GHOST_RIDER_MAX_ALIVE) break
+      state.attackCycleIndex++
+      idx = state.attackCycleIndex % cycle.length
+      selected = cycle[idx]!
     }
 
     state.selectedAttack = selected
@@ -1550,18 +1559,10 @@ function attackBrimstoneLash(world: GameWorld, eid: number, state: OldScratchSta
   const ex = Position.x[eid]!
   const ey = Position.y[eid]!
 
-  // Pick road direction closest to aimAngle
   const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
   if (!endpoints || endpoints.length === 0) return
 
-  let bestIdx = 0
-  let bestDot = -Infinity
-  for (let i = 0; i < endpoints.length; i++) {
-    const edx = endpoints[i]!.x - ex
-    const edy = endpoints[i]!.y - ey
-    const dot = edx * Math.cos(state.aimAngle) + edy * Math.sin(state.aimAngle)
-    if (dot > bestDot) { bestDot = dot; bestIdx = i }
-  }
+  const bestIdx = pickRoadByAngle(endpoints, ex, ey, state.aimAngle)
   const ep = endpoints[bestIdx]!
 
   state.brimstoneLash = {
