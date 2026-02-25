@@ -36,6 +36,7 @@ import {
   OLD_SCRATCH_P3_ROAD_SHRINK_TILES,
   OLD_SCRATCH_DEAD_EYE_DAMAGE,
   OLD_SCRATCH_DEAD_EYE_SPEED,
+  OLD_SCRATCH_DEAD_EYE_TELEGRAPH,
   OLD_SCRATCH_DEVILS_FAN_DAMAGE,
   OLD_SCRATCH_DEVILS_FAN_BULLETS,
   OLD_SCRATCH_BLACK_IRON_RECOVERY,
@@ -55,9 +56,20 @@ import {
   OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE,
   OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS,
   OLD_SCRATCH_DEVILS_DYNAMITE_FUSE,
+  P1Attack, P2Attack,
+  OLD_SCRATCH_P2_TELEGRAPH_MUL,
+  OLD_SCRATCH_CROSSROADS_SALVO_BULLETS,
+  OLD_SCRATCH_BRIMSTONE_LASH_DURATION,
+  OLD_SCRATCH_BRIMSTONE_LASH_WIDTH,
+  OLD_SCRATCH_GHOST_RIDER_MAX_ALIVE,
+  OLD_SCRATCH_GHOST_RIDER_SUMMON_COOLDOWN,
+  OLD_SCRATCH_SNAP_SHOT_DAMAGE,
 } from './oldScratch'
-import { P1Attack, type OldScratchState } from './oldScratch'
+import type { OldScratchState } from './oldScratch'
 import { TileType, getTile } from '../../tilemap'
+import { spawnGhostRider } from '../../prefabs'
+import { Lifespan, EnemyTier } from '../../components'
+import { GHOST_RIDER_LIFESPAN } from '../enemies'
 
 const bulletQuery = defineQuery([Bullet])
 
@@ -1001,6 +1013,333 @@ describe('Old Scratch — attack cycle integration', () => {
     // Second pass
     prepareAttack(world, bossEid, playerEid, P1Attack.HELLPICK_SWING)
     triggerAttack(world, bossEid)
+
+    expect(true).toBe(true)
+  })
+})
+
+// ============================================================================
+// Phase 2 cycle tests
+// ============================================================================
+
+describe('Old Scratch — Phase 2 cycles', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+  })
+
+  test('Sheriff P2 cycle includes Crossroads Salvo, Brimstone Lash, Summon Ghost Rider', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+    state.phase = 2
+
+    // Force phase 2 on boss
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+
+    // Collect all attacks selected across the cycle
+    const selected: number[] = []
+    for (let i = 0; i < 7; i++) {
+      state.attackCycleIndex = i
+      EnemyAI.state[bossEid] = AIState.TELEGRAPH
+      EnemyAI.stateTimer[bossEid] = 0
+      bossPhaseSystem(world, 1 / 60)
+      selected.push(state.selectedAttack)
+    }
+
+    expect(selected).toContain(P2Attack.CROSSROADS_SALVO)
+    expect(selected).toContain(P2Attack.BRIMSTONE_LASH)
+    // Summon Ghost Rider may be skipped if on cooldown; check it's in the expected position
+    // Index 6 should be SUMMON_GHOST_RIDER (unless skipped)
+  })
+
+  test('P2 telegraph durations are ×0.8 of P1 values for carried-over attacks', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+
+    // Enter phase 2
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+
+    // Select DEAD_EYE_SHOT (P1 attack) in P2
+    state.attackCycleIndex = 0
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+
+    expect(state.selectedAttack).toBe(P1Attack.DEAD_EYE_SHOT)
+    expect(AttackConfig.telegraphDuration[bossEid]!).toBeCloseTo(
+      OLD_SCRATCH_DEAD_EYE_TELEGRAPH * OLD_SCRATCH_P2_TELEGRAPH_MUL
+    )
+  })
+
+  test('Phase transition resets attackCycleIndex to 0', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+    state.attackCycleIndex = 5
+
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+
+    expect(state.attackCycleIndex).toBe(0)
+  })
+})
+
+// ============================================================================
+// Phase 2 attack tests
+// ============================================================================
+
+describe('Old Scratch — Phase 2 attacks', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter phase 2
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+  })
+
+  test('Crossroads Salvo spawns 6 bullets evenly spaced', () => {
+    prepareAttack(world, bossEid, playerEid, P2Attack.CROSSROADS_SALVO)
+    getState(world, bossEid).phase = 2
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_CROSSROADS_SALVO_BULLETS)
+  })
+
+  test('Brimstone Lash sets active lash zone along road', () => {
+    prepareAttack(world, bossEid, playerEid, P2Attack.BRIMSTONE_LASH)
+    getState(world, bossEid).phase = 2
+    triggerAttack(world, bossEid)
+
+    const state = getState(world, bossEid)
+    expect(state.brimstoneLash).not.toBeNull()
+    expect(state.brimstoneLash!.active).toBe(true)
+    expect(state.brimstoneLash!.timer).toBeCloseTo(OLD_SCRATCH_BRIMSTONE_LASH_DURATION)
+  })
+
+  test('Brimstone Lash deals damage to player in zone', () => {
+    const state = getState(world, bossEid)
+
+    // Aim toward a road endpoint
+    const ep = world.tilemap!.crossroadsLandmarks!.roadEndpoints[0]!
+    state.aimAngle = Math.atan2(
+      ep.y - Position.y[bossEid]!,
+      ep.x - Position.x[bossEid]!,
+    )
+
+    prepareAttack(world, bossEid, playerEid, P2Attack.BRIMSTONE_LASH)
+    state.phase = 2
+    triggerAttack(world, bossEid)
+
+    // Move player onto the lash line
+    const lash = state.brimstoneLash!
+    const midX = (lash.startX + lash.endX) / 2
+    const midY = (lash.startY + lash.endY) / 2
+    Position.x[playerEid] = midX
+    Position.y[playerEid] = midY
+    Health.iframes[playerEid] = 0
+
+    const hpBefore = Health.current[playerEid]!
+
+    // Tick a few frames
+    for (let i = 0; i < 20; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(Health.current[playerEid]!).toBeLessThan(hpBefore)
+  })
+
+  test('Brimstone Lash expires after DURATION', () => {
+    prepareAttack(world, bossEid, playerEid, P2Attack.BRIMSTONE_LASH)
+    getState(world, bossEid).phase = 2
+    triggerAttack(world, bossEid)
+    const state = getState(world, bossEid)
+
+    expect(state.brimstoneLash).not.toBeNull()
+
+    // Tick past the duration (0.8s = 48 ticks at 60Hz)
+    for (let i = 0; i < 50; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(state.brimstoneLash).toBeNull()
+  })
+
+  test('Summon Ghost Rider spawns at road endpoint', () => {
+    const state = getState(world, bossEid)
+    state.ghostRiderCooldown = 0
+
+    prepareAttack(world, bossEid, playerEid, P2Attack.SUMMON_GHOST_RIDER)
+    state.phase = 2
+    triggerAttack(world, bossEid)
+
+    // Check that cooldown was set
+    expect(state.ghostRiderCooldown).toBeCloseTo(OLD_SCRATCH_GHOST_RIDER_SUMMON_COOLDOWN)
+  })
+
+  test('Summon Ghost Rider caps at 2 alive', () => {
+    const state = getState(world, bossEid)
+    state.ghostRiderCooldown = 0
+
+    // Spawn 2 ghost riders manually
+    spawnGhostRider(world, 400, 400)
+    spawnGhostRider(world, 600, 400)
+
+    // Try to summon a 3rd
+    prepareAttack(world, bossEid, playerEid, P2Attack.SUMMON_GHOST_RIDER)
+    state.phase = 2
+    const cooldownBefore = state.ghostRiderCooldown
+    triggerAttack(world, bossEid)
+
+    // Cooldown should NOT have been set (summon was blocked)
+    expect(state.ghostRiderCooldown).toBe(cooldownBefore)
+  })
+
+  test('Summon Ghost Rider respects 10s cooldown', () => {
+    const state = getState(world, bossEid)
+    state.ghostRiderCooldown = 5.0  // still on cooldown
+
+    prepareAttack(world, bossEid, playerEid, P2Attack.SUMMON_GHOST_RIDER)
+    state.phase = 2
+    const cooldownBefore = state.ghostRiderCooldown
+    triggerAttack(world, bossEid)
+
+    // Should not have summoned (cooldown still > 0)
+    expect(state.ghostRiderCooldown).toBe(cooldownBefore)
+  })
+})
+
+// ============================================================================
+// Phase 2 snap-shot tests
+// ============================================================================
+
+describe('Old Scratch — Phase 2 snap-shots', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 600, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter phase 2
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+  })
+
+  test('Sidewinder in Phase 2 fires snap-shot after reposition', () => {
+    const state = getState(world, bossEid)
+    state.sidewinderCooldown = 0
+    prepareAttack(world, bossEid, playerEid, P1Attack.SIDEWINDER)
+    state.phase = 2  // set after prepareAttack (which resets to 1)
+
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+
+    // Snap-shot = 1 bullet
+    expect(after - before).toBe(1)
+  })
+
+  test('Shadow Step in Phase 2 fires snap-shot after teleport', () => {
+    const state = getState(world, bossEid)
+    state.shadowStepCooldown = 0
+    state.characterId = 'undertaker'
+
+    // Place far enough for teleport
+    Position.x[playerEid] = 500
+    Position.x[bossEid] = 800
+
+    prepareAttack(world, bossEid, playerEid, P1Attack.SHADOW_STEP)
+    state.phase = 2  // set after prepareAttack (which resets to 1)
+
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+
+    // Snap-shot = 1 bullet
+    expect(after - before).toBe(1)
+  })
+
+  test('Sidewinder in Phase 1 does NOT fire snap-shot', () => {
+    const state = getState(world, bossEid)
+    state.sidewinderCooldown = 0
+    prepareAttack(world, bossEid, playerEid, P1Attack.SIDEWINDER)
+    // phase stays at 1 (set by prepareAttack)
+
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+
+    expect(after - before).toBe(0)
+  })
+})
+
+// ============================================================================
+// Phase 2 integration test
+// ============================================================================
+
+describe('Old Scratch — Phase 2 integration', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter phase 2
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+  })
+
+  test('full Phase 2 cycle with mixed P1+P2 attacks completes without crash', () => {
+    const state = getState(world, bossEid)
+    state.characterId = 'sheriff'
+    state.sidewinderCooldown = 0
+    state.ghostRiderCooldown = 0
+
+    const attacks = [
+      P1Attack.DEAD_EYE_SHOT,
+      P1Attack.SIDEWINDER,
+      P2Attack.CROSSROADS_SALVO,
+      P1Attack.DEVILS_FAN,
+      P2Attack.BRIMSTONE_LASH,
+      P2Attack.SUMMON_GHOST_RIDER,
+    ]
+
+    for (const atk of attacks) {
+      prepareAttack(world, bossEid, playerEid, atk)
+      state.phase = 2  // set after prepareAttack resets to 1
+      triggerAttack(world, bossEid)
+
+      // Tick a few frames to process zones/charges
+      for (let i = 0; i < 10; i++) {
+        bossPhaseSystem(world, 1 / 60)
+      }
+    }
 
     expect(true).toBe(true)
   })

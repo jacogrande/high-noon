@@ -41,6 +41,7 @@ import {
   ObjTargetType,
   ObjectiveRole,
   ObjRole,
+  Lifespan,
 } from './components'
 import {
   PLAYER_RADIUS,
@@ -58,6 +59,7 @@ import {
   RUNNER_SPEED, RUNNER_RADIUS, RUNNER_HP, RUNNER_TIER,
   DUELIST_HP, DUELIST_DAMAGE,
   ARMORED_BANDIT_FRONT_REDUCTION, ARMORED_BANDIT_ARC_HALF_ANGLE,
+  GHOST_RIDER_LIFESPAN,
 } from './content/enemies'
 import { allEnemyDefs } from './content/enemyRegistry'
 
@@ -421,6 +423,14 @@ export function spawnGoblinRogue(world: GameWorld, x: number, y: number): number
 /** Spawn a Coyote enemy */
 export function spawnCoyote(world: GameWorld, x: number, y: number): number {
   return spawnFromRegistry(world, EnemyType.COYOTE, x, y)
+}
+
+/** Spawn a Ghost Rider enemy (adds Lifespan component for timed despawn) */
+export function spawnGhostRider(world: GameWorld, x: number, y: number): number {
+  const eid = spawnFromRegistry(world, EnemyType.GHOST_RIDER, x, y)
+  addComponent(world, Lifespan, eid)
+  Lifespan.remaining[eid] = GHOST_RIDER_LIFESPAN
+  return eid
 }
 
 /** Spawn a Lasso Bandit enemy */

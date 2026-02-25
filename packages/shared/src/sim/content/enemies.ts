@@ -677,6 +677,56 @@ registerEnemy({
   spriteScale: 2,
 })
 
+// ============================================================================
+// Ghost Rider — spectral horseman summoned by Old Scratch (Phase 2)
+// ============================================================================
+
+export const GHOST_RIDER_SPEED = 160
+export const GHOST_RIDER_RADIUS = 14
+export const GHOST_RIDER_HP = 20
+export const GHOST_RIDER_AGGRO_RANGE = 600
+export const GHOST_RIDER_ATTACK_RANGE = 300
+export const GHOST_RIDER_TELEGRAPH = 0.2
+export const GHOST_RIDER_RECOVERY = 0.3
+export const GHOST_RIDER_COOLDOWN = 1.5
+export const GHOST_RIDER_DAMAGE = 8
+export const GHOST_RIDER_BULLET_SPEED = 500
+export const GHOST_RIDER_PREFERRED_RANGE = 150
+export const GHOST_RIDER_SEPARATION_RADIUS = 20
+export const GHOST_RIDER_LIFESPAN = 8.0
+export const GHOST_RIDER_TIER = EnemyTier.THREAT
+
+registerEnemy({
+  type: EnemyType.GHOST_RIDER,
+  name: 'Ghost Rider',
+  tier: GHOST_RIDER_TIER,
+  speed: GHOST_RIDER_SPEED,
+  radius: GHOST_RIDER_RADIUS,
+  hp: GHOST_RIDER_HP,
+  budgetCost: 0,
+  dropChance: 0,
+  aggroRange: GHOST_RIDER_AGGRO_RANGE,
+  attackRange: GHOST_RIDER_ATTACK_RANGE,
+  losRequired: false,
+  telegraphDuration: GHOST_RIDER_TELEGRAPH,
+  recoveryDuration: GHOST_RIDER_RECOVERY,
+  cooldown: GHOST_RIDER_COOLDOWN,
+  damage: GHOST_RIDER_DAMAGE,
+  attackStyle: 'projectile',
+  projectileSpeed: GHOST_RIDER_BULLET_SPEED,
+  projectileAccel: 0,
+  projectileDrag: 0,
+  projectileCount: 1,
+  spreadAngle: 0,
+  bulletSpriteId: BulletSpriteId.FIRE_ANIM,
+  preferredRange: GHOST_RIDER_PREFERRED_RANGE,
+  separationRadius: GHOST_RIDER_SEPARATION_RADIUS,
+  initialDelayMin: 0,
+  initialDelayMax: 0,
+  color: 0x6688cc,
+  spriteScale: 1.5,
+})
+
 registerEnemy({
   type: EnemyType.COYOTE,
   name: 'Coyote',

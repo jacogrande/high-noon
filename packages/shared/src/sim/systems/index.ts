@@ -53,6 +53,7 @@ import { mapObstacleSystem } from './mapObstacle'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
+import { lifespanSystem } from './lifespan'
 import { tryVisitorPurchase, tryTinkererModSelect, type CampVisitorState, type WeaponModOffer } from './campVisitor'
 
 export {
@@ -107,6 +108,7 @@ export {
   tryTinkererModSelect,
   trapZoneSystem,
   mapObstacleSystem,
+  lifespanSystem,
 }
 
 export type { CampVisitorState, WeaponModOffer }
@@ -215,6 +217,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(trapZoneSystem)
   // -- Post-movement --
   systems.register(healthSystem)
+  systems.register(lifespanSystem)
   systems.register(goldRewardSystem)
   systems.register(goldRushSystem)
   systems.register(buffSystem)

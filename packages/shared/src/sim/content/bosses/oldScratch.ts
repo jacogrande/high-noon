@@ -21,7 +21,7 @@ import {
   EnemyAI, AIState, Detection, AttackConfig, Steering,
   Player, Bullet, Dead,
 } from '../../components'
-import { CollisionLayer, spawnBullet } from '../../prefabs'
+import { CollisionLayer, spawnBullet, spawnGhostRider } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { isInArc } from '../../systems/melee'
@@ -37,6 +37,7 @@ import { ENEMY_BULLET_RANGE, ENEMY_BULLET_SIZE_THREAT, BulletSpriteId } from '..
 import { PLAYER_RADIUS } from '../player'
 
 const playerQuery = defineQuery([Player, Position, Health])
+const enemyQuery = defineQuery([Enemy])
 
 // ============================================================================
 // Constants
@@ -67,7 +68,7 @@ const P3_HEAL_HP = 250
 
 // Phase cooldowns
 const P1_COOLDOWN = 1.0
-const P2_COOLDOWN = 0.8
+const P2_COOLDOWN = 0.85
 
 // Infernal Counter
 const COUNTER_WINDOW_DURATION = 0.4
@@ -184,6 +185,69 @@ const DEVILS_DYNAMITE_KNOCKBACK = 200
 const DEFAULT_P1_RECOVERY = 0.3
 
 // ============================================================================
+// Phase 2 Attack Enum, Constants & Cycles
+// ============================================================================
+
+export const enum P2Attack {
+  // New P2-only attacks (P1 attacks reuse P1Attack values 0-9)
+  CROSSROADS_SALVO = 10,
+  BRIMSTONE_LASH = 11,
+  SUMMON_GHOST_RIDER = 12,
+}
+
+// Phase 2 timing multipliers
+const P2_TELEGRAPH_MUL = 0.8    // 20% faster telegraphs
+const P2_COOLDOWN_MUL = 0.85    // 15% shorter cooldowns
+
+// Snap-shot after reposition (Sidewinder/Shadow Step landing shot)
+const SNAP_SHOT_DAMAGE = 8
+const SNAP_SHOT_SPEED = 600
+
+// Crossroads Salvo
+const CROSSROADS_SALVO_TELEGRAPH = 0.35
+const CROSSROADS_SALVO_BULLETS = 6
+const CROSSROADS_SALVO_DAMAGE = 10
+const CROSSROADS_SALVO_SPEED = 300
+
+// Brimstone Lash
+const BRIMSTONE_LASH_TELEGRAPH = 0.5
+const BRIMSTONE_LASH_DAMAGE = 12
+const BRIMSTONE_LASH_DURATION = 0.8
+const BRIMSTONE_LASH_WIDTH = 40       // half-width of the lash damage zone
+
+// Summon Ghost Rider
+const SUMMON_GHOST_RIDER_TELEGRAPH = 0.4
+const GHOST_RIDER_MAX_ALIVE = 2
+const GHOST_RIDER_SUMMON_COOLDOWN = 10.0
+
+// Phase 2 cycles — P1 attacks + new P2 attacks
+const SHERIFF_P2_CYCLE: number[] = [
+  P1Attack.DEAD_EYE_SHOT,
+  P1Attack.SIDEWINDER,
+  P2Attack.CROSSROADS_SALVO,
+  P1Attack.DEVILS_FAN,
+  P1Attack.BLACK_IRON_RELOAD,
+  P2Attack.BRIMSTONE_LASH,
+  P2Attack.SUMMON_GHOST_RIDER,
+]
+const UNDERTAKER_P2_CYCLE: number[] = [
+  P1Attack.BRIMSTONE_BLAST,
+  P2Attack.CROSSROADS_SALVO,
+  P1Attack.COFFIN_NAIL,
+  P1Attack.SHADOW_STEP,
+  P2Attack.BRIMSTONE_LASH,
+  P2Attack.SUMMON_GHOST_RIDER,
+]
+const PROSPECTOR_P2_CYCLE: number[] = [
+  P1Attack.HELLPICK_SWING,
+  P2Attack.CROSSROADS_SALVO,
+  P1Attack.INFERNAL_CHARGE,
+  P1Attack.DEVILS_DYNAMITE,
+  P2Attack.BRIMSTONE_LASH,
+  P2Attack.SUMMON_GHOST_RIDER,
+]
+
+// ============================================================================
 // Per-boss state (stored in world.bossState)
 // ============================================================================
 
@@ -236,6 +300,15 @@ export interface OldScratchState {
   // Phase 2
   ghostRiderCooldown: number
   ghostRiderCount: number
+  brimstoneLash: {
+    active: boolean
+    roadIndex: number       // 0=N, 1=S, 2=W, 3=E
+    timer: number           // time remaining for damage
+    startX: number          // lash line start
+    startY: number
+    endX: number            // lash line end
+    endY: number
+  } | null
 
   // Phase 3
   pillarEids: number[]
@@ -284,6 +357,7 @@ function createOldScratchState(): OldScratchState {
 
     ghostRiderCooldown: 0,
     ghostRiderCount: 0,
+    brimstoneLash: null,
 
     pillarEids: [],
     pillarRespawnTimers: [],
@@ -469,6 +543,8 @@ function enterPhase2(world: GameWorld, eid: number, state: OldScratchState): voi
   EnemyAI.state[eid] = AIState.TELEGRAPH
   EnemyAI.stateTimer[eid] = 0
   state.attackCycleIndex = 0
+  state.ghostRiderCooldown = 0    // allow immediate first summon
+  state.brimstoneLash = null
 
   // Arena changes
   const tilemap = world.tilemap
@@ -522,7 +598,12 @@ function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): voi
 // Helpers: get cycle for character
 // ============================================================================
 
-function getCycleForCharacter(charId: string): P1Attack[] {
+function getCycleForCharacter(charId: string, phase: number): number[] {
+  if (phase >= 2) {
+    if (charId === 'undertaker') return UNDERTAKER_P2_CYCLE
+    if (charId === 'prospector') return PROSPECTOR_P2_CYCLE
+    return SHERIFF_P2_CYCLE
+  }
   if (charId === 'undertaker') return UNDERTAKER_CYCLE
   if (charId === 'prospector') return PROSPECTOR_CYCLE
   return SHERIFF_CYCLE  // default
@@ -615,6 +696,68 @@ function tickFireTrails(
       progress: 1,
     })
   }
+}
+
+function tickBrimstoneLash(
+  world: GameWorld, bossEid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  const lash = state.brimstoneLash
+  if (!lash || !lash.active) return
+
+  lash.timer -= dt
+
+  // Damage player if within BRIMSTONE_LASH_WIDTH of the line segment
+  if (playerEid >= 0) {
+    const px = Position.x[playerEid]!
+    const py = Position.y[playerEid]!
+    const dist = pointToSegmentDist(px, py, lash.startX, lash.startY, lash.endX, lash.endY)
+    if (dist <= BRIMSTONE_LASH_WIDTH) {
+      applyDamage(world, playerEid, {
+        amount: BRIMSTONE_LASH_DAMAGE * dt / BRIMSTONE_LASH_DURATION,
+        attackerEid: bossEid,
+      })
+    }
+  }
+
+  // Push line telegraph while active
+  world.bossTelegraphs.push({
+    kind: 'line',
+    x: lash.startX, y: lash.startY, radius: BRIMSTONE_LASH_WIDTH,
+    endX: lash.endX, endY: lash.endY,
+    color: 0xff4400, alpha: 0.4,
+    progress: 1 - (lash.timer / BRIMSTONE_LASH_DURATION),
+  })
+
+  if (lash.timer <= 0) {
+    state.brimstoneLash = null
+  }
+}
+
+/** Distance from point (px,py) to line segment (ax,ay)-(bx,by) */
+function pointToSegmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const abx = bx - ax
+  const aby = by - ay
+  const apx = px - ax
+  const apy = py - ay
+  const ab2 = abx * abx + aby * aby
+  if (ab2 === 0) return Math.sqrt(apx * apx + apy * apy)
+  let t = (apx * abx + apy * aby) / ab2
+  if (t < 0) t = 0
+  if (t > 1) t = 1
+  const cx = ax + t * abx
+  const cy = ay + t * aby
+  const dx = px - cx
+  const dy = py - cy
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function countAliveGhostRiders(world: GameWorld): number {
+  let count = 0
+  for (const eid of enemyQuery(world)) {
+    if (Enemy.type[eid] === EnemyType.GHOST_RIDER && !hasComponent(world, Dead, eid)) count++
+  }
+  return count
 }
 
 function tickInfernalCharge(
@@ -765,6 +908,44 @@ function pushAttackTelegraph(
       }
       break
     }
+    case P2Attack.CROSSROADS_SALVO: {
+      world.bossTelegraphs.push({
+        kind: 'ring', x: ex, y: ey,
+        radius: 200,
+        color: 0xff4400, alpha: 0.25, progress,
+      })
+      break
+    }
+    case P2Attack.BRIMSTONE_LASH: {
+      // Line telegraph along chosen road direction (from boss to road endpoint)
+      const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+      if (endpoints && endpoints.length > 0) {
+        // Pick road closest to aimAngle
+        let bestIdx = 0
+        let bestDot = -Infinity
+        for (let i = 0; i < endpoints.length; i++) {
+          const edx = endpoints[i]!.x - ex
+          const edy = endpoints[i]!.y - ey
+          const dot = edx * Math.cos(state.aimAngle) + edy * Math.sin(state.aimAngle)
+          if (dot > bestDot) { bestDot = dot; bestIdx = i }
+        }
+        const ep = endpoints[bestIdx]!
+        world.bossTelegraphs.push({
+          kind: 'line', x: ex, y: ey, radius: BRIMSTONE_LASH_WIDTH,
+          endX: ep.x, endY: ep.y,
+          color: 0xff6600, alpha: 0.3, progress,
+        })
+      }
+      break
+    }
+    case P2Attack.SUMMON_GHOST_RIDER: {
+      world.bossTelegraphs.push({
+        kind: 'ring', x: ex, y: ey,
+        radius: 60,
+        color: 0x6688cc, alpha: 0.3, progress,
+      })
+      break
+    }
   }
 }
 
@@ -811,15 +992,27 @@ function tick(world: GameWorld, eid: number, dt: number): void {
   // Tick per-move cooldowns
   if (state.sidewinderCooldown > 0) state.sidewinderCooldown -= dt
   if (state.shadowStepCooldown > 0) state.shadowStepCooldown -= dt
+  if (state.ghostRiderCooldown > 0) state.ghostRiderCooldown -= dt
 
   const aiState = EnemyAI.state[eid]!
   const stateTimer = EnemyAI.stateTimer[eid]!
 
   // 3b. Attack selection at TELEGRAPH entry (stateTimer === 0, first tick)
   if (aiState === AIState.TELEGRAPH && stateTimer === 0 && state.phase < 4) {
-    const cycle = getCycleForCharacter(state.characterId)
-    const idx = state.attackCycleIndex % cycle.length
-    state.selectedAttack = cycle[idx]!
+    const cycle = getCycleForCharacter(state.characterId, state.phase)
+    let idx = state.attackCycleIndex % cycle.length
+    let selected = cycle[idx]!
+
+    // Ghost Rider summon: skip if on cooldown or capped
+    if (selected === P2Attack.SUMMON_GHOST_RIDER) {
+      if (state.ghostRiderCooldown > 0 || countAliveGhostRiders(world) >= GHOST_RIDER_MAX_ALIVE) {
+        state.attackCycleIndex++
+        idx = state.attackCycleIndex % cycle.length
+        selected = cycle[idx]!
+      }
+    }
+
+    state.selectedAttack = selected
     state.attackExecuted = false
 
     // Lock aim toward player
@@ -875,6 +1068,24 @@ function tick(world: GameWorld, eid: number, dt: number): void {
         AttackConfig.telegraphDuration[eid] = DEVILS_DYNAMITE_TELEGRAPH
         AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
         break
+      // Phase 2 new attacks
+      case P2Attack.CROSSROADS_SALVO:
+        AttackConfig.telegraphDuration[eid] = CROSSROADS_SALVO_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P2Attack.BRIMSTONE_LASH:
+        AttackConfig.telegraphDuration[eid] = BRIMSTONE_LASH_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+      case P2Attack.SUMMON_GHOST_RIDER:
+        AttackConfig.telegraphDuration[eid] = SUMMON_GHOST_RIDER_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
+        break
+    }
+
+    // Phase 2: faster telegraphs for carried-over P1 attacks
+    if (state.phase >= 2 && state.selectedAttack <= P1Attack.DEVILS_DYNAMITE) {
+      AttackConfig.telegraphDuration[eid]! *= P2_TELEGRAPH_MUL
     }
 
     // Adjust attack range per character
@@ -891,6 +1102,7 @@ function tick(world: GameWorld, eid: number, dt: number): void {
 
   tickCoffinNails(world, eid, state, playerEid, dt)
   tickFireTrails(world, eid, state, playerEid, dt)
+  tickBrimstoneLash(world, eid, state, playerEid, dt)
 
   // Tick Infernal Charge movement
   if (state.isCharging) {
@@ -1020,15 +1232,15 @@ function handleCounterHook(
 }
 
 // ============================================================================
-// Attack execution — Phase 1 (The Wager)
+// Attack execution — Phase 1 & Phase 2
 // ============================================================================
 
 function attack(world: GameWorld, eid: number, _dt: number): void {
   const state = getState(world, eid)
   if (!state) return
 
-  // Only Phase 1 attacks implemented here; P2-P4 attacks added in later phases
-  if (state.phase !== 1) {
+  // P3-P4 handled in later sprints
+  if (state.phase > 2) {
     transition(eid, AIState.RECOVERY)
     return
   }
@@ -1039,6 +1251,7 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
   }
   state.attackExecuted = true
 
+  // Dispatch P1 attacks (used in both Phase 1 and Phase 2)
   switch (state.selectedAttack) {
     case P1Attack.DEAD_EYE_SHOT:
       attackDeadEye(world, eid, state)
@@ -1066,6 +1279,16 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
       return  // multi-tick — don't transition to RECOVERY here
     case P1Attack.DEVILS_DYNAMITE:
       attackDevilsDynamite(world, eid, state)
+      break
+    // Phase 2 new attacks
+    case P2Attack.CROSSROADS_SALVO:
+      attackCrossroadsSalvo(world, eid, state)
+      break
+    case P2Attack.BRIMSTONE_LASH:
+      attackBrimstoneLash(world, eid, state)
+      break
+    case P2Attack.SUMMON_GHOST_RIDER:
+      attackSummonGhostRider(world, eid, state)
       break
     default:
       break
@@ -1135,6 +1358,11 @@ function attackSidewinder(world: GameWorld, eid: number, state: OldScratchState)
   Position.y[eid] = by + perpY * SIDEWINDER_DIST
 
   state.sidewinderCooldown = SIDEWINDER_COOLDOWN
+
+  // Phase 2: snap-shot at player after reposition
+  if (state.phase >= 2) {
+    fireSnapShot(world, eid, playerEid)
+  }
 }
 
 function attackBrimstoneBlast(world: GameWorld, eid: number, state: OldScratchState): void {
@@ -1201,6 +1429,11 @@ function attackShadowStep(world: GameWorld, eid: number, state: OldScratchState)
   Position.y[eid] = by + (dy / dist) * teleportDist
 
   state.shadowStepCooldown = SHADOW_STEP_COOLDOWN
+
+  // Phase 2: snap-shot at player after teleport
+  if (state.phase >= 2) {
+    fireSnapShot(world, eid, playerEid)
+  }
 }
 
 function attackHellpickSwing(world: GameWorld, eid: number, state: OldScratchState): void {
@@ -1268,6 +1501,92 @@ function attackDevilsDynamite(world: GameWorld, eid: number, _state: OldScratchS
     knockback: DEVILS_DYNAMITE_KNOCKBACK,
     ownerId: eid,
   })
+}
+
+// --- Phase 2 snap-shot helper ---
+
+function fireSnapShot(world: GameWorld, eid: number, playerEid: number): void {
+  if (playerEid < 0) return
+  const dx = Position.x[playerEid]! - Position.x[eid]!
+  const dy = Position.y[playerEid]! - Position.y[eid]!
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist <= 0) return
+
+  spawnBullet(world, {
+    x: Position.x[eid]!, y: Position.y[eid]!,
+    vx: (dx / dist) * SNAP_SHOT_SPEED,
+    vy: (dy / dist) * SNAP_SHOT_SPEED,
+    damage: SNAP_SHOT_DAMAGE,
+    range: ENEMY_BULLET_RANGE,
+    ownerId: eid,
+    layer: CollisionLayer.ENEMY_BULLET,
+    spriteId: BulletSpriteId.FIRE_ANIM,
+    size: ENEMY_BULLET_SIZE_THREAT,
+  })
+}
+
+// --- Phase 2 new attack implementations ---
+
+function attackCrossroadsSalvo(world: GameWorld, eid: number, _state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  for (let i = 0; i < CROSSROADS_SALVO_BULLETS; i++) {
+    const angle = (2 * Math.PI * i) / CROSSROADS_SALVO_BULLETS
+    spawnBullet(world, {
+      x: ex, y: ey,
+      vx: Math.cos(angle) * CROSSROADS_SALVO_SPEED,
+      vy: Math.sin(angle) * CROSSROADS_SALVO_SPEED,
+      damage: CROSSROADS_SALVO_DAMAGE,
+      range: ENEMY_BULLET_RANGE,
+      ownerId: eid,
+      layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.FIRE_ANIM,
+      size: ENEMY_BULLET_SIZE_THREAT,
+    })
+  }
+}
+
+function attackBrimstoneLash(world: GameWorld, eid: number, state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+
+  // Pick road direction closest to aimAngle
+  const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+  if (!endpoints || endpoints.length === 0) return
+
+  let bestIdx = 0
+  let bestDot = -Infinity
+  for (let i = 0; i < endpoints.length; i++) {
+    const edx = endpoints[i]!.x - ex
+    const edy = endpoints[i]!.y - ey
+    const dot = edx * Math.cos(state.aimAngle) + edy * Math.sin(state.aimAngle)
+    if (dot > bestDot) { bestDot = dot; bestIdx = i }
+  }
+  const ep = endpoints[bestIdx]!
+
+  state.brimstoneLash = {
+    active: true,
+    roadIndex: bestIdx,
+    timer: BRIMSTONE_LASH_DURATION,
+    startX: ex, startY: ey,
+    endX: ep.x, endY: ep.y,
+  }
+}
+
+function attackSummonGhostRider(world: GameWorld, eid: number, state: OldScratchState): void {
+  // Check cooldown and cap
+  if (state.ghostRiderCooldown > 0) return
+  if (countAliveGhostRiders(world) >= GHOST_RIDER_MAX_ALIVE) return
+
+  const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+  if (!endpoints || endpoints.length === 0) return
+
+  // Pick random road endpoint
+  const idx = Math.floor(world.rng.next() * endpoints.length)
+  const ep = endpoints[idx]!
+
+  spawnGhostRider(world, ep.x, ep.y)
+  state.ghostRiderCooldown = GHOST_RIDER_SUMMON_COOLDOWN
 }
 
 // ============================================================================
@@ -1343,3 +1662,20 @@ export const OLD_SCRATCH_FIRE_TRAIL_DURATION = FIRE_TRAIL_DURATION
 export const OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE = DEVILS_DYNAMITE_DAMAGE
 export const OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS = DEVILS_DYNAMITE_RADIUS
 export const OLD_SCRATCH_DEVILS_DYNAMITE_FUSE = DEVILS_DYNAMITE_FUSE
+
+// Phase 2 attack constants
+export const OLD_SCRATCH_P2_TELEGRAPH_MUL = P2_TELEGRAPH_MUL
+export const OLD_SCRATCH_P2_COOLDOWN_MUL = P2_COOLDOWN_MUL
+export const OLD_SCRATCH_SNAP_SHOT_DAMAGE = SNAP_SHOT_DAMAGE
+export const OLD_SCRATCH_SNAP_SHOT_SPEED = SNAP_SHOT_SPEED
+export const OLD_SCRATCH_CROSSROADS_SALVO_TELEGRAPH = CROSSROADS_SALVO_TELEGRAPH
+export const OLD_SCRATCH_CROSSROADS_SALVO_BULLETS = CROSSROADS_SALVO_BULLETS
+export const OLD_SCRATCH_CROSSROADS_SALVO_DAMAGE = CROSSROADS_SALVO_DAMAGE
+export const OLD_SCRATCH_CROSSROADS_SALVO_SPEED = CROSSROADS_SALVO_SPEED
+export const OLD_SCRATCH_BRIMSTONE_LASH_TELEGRAPH = BRIMSTONE_LASH_TELEGRAPH
+export const OLD_SCRATCH_BRIMSTONE_LASH_DAMAGE = BRIMSTONE_LASH_DAMAGE
+export const OLD_SCRATCH_BRIMSTONE_LASH_DURATION = BRIMSTONE_LASH_DURATION
+export const OLD_SCRATCH_BRIMSTONE_LASH_WIDTH = BRIMSTONE_LASH_WIDTH
+export const OLD_SCRATCH_SUMMON_GHOST_RIDER_TELEGRAPH = SUMMON_GHOST_RIDER_TELEGRAPH
+export const OLD_SCRATCH_GHOST_RIDER_MAX_ALIVE = GHOST_RIDER_MAX_ALIVE
+export const OLD_SCRATCH_GHOST_RIDER_SUMMON_COOLDOWN = GHOST_RIDER_SUMMON_COOLDOWN

@@ -490,6 +490,16 @@ export const NpcDialogue = {
 }
 
 // ============================================================================
+// Lifespan Component
+// ============================================================================
+
+/** Timed entity despawn — entity gets Dead tag when remaining reaches 0 */
+export const Lifespan = {
+  /** Remaining lifetime in seconds */
+  remaining: new Float32Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Component Registration
 // ============================================================================
 
@@ -533,4 +543,5 @@ export const AllComponents = [
   NpcDialogue,
   ObjectiveTarget,
   ObjectiveRole,
+  Lifespan,
 ] as const
