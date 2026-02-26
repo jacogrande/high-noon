@@ -28,6 +28,7 @@ import { DUEL_RING_RADIUS, DUEL_FORFEIT_GRACE } from '../content/enemies'
 import { pickSpawnPosition } from './waveSpawner'
 import { getPlayableBoundsFromTilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
+import { applyCoopHpScale } from '../content/coopScaling'
 
 const objectiveRoleQuery = defineQuery([ObjectiveRole, Enemy, Position])
 
@@ -133,6 +134,7 @@ export function initObjective(world: GameWorld, config: ObjectiveConfig): void {
     const duelistX = ringX + Math.cos(angle) * spawnDist
     const duelistY = ringY + Math.sin(angle) * spawnDist
     const duelistEid = spawnDuelist(world, duelistX, duelistY, config.duelistHP, config.duelistDamage)
+    applyCoopHpScale(world.activePlayerCount, duelistEid, false, Health)
 
     world.objective = {
       type: 'duel',
@@ -222,7 +224,8 @@ function protectTick(world: GameWorld, obj: ObjectiveState, dt: number): void {
     const targetY = Position.y[targetEid]!
 
     const pos = pickSpawnPosition(world.rng, targetX, targetY, world.tilemap, SPAWN_RANGE_MIN, SPAWN_RANGE_MAX, SPAWN_MIN_PLAYER_DIST)
-    spawnObjectiveAttacker(world, pos.x, pos.y, targetEid)
+    const attackerEid = spawnObjectiveAttacker(world, pos.x, pos.y, targetEid)
+    applyCoopHpScale(world.activePlayerCount, attackerEid, false, Health)
     obj.totalSpawned++
   }
 }
@@ -295,7 +298,8 @@ function interceptTick(world: GameWorld, obj: ObjectiveState, dt: number): void 
 
     // Spawn far from destination (use player centroid as reference, spawn at edge)
     const pos = pickSpawnPosition(world.rng, destX, destY, world.tilemap, 200, 400, 80)
-    spawnObjectiveRunner(world, pos.x, pos.y, destEid, obj.runnerSpeed, obj.runnerHP)
+    const runnerEid = spawnObjectiveRunner(world, pos.x, pos.y, destEid, obj.runnerSpeed, obj.runnerHP)
+    applyCoopHpScale(world.activePlayerCount, runnerEid, false, Health)
     obj.totalSpawned++
   }
 }

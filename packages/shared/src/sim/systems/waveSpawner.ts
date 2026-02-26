@@ -10,13 +10,14 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { SeededRng } from '../../math/rng'
-import { Enemy, EnemyType, EnemyTier, Position, Dead, ObjectiveRole } from '../components'
+import { Enemy, EnemyType, EnemyTier, Position, Dead, ObjectiveRole, Health } from '../components'
 import { spawnFromRegistry, spawnArmoredBandit, spawnVulture } from '../prefabs'
 import { getBoss } from '../content/bosses'
 import { getEnemyDef } from '../content/enemyRegistry'
 import { isSolidAt, getPlayableBoundsFromTilemap, type Tilemap } from '../tilemap'
 import { getAlivePlayers } from '../queries'
 import type { FodderPool } from '../content/waves'
+import { getCoopScalars, applyCoopHpScale } from '../content/coopScaling'
 
 /** Fodder spawn rate in enemies per second */
 const FODDER_SPAWN_RATE = 3.0
@@ -139,19 +140,27 @@ function getBudgetCost(type: number): number {
 }
 
 /**
- * Spawn an enemy of the given type at the given position
+ * Spawn an enemy of the given type at the given position.
+ * Applies co-op HP scaling based on world.activePlayerCount.
  */
 function spawnEnemy(world: GameWorld, type: number, x: number, y: number): number {
   // Check boss registry first
   const bossMod = getBoss(type)
-  if (bossMod) return bossMod.spawn(world, x, y)
+  let eid: number
+  if (bossMod) {
+    eid = bossMod.spawn(world, x, y)
+  } else if (type === EnemyType.ARMORED_BANDIT) {
+    eid = spawnArmoredBandit(world, x, y)
+  } else if (type === EnemyType.VULTURE) {
+    eid = spawnVulture(world, x, y)
+  } else {
+    eid = spawnFromRegistry(world, type, x, y)
+  }
 
-  // Armored Bandit needs FrontArmor component added post-spawn
-  if (type === EnemyType.ARMORED_BANDIT) return spawnArmoredBandit(world, x, y)
-  // Vulture needs Flying component added post-spawn
-  if (type === EnemyType.VULTURE) return spawnVulture(world, x, y)
+  // Apply co-op HP scaling
+  applyCoopHpScale(world.activePlayerCount, eid, !!bossMod, Health)
 
-  return spawnFromRegistry(world, type, x, y)
+  return eid
 }
 
 export function waveSpawnerSystem(world: GameWorld, dt: number): void {
@@ -214,7 +223,10 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
     if (enc.waveTimer <= 0) {
       // Activate current wave
       const waveDef = enc.definition.waves[enc.currentWave]!
-      enc.fodderBudgetRemaining = waveDef.fodderBudget
+      const budgetMul = world.activePlayerCount > 1
+        ? getCoopScalars(world.activePlayerCount).waveBudgetMultiplier
+        : 1.0
+      enc.fodderBudgetRemaining = Math.round(waveDef.fodderBudget * budgetMul)
       enc.totalFodderSpawned = 0
       enc.fodderSpawnAccumulator = 0
       enc.threatKilledThisWave = 0

@@ -7,7 +7,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Enemy, Detection, Position, EnemyAI, Player, Dead, ObjectiveRole, ObjRole } from '../components'
+import { Enemy, Detection, Position, EnemyAI, Player, Dead, Downed, ObjectiveRole, ObjRole } from '../components'
 import { NO_TARGET } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { worldToTile, isSolidAt } from '../tilemap'
@@ -139,6 +139,7 @@ export function enemyDetectionSystem(world: GameWorld, _dt: number): void {
       // Has target — validate it's still alive, present, and within leash
       if (
         hasComponent(world, Dead, currentTarget) ||
+        hasComponent(world, Downed, currentTarget) ||
         !hasComponent(world, Player, currentTarget) ||
         !hasComponent(world, Position, currentTarget)
       ) {
