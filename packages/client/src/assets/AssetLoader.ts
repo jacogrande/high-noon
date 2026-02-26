@@ -75,6 +75,9 @@ ENEMY_SPRITES['boomstick'] = '/assets/sprites/enemies/boomstick.png';
 ENEMY_SPRITES['dalton_emmett'] = '/assets/sprites/enemies/dalton_emmett.png';
 ENEMY_SPRITES['dalton_bob'] = '/assets/sprites/enemies/dalton_bob.png';
 ENEMY_SPRITES['coyote_jane'] = '/assets/sprites/enemies/coyote_jane.png';
+ENEMY_SPRITES['old_scratch'] = '/assets/sprites/enemies/old_scratch.png';
+ENEMY_SPRITES['ghost_rider'] = '/assets/sprites/enemies/ghost_rider.png';
+// Hellfire Pillar uses circle rendering, no sprite sheet needed
 
 /** Item icon manifest: itemKey → path */
 const ITEM_SPRITES: Record<string, string> = {

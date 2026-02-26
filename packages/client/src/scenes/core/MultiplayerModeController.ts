@@ -1496,6 +1496,7 @@ export class MultiplayerModeController implements SceneModeController {
       objective: hud?.objective ?? null,
       campVisitor: hud?.campVisitor ?? null,
       boss: hud?.boss ?? null,
+      drawDuel: null, // Draw duel not yet supported in multiplayer
     }
   }
 

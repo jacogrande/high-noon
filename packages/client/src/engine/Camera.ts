@@ -29,6 +29,7 @@ export interface CameraRenderState {
   x: number
   y: number
   angle: number
+  zoom: number
 }
 
 const DEFAULT_CONFIG: CameraConfig = {
@@ -49,7 +50,12 @@ export class Camera {
   private prevX = 0
   private prevY = 0
 
-  // Viewport dimensions
+  // Zoom interpolation
+  private targetZoom = 1
+  private currentZoom = 1
+  private prevZoom = 1
+
+  // Viewport dimensions (base, before zoom)
   private viewportW = 0
   private viewportH = 0
 
@@ -57,7 +63,7 @@ export class Camera {
   private bounds: CameraBounds | null = null
 
   // Pre-allocated return object
-  private readonly renderState: CameraRenderState = { x: 0, y: 0, angle: 0 }
+  private readonly renderState: CameraRenderState = { x: 0, y: 0, angle: 0, zoom: 1 }
 
   constructor(config?: Partial<CameraConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -82,6 +88,14 @@ export class Camera {
     this.prevY = y
   }
 
+  setZoom(target: number): void {
+    this.targetZoom = target
+  }
+
+  getCurrentZoom(): number {
+    return this.currentZoom
+  }
+
   /**
    * Update camera target position. Called once per sim tick (60Hz).
    *
@@ -98,9 +112,14 @@ export class Camera {
     cursorWorldY: number,
     dt: number
   ): void {
-    // Save previous position for interpolation
+    // Save previous state for interpolation
     this.prevX = this.x
     this.prevY = this.y
+    this.prevZoom = this.currentZoom
+
+    // Interpolate zoom (gentler lambda=4 for cinematic feel)
+    const zoomFactor = 1 - Math.exp(-4 * dt)
+    this.currentZoom += (this.targetZoom - this.currentZoom) * zoomFactor
 
     // Compute aim offset: direction from player to cursor, clamped
     let aimDx = cursorWorldX - playerX
@@ -154,11 +173,15 @@ export class Camera {
     x += this.kick.getOffsetX()
     y += this.kick.getOffsetY()
 
+    // Interpolate zoom
+    const zoom = this.prevZoom + (this.currentZoom - this.prevZoom) * alpha
+
     // Return raw float position — controllers snap in RT space
     // and apply sub-pixel offset to the display sprite.
     this.renderState.x = x
     this.renderState.y = y
     this.renderState.angle = shakeOffset.angle
+    this.renderState.zoom = zoom
 
     return this.renderState
   }
@@ -193,9 +216,11 @@ export class Camera {
   }
 
   private clampAxis(value: number, min: number, max: number, viewportSize: number): number {
-    const half = viewportSize / 2
+    // Zoom divides the effective viewport (zooming in = see less)
+    const effectiveViewport = viewportSize / this.currentZoom
+    const half = effectiveViewport / 2
     const worldSize = max - min
-    if (worldSize <= viewportSize) {
+    if (worldSize <= effectiveViewport) {
       return min + worldSize / 2
     }
     return Math.max(min + half, Math.min(max - half, value))

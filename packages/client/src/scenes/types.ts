@@ -86,6 +86,11 @@ export interface HUDState {
     hp: number
     maxHP: number
   } | null
+  drawDuel: {
+    phase: 'staredown' | 'flash' | 'scramble' | 'reset'
+    round: number
+    staredownProgress: number
+  } | null
 }
 
 export type SkillNodeState = 'taken' | 'available' | 'locked' | 'unimplemented'

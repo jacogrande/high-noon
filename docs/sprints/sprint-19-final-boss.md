@@ -959,6 +959,35 @@ export const HellfirePillar = {
 
 ---
 
+## Phase 8: Client Rendering — Crossroads Arena (Implementation Notes)
+
+**Goal:** Add rendering infrastructure so Stage 4 is visually playable. No pixel art in this phase — enemies render as colored circles via the existing EnemyRenderer fallback until sprite sheets arrive.
+
+### What was implemented
+
+| File | Change |
+|------|--------|
+| `EnemyRenderer.ts` | Registered OLD_SCRATCH, GHOST_RIDER, HELLFIRE_PILLAR sprite IDs + scales. Ghost Rider blue-white tint (0x88bbff) + 0.6 alpha. Old Scratch phase-3 scale increase (3.5x). Hellfire Pillar pulsing damage zone ring (48px). Chain lightning arc rendering between pillar pairs. |
+| `BossAttackRenderer.ts` | Added `'flash'` telegraph kind — white filled circle at telegraph position. |
+| `TilemapRenderer.ts` | Added `update(dt)` method with time-based alpha pulsing for BRIMSTONE (orange-red breathing) and DARKNESS (spatially-offset purple ripple) tiles. |
+| `emitters.ts` | Added `emitHellfireSparks`, `emitGhostTrail`, `emitBrimstoneErupt`, `emitDustSwirl` particle presets. |
+| `DustStormEffect.ts` | New file — Graphics overlay with `cut()` visibility hole around player when `world.oldScratchStorm` is active. |
+| `DrawFlashOverlay.ts` | New file — PixiJS-based full-screen white flash (15 alpha/s decay) + centered result text with fade. |
+| `types.ts` | Extended `HUDState` with `drawDuel` field (phase, round, staredownProgress). |
+| `GameplayEvents.ts` | Added `draw-flash` and `draw-result` event types. |
+| `GameplayEventProcessor.ts` | Handles draw-flash (triggers overlay + camera trauma) and draw-result (shows result text). |
+| `SingleplayerModeController.ts` | Integrates DustStormEffect, DrawFlashOverlay, draw phase transition detection, Hellfire spark particles, Ghost Rider trail particles, dust swirl ambient particles, tilemap update calls, drawDuel HUD state. |
+| `AssetLoader.ts` | Registered `old_scratch` and `ghost_rider` in ENEMY_SPRITES manifest. |
+
+### Design decisions
+
+- **Chain lightning in EnemyRenderer** — Simple line drawing iterated from boss state pairs. Separate renderer would be over-engineering.
+- **Dust storm via Graphics.cut()** — Simpler than shader-based fog. PixiJS v8's cut() cleanly punches visibility holes.
+- **DrawFlashOverlay in PixiJS** — Frame-precise timing for 1-2 frame flash. React reconciliation would add latency.
+- **Animated tile tinting** — Alpha pulsing on tinted sprites gives visual feedback without animated tile art.
+
+---
+
 ## Risk Assessment
 
 | Risk                                                   | Mitigation                                                                                                                                                                                                                     |
@@ -993,3 +1022,69 @@ Sprint 19 builds the final stage of High Noon in 10 phases:
 | 10    | Testing                      | Unit + integration + manual verification                   |
 
 The fight follows a dramatic arc: **tense duel → rule break → overwhelming chaos → intimate final showdown.** Every phase changes what the player is doing, not just how hard it is. The crossroads arena shrinks and transforms alongside the boss, and the Phase 4 draw brings the run full circle from the Stage 1 duel.
+
+---
+
+## Phase 9: VFX Polish — Implementation Notes
+
+### Camera Zoom System
+- `Camera.ts`: Added `targetZoom`, `currentZoom`, `prevZoom` fields with exponential smoothing (lambda=4 for gentle cinematic feel). `setZoom(target)` and `getCurrentZoom()` API. Zoom interpolated in `getRenderState()` just like position. `clampAxis()` divides viewport by currentZoom so bounds stay correct when zoomed in.
+- `CameraRenderState` extended with `zoom: number` field.
+- `SingleplayerModeController`: Applies `WORLD_SCALE * camState.zoom` to worldContainer scale each render frame. Input system accounts for zoom in screen→world conversion.
+
+### Per-Phase Camera Zoom
+- `updateBossCameraZoom()` method reads OldScratchState and sets zoom per phase: P1=1.0, P2=0.9, P3=0.8, P4 staredown=1.0→1.3 progressive, P4 flash=1.5, P4 scramble/reset=1.0.
+
+### Phase Transition VFX
+- `GameplayEventProcessor`: Per-phase branching on `boss-phase-transition.newPhase`:
+  - P2: trauma 0.4, ground crack burst + brimstone erupt, 0.12s freeze
+  - P3: trauma 0.6, shadow tendrils + fire geyser + death pulse(100), 0.15s freeze
+  - P4: trauma 0.5, smoke spiral, 0.3s freeze, slow-mo 0.2x for 0.5s
+
+### New Particle Emitters (emitters.ts)
+- `emitGroundCrackBurst`: 16-20 orange/red ring particles
+- `emitShadowTendrils`: 20-24 dark purple expanding particles
+- `emitFireGeyser`: 10-14 orange/yellow upward particles with gravity
+- `emitGoldenSunMotes`: 12-16 slow-drifting gold particles
+- `emitSmokeSpiral`: 8-12 dark grey spiraling upward particles
+
+### Draw Feedback Enhancement
+- `DrawFlashOverlay.triggerFlash(tintColor)`: Configurable flash color (was hardcoded white)
+- `draw-result` event now carries `timing: 'perfect' | 'good' | 'slow' | 'panic'`
+- Perfect draw: gold flash + slow-mo. Slow draw: red tint flash. Panic shot: camera trauma, no flash
+- `OldScratchState.panicShotThisTick` flag in shared enables client-side panic shot detection
+
+### Boss Death VFX
+- `boss-death` event type: heavy trauma 0.7, hit-stop 0.5s, slow-mo 0.15x for 1.0s, smoke spiral + golden sun motes
+
+### Letterbox Overlay
+- New `LetterboxOverlay.ts`: Black bars (12% screen height each) with lerp show/hide transitions
+- Shown on Phase 4 entry, hidden on Phase 4 exit
+
+### Telegraph Particles
+- `BossAttackRenderer`: Now accepts optional `ParticlePool` + `dt`. Emits particles along telegraphs at ~15/sec: red tracers on line telegraphs, fire particles on arc edges, eruption particles on mature circle telegraphs.
+
+---
+
+## Phase 10: Integration Testing — Implementation Notes
+
+### oldScratchIntegration.test.ts (8 tests)
+Full fight lifecycle tests using crossroads map + all registered systems:
+1. **Full lifecycle**: Transitions through all 4 phases via HP manipulation, verifies P3 heal, P4 draw duel setup
+2. **Pillar destruction stops healing**: Verifies HP stops increasing after all pillars killed
+3. **Pillars respawn after timer**: Kills pillars, advances respawn timer, verifies respawn
+4. **Ghost rider cap**: Runs 3000 ticks in P2, verifies max concurrent Ghost Riders ≤ 2
+5. **Arena shrinks**: Counts walkable tiles, verifies decrease P1→P2→P3
+6. **Dust storm at threshold**: Forces P3, damages below 50% P3 heal HP, verifies storm activation
+7. **Phase 4 clears pillars/storm**: Activates pillars + storm in P3, forces P4, verifies cleanup
+8. **Determinism**: Two identical seed-42 runs produce identical boss state after 300 ticks
+
+### GameplayEventProcessor.test.ts (6 new tests)
+- Phase 2/3/4 transition VFX (trauma, particles, slow-mo)
+- Boss death heavy effects
+- Draw-result perfect (gold flash + slow-mo)
+- Draw-result panic (trauma only)
+
+### Test Results
+- Total: 1380 tests, 0 failures
+- New tests: 14 (8 integration + 6 event processor)

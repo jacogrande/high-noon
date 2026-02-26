@@ -63,9 +63,11 @@ export class TilemapRenderer {
   private readonly sprites: Sprite[] = []
   private readonly roofSprites: Sprite[] = []
   private readonly buildingData: BuildingRoofData[] = []
+  private readonly animatedTileSprites: Array<{ sprite: Sprite; tileType: number }> = []
   private currentMap: Tilemap | null = null
   private currentTileVersion = -1
   private roofDitherFilter: RoofDitherFilter | null = null
+  private time = 0
 
   constructor(parentContainer: Container, gameZoom: number = 2) {
     this.container = new Container()
@@ -101,6 +103,7 @@ export class TilemapRenderer {
     }
     this.roofSprites.length = 0
     this.buildingData.length = 0
+    this.animatedTileSprites.length = 0
 
     const { width, height, tileSize, layers } = map
 
@@ -161,8 +164,10 @@ export class TilemapRenderer {
             sprite.tint = 0xC8A878
           } else if (tile === TileType.BRIMSTONE) {
             sprite.tint = 0xFF4400
+            this.animatedTileSprites.push({ sprite, tileType: tile })
           } else if (tile === TileType.DARKNESS) {
             sprite.tint = 0x110022
+            this.animatedTileSprites.push({ sprite, tileType: tile })
           }
 
           this.container.addChild(sprite)
@@ -299,6 +304,23 @@ export class TilemapRenderer {
       } else {
         if (bd.roofSprite.filters) bd.roofSprite.filters = null
         if (bd.baseSprite?.filters) bd.baseSprite.filters = null
+      }
+    }
+  }
+
+  /**
+   * Animate BRIMSTONE and DARKNESS tile tints each frame.
+   */
+  update(dt: number): void {
+    if (this.animatedTileSprites.length === 0) return
+    this.time += dt
+    for (const { sprite, tileType } of this.animatedTileSprites) {
+      if (tileType === TileType.BRIMSTONE) {
+        const pulse = 0.5 + Math.sin(this.time * 3) * 0.3
+        sprite.alpha = 0.7 + pulse * 0.3
+      } else if (tileType === TileType.DARKNESS) {
+        const pulse = 0.5 + Math.sin(this.time * 2 + sprite.x * 0.1) * 0.3
+        sprite.alpha = 0.6 + pulse * 0.3
       }
     }
   }

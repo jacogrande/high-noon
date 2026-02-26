@@ -58,6 +58,12 @@ import {
   FOOLS_ERRAND_ID,
   MapObstacleType,
   isWoodObstacle,
+  type OldScratchState,
+  OLD_SCRATCH_STAREDOWN_ROUND_1,
+  OLD_SCRATCH_STAREDOWN_ROUND_2,
+  OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS,
+  OLD_SCRATCH_PERFECT_DRAW_WINDOW,
+  OLD_SCRATCH_GOOD_DRAW_WINDOW,
 } from '@high-noon/shared'
 import { defineQuery, hasComponent } from 'bitecs'
 import { INTERNAL_WIDTH, INTERNAL_HEIGHT, WORLD_SCALE, type GameApp } from '../../engine/GameApp'
@@ -79,10 +85,13 @@ import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
 import { MapObstacleRenderer } from '../../render/MapObstacleRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
+import { DustStormEffect } from '../../render/DustStormEffect'
+import { DrawFlashOverlay } from '../../render/DrawFlashOverlay'
+import { LetterboxOverlay } from '../../render/LetterboxOverlay'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
-import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust, emitWoodSplinters, emitRockDebris, emitObstacleHit } from '../../fx'
+import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust, emitWoodSplinters, emitRockDebris, emitObstacleHit, emitHellfireSparks, emitGhostTrail, emitDustSwirl } from '../../fx'
 import { TimeScale } from '../../engine/TimeScale'
 import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
 import { NpcRenderer } from '../../render/NpcRenderer'
@@ -117,9 +126,28 @@ import { buildSingleplayerMinimapState } from './minimap'
 
 const MAX_PENDING_VISUAL_SHOTS = 256
 
+// Render-loop particle emission intervals (seconds)
+const MOVEMENT_DUST_MIN_SPEED = 50
+const MOVEMENT_DUST_INTERVAL = 0.06
+const HELLFIRE_SPARK_INTERVAL = 0.08
+const GHOST_TRAIL_INTERVAL = 0.1
+const GHOST_TRAIL_MIN_SPEED_SQ = 100
+const DUST_SWIRL_INTERVAL = 0.15
+
+// Per-phase camera zoom targets
+const BOSS_PHASE_ZOOM: Record<number, number> = { 1: 1.0, 2: 0.9, 3: 0.8 }
+const BOSS_STAREDOWN_ZOOM_MAX = 1.3
+const BOSS_FLASH_ZOOM = 1.5
+
 const enemyAIQuery = defineQuery([Enemy, EnemyAI])
 const bulletCountQuery = defineQuery([Bullet])
 const bossQuery = defineQuery([Enemy, BossPhase, Health])
+
+function getStaredownDuration(round: number): number {
+  if (round <= 1) return OLD_SCRATCH_STAREDOWN_ROUND_1
+  if (round === 2) return OLD_SCRATCH_STAREDOWN_ROUND_2
+  return OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS
+}
 
 const STATE_LABELS = ['IDL', 'CHS', 'TEL', 'ATK', 'REC', 'STN', 'FLE']
 
@@ -176,6 +204,18 @@ export class SingleplayerModeController implements SceneModeController {
   private paused = false
   private dustAccumulator = 0
   private wasRolling = false
+  private readonly dustStormEffect: DustStormEffect
+  private readonly drawFlashOverlay: DrawFlashOverlay
+  private readonly letterboxOverlay: LetterboxOverlay
+  private lastDrawPhase: string | null = null
+  private lastDrawResolved = false
+  private lastBossAlive = false
+  private lastBossX = 0
+  private lastBossY = 0
+  private lastBossPhase = 0
+  private dustSwirlAccumulator = 0
+  private hellfireSparkAccumulator = 0
+  private ghostTrailAccumulator = 0
 
   constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
@@ -226,6 +266,17 @@ export class SingleplayerModeController implements SceneModeController {
     this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
+    this.dustStormEffect = new DustStormEffect(this.gameApp.layers.entities)
+    this.drawFlashOverlay = new DrawFlashOverlay(
+      this.gameApp.layers.ui,
+      () => this.gameApp.width,
+      () => this.gameApp.height,
+    )
+    this.letterboxOverlay = new LetterboxOverlay(
+      this.gameApp.layers.ui,
+      () => this.gameApp.width,
+      () => this.gameApp.height,
+    )
 
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
@@ -271,6 +322,7 @@ export class SingleplayerModeController implements SceneModeController {
       spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
       killStreakTracker: this.killStreakTracker,
       timeScale: this.timeScale,
+      drawFlashOverlay: this.drawFlashOverlay,
     })
 
     this.lastRenderTime = performance.now()
@@ -441,6 +493,23 @@ export class SingleplayerModeController implements SceneModeController {
         }
         if (!anyAlive) return null
         return { name, hp: totalHP, maxHP: totalMaxHP }
+      })(),
+      drawDuel: (() => {
+        const bosses = bossQuery(this.world)
+        for (const beid of bosses) {
+          if (Enemy.type[beid] !== EnemyType.OLD_SCRATCH) continue
+          const state = this.world.bossState.get(beid) as OldScratchState | undefined
+          if (!state || state.phase !== 4) continue
+          const duration = getStaredownDuration(state.drawRound)
+          return {
+            phase: state.drawPhase,
+            round: state.drawRound,
+            staredownProgress: state.drawPhase === 'staredown'
+              ? Math.min(1, 1 - state.staredownTimer / duration)
+              : state.drawPhase === 'flash' ? 1 : 0,
+          }
+        }
+        return null
       })(),
       campVisitor: this.world.campVisitor
         ? (() => {
@@ -637,10 +706,10 @@ export class SingleplayerModeController implements SceneModeController {
       this.input.setReferencePosition(Position.x[playerEid]!, Position.y[playerEid]!)
     }
 
-    // Set camera state for screen→world conversion
+    // Set camera state for screen→world conversion (account for camera zoom)
     const camPos = this.camera.getPosition()
-    const zoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
-    this.input.setCamera(camPos.x, camPos.y, this.gameApp.width, this.gameApp.height, zoom)
+    const baseZoom = this.gameApp.width * WORLD_SCALE / INTERNAL_WIDTH
+    this.input.setCamera(camPos.x, camPos.y, this.gameApp.width, this.gameApp.height, baseZoom * this.camera.getCurrentZoom())
 
     // Get input state (now with correct world-space aim)
     const inputState = this.input.getInputState()
@@ -789,6 +858,70 @@ export class SingleplayerModeController implements SceneModeController {
       }
     }
 
+    // Detect draw duel phase transitions → emit events
+    {
+      const bosses = bossQuery(this.world)
+      for (const beid of bosses) {
+        if (Enemy.type[beid] !== EnemyType.OLD_SCRATCH) continue
+        const state = this.world.bossState.get(beid) as OldScratchState | undefined
+        if (!state || state.phase !== 4) {
+          this.lastDrawPhase = null
+          this.lastDrawResolved = false
+          break
+        }
+        if (state.drawPhase === 'flash' && this.lastDrawPhase !== 'flash') {
+          this.gameplayEvents.push({ type: 'draw-flash' })
+        }
+        // Panic shot detection
+        if (state.panicShotThisTick) {
+          this.gameplayEvents.push({ type: 'draw-result', text: 'TOO EARLY', color: 0xFF4444, timing: 'panic' })
+        }
+        if (state.drawResolved && !this.lastDrawResolved) {
+          const elapsed = state.flashTimer
+          let text: string
+          let color: number
+          let timing: 'perfect' | 'good' | 'slow'
+          if (elapsed <= OLD_SCRATCH_PERFECT_DRAW_WINDOW) {
+            text = 'PERFECT'
+            color = 0xFFD700
+            timing = 'perfect'
+          } else if (elapsed <= OLD_SCRATCH_GOOD_DRAW_WINDOW) {
+            text = 'GOOD'
+            color = 0x44FF44
+            timing = 'good'
+          } else {
+            text = 'SLOW'
+            color = 0xFF4444
+            timing = 'slow'
+          }
+          this.gameplayEvents.push({ type: 'draw-result', text, color, timing })
+        }
+        this.lastDrawPhase = state.drawPhase
+        this.lastDrawResolved = state.drawResolved
+        break
+      }
+    }
+
+    // Detect boss death
+    {
+      const bosses = bossQuery(this.world)
+      let bossAlive = false
+      for (const beid of bosses) {
+        if (Health.current[beid]! > 0) {
+          bossAlive = true
+          this.lastBossX = Position.x[beid]!
+          this.lastBossY = Position.y[beid]!
+        }
+      }
+      if (this.lastBossAlive && !bossAlive && bosses.length > 0) {
+        this.gameplayEvents.push({ type: 'boss-death', x: this.lastBossX, y: this.lastBossY })
+      }
+      this.lastBossAlive = bossAlive
+    }
+
+    // Update boss camera zoom and letterbox
+    this.updateBossCameraZoom()
+
     // Wave-clear slow-mo
     if (this.world.waveClearedThisTick) {
       this.timeScale.slowMo(0.3, 0.3)
@@ -816,6 +949,52 @@ export class SingleplayerModeController implements SceneModeController {
     }
   }
 
+  private updateBossCameraZoom(): void {
+    const bosses = bossQuery(this.world)
+    let foundBoss = false
+    for (const beid of bosses) {
+      if (Enemy.type[beid] !== EnemyType.OLD_SCRATCH) continue
+      const state = this.world.bossState.get(beid) as OldScratchState | undefined
+      if (!state) continue
+      foundBoss = true
+
+      const phase = state.phase
+      const prevPhase = this.lastBossPhase
+      this.lastBossPhase = phase
+
+      if (phase in BOSS_PHASE_ZOOM) {
+        this.camera.setZoom(BOSS_PHASE_ZOOM[phase]!)
+      } else if (phase === 4) {
+        if (state.drawPhase === 'staredown') {
+          // Progressive zoom in during staredown
+          const duration = getStaredownDuration(state.drawRound)
+          const progress = Math.min(1, 1 - state.staredownTimer / duration)
+          this.camera.setZoom(1.0 + progress * (BOSS_STAREDOWN_ZOOM_MAX - 1.0))
+        } else if (state.drawPhase === 'flash') {
+          this.camera.setZoom(BOSS_FLASH_ZOOM)
+        } else {
+          // scramble / reset
+          this.camera.setZoom(1.0)
+        }
+      }
+
+      // Letterbox on Phase 4 entry/exit
+      if (phase === 4 && prevPhase !== 4 && prevPhase > 0) {
+        this.letterboxOverlay.show()
+      } else if (phase !== 4 && prevPhase === 4) {
+        this.letterboxOverlay.hide()
+      }
+      break
+    }
+    if (!foundBoss) {
+      this.camera.setZoom(1.0)
+      if (this.lastBossPhase === 4) {
+        this.letterboxOverlay.hide()
+      }
+      this.lastBossPhase = 0
+    }
+  }
+
   render(alpha: number, fps: number): void {
     // Compute real delta time for effects
     const now = performance.now()
@@ -837,14 +1016,15 @@ export class SingleplayerModeController implements SceneModeController {
     const fracX = rtCamX - rtSnappedX  // fractional RT pixels (0..1)
     const fracY = rtCamY - rtSnappedY
 
-    // Apply camera transform to world container (pivot in world space)
+    // Apply camera transform to world container (pivot in world space, scaled by zoom)
     this.gameApp.world.pivot.set(rtSnappedX / WORLD_SCALE, rtSnappedY / WORLD_SCALE)
     this.gameApp.world.position.set(INTERNAL_WIDTH / 2, INTERNAL_HEIGHT / 2)
+    this.gameApp.world.scale.set(WORLD_SCALE * camState.zoom)
     this.gameApp.world.rotation = camState.angle
 
     this.lightingSystem.updateLights(realDt)
     this.lightingSystem.resize(INTERNAL_WIDTH, INTERNAL_HEIGHT)
-    this.lightingSystem.render(camState.x, camState.y, WORLD_SCALE)
+    this.lightingSystem.render(camState.x, camState.y, WORLD_SCALE * camState.zoom)
 
     // Scale low-res sprite to fill canvas (handles window resize)
     this.gameApp.resize()
@@ -930,9 +1110,9 @@ export class SingleplayerModeController implements SceneModeController {
         const vx = Velocity.x[eid]!
         const vy = Velocity.y[eid]!
         const speed = Math.sqrt(vx * vx + vy * vy)
-        if (speed > 50 && !isRolling) {
+        if (speed > MOVEMENT_DUST_MIN_SPEED && !isRolling) {
           this.dustAccumulator += realDt
-          if (this.dustAccumulator >= 0.06) {
+          if (this.dustAccumulator >= MOVEMENT_DUST_INTERVAL) {
             this.dustAccumulator = 0
             emitMovementDust(this.particles, Position.x[eid]!, Position.y[eid]!)
           }
@@ -959,7 +1139,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.objectiveRenderer.render(this.world, alpha)
 
     // Render boss attack telegraphs (below entities)
-    this.bossAttackRenderer.render(this.world)
+    this.bossAttackRenderer.render(this.world, this.particles, realDt)
 
     // Render ground cracks (below entities)
     this.groundCrackRenderer.render(this.world)
@@ -980,6 +1160,65 @@ export class SingleplayerModeController implements SceneModeController {
     const playerEid = this.playerRenderer.getPlayerEntity()
     this.showdownRenderer.render(this.world, playerEid !== null ? [playerEid] : [], alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
+
+    // Update animated tile tinting
+    this.tilemapRenderer.update(realDt)
+
+    // Update dust storm fog-of-war
+    {
+      const eid = this.playerRenderer.getPlayerEntity()
+      if (eid !== null) {
+        this.dustStormEffect.update(this.world, Position.x[eid]!, Position.y[eid]!)
+      }
+    }
+
+    // Update draw flash overlay and letterbox bars
+    this.drawFlashOverlay.update(realDt)
+    this.letterboxOverlay.update(realDt)
+
+    // Hellfire Pillar sparks (read pillar EIDs from boss state)
+    this.hellfireSparkAccumulator += realDt
+    if (this.hellfireSparkAccumulator >= HELLFIRE_SPARK_INTERVAL) {
+      this.hellfireSparkAccumulator = 0
+      for (const beid of bossQuery(this.world)) {
+        if (Enemy.type[beid] !== EnemyType.OLD_SCRATCH) continue
+        const state = this.world.bossState.get(beid) as OldScratchState | undefined
+        if (!state) continue
+        for (const pillarEid of state.pillarEids) {
+          if (Health.current[pillarEid]! > 0) {
+            emitHellfireSparks(this.particles, Position.x[pillarEid]!, Position.y[pillarEid]!)
+          }
+        }
+      }
+    }
+
+    // Ghost Rider trail particles
+    this.ghostTrailAccumulator += realDt
+    if (this.ghostTrailAccumulator >= GHOST_TRAIL_INTERVAL) {
+      this.ghostTrailAccumulator = 0
+      for (const eid of enemyAIQuery(this.world)) {
+        if (Enemy.type[eid] !== EnemyType.GHOST_RIDER) continue
+        const vx = Velocity.x[eid]!
+        const vy = Velocity.y[eid]!
+        if (vx * vx + vy * vy > GHOST_TRAIL_MIN_SPEED_SQ) {
+          emitGhostTrail(this.particles, Position.x[eid]!, Position.y[eid]!)
+        }
+      }
+    }
+
+    // Dust swirl particles during storm
+    if (this.dustStormEffect.isActive) {
+      this.dustSwirlAccumulator += realDt
+      if (this.dustSwirlAccumulator >= DUST_SWIRL_INTERVAL) {
+        this.dustSwirlAccumulator = 0
+        const eid = this.playerRenderer.getPlayerEntity()
+        if (eid !== null) {
+          const px = Position.x[eid]!
+          const py = Position.y[eid]!
+          emitDustSwirl(this.particles, px + (Math.random() - 0.5) * 300, py + (Math.random() - 0.5) * 300)
+        }
+      }
+    }
 
     // Update tumbleweeds
     this.tumbleweedRenderer.update(scaledDt)
@@ -1097,6 +1336,9 @@ export class SingleplayerModeController implements SceneModeController {
     this.mapObstacleRenderer.destroy()
     this.showdownRenderer.destroy()
     this.tumbleweedRenderer.destroy()
+    this.dustStormEffect.destroy()
+    this.drawFlashOverlay.destroy()
+    this.letterboxOverlay.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

@@ -80,6 +80,9 @@ export type GameplayEvent =
   | { type: 'enemy-healed'; heals: Array<{ x: number; y: number; amount: number }> }
   | { type: 'rattlesnake-bite'; bites: Array<{ x: number; y: number }> }
   | { type: 'vulture-dive-trail'; trails: Array<{ x: number; y: number }> }
+  | { type: 'draw-flash' }
+  | { type: 'draw-result'; text: string; color: number; timing: 'perfect' | 'good' | 'slow' | 'panic' }
+  | { type: 'boss-death'; x: number; y: number }
 
 export class GameplayEventBuffer {
   private readonly events: GameplayEvent[] = []

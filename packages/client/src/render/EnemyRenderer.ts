@@ -8,7 +8,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import { Graphics, type Container } from 'pixi.js'
-import type { GameWorld } from '@high-noon/shared'
+import type { GameWorld, OldScratchState } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
   AttackConfig, Health, BossPhase, FrontArmor, Flying, NO_TARGET,
@@ -81,6 +81,9 @@ for (const def of allEnemyDefs()) {
 ENEMY_SPRITE_ID[EnemyType.MAD_DOG] = 'mad_dog'
 ENEMY_SPRITE_ID[EnemyType.BOOMSTICK] = 'boomstick'
 ENEMY_SPRITE_ID[EnemyType.COYOTE_JANE] = 'coyote_jane'
+ENEMY_SPRITE_ID[EnemyType.OLD_SCRATCH] = 'old_scratch'
+ENEMY_SPRITE_ID[EnemyType.GHOST_RIDER] = 'ghost_rider'
+// Hellfire Pillar uses custom Graphics, no sprite sheet
 
 /** Per-type sprite scale — populated from enemy registry */
 const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {}
@@ -96,6 +99,8 @@ ENEMY_SPRITE_SCALE[EnemyType.BOOMSTICK] = 2.5
 ENEMY_SPRITE_SCALE[EnemyType.DALTON] = 2.5
 ENEMY_SPRITE_SCALE[EnemyType.COYOTE_JANE] = 2.5
 ENEMY_SPRITE_SCALE[EnemyType.HOLLOW_MAN] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.OLD_SCRATCH] = 2.5
+ENEMY_SPRITE_SCALE[EnemyType.GHOST_RIDER] = 2.5
 
 function isSpriteEnemy(type: number): boolean {
   return ENEMY_SPRITE_ID[type] !== undefined || type === EnemyType.DALTON
@@ -233,6 +238,12 @@ export class EnemyRenderer {
   private readonly diveImpactAnims: DiveImpactAnim[] = []
   /** Dedicated graphics for production-visible armor arc indicator */
   private readonly armorArcGraphics: Graphics | null = null
+  /** Dedicated graphics for chain lightning arcs between Hellfire Pillars */
+  private readonly chainLightningGraphics: Graphics | null = null
+  /** Dedicated graphics for Hellfire Pillar damage zone rings */
+  private readonly pillarZoneGraphics: Graphics | null = null
+  /** Accumulated time for animation effects */
+  private time = 0
   /** Cached interpolated positions for post-loop rendering (armor arc, etc.) */
   private readonly posCache = new Map<number, { x: number; y: number }>()
 
@@ -249,6 +260,12 @@ export class EnemyRenderer {
       this.armorArcGraphics = new Graphics()
       this.armorArcGraphics.visible = false
       entityLayer.addChild(this.armorArcGraphics)
+      this.chainLightningGraphics = new Graphics()
+      this.chainLightningGraphics.visible = false
+      entityLayer.addChild(this.chainLightningGraphics)
+      this.pillarZoneGraphics = new Graphics()
+      this.pillarZoneGraphics.visible = false
+      entityLayer.addChild(this.pillarZoneGraphics)
     }
   }
 
@@ -433,6 +450,7 @@ export class EnemyRenderer {
    * Update enemy sprite positions with interpolation and AI state visuals
    */
   render(world: GameWorld, alpha: number, realDt: number): void {
+    this.time += realDt
     const posCache = this.posCache
     posCache.clear()
 
@@ -557,8 +575,11 @@ export class EnemyRenderer {
         const texture = AssetLoader.getEnemyTexture(spriteId, animState, dir, frame)
         this.registry.setTexture(eid, texture)
 
-        // Handle mirroring and scale
-        const spriteScale = getSpriteScale(type)
+        // Handle mirroring and scale — Old Scratch Phase 3 gets larger
+        let spriteScale = getSpriteScale(type)
+        if (type === EnemyType.OLD_SCRATCH && hasComponent(world, BossPhase, eid) && BossPhase.phase[eid] === 3) {
+          spriteScale = 3.5
+        }
         let scaleX = spriteScale
         const scaleY = spriteScale
         if (dir === 'W') {
@@ -583,6 +604,12 @@ export class EnemyRenderer {
         const delay = EnemyAI.initialDelay[eid]!
         if (delay > 0) {
           a *= Math.max(0.5, 1.0 - delay)
+        }
+
+        // Ghost Rider: spectral blue-white tint and transparency
+        if (type === EnemyType.GHOST_RIDER) {
+          tint = 0x88BBFF
+          a *= 0.6
         }
 
         // Update tint and alpha
@@ -832,6 +859,43 @@ export class EnemyRenderer {
       }
     }
 
+    // Hellfire Pillar damage zone pulsing rings
+    if (this.pillarZoneGraphics) {
+      let hasPillars = false
+      this.pillarZoneGraphics.clear()
+      for (const eid of this.enemyEntities) {
+        if (this.enemyTypes.get(eid) !== EnemyType.HELLFIRE_PILLAR) continue
+        const pos = posCache.get(eid)
+        if (!pos) continue
+        hasPillars = true
+        const pulseAlpha = 0.3 + Math.sin(this.time * 4) * 0.15
+        this.pillarZoneGraphics
+          .circle(pos.x, pos.y, 48)
+          .stroke({ color: 0xFF4400, width: 2, alpha: pulseAlpha })
+      }
+      this.pillarZoneGraphics.visible = hasPillars
+    }
+
+    // Chain lightning arcs between Hellfire Pillars
+    if (this.chainLightningGraphics) {
+      let hasLightning = false
+      this.chainLightningGraphics.clear()
+      for (const eid of this.enemyEntities) {
+        if (this.enemyTypes.get(eid) !== EnemyType.OLD_SCRATCH) continue
+        const state = world.bossState.get(eid) as OldScratchState | undefined
+        if (!state?.chainLightning?.active) continue
+        hasLightning = true
+        const lightningAlpha = 0.8 + Math.sin(this.time * 20) * 0.2
+        for (const pair of state.chainLightning.pairs) {
+          this.chainLightningGraphics
+            .moveTo(pair.ax, pair.ay)
+            .lineTo(pair.bx, pair.by)
+            .stroke({ color: 0xFFFF88, width: 3, alpha: lightningAlpha })
+        }
+      }
+      this.chainLightningGraphics.visible = hasLightning
+    }
+
     // Animate death effects
     for (let i = this.deathEffects.length - 1; i >= 0; i--) {
       const effect = this.deathEffects[i]!
@@ -938,5 +1002,7 @@ export class EnemyRenderer {
     this.vultureGraphics?.destroy()
     this.diveImpactAnims.length = 0
     this.armorArcGraphics?.destroy()
+    this.chainLightningGraphics?.destroy()
+    this.pillarZoneGraphics?.destroy()
   }
 }

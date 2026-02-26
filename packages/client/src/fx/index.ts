@@ -23,4 +23,13 @@ export {
   emitObstacleHit,
   emitPoisonSplash,
   emitVultureDiveTrail,
+  emitHellfireSparks,
+  emitGhostTrail,
+  emitBrimstoneErupt,
+  emitDustSwirl,
+  emitGroundCrackBurst,
+  emitShadowTendrils,
+  emitFireGeyser,
+  emitGoldenSunMotes,
+  emitSmokeSpiral,
 } from './emitters'

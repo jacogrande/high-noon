@@ -13,6 +13,12 @@ import {
   emitWallImpact,
   emitPoisonSplash,
   emitVultureDiveTrail,
+  emitGroundCrackBurst,
+  emitShadowTendrils,
+  emitFireGeyser,
+  emitSmokeSpiral,
+  emitGoldenSunMotes,
+  emitBrimstoneErupt,
   FloatingTextPool,
   ParticlePool,
   KillStreakTracker,
@@ -22,7 +28,29 @@ import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
 import { TimeScale } from '../../engine/TimeScale'
 import { PlayerRenderer } from '../../render/PlayerRenderer'
+import type { DrawFlashOverlay } from '../../render/DrawFlashOverlay'
 import type { GameplayEvent } from './GameplayEvents'
+
+// Boss phase transition presentation
+const PHASE_TRANSITION_TRAUMA: Record<number, number> = { 2: 0.4, 3: 0.6, 4: 0.5 }
+const PHASE_TRANSITION_FREEZE: Record<number, number> = { 2: 0.12, 3: 0.15, 4: 0.3 }
+const DEFAULT_PHASE_TRAUMA = 0.4
+const DEFAULT_PHASE_FREEZE = 0.12
+const PHASE_4_SLOWMO_SCALE = 0.2
+const PHASE_4_SLOWMO_DURATION = 0.5
+
+// Boss death presentation
+const BOSS_DEATH_TRAUMA = 0.7
+const BOSS_DEATH_FREEZE = 0.5
+const BOSS_DEATH_SLOWMO_SCALE = 0.15
+const BOSS_DEATH_SLOWMO_DURATION = 1.0
+
+// Draw result presentation
+const DRAW_PERFECT_FLASH_TINT = 0xFFD700
+const DRAW_PERFECT_SLOWMO_SCALE = 0.3
+const DRAW_PERFECT_SLOWMO_DURATION = 0.3
+const DRAW_SLOW_FLASH_TINT = 0xFF4444
+const DRAW_PANIC_TRAUMA = 0.3
 
 export interface GameplayEventProcessorDeps {
   camera: Camera
@@ -35,6 +63,7 @@ export interface GameplayEventProcessorDeps {
   spawnMuzzleLight?: (x: number, y: number) => void
   killStreakTracker?: KillStreakTracker
   timeScale?: TimeScale
+  drawFlashOverlay?: DrawFlashOverlay
 }
 
 export class GameplayEventProcessor {
@@ -48,6 +77,7 @@ export class GameplayEventProcessor {
   private readonly spawnMuzzleLight: ((x: number, y: number) => void) | undefined
   private readonly killStreakTracker: KillStreakTracker | undefined
   private readonly timeScale: TimeScale | undefined
+  private readonly drawFlashOverlay: DrawFlashOverlay | undefined
   private pendingBossIntro: { bossName: string; taunt: string } | null = null
 
   constructor(deps: GameplayEventProcessorDeps) {
@@ -61,6 +91,7 @@ export class GameplayEventProcessor {
     this.spawnMuzzleLight = deps.spawnMuzzleLight
     this.killStreakTracker = deps.killStreakTracker
     this.timeScale = deps.timeScale
+    this.drawFlashOverlay = deps.drawFlashOverlay
   }
 
   processAll(events: readonly GameplayEvent[]): void {
@@ -236,10 +267,31 @@ export class GameplayEventProcessor {
           break
 
         case 'boss-phase-transition':
-          this.camera.addTrauma(0.4)
           this.sound.play('showdown_activate')
-          emitDeathPulse(this.particles, event.x, event.y, 80)
-          this.hitStop?.freeze(0.12)
+          {
+            const trauma = PHASE_TRANSITION_TRAUMA[event.newPhase] ?? DEFAULT_PHASE_TRAUMA
+            const freeze = PHASE_TRANSITION_FREEZE[event.newPhase] ?? DEFAULT_PHASE_FREEZE
+            this.camera.addTrauma(trauma)
+            this.hitStop?.freeze(freeze)
+            switch (event.newPhase) {
+              case 2: // Ground crack
+                emitGroundCrackBurst(this.particles, event.x, event.y)
+                emitBrimstoneErupt(this.particles, event.x, event.y)
+                break
+              case 3: // Shadow tendrils + fire
+                emitShadowTendrils(this.particles, event.x, event.y)
+                emitFireGeyser(this.particles, event.x, event.y)
+                emitDeathPulse(this.particles, event.x, event.y, 100)
+                break
+              case 4: // Smoke + slow-mo
+                emitSmokeSpiral(this.particles, event.x, event.y)
+                this.timeScale?.slowMo(PHASE_4_SLOWMO_SCALE, PHASE_4_SLOWMO_DURATION)
+                break
+              default:
+                emitDeathPulse(this.particles, event.x, event.y, 80)
+                break
+            }
+          }
           break
 
         case 'enemy-healed':
@@ -258,6 +310,37 @@ export class GameplayEventProcessor {
           for (const trail of event.trails) {
             emitVultureDiveTrail(this.particles, trail.x, trail.y)
           }
+          break
+
+        case 'draw-flash':
+          this.drawFlashOverlay?.triggerFlash()
+          this.camera.addTrauma(0.3)
+          this.sound.play('showdown_activate')
+          break
+
+        case 'draw-result':
+          this.drawFlashOverlay?.showResult(event.text, event.color)
+          switch (event.timing) {
+            case 'perfect':
+              this.drawFlashOverlay?.triggerFlash(DRAW_PERFECT_FLASH_TINT)
+              this.timeScale?.slowMo(DRAW_PERFECT_SLOWMO_SCALE, DRAW_PERFECT_SLOWMO_DURATION)
+              break
+            case 'slow':
+              this.drawFlashOverlay?.triggerFlash(DRAW_SLOW_FLASH_TINT)
+              break
+            case 'panic':
+              this.camera.addTrauma(DRAW_PANIC_TRAUMA)
+              break
+          }
+          break
+
+        case 'boss-death':
+          this.camera.addTrauma(BOSS_DEATH_TRAUMA)
+          this.hitStop?.freeze(BOSS_DEATH_FREEZE)
+          this.timeScale?.slowMo(BOSS_DEATH_SLOWMO_SCALE, BOSS_DEATH_SLOWMO_DURATION)
+          emitSmokeSpiral(this.particles, event.x, event.y)
+          emitGoldenSunMotes(this.particles, event.x, event.y)
+          this.sound.play('showdown_activate')
           break
       }
     }

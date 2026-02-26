@@ -1,7 +1,46 @@
 import { describe, expect, test } from 'bun:test'
 import { HitStop } from '../../engine/HitStop'
+import { TimeScale } from '../../engine/TimeScale'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import type { GameplayEvent } from './GameplayEvents'
+
+function createTestProcessor(overrides?: {
+  hitStop?: HitStop
+  timeScale?: TimeScale
+  drawFlashOverlay?: { triggerFlash: (c?: number) => void; showResult: (t: string, c: number) => void }
+}) {
+  const traumas: number[] = []
+  const sounds: string[] = []
+  const emissions: number[] = []
+  const hitStop = overrides?.hitStop ?? new HitStop()
+  const timeScale = overrides?.timeScale ?? new TimeScale()
+  const flashCalls: Array<{ color?: number }> = []
+  const resultCalls: Array<{ text: string; color: number }> = []
+  const drawFlash = overrides?.drawFlashOverlay ?? {
+    triggerFlash: (c?: number) => { flashCalls.push({ color: c }) },
+    showResult: (t: string, c: number) => { resultCalls.push({ text: t, color: c }) },
+  }
+
+  const processor = new GameplayEventProcessor({
+    camera: {
+      addTrauma: (v: number) => { traumas.push(v) },
+      applyKick: () => {},
+    } as never,
+    sound: {
+      play: (id: string) => { sounds.push(id) },
+    } as never,
+    particles: {
+      emit: () => { emissions.push(1) },
+    } as never,
+    floatingText: {} as never,
+    playerRenderer: {} as never,
+    hitStop,
+    timeScale,
+    drawFlashOverlay: drawFlash as never,
+  })
+
+  return { processor, traumas, sounds, emissions, hitStop, timeScale, flashCalls, resultCalls }
+}
 
 describe('GameplayEventProcessor', () => {
   test('player-hit triggers trauma, sound, simulation hit-stop, and render pause', () => {
@@ -157,5 +196,95 @@ describe('GameplayEventProcessor', () => {
       taunt: 'No law out here.',
     })
     expect(processor.consumePendingBossIntro()).toBeNull()
+  })
+
+  test('boss-phase-transition to phase 2 uses ground crack particles', () => {
+    const { processor, traumas, sounds, emissions, hitStop } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'boss-phase-transition',
+      x: 100, y: 200,
+      newPhase: 2,
+    }])
+
+    expect(traumas).toEqual([0.4])
+    expect(sounds).toContain('showdown_activate')
+    expect(emissions.length).toBeGreaterThan(0)
+    expect(hitStop.isFrozen).toBe(true)
+  })
+
+  test('boss-phase-transition to phase 3 uses shadow tendrils + fire geyser', () => {
+    const { processor, traumas, sounds, emissions, hitStop } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'boss-phase-transition',
+      x: 100, y: 200,
+      newPhase: 3,
+    }])
+
+    expect(traumas).toEqual([0.6])
+    expect(sounds).toContain('showdown_activate')
+    // Shadow tendrils (20-24) + fire geyser (10-14) + death pulse (16-24) = lots of particles
+    expect(emissions.length).toBeGreaterThan(30)
+    expect(hitStop.isFrozen).toBe(true)
+  })
+
+  test('boss-phase-transition to phase 4 triggers slow-mo', () => {
+    const { processor, traumas, sounds, hitStop, timeScale } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'boss-phase-transition',
+      x: 100, y: 200,
+      newPhase: 4,
+    }])
+
+    expect(traumas).toEqual([0.5])
+    expect(sounds).toContain('showdown_activate')
+    expect(hitStop.isFrozen).toBe(true)
+    expect(timeScale.current).toBeLessThan(1) // slow-mo active
+  })
+
+  test('boss-death triggers heavy trauma, hit-stop, slow-mo', () => {
+    const { processor, traumas, sounds, hitStop, timeScale, emissions } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'boss-death',
+      x: 400, y: 300,
+    }])
+
+    expect(traumas).toEqual([0.7])
+    expect(hitStop.isFrozen).toBe(true)
+    expect(timeScale.current).toBeLessThan(1)
+    expect(sounds).toContain('showdown_activate')
+    expect(emissions.length).toBeGreaterThan(0)
+  })
+
+  test('draw-result perfect triggers gold flash + slow-mo', () => {
+    const { processor, flashCalls, timeScale } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'draw-result',
+      text: 'PERFECT',
+      color: 0xFFD700,
+      timing: 'perfect',
+    }])
+
+    expect(flashCalls.length).toBe(1)
+    expect(flashCalls[0]!.color).toBe(0xFFD700)
+    expect(timeScale.current).toBeLessThan(1)
+  })
+
+  test('draw-result panic triggers trauma, no flash', () => {
+    const { processor, traumas, flashCalls } = createTestProcessor()
+
+    processor.processAll([{
+      type: 'draw-result',
+      text: 'TOO EARLY',
+      color: 0xFF4444,
+      timing: 'panic',
+    }])
+
+    expect(traumas).toEqual([0.3])
+    expect(flashCalls.length).toBe(0) // panic = no flash
   })
 })

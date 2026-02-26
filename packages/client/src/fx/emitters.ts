@@ -7,6 +7,20 @@
 
 import type { ParticlePool } from './ParticlePool'
 
+// Shared fire/flame palette — used by hellfire, brimstone, geyser, and ground crack emitters
+const FIRE_ORANGE_HOT = 0xFF4400
+const FIRE_ORANGE_WARM = 0xFF8800
+const FIRE_ORANGE_MID = 0xFF6600
+const FIRE_YELLOW = 0xFFCC00
+
+// Smoke palette
+const SMOKE_DARK = 0x333333
+const SMOKE_LIGHT = 0x444444
+
+// Shadow palette
+const SHADOW_DEEP = 0x441188
+const SHADOW_MID = 0x6622AA
+
 /** Random float in [min, max) */
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min)
@@ -588,6 +602,240 @@ export function emitVultureDiveTrail(
       startAlpha: 0.5,
       endAlpha: 0,
       tint: 0x554433,
+    })
+  }
+}
+
+/**
+ * Hellfire sparks — continuous upward sparks from Hellfire Pillar.
+ */
+export function emitHellfireSparks(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(2, 3)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(-Math.PI * 0.8, -Math.PI * 0.2) // upward arc
+    const speed = rand(40, 80)
+    pool.emit({
+      x: x + rand(-6, 6),
+      y,
+      vx: Math.cos(angle) * speed * rand(0.3, 1),
+      vy: -rand(40, 80),
+      life: rand(0.3, 0.5),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? FIRE_ORANGE_HOT : FIRE_ORANGE_MID,
+    })
+  }
+}
+
+/**
+ * Ghost trail — spectral blue-white wisp behind Ghost Rider.
+ */
+export function emitGhostTrail(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(1, 2)
+  for (let i = 0; i < count; i++) {
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-4, 4),
+      vx: rand(-10, 10),
+      vy: rand(-10, 10),
+      life: rand(0.4, 0.6),
+      startScale: 3,
+      endScale: 6,
+      startAlpha: 0.4,
+      endAlpha: 0,
+      tint: 0x88BBFF,
+    })
+  }
+}
+
+/**
+ * Brimstone erupt — fire burst when a tile becomes BRIMSTONE.
+ */
+export function emitBrimstoneErupt(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(4, 6)
+  for (let i = 0; i < count; i++) {
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-2, 2),
+      vx: rand(-30, 30),
+      vy: -rand(60, 120),
+      life: rand(0.3, 0.5),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? FIRE_ORANGE_HOT : FIRE_ORANGE_WARM,
+    })
+  }
+}
+
+/**
+ * Dust swirl — ambient sandy particles during dust storm.
+ */
+export function emitDustSwirl(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  pool.emit({
+    x: x + rand(-8, 8),
+    y: y + rand(-8, 8),
+    vx: rand(-20, 20),
+    vy: rand(-20, 20),
+    life: rand(1.0, 2.0),
+    startScale: 4,
+    endScale: 8,
+    startAlpha: 0.15,
+    endAlpha: 0,
+    tint: 0xAA8855,
+  })
+}
+
+/**
+ * Ground crack burst — orange/red ring radiating outward. For P1→P2 transition.
+ */
+export function emitGroundCrackBurst(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(16, 20)
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + rand(-0.15, 0.15)
+    const speed = rand(60, 130)
+    pool.emit({
+      x: x + rand(-3, 3),
+      y: y + rand(-3, 3),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.4, 0.6),
+      startScale: rand(2, 4),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.4 ? FIRE_ORANGE_HOT : FIRE_ORANGE_WARM, // 60% hot, 40% warm
+    })
+  }
+}
+
+/**
+ * Shadow tendrils — dark purple particles expanding outward. For P2→P3 transition.
+ */
+export function emitShadowTendrils(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(20, 24)
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + rand(-0.2, 0.2)
+    const speed = rand(40, 100)
+    pool.emit({
+      x: x + rand(-4, 4),
+      y: y + rand(-4, 4),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: rand(0.5, 0.8),
+      startScale: rand(2, 3),
+      endScale: rand(5, 8),
+      startAlpha: 0.7,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? SHADOW_MID : SHADOW_DEEP,
+    })
+  }
+}
+
+/**
+ * Fire geyser — orange/yellow particles with strong upward velocity + gravity.
+ * For pillar eruption / phase transitions.
+ */
+export function emitFireGeyser(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(10, 14)
+  for (let i = 0; i < count; i++) {
+    pool.emit({
+      x: x + rand(-6, 6),
+      y,
+      vx: rand(-30, 30),
+      vy: -rand(150, 250),
+      life: rand(0.4, 0.7),
+      startScale: rand(3, 5),
+      endScale: 0,
+      startAlpha: 1,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? FIRE_ORANGE_WARM : FIRE_YELLOW,
+      ay: 300,
+    })
+  }
+}
+
+/**
+ * Golden sun motes — slow drifting gold particles. For boss death.
+ */
+export function emitGoldenSunMotes(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(12, 16)
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2)
+    const speed = rand(10, 30)
+    pool.emit({
+      x: x + rand(-10, 10),
+      y: y + rand(-10, 10),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - rand(5, 15),
+      life: rand(1.0, 2.0),
+      startScale: rand(1.5, 3),
+      endScale: rand(4, 6),
+      startAlpha: 0.8,
+      endAlpha: 0,
+      tint: 0xFFD700,
+    })
+  }
+}
+
+/**
+ * Smoke spiral — dark grey particles spiraling upward. For boss death.
+ */
+export function emitSmokeSpiral(
+  pool: ParticlePool,
+  x: number,
+  y: number,
+): void {
+  const count = randInt(8, 12)
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2
+    const orbitalSpeed = rand(20, 40)
+    pool.emit({
+      x: x + Math.cos(angle) * rand(4, 12),
+      y: y + Math.sin(angle) * rand(4, 12),
+      vx: Math.cos(angle + Math.PI / 2) * orbitalSpeed,
+      vy: -rand(40, 80),
+      life: rand(0.6, 1.0),
+      startScale: rand(3, 5),
+      endScale: rand(6, 10),
+      startAlpha: 0.5,
+      endAlpha: 0,
+      tint: rand(0, 1) > 0.5 ? SMOKE_LIGHT : SMOKE_DARK,
     })
   }
 }

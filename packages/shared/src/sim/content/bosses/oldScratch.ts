@@ -456,6 +456,9 @@ export interface OldScratchState {
   scrambleTimer: number         // scramble countdown
   resetTimer: number            // reset countdown
 
+  // Per-tick flags for client feedback
+  panicShotThisTick: boolean
+
   // Phase transition guard
   phaseTransitionDone: Set<number>
 }
@@ -510,6 +513,8 @@ function createOldScratchState(): OldScratchState {
     staggerTimer: 0,
     scrambleTimer: 0,
     resetTimer: 0,
+
+    panicShotThisTick: false,
 
     phaseTransitionDone: new Set(),
   }
@@ -1342,6 +1347,7 @@ function pushAttackTelegraph(
 
 function tick(world: GameWorld, eid: number, dt: number): void {
   const state = getState(world, eid)
+  state.panicShotThisTick = false
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
   const desired = getDesiredPhase(hpRatio)
@@ -1790,6 +1796,7 @@ function handleCounterHook(
           setIframes: true,
         })
       }
+      state.panicShotThisTick = true
       return { damage: 0, pierce: false }
     }
   }
