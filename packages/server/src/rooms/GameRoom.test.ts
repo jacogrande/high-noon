@@ -33,6 +33,8 @@ function createRoom(): GameRoom {
   ;(room as {
     setSimulationInterval: (cb: (deltaMs: number) => void, ms?: number) => void
   }).setSimulationInterval = () => undefined
+  ;(room as { setMetadata: (meta: unknown) => void }).setMetadata = () => undefined
+  ;(room as { lock: () => void }).lock = () => { (room as { locked: boolean }).locked = true }
   room.onCreate()
   return room
 }

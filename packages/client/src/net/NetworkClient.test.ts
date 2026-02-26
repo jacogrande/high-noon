@@ -395,6 +395,8 @@ describe('NetworkClient', () => {
     expect(received[0]).toEqual({
       phase: 'lobby',
       serverTick: 0,
+      roomCode: '',
+      friendlyFire: 'none',
       players: [
         { sessionId: 'sessionA', name: 'Alice', characterId: 'sheriff', ready: false },
       ],
@@ -402,6 +404,8 @@ describe('NetworkClient', () => {
     expect(received[1]).toEqual({
       phase: 'playing',
       serverTick: 12,
+      roomCode: '',
+      friendlyFire: 'none',
       players: [
         { sessionId: 'sessionA', name: 'Alice', characterId: 'undertaker', ready: true },
         { sessionId: 'sessionB', name: 'Bob', characterId: 'prospector', ready: false },
