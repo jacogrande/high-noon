@@ -83,6 +83,12 @@ export type GameplayEvent =
   | { type: 'draw-flash' }
   | { type: 'draw-result'; text: string; color: number; timing: 'perfect' | 'good' | 'slow' | 'panic' }
   | { type: 'boss-death'; x: number; y: number }
+  | { type: 'roll' }
+  | { type: 'wave-start' }
+  | { type: 'wave-clear' }
+  | { type: 'stage-complete' }
+  | { type: 'gold-pickup' }
+  | { type: 'player-death' }
 
 export class GameplayEventBuffer {
   private readonly events: GameplayEvent[] = []

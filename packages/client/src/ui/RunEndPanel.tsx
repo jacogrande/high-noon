@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ItemTooltip } from './ItemTooltip'
+import { useGameAudio } from '../audio/GameAudioContext'
 
 interface RunEndPanelProps {
   outcome: 'victory' | 'defeat' | 'mutual_kill'
@@ -33,6 +34,7 @@ export function RunEndPanel({
   onPlayAgain,
   onQuitToMenu,
 }: RunEndPanelProps) {
+  const { playClick, playHover: playHoverSound } = useGameAudio()
   const [active, setActive] = useState(false)
   const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
 
@@ -120,9 +122,10 @@ export function RunEndPanel({
         <div style={styles.actions}>
           <button
             style={styles.playAgainButton}
-            onClick={onPlayAgain}
+            onClick={() => { playClick(); onPlayAgain() }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.35)'
+              playHoverSound()
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.2)'
@@ -132,9 +135,10 @@ export function RunEndPanel({
           </button>
           <button
             style={styles.quitButton}
-            onClick={onQuitToMenu}
+            onClick={() => { playClick(); onQuitToMenu() }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(120, 100, 80, 0.25)'
+              playHoverSound()
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(120, 100, 80, 0.1)'

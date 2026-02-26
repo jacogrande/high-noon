@@ -8,6 +8,7 @@ import { CoreGameScene } from '../scenes/CoreGameScene'
 import { getSingleplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { GameAudioContext } from '../audio/GameAudioContext'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
@@ -40,6 +41,7 @@ export function Game() {
   showControlsRef.current = showControls
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+  const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const [showRunEnd, setShowRunEnd] = useState<'victory' | 'defeat' | 'mutual_kill' | null>(null)
@@ -113,6 +115,7 @@ export function Game() {
         characterId,
       })
       sceneRef.current = scene
+      setSoundManager(scene.getSoundManager())
       if (!mounted) {
         scene.destroy()
         gameApp.destroy()
@@ -396,6 +399,7 @@ export function Game() {
   }
 
   return (
+    <GameAudioContext.Provider value={soundManager}>
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
       {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && !showRunEnd && <GameHUD state={hudState} />}
@@ -468,6 +472,7 @@ export function Game() {
         />
       )}
     </div>
+    </GameAudioContext.Provider>
   )
 }
 

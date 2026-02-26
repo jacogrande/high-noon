@@ -15,6 +15,8 @@ import {
   Position,
   Velocity,
   Player,
+  PlayerState,
+  PlayerStateType,
   Health,
   Dead,
   Cylinder,
@@ -54,6 +56,7 @@ import {
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
+import { AmbientManager } from '../../audio/AmbientManager'
 import { INTERNAL_WIDTH, INTERNAL_HEIGHT, WORLD_SCALE, type GameApp } from '../../engine/GameApp'
 import { Input } from '../../engine/Input'
 import { Camera } from '../../engine/Camera'
@@ -135,6 +138,8 @@ const MAX_PENDING_BULLET_EVENTS = 128
 const MAX_PENDING_SHOT_RESULTS = 128
 const REMOTE_BULLET_MAX_AGE_TICKS = 30
 const MAX_PENDING_VISUAL_SHOTS = 256
+const MOVEMENT_SPEED_THRESHOLD = 50
+const FOOTSTEP_INTERVAL = 0.15
 
 interface PendingVisualShot {
   shootSeq: number
@@ -173,6 +178,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly floatingText: FloatingTextPool
   private readonly chatBubblePool: ChatBubblePool
   private readonly sound: SoundManager
+  private readonly ambient: AmbientManager
   private net: NetworkClient
   private readonly clockSync: ClockSync
   private readonly snapshotBuffer: SnapshotBuffer
@@ -261,6 +267,13 @@ export class MultiplayerModeController implements SceneModeController {
   /** Track level for level-up event detection */
   private lastProcessedLevel = 0
 
+  /** Audio state tracking */
+  private footstepAccumulator = 0
+  private wasRolling = false
+  private lastWaveActive = false
+  private lastGold = 0
+  private wasDead = false
+
   private lastRenderTime: number
 
   constructor(gameApp: GameApp, selectedCharacterId: CharacterId = 'sheriff') {
@@ -323,6 +336,7 @@ export class MultiplayerModeController implements SceneModeController {
     // Sound
     this.sound = new SoundManager()
     this.sound.loadAll(SOUND_DEFS)
+    this.ambient = new AmbientManager()
 
     // Network
     this.net = new NetworkClient()
@@ -989,6 +1003,44 @@ export class MultiplayerModeController implements SceneModeController {
       }
     }
 
+    // Wave-start detection
+    {
+      const waveActive = this.latestHud?.waveStatus === 'active'
+      if (waveActive && !this.lastWaveActive) {
+        this.gameplayEvents.push({ type: 'wave-start' })
+      }
+      this.lastWaveActive = waveActive
+    }
+
+    // Stage-complete detection
+    if (this.latestHud?.stageStatus === 'completed') {
+      // Emit once on transition (stageCleared handled by server)
+    }
+
+    // Gold pickup detection
+    {
+      const gold = this.latestHud?.goldCollected ?? 0
+      if (gold > this.lastGold) {
+        this.gameplayEvents.push({ type: 'gold-pickup' })
+      }
+      this.lastGold = gold
+    }
+
+    // Player death detection
+    {
+      const dead = this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid)
+      if (dead && !this.wasDead) {
+        this.gameplayEvents.push({ type: 'player-death' })
+      }
+      this.wasDead = dead
+    }
+
+    // Update ambient track
+    {
+      const stageIndex = (this.latestHud?.stageNumber ?? 1) - 1
+      this.ambient.setStage(stageIndex)
+    }
+
     if (this.myClientEid < 0) return
     const error = this.reconciler.getError()
 
@@ -1154,6 +1206,7 @@ export class MultiplayerModeController implements SceneModeController {
     const rawDt = (now - this.lastRenderTime) / 1000
     const realDt = Math.min(rawDt, 0.25)
     this.lastRenderTime = now
+    this.ambient.update(realDt)
     if (this.renderPause.update(realDt) === 0) return
 
     // Interpolate snapshot data into ECS arrays
@@ -1249,6 +1302,28 @@ export class MultiplayerModeController implements SceneModeController {
 
     if (this.myClientEid >= 0) {
       this.playerRenderer.clearRenderPositionOverride(this.myClientEid)
+    }
+
+    // Footstep + roll sounds for local player
+    if (this.myClientEid >= 0 && hasComponent(this.world, PlayerState, this.myClientEid)) {
+      const isRolling = PlayerState.state[this.myClientEid] === PlayerStateType.ROLLING
+      if (isRolling && !this.wasRolling) {
+        this.gameplayEvents.push({ type: 'roll' })
+      }
+      this.wasRolling = isRolling
+
+      const vx = Velocity.x[this.myClientEid]!
+      const vy = Velocity.y[this.myClientEid]!
+      const speed = Math.sqrt(vx * vx + vy * vy)
+      if (speed > MOVEMENT_SPEED_THRESHOLD && !isRolling) {
+        this.footstepAccumulator += realDt
+        if (this.footstepAccumulator >= FOOTSTEP_INTERVAL) {
+          this.footstepAccumulator = 0
+          this.sound.play('footstep')
+        }
+      } else {
+        this.footstepAccumulator = 0
+      }
     }
 
     this.bulletRenderer.updateVisualBullets(realDt)
@@ -1658,6 +1733,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.clockSync.stop()
     this.net.disconnect()
     this.sound.destroy()
+    this.ambient.destroy()
     this.particles.destroy()
     this.floatingText.destroy()
     this.deathPresentation.destroy()

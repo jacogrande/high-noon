@@ -1,3 +1,5 @@
 export { SoundManager } from './SoundManager'
 export { SOUND_DEFS } from './sounds'
 export type { SoundDef, SoundName } from './sounds'
+export { AmbientManager } from './AmbientManager'
+export { GameAudioContext, useGameAudio } from './GameAudioContext'

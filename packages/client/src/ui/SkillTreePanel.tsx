@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import type { SkillTreeUIData, SkillNodeState } from '../scenes/types'
+import { useGameAudio } from '../audio/GameAudioContext'
 
 interface SkillTreePanelProps {
   data: SkillTreeUIData
@@ -90,9 +91,13 @@ function getTierConnectorColor(state: SkillNodeState, accent: { color: string })
 }
 
 export function SkillTreePanel({ data, onSelectNode, onClose }: SkillTreePanelProps) {
+  const { playClick, playHover } = useGameAudio()
   const handleClick = useCallback((nodeId: string, state: SkillNodeState) => {
-    if (state === 'available') onSelectNode(nodeId)
-  }, [onSelectNode])
+    if (state === 'available') {
+      playClick()
+      onSelectNode(nodeId)
+    }
+  }, [onSelectNode, playClick])
 
   return (
     <div style={styles.overlay}>
@@ -150,6 +155,7 @@ export function SkillTreePanel({ data, onSelectNode, onClose }: SkillTreePanelPr
                               e.currentTarget.style.borderColor = accent.color
                               e.currentTarget.style.boxShadow = `0 0 10px ${accent.glow}`
                               e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+                              playHover()
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -197,9 +203,10 @@ export function SkillTreePanel({ data, onSelectNode, onClose }: SkillTreePanelPr
         <div style={styles.footer}>
           <button
             style={styles.closeButton}
-            onClick={onClose}
+            onClick={() => { playClick(); onClose() }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              playHover()
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent'

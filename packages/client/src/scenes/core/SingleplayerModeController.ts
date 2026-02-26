@@ -91,6 +91,7 @@ import { LetterboxOverlay } from '../../render/LetterboxOverlay'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
+import { AmbientManager } from '../../audio/AmbientManager'
 import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust, emitWoodSplinters, emitRockDebris, emitObstacleHit, emitHellfireSparks, emitGhostTrail, emitDustSwirl } from '../../fx'
 import { TimeScale } from '../../engine/TimeScale'
 import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
@@ -133,6 +134,7 @@ const HELLFIRE_SPARK_INTERVAL = 0.08
 const GHOST_TRAIL_INTERVAL = 0.1
 const GHOST_TRAIL_MIN_SPEED_SQ = 100
 const DUST_SWIRL_INTERVAL = 0.15
+const FOOTSTEP_INTERVAL = 0.15
 
 // Per-phase camera zoom targets
 const BOSS_PHASE_ZOOM: Record<number, number> = { 1: 1.0, 2: 0.9, 3: 0.8 }
@@ -187,6 +189,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly collisionDebugRenderer: CollisionDebugRenderer
   private currentTilemap: Tilemap | null = null
   private readonly sound: SoundManager
+  private readonly ambient: AmbientManager
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
   private readonly chatBubblePool: ChatBubblePool
@@ -203,6 +206,7 @@ export class SingleplayerModeController implements SceneModeController {
   private dryFireCooldown = 0
   private paused = false
   private dustAccumulator = 0
+  private footstepAccumulator = 0
   private wasRolling = false
   private readonly dustStormEffect: DustStormEffect
   private readonly drawFlashOverlay: DrawFlashOverlay
@@ -216,6 +220,9 @@ export class SingleplayerModeController implements SceneModeController {
   private dustSwirlAccumulator = 0
   private hellfireSparkAccumulator = 0
   private ghostTrailAccumulator = 0
+  private lastWaveActive = false
+  private lastGold = 0
+  private wasDead = false
 
   constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
@@ -303,6 +310,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Audio
     this.sound = new SoundManager()
     this.sound.loadAll(SOUND_DEFS)
+    this.ambient = new AmbientManager()
 
     // Particles
     this.particles = new ParticlePool(this.gameApp.layers.fx)
@@ -922,15 +930,47 @@ export class SingleplayerModeController implements SceneModeController {
     // Update boss camera zoom and letterbox
     this.updateBossCameraZoom()
 
+    // Wave-start detection
+    {
+      const enc = this.world.encounter
+      const waveActive = enc ? enc.waveActive : false
+      if (waveActive && !this.lastWaveActive) {
+        this.gameplayEvents.push({ type: 'wave-start' })
+      }
+      this.lastWaveActive = waveActive
+    }
+
     // Wave-clear slow-mo
     if (this.world.waveClearedThisTick) {
       this.timeScale.slowMo(0.3, 0.3)
+      this.gameplayEvents.push({ type: 'wave-clear' })
     }
 
     // Stage-clear tumbleweeds
     if (this.world.stageCleared) {
       const tmBounds = getPlayableBoundsFromTilemap(this.tilemap)
       this.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
+      this.gameplayEvents.push({ type: 'stage-complete' })
+    }
+
+    // Gold pickup detection
+    if (this.world.goldCollected > this.lastGold) {
+      this.gameplayEvents.push({ type: 'gold-pickup' })
+    }
+    this.lastGold = this.world.goldCollected
+
+    // Player death detection
+    {
+      const dead = this.isPlayerDead()
+      if (dead && !this.wasDead) {
+        this.gameplayEvents.push({ type: 'player-death' })
+      }
+      this.wasDead = dead
+    }
+
+    // Update ambient track for current stage
+    if (this.world.run) {
+      this.ambient.setStage(this.world.run.currentStage)
     }
 
     // Apply queued feedback events in one place (shared with multiplayer).
@@ -1000,6 +1040,9 @@ export class SingleplayerModeController implements SceneModeController {
     const now = performance.now()
     const realDt = Math.min((now - this.lastRenderTime) / 1000, 0.25)
     this.lastRenderTime = now
+
+    // Update ambient crossfade
+    this.ambient.update(realDt)
 
     // Update hit stop
     this.hitStop.update(realDt)
@@ -1104,6 +1147,7 @@ export class SingleplayerModeController implements SceneModeController {
         const isRolling = PlayerState.state[eid] === PlayerStateType.ROLLING
         if (isRolling && !this.wasRolling) {
           emitRollDust(this.particles, Position.x[eid]!, Position.y[eid]!)
+          this.gameplayEvents.push({ type: 'roll' })
         }
         this.wasRolling = isRolling
 
@@ -1116,8 +1160,14 @@ export class SingleplayerModeController implements SceneModeController {
             this.dustAccumulator = 0
             emitMovementDust(this.particles, Position.x[eid]!, Position.y[eid]!)
           }
+          this.footstepAccumulator += realDt
+          if (this.footstepAccumulator >= FOOTSTEP_INTERVAL) {
+            this.footstepAccumulator = 0
+            this.sound.play('footstep')
+          }
         } else {
           this.dustAccumulator = 0
+          this.footstepAccumulator = 0
         }
       }
     }
@@ -1314,6 +1364,7 @@ export class SingleplayerModeController implements SceneModeController {
     this.particles.destroy()
     this.floatingText.destroy()
     this.sound.destroy()
+    this.ambient.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
     this.deathPresentation.destroy()

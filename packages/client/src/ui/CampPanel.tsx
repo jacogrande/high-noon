@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { VisitorShopPanel } from './VisitorShopPanel'
 import { TinkererModPanel } from './TinkererModPanel'
 import { ItemTooltip } from './ItemTooltip'
+import { useGameAudio } from '../audio/GameAudioContext'
 
 interface CampPanelProps {
   stageNumber: number
@@ -60,6 +61,7 @@ export function CampPanel({
   onVisitorPurchase,
   onTinkererModSelect,
 }: CampPanelProps) {
+  const { playClick, playHover: playHoverSound } = useGameAudio()
   const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
 
   return (
@@ -133,9 +135,10 @@ export function CampPanel({
           {hasPendingPoints && (
             <button
               style={styles.skillButton}
-              onClick={onOpenSkillTree}
+              onClick={() => { playClick(); onOpenSkillTree() }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.25)'
+                playHoverSound()
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.12)'
@@ -149,11 +152,13 @@ export function CampPanel({
             disabled={rideOutPending}
             onClick={() => {
               if (rideOutPending) return
+              playClick()
               onRideOut()
             }}
             onMouseEnter={(e) => {
               if (rideOutPending) return
               e.currentTarget.style.backgroundColor = 'rgba(255, 68, 34, 0.35)'
+              playHoverSound()
             }}
             onMouseLeave={(e) => {
               if (rideOutPending) return

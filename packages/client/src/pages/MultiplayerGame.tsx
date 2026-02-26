@@ -8,6 +8,7 @@ import { CoreGameScene } from '../scenes/CoreGameScene'
 import { getMultiplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { GameAudioContext } from '../audio/GameAudioContext'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
 import { NetworkClient, type ReconnectState } from '../net/NetworkClient'
@@ -43,6 +44,7 @@ export function MultiplayerGame() {
   const [showControls, setShowControls] = useState(false)
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+  const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const [reconnectState, setReconnectState] = useState<ReconnectState | null>(null)
@@ -242,6 +244,7 @@ export function MultiplayerGame() {
 
       if (cancelled) { scene.destroy(); gameApp.destroy(); return }
       sceneRef.current = scene
+      setSoundManager(scene.getSoundManager())
 
       const gameLoop = new GameLoop(
         (dt) => scene.update(dt),
@@ -550,6 +553,7 @@ export function MultiplayerGame() {
   }
 
   return (
+    <GameAudioContext.Provider value={soundManager}>
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
       {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && <GameHUD state={hudState} />}
@@ -629,6 +633,7 @@ export function MultiplayerGame() {
         </div>
       )}
     </div>
+    </GameAudioContext.Provider>
   )
 }
 

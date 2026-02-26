@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { SettingsPanel } from './SettingsPanel'
+import { useGameAudio } from '../audio/GameAudioContext'
 
 interface PauseMenuProps {
   mode: 'singleplayer' | 'multiplayer'
@@ -22,6 +23,7 @@ export function PauseMenu({
   onQuitToMenu,
   onShowControls,
 }: PauseMenuProps) {
+  const { playClick, playHover: playHoverSound } = useGameAudio()
   const [resumeHover, setResumeHover] = useState(false)
   const [quitHover, setQuitHover] = useState(false)
   const [controlsHover, setControlsHover] = useState(false)
@@ -53,9 +55,9 @@ export function PauseMenu({
                 ? 'rgba(255, 204, 0, 0.18)'
                 : 'rgba(255, 204, 0, 0.08)',
             }}
-            onMouseEnter={() => setControlsHover(true)}
+            onMouseEnter={() => { setControlsHover(true); playHoverSound() }}
             onMouseLeave={() => setControlsHover(false)}
-            onClick={onShowControls}
+            onClick={() => { playClick(); onShowControls() }}
           >
             CONTROLS
           </button>
@@ -66,9 +68,9 @@ export function PauseMenu({
                 ? 'rgba(255, 204, 0, 0.22)'
                 : 'rgba(255, 204, 0, 0.12)',
             }}
-            onMouseEnter={() => setResumeHover(true)}
+            onMouseEnter={() => { setResumeHover(true); playHoverSound() }}
             onMouseLeave={() => setResumeHover(false)}
-            onClick={onResume}
+            onClick={() => { playClick(); onResume() }}
           >
             {resumeLabel}
           </button>
@@ -79,9 +81,9 @@ export function PauseMenu({
                 ? 'rgba(255, 68, 34, 0.35)'
                 : 'rgba(255, 68, 34, 0.2)',
             }}
-            onMouseEnter={() => setQuitHover(true)}
+            onMouseEnter={() => { setQuitHover(true); playHoverSound() }}
             onMouseLeave={() => setQuitHover(false)}
-            onClick={onQuitToMenu}
+            onClick={() => { playClick(); onQuitToMenu() }}
           >
             {quitLabel}
           </button>

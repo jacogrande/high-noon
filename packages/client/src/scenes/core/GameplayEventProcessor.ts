@@ -189,7 +189,7 @@ export class GameplayEventProcessor {
         case 'player-melee-swing': {
           this.camera.addTrauma(event.trauma)
           this.camera.applyKick(Math.cos(event.angle), Math.sin(event.angle), event.kickStrength)
-          this.sound.play('fire')
+          this.sound.play('roll') // whoosh — placeholder until melee_swing SFX added
           this.playerRenderer.triggerRecoil(event.eid)
           emitSwingArc(
             this.particles,
@@ -242,7 +242,7 @@ export class GameplayEventProcessor {
 
         case 'dynamite-detonation':
           this.camera.addTrauma(0.3)
-          this.sound.play('enemy_die')
+          this.sound.play('explosion')
           emitExplosion(this.particles, event.x, event.y, event.radius)
           break
 
@@ -257,12 +257,13 @@ export class GameplayEventProcessor {
 
         case 'boss-intro':
           this.camera.addTrauma(0.2)
+          this.sound.play('boss_intro')
           this.pendingBossIntro = { bossName: event.bossName, taunt: event.taunt }
           break
 
         case 'trap-detonation':
           this.camera.addTrauma(event.kind === 'tripwire' ? 0.25 : 0.15)
-          this.sound.play('enemy_die')
+          this.sound.play('explosion')
           emitExplosion(this.particles, event.x, event.y, event.radius)
           break
 
@@ -340,7 +341,31 @@ export class GameplayEventProcessor {
           this.timeScale?.slowMo(BOSS_DEATH_SLOWMO_SCALE, BOSS_DEATH_SLOWMO_DURATION)
           emitSmokeSpiral(this.particles, event.x, event.y)
           emitGoldenSunMotes(this.particles, event.x, event.y)
-          this.sound.play('showdown_activate')
+          this.sound.play('boss_death')
+          break
+
+        case 'roll':
+          this.sound.play('roll')
+          break
+
+        case 'wave-start':
+          this.sound.play('wave_start')
+          break
+
+        case 'wave-clear':
+          this.sound.play('wave_clear')
+          break
+
+        case 'stage-complete':
+          this.sound.play('stage_complete')
+          break
+
+        case 'gold-pickup':
+          this.sound.play('gold_pickup')
+          break
+
+        case 'player-death':
+          this.sound.play('player_death')
           break
       }
     }
