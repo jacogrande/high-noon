@@ -6,7 +6,7 @@
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
-import { Player, Position, Dead } from './components'
+import { Player, Position, Dead, Downed } from './components'
 import type { GameWorld } from './world'
 
 /** Player entity with position — used by enemy AI, steering, detection, flow field */
@@ -15,14 +15,14 @@ export const playerQuery = defineQuery([Player, Position])
 /** Per-world cache — reuses a single array per world, invalidated by tick + alive count */
 const _aliveCache = new WeakMap<GameWorld, { tick: number; aliveCount: number; result: number[] }>()
 
-/** Return only alive player entity IDs (no Dead component). Cached per-tick per-world. */
+/** Return only alive player entity IDs (no Dead or Downed component). Cached per-tick per-world. */
 export function getAlivePlayers(world: GameWorld): readonly number[] {
   const all = playerQuery(world)
 
-  // Quick alive count to detect mid-tick Dead mutations
+  // Quick alive count to detect mid-tick Dead/Downed mutations
   let aliveCount = 0
   for (const eid of all) {
-    if (!hasComponent(world, Dead, eid)) aliveCount++
+    if (!hasComponent(world, Dead, eid) && !hasComponent(world, Downed, eid)) aliveCount++
   }
 
   let entry = _aliveCache.get(world)
@@ -40,7 +40,7 @@ export function getAlivePlayers(world: GameWorld): readonly number[] {
   entry.result.length = 0
 
   for (const eid of all) {
-    if (!hasComponent(world, Dead, eid)) entry.result.push(eid)
+    if (!hasComponent(world, Dead, eid) && !hasComponent(world, Downed, eid)) entry.result.push(eid)
   }
   return entry.result
 }

@@ -10,7 +10,7 @@ import {
   getShovelPrice,
 } from '../content/economy'
 import { generateCampSalesmanSpawn, generateStagePoiLayout } from '../content/maps/poiGenerator'
-import { Dead, Player, Position } from '../components'
+import { Dead, Downed, Player, Position } from '../components'
 import type { GameWorld, StashState } from '../world'
 import { getUpgradeStateForPlayer, UNMARKED_GRAVE_ID } from '../upgrade'
 
@@ -259,7 +259,7 @@ export function interactionSystem(world: GameWorld, dt: number): void {
 
   const players = playerQuery(world)
   for (const playerEid of players) {
-    if (hasComponent(world, Dead, playerEid)) {
+    if (hasComponent(world, Dead, playerEid) || hasComponent(world, Downed, playerEid)) {
       world.interactionPromptByPlayer.delete(playerEid)
       world.interactionHoldTicksByPlayer.delete(playerEid)
       world.interactionTargetByPlayer.delete(playerEid)

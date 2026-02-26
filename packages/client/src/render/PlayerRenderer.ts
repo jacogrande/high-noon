@@ -27,6 +27,7 @@ import {
   Invincible,
   Health,
   Dead,
+  Downed,
   ZPosition,
   Root,
   Poison,
@@ -84,6 +85,7 @@ interface PlayerVisuals {
   muzzleOffset: { x: number; y: number }
   kickOffset: number
   deathStartTime: number | null
+  reviveRing: Graphics | null
 }
 
 // Define query for player entities with rendering components
@@ -211,6 +213,7 @@ export class PlayerRenderer {
           muzzleOffset: this.resolveMuzzleOffset(weapon),
           kickOffset: 0,
           deathStartTime: null,
+          reviveRing: null,
         })
         if (this.playerEntity === null) {
           this.playerEntity = eid
@@ -300,10 +303,11 @@ export class PlayerRenderer {
       const isRolling = hasComponent(world, Roll, eid) || playerState === PlayerStateType.ROLLING
       const isInvincible = hasComponent(world, Invincible, eid)
       const isDead = hasComponent(world, Dead, eid)
+      const isDowned = hasComponent(world, Downed, eid)
 
-      const isHurt = !isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
+      const isHurt = !isDead && !isDowned && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0
       let animState: AnimationState
-      if (isDead) {
+      if (isDead || isDowned) {
         animState = 'death'
       } else if (isHurt) {
         animState = 'hurt'
@@ -321,7 +325,7 @@ export class PlayerRenderer {
 
       // Get animation frame
       let frame: number
-      if (isDead) {
+      if (isDead || isDowned) {
         if (visuals.deathStartTime === null) {
           visuals.deathStartTime = performance.now()
         }
@@ -384,23 +388,32 @@ export class PlayerRenderer {
       }
       weaponSprite.x = visuals.kickOffset
 
-      // Hide weapon during roll and death
-      const hideWeapon = isDead || isRolling
+      // Hide weapon during roll, death, and downed
+      const hideWeapon = isDead || isDowned || isRolling
       weaponPivot.visible = !hideWeapon
 
       // --- Container-level visual effects ---
-      // Alpha: invincibility
-      if (!isDead && isInvincible) {
+      // Alpha: invincibility or downed (pulsing)
+      if (isDowned) {
+        const pulse = Math.sin(performance.now() * 0.004) * 0.15 + 0.55
+        container.alpha = pulse
+      } else if (!isDead && isInvincible) {
         container.alpha = ALPHA_INVINCIBLE
       } else {
         container.alpha = ALPHA_NORMAL
       }
 
       // Remote player tint (multiplayer) + damage flash
-      const isRemote = this.localPlayerEid !== null && eid !== this.localPlayerEid && !isDead
+      const isRemote = this.localPlayerEid !== null && eid !== this.localPlayerEid && !isDead && !isDowned
       const baseTint = isRemote ? 0x88BBFF : 0xFFFFFF
 
-      if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
+      if (isDowned) {
+        // Downed tint: pulsing red
+        const pulse = Math.sin(performance.now() * 0.006) * 0.3 + 0.7
+        const downedTint = lerpColor(0xFF4444, 0xCC2222, pulse)
+        bodySprite.tint = downedTint
+        weaponSprite.tint = downedTint
+      } else if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
         const flashTick = this.localPlayerEid !== null && eid === this.localPlayerEid
           ? this.localPlayerTick
           : world.tick
@@ -440,6 +453,37 @@ export class PlayerRenderer {
       } else {
         bodySprite.tint = baseTint
         weaponSprite.tint = baseTint
+      }
+
+      // Reset death animation if player is revived
+      if (!isDead && !isDowned && visuals.deathStartTime !== null) {
+        visuals.deathStartTime = null
+      }
+
+      // --- Revive ring for downed players ---
+      if (isDowned) {
+        const progress = Downed.reviveProgress[eid]!
+        if (!visuals.reviveRing) {
+          visuals.reviveRing = new Graphics()
+          visuals.reviveRing.zIndex = 2
+          container.addChild(visuals.reviveRing)
+        }
+        const ring = visuals.reviveRing
+        ring.clear()
+        ring.visible = true
+        const radius = Collider.radius[eid]! + 4
+        // Background ring (dark)
+        ring.circle(0, 0, radius)
+        ring.stroke({ color: 0x441111, width: 2, alpha: 0.5 })
+        // Progress arc (bright)
+        if (progress > 0.001) {
+          const startAngle = -Math.PI / 2
+          const endAngle = startAngle + progress * Math.PI * 2
+          ring.arc(0, 0, radius, startAngle, endAngle)
+          ring.stroke({ color: 0x44FF44, width: 2.5, alpha: 0.9 })
+        }
+      } else if (visuals.reviveRing) {
+        visuals.reviveRing.visible = false
       }
     }
   }
