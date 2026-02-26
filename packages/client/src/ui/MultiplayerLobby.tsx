@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import type { CharacterId, LobbyPlayerState } from '@high-noon/shared'
 
 interface MultiplayerLobbyProps {
@@ -5,6 +6,7 @@ interface MultiplayerLobbyProps {
   localSessionId: string | null
   selectedCharacter: CharacterId
   localReady: boolean
+  roomCode: string
   onSelectCharacter: (characterId: CharacterId) => void
   onToggleReady: () => void
 }
@@ -46,9 +48,23 @@ export function MultiplayerLobby({
   localSessionId,
   selectedCharacter,
   localReady,
+  roomCode,
   onSelectCharacter,
   onToggleReady,
 }: MultiplayerLobbyProps) {
+  const [copied, setCopied] = useState(false)
+
+  const copyCode = useCallback(() => {
+    if (!roomCode) return
+    navigator.clipboard.writeText(roomCode).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      },
+      () => { /* clipboard unavailable — button text stays as COPY */ },
+    )
+  }, [roomCode])
+
   return (
     <div style={styles.root}>
       <div style={styles.title}>MULTIPLAYER LOBBY</div>
@@ -79,6 +95,17 @@ export function MultiplayerLobby({
         </div>
 
         <div style={styles.rosterPanel}>
+          {roomCode && (
+            <div style={styles.roomCodeSection}>
+              <div style={styles.roomCodeLabel}>ROOM CODE</div>
+              <div style={styles.roomCodeRow}>
+                <div style={styles.roomCodeValue}>{roomCode}</div>
+                <button style={styles.copyButton} onClick={copyCode}>
+                  {copied ? 'COPIED' : 'COPY'}
+                </button>
+              </div>
+            </div>
+          )}
           <div style={styles.sectionTitle}>Lobby Roster</div>
           <div style={styles.rosterList}>
             {players.map((player) => {
@@ -273,5 +300,43 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8891aa',
     fontSize: 12,
     marginTop: 4,
+  },
+  roomCodeSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: '10px 12px',
+    backgroundColor: 'rgba(6, 8, 20, 0.75)',
+    border: '1px solid rgba(255, 171, 77, 0.3)',
+    borderRadius: 8,
+  },
+  roomCodeLabel: {
+    fontSize: 10,
+    letterSpacing: '0.1em',
+    color: '#ffc47e',
+  },
+  roomCodeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  roomCodeValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    letterSpacing: '0.2em',
+    color: '#ffffff',
+    flex: 1,
+  },
+  copyButton: {
+    border: '1px solid rgba(255, 171, 77, 0.45)',
+    borderRadius: 6,
+    padding: '6px 14px',
+    backgroundColor: 'rgba(255, 171, 77, 0.18)',
+    color: '#ffc47e',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: '0.08em',
+    cursor: 'pointer',
+    fontFamily: 'monospace',
   },
 }

@@ -11,4 +11,6 @@ export class GameRoomState extends Schema {
   @type('string') phase: string = 'lobby'
   @type({ map: PlayerMeta }) players = new MapSchema<PlayerMeta>()
   @type('uint32') serverTick: number = 0
+  @type('string') roomCode: string = ''
+  @type('string') friendlyFire: string = 'none'
 }
