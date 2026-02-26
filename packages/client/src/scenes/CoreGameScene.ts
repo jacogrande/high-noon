@@ -76,6 +76,10 @@ export class CoreGameScene {
     return this.controller.handleTinkererModSelect?.(offerIndex) ?? false
   }
 
+  handleDraftPick(poolIndex: number): boolean {
+    return this.controller.handleDraftPick?.(poolIndex) ?? false
+  }
+
   setWorldVisible(visible: boolean): void {
     this.controller.setWorldVisible(visible)
   }

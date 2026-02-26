@@ -18,6 +18,8 @@ export class Input {
   private mouseRightDown = false
   /** One-tick edge buffer for action inputs that may be tapped between fixed ticks. */
   private transientButtons = 0
+  /** Set when G is pressed — consumed by the controller to send a player ping. */
+  private _pingRequested: 'location' | 'danger' | null = null
 
   /** Reference position for aim calculation (usually player position) */
   private refX = 0
@@ -72,6 +74,9 @@ export class Input {
         break
       case 'KeyF':
         this.transientButtons |= Button.USE_HP_POTION
+        break
+      case 'KeyG':
+        this._pingRequested = (e.ctrlKey || e.metaKey) ? 'danger' : 'location'
         break
     }
   }
@@ -160,6 +165,16 @@ export class Input {
    */
   getMousePosition(): { x: number; y: number } {
     return { x: this.mouseX, y: this.mouseY }
+  }
+
+  /**
+   * Consume a pending ping request (returns null if none).
+   * Called by the controller each frame to detect G-key presses.
+   */
+  consumePingRequest(): 'location' | 'danger' | null {
+    const req = this._pingRequested
+    this._pingRequested = null
+    return req
   }
 
   /**
