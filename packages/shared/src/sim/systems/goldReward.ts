@@ -4,6 +4,7 @@ import { GOLD_FEVER_MAX_STACKS } from '../content/weapons'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
 import { hasComponent } from 'bitecs'
 import { Player } from '../components'
+import { getOrCreatePlayerStats } from '../stats'
 
 /**
  * Applies queued kill rewards from healthSystem.
@@ -25,6 +26,11 @@ export function goldRewardSystem(world: GameWorld, _dt: number): void {
     }
 
     world.goldCollected += amount
+
+    // Per-player gold tracking
+    if (killer !== null && hasComponent(world, Player, killer)) {
+      getOrCreatePlayerStats(world.playerStats, killer).goldCollected += amount
+    }
 
     if (killer === null || !hasComponent(world, Player, killer)) continue
 

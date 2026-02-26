@@ -1,5 +1,5 @@
 import { Room, type Client } from 'colyseus'
-import { hasComponent, defineQuery, removeEntity } from 'bitecs'
+import { hasComponent, addComponent, removeComponent, defineQuery, removeEntity } from 'bitecs'
 import {
   createGameWorld,
   setWorldTilemap,
@@ -20,6 +20,10 @@ import {
   Cylinder,
   Showdown,
   Health,
+  Dead,
+  Downed,
+  Disconnected,
+  Player,
   Enemy,
   EnemyAI,
   BossPhase,
@@ -61,6 +65,30 @@ import {
   type CharacterId,
   type PlayerRosterEntry,
   computeQuickHash,
+  ROOM_CODE_CHARS,
+  ROOM_CODE_LENGTH,
+  QUICK_PLAY_CODE,
+  CAMP_AUTO_ADVANCE_SECONDS,
+  type CampStatusMessage,
+  type PlayerPingEvent,
+  PING_COOLDOWN_S,
+  PING_MAX_ACTIVE,
+  PING_LIFETIME_S,
+  getCurrentPicker,
+  advanceDraft,
+  autoPickBestItem,
+  DRAFT_PICK_TIMER_S,
+  addItemToPlayer,
+  reapplyAllItemEffects,
+  VOTEKICK_DURATION_S,
+  VOTEKICK_COOLDOWN_S,
+  type VotekickStartMessage,
+  type VotekickCastMessage,
+  type VotekickVoteMessage,
+  type VotekickResultMessage,
+  type RunCompleteMessage,
+  type PlayerStatEntry,
+  getOrCreatePlayerStats,
 } from '@high-noon/shared'
 import { GameRoomState, PlayerMeta } from './schema/GameRoomState'
 import { ClientTickMapper } from '../net/ClientTickMapper'
@@ -97,6 +125,11 @@ const neutralInput: NetworkInput = Object.freeze({
   viewInterpDelayMs: 0,
   shootSeq: 0,
 })
+
+/** AFK detection: ticks of inactivity before warning (60s at 60Hz) */
+const AFK_WARNING_TICKS = 60 * TICK_RATE
+/** AFK detection: ticks of inactivity before kick (90s at 60Hz) */
+const AFK_KICK_TICKS = 90 * TICK_RATE
 
 const REWIND_MAX_MS = 180
 const REWIND_MAX_TICKS = Math.max(1, Math.floor((REWIND_MAX_MS / 1000) * TICK_RATE))
@@ -156,6 +189,14 @@ interface PlayerSlot {
   tickMapper: ClientTickMapper
   lastShootSeq: number
   protocolMismatchNotified: boolean
+  /** Timestamp of last accepted player-ping (for cooldown enforcement) */
+  lastPingMs: number
+  /** Sorted array of tick numbers when each active ping expires */
+  pingExpiryTicks: number[]
+  /** Tick of last non-neutral input (for AFK detection) */
+  lastActiveInputTick: number
+  /** Whether this player has been sent an AFK warning */
+  afkWarned: boolean
 }
 
 /** World coordinate clamp range (generous bounds for any reasonable arena) */
@@ -164,6 +205,7 @@ const WORLD_COORD_MAX = 10_000
 interface JoinOptions {
   name?: string
   characterId?: unknown
+  roomCode?: string
 }
 
 interface MutableShotResultState {
@@ -275,6 +317,24 @@ function consumeInputToken(slot: PlayerSlot, nowMs: number): boolean {
   return true
 }
 
+const ROOM_CODE_CHARSET = new Set(ROOM_CODE_CHARS.split(''))
+
+function isValidRoomCode(code: string): boolean {
+  if (code.length !== ROOM_CODE_LENGTH) return false
+  for (const ch of code) {
+    if (!ROOM_CODE_CHARSET.has(ch)) return false
+  }
+  return true
+}
+
+function generateRoomCode(): string {
+  let code = ''
+  for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]
+  }
+  return code
+}
+
 export class GameRoom extends Room<GameRoomState> {
   override maxClients = MAX_PLAYERS
 
@@ -305,10 +365,30 @@ export class GameRoom extends Room<GameRoomState> {
   private nextBulletNetId = 1
   private readonly campReadySessions = new Set<string>()
   private wasCampTransition = false
+  private campTimerRemaining = 0
+  private campStatusBroadcastAccum = 0
+  private campAutoAdvanced = false
   private readonly rewindClampedByPlayer = new Map<number, boolean>()
   private lastTickDurationMs = 0
   private tickTimingSamples: number[] = []
   private metricsLogTick = 0
+  private roomCode = ''
+  private isQuickPlay = false
+  private activeVote: {
+    voteId: string
+    targetSessionId: string
+    initiatorSessionId: string
+    votes: Map<string, boolean>
+    /** Eligible voter count captured at vote-start time (excludes target) */
+    eligibleCount: number
+    timer: ReturnType<typeof setTimeout>
+  } | null = null
+  private readonly kickedSessionIds = new Set<string>()
+  private readonly votekickCooldowns = new Map<string, number>()
+  /** Whether the run-complete stat broadcast has been sent this run */
+  private runCompleteSent = false
+  /** Wall-clock time when the run started (for duration calculation) */
+  private runStartedAtMs = 0
 
   private logLifecycle(event: string, data?: Record<string, unknown>): void {
     console.log(JSON.stringify({
@@ -321,14 +401,34 @@ export class GameRoom extends Room<GameRoomState> {
     }))
   }
 
-  override onAuth(_client: Client, options?: JoinOptions): boolean {
+  override onAuth(client: Client, options?: JoinOptions): boolean {
     if (options?.characterId !== undefined && !isCharacterId(options.characterId)) {
       throw new Error(`Invalid characterId: ${String(options.characterId)}`)
+    }
+    // Block kicked players from rejoining
+    if (this.kickedSessionIds.has(client.sessionId)) {
+      throw new Error('You have been kicked from this room')
+    }
+    // Validate room code if the client specified one (case-insensitive)
+    if (options?.roomCode) {
+      const code = String(options.roomCode).trim().toUpperCase()
+      if (code === QUICK_PLAY_CODE) {
+        // Quick Play rooms accept any client with the sentinel code
+        if (this.roomCode !== QUICK_PLAY_CODE) {
+          throw new Error('Room is not a Quick Play room')
+        }
+      } else if (code !== this.roomCode) {
+        throw new Error('Invalid room code')
+      }
+    }
+    // Reject new joins once the room is locked (Quick Play game started)
+    if (this.locked) {
+      throw new Error('Game already in progress')
     }
     return true
   }
 
-  override onCreate() {
+  override onCreate(options?: JoinOptions) {
     const seed = Date.now()
     this.world = createGameWorld(seed)
     this.ensureShotResultState()
@@ -345,7 +445,24 @@ export class GameRoom extends Room<GameRoomState> {
     this.systems = createSystemRegistry()
     registerAllSystems(this.systems)
 
+    // Generate room code before setState so the first state broadcast includes it.
+    // Quick Play rooms use a sentinel code for Colyseus filterBy matching.
+    // Private rooms use the client-provided code. Default: generate a fresh one.
+    const incomingCode = typeof options?.roomCode === 'string'
+      ? options.roomCode.trim().toUpperCase()
+      : ''
+    if (incomingCode === QUICK_PLAY_CODE) {
+      this.roomCode = QUICK_PLAY_CODE
+      this.isQuickPlay = true
+    } else if (incomingCode.length === ROOM_CODE_LENGTH && isValidRoomCode(incomingCode)) {
+      this.roomCode = incomingCode
+    } else {
+      this.roomCode = generateRoomCode()
+    }
+
     this.setState(new GameRoomState())
+    this.state.roomCode = this.roomCode
+    this.setMetadata({ roomCode: this.roomCode })
     this.setPatchRate(100) // 10Hz Schema sync for lobby metadata
 
     // Input message handler
@@ -388,6 +505,12 @@ export class GameRoom extends Room<GameRoomState> {
       }
 
       slot.inputQueue.push(input)
+
+      // AFK tracking: any non-zero button press or movement resets the timer
+      if (input.buttons !== 0 || input.moveX !== 0 || input.moveY !== 0) {
+        slot.lastActiveInputTick = this.world.tick
+        slot.afkWarned = false
+      }
     })
 
     // Clock sync ping/pong handler
@@ -396,6 +519,63 @@ export class GameRoom extends Room<GameRoomState> {
         clientTime: data.clientTime,
         serverTime: performance.now(),
       } satisfies PongMessage)
+    })
+
+    // Player ping relay (map markers, NOT clock sync)
+    this.onMessage('player-ping', (client, data: unknown) => {
+      if (this.state.phase !== 'playing') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+
+      // Validate shape
+      if (typeof data !== 'object' || data === null) return
+      const d = data as Record<string, unknown>
+      if (d.type !== 'location' && d.type !== 'enemy' && d.type !== 'danger') return
+      if (!isFiniteNumber(d.worldX) || !isFiniteNumber(d.worldY)) return
+      if (d.targetEid !== undefined && !isFiniteNumber(d.targetEid)) return
+
+      // Player must be alive
+      if (hasComponent(this.world, Dead, slot.eid) || hasComponent(this.world, Downed, slot.eid)) return
+
+      // Cooldown check (server-enforced). lastPingMs starts at 0 so first ping always passes.
+      const now = performance.now()
+      if (now - slot.lastPingMs < PING_COOLDOWN_S * 1000) return
+
+      // Expire old pings (tick-based instead of setTimeout to avoid dangling closures on disconnect)
+      const currentTick = this.world.tick
+      const lifetimeTicks = Math.ceil(PING_LIFETIME_S * TICK_RATE)
+      while (slot.pingExpiryTicks.length > 0 && slot.pingExpiryTicks[0]! <= currentTick) {
+        slot.pingExpiryTicks.shift()
+      }
+      if (slot.pingExpiryTicks.length >= PING_MAX_ACTIVE) return
+
+      // Enemy ping validation: target must be a valid alive enemy
+      let resolvedType = d.type as PlayerPingEvent['type']
+      let targetEid: number | undefined
+      if (d.type === 'enemy' && d.targetEid !== undefined) {
+        const eid = Math.trunc(d.targetEid)
+        // Entity ID 0 is the bitECS sentinel — never a valid target
+        if (eid > 0 && hasComponent(this.world, Enemy, eid) && !hasComponent(this.world, Dead, eid)) {
+          targetEid = eid
+        } else {
+          // Invalid enemy target — degrade to location ping at the given coords
+          resolvedType = 'location'
+        }
+      }
+
+      slot.lastPingMs = now
+      slot.pingExpiryTicks.push(currentTick + lifetimeTicks)
+
+      const event: PlayerPingEvent = {
+        type: resolvedType,
+        worldX: Math.max(-WORLD_COORD_MAX, Math.min(WORLD_COORD_MAX, d.worldX)),
+        worldY: Math.max(-WORLD_COORD_MAX, Math.min(WORLD_COORD_MAX, d.worldY)),
+        senderEid: slot.eid,
+        tick: currentTick,
+        ...(targetEid !== undefined ? { targetEid } : {}),
+      }
+
+      this.broadcast('player-ping', event)
     })
 
     // Re-send authoritative game config when requested by clients (used after reconnect).
@@ -458,6 +638,31 @@ export class GameRoom extends Room<GameRoomState> {
       client.send('tinkerer-mod-result', { success, offerIndex: data.offerIndex })
     })
 
+    this.onMessage('draft-pick', (client, data) => {
+      if (this.state.phase !== 'playing') return
+      const slot = this.slots.get(client.sessionId)
+      if (!slot) return
+      const run = this.world.run
+      if (!run || run.completed || run.transition !== 'camp') return
+
+      const draft = this.world.draftState
+      if (!draft || draft.phase !== 'picking') return
+      if (typeof data?.poolIndex !== 'number' || !Number.isInteger(data.poolIndex)
+          || data.poolIndex < 0 || data.poolIndex >= draft.offers.length) return
+
+      // Must be this player's turn
+      if (getCurrentPicker(draft) !== slot.eid) return
+
+      // Validate the pick
+      const offer = draft.offers[data.poolIndex]
+      if (!offer || offer.pickedBy !== -1) return
+
+      // Apply the pick
+      offer.pickedBy = slot.eid
+      addItemToPlayer(this.world, slot.eid, offer.itemId, reapplyAllItemEffects)
+      advanceDraft(draft)
+    })
+
     this.onMessage('set-character', (client, data) => {
       if (this.state.phase !== 'lobby') return
       const slot = this.slots.get(client.sessionId)
@@ -476,6 +681,16 @@ export class GameRoom extends Room<GameRoomState> {
       this.broadcastPlayerRoster()
     })
 
+    // Friendly fire toggle (lobby only, host sets for the room)
+    this.onMessage('set-friendly-fire', (client, data) => {
+      if (this.state.phase !== 'lobby') return
+      if (!this.slots.has(client.sessionId)) return
+      const mode = typeof data === 'string' ? data : (data as { mode?: string })?.mode
+      if (mode !== 'none' && mode !== 'reduced' && mode !== 'full') return
+      this.state.friendlyFire = mode
+      this.world.friendlyFireMode = mode
+    })
+
     // Skill tree node selection (server-authoritative)
     this.onMessage('select-node', (client, data: SelectNodeRequest) => {
       const slot = this.slots.get(client.sessionId)
@@ -487,6 +702,67 @@ export class GameRoom extends Room<GameRoomState> {
         writeStatsToECS(this.world, slot.eid, us)
       }
       client.send('select-node-result', { success, nodeId: data.nodeId } satisfies SelectNodeResponse)
+    })
+
+    // Vote-kick: start a vote (requires >= 3 players to prevent 1v1 abuse)
+    this.onMessage('votekick-start', (client, data: VotekickStartMessage) => {
+      const initiator = this.slots.get(client.sessionId)
+      if (!initiator) return
+      if (this.state.phase !== 'playing') return // Only during gameplay
+      if (this.activeVote) return // One vote at a time
+      if (this.slots.size < 3) return // Need at least 3 players for a fair vote
+      if (!data?.targetSessionId || typeof data.targetSessionId !== 'string') return
+      if (data.targetSessionId === client.sessionId) return // Can't kick yourself
+      if (!this.slots.has(data.targetSessionId)) return // Target not in room
+
+      // Cooldown check
+      const lastVoteTime = this.votekickCooldowns.get(client.sessionId) ?? 0
+      if (Date.now() - lastVoteTime < VOTEKICK_COOLDOWN_S * 1000) return
+
+      const voteId = `vk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const targetMeta = this.state.players.get(data.targetSessionId)
+      const initiatorMeta = this.state.players.get(client.sessionId)
+      const eligibleCount = this.slots.size - 1 // Snapshot at vote-start time
+
+      this.activeVote = {
+        voteId,
+        targetSessionId: data.targetSessionId,
+        initiatorSessionId: client.sessionId,
+        votes: new Map([[client.sessionId, true]]), // Initiator auto-votes yes
+        eligibleCount,
+        timer: setTimeout(() => this.resolveVotekick(), VOTEKICK_DURATION_S * 1000),
+      }
+
+      this.votekickCooldowns.set(client.sessionId, Date.now())
+
+      const voteMsg: VotekickVoteMessage = {
+        voteId,
+        targetSessionId: data.targetSessionId,
+        targetName: targetMeta?.name ?? data.targetSessionId.slice(0, 8),
+        initiatorName: initiatorMeta?.name ?? client.sessionId.slice(0, 8),
+        expiresInS: VOTEKICK_DURATION_S,
+      }
+      this.broadcast('votekick-vote', voteMsg)
+      this.logLifecycle('votekick-start', { voteId, initiator: client.sessionId, target: data.targetSessionId })
+    })
+
+    // Vote-kick: cast a vote
+    this.onMessage('votekick-cast', (client, data: VotekickCastMessage) => {
+      if (!this.activeVote) return
+      if (!data?.voteId || data.voteId !== this.activeVote.voteId) return
+      if (typeof data.approve !== 'boolean') return
+      // Target cannot vote on their own kick
+      if (client.sessionId === this.activeVote.targetSessionId) return
+      // Only allow one vote per person
+      if (this.activeVote.votes.has(client.sessionId)) return
+      if (!this.slots.has(client.sessionId)) return
+
+      this.activeVote.votes.set(client.sessionId, data.approve)
+
+      // Check if all eligible voters have voted — resolve early
+      if (this.activeVote.votes.size >= this.activeVote.eligibleCount) {
+        this.resolveVotekick()
+      }
     })
 
     this.onMessage('debug-spawn-pause', () => {
@@ -512,6 +788,9 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   override onJoin(client: Client, options?: JoinOptions) {
+    if (this.slots.size >= MAX_PLAYERS) {
+      throw new Error('Room is full')
+    }
     const characterId: CharacterId = isCharacterId(options?.characterId) ? options.characterId : 'sheriff'
     const upgradeState = initUpgradeState(getCharacterDef(characterId))
     const eid = addPlayer(this.world, client.sessionId, upgradeState)
@@ -537,6 +816,10 @@ export class GameRoom extends Room<GameRoomState> {
       tickMapper: new ClientTickMapper(),
       lastShootSeq: 0,
       protocolMismatchNotified: false,
+      lastPingMs: 0,
+      pingExpiryTicks: [],
+      lastActiveInputTick: this.world.tick,
+      afkWarned: false,
     }
     this.slots.set(client.sessionId, slot)
 
@@ -552,13 +835,23 @@ export class GameRoom extends Room<GameRoomState> {
     this.logLifecycle('leave-start', { sessionId: client.sessionId, consented: !!consented })
     if (!consented) {
       this.pendingReconnects.add(client.sessionId)
+      // Mark entity as disconnected so AI takes over
+      const dcSlot = this.slots.get(client.sessionId)
+      if (dcSlot && hasComponent(this.world, Player, dcSlot.eid) && !hasComponent(this.world, Dead, dcSlot.eid)) {
+        addComponent(this.world, Disconnected, dcSlot.eid)
+      }
       try {
         const reconnectedClient = await this.allowReconnection(client, 30)
         this.pendingReconnects.delete(client.sessionId)
         this.logLifecycle('reconnect-success', { sessionId: client.sessionId })
 
-        // Send game-config to the reconnected client (new page load needs config)
+        // Remove disconnected AI tag — player resumes full control
         const slot = this.slots.get(client.sessionId)
+        if (slot && hasComponent(this.world, Disconnected, slot.eid)) {
+          removeComponent(this.world, Disconnected, slot.eid)
+        }
+
+        // Send game-config to the reconnected client (new page load needs config)
         if (slot) {
           slot.client = reconnectedClient
           slot.inputQueue = []  // Clear stale inputs from before disconnect
@@ -609,6 +902,19 @@ export class GameRoom extends Room<GameRoomState> {
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
     this.campReadySessions.delete(client.sessionId)
+
+    // Cancel active vote if the target leaves
+    if (this.activeVote && this.activeVote.targetSessionId === client.sessionId) {
+      clearTimeout(this.activeVote.timer)
+      this.broadcast('votekick-result', {
+        voteId: this.activeVote.voteId,
+        targetSessionId: this.activeVote.targetSessionId,
+        passed: false,
+      } satisfies VotekickResultMessage)
+      this.logLifecycle('votekick-cancelled', { voteId: this.activeVote.voteId, reason: 'target left' })
+      this.activeVote = null
+    }
+
     this.maybeCompleteCamp()
     this.broadcastPlayerRoster()
 
@@ -639,6 +945,10 @@ export class GameRoom extends Room<GameRoomState> {
     this.bulletNetIdByEid.clear()
     this.nextBulletNetId = 1
     this.campReadySessions.clear()
+    if (this.activeVote) {
+      clearTimeout(this.activeVote.timer)
+      this.activeVote = null
+    }
   }
 
   private ensureShotResultState(): void {
@@ -834,12 +1144,18 @@ export class GameRoom extends Room<GameRoomState> {
 
     if (!someoneReady) return
 
+    // Lock Quick Play rooms BEFORE phase transition so the matcher sees it immediately
+    if (this.isQuickPlay) {
+      this.lock()
+    }
     this.state.phase = 'playing'
     startRun(this.world, DEFAULT_RUN_STAGES)
     this.bulletNetIdByEid.clear()
     this.nextBulletNetId = 1
     this.campReadySessions.clear()
     this.wasCampTransition = false
+    this.runCompleteSent = false
+    this.runStartedAtMs = Date.now()
     this.broadcastPlayerRoster()
     this.broadcastGameConfig()
     console.log('[GameRoom] Phase → playing')
@@ -851,7 +1167,67 @@ export class GameRoom extends Room<GameRoomState> {
     if (isCamp !== this.wasCampTransition) {
       this.campReadySessions.clear()
       this.wasCampTransition = isCamp
+      if (isCamp) {
+        // Start auto-advance timer on camp entry
+        this.campTimerRemaining = CAMP_AUTO_ADVANCE_SECONDS
+        this.campStatusBroadcastAccum = 0
+        this.campAutoAdvanced = false
+        this.broadcastCampStatus()
+      }
     }
+  }
+
+  /** Tick the camp auto-advance timer and broadcast status at ~1Hz. */
+  private tickCampTimer(): void {
+    if (!this.wasCampTransition || this.campAutoAdvanced) return
+
+    const dtS = TICK_MS / 1000
+
+    // Tick draft-pick timer (auto-pick on timeout)
+    const draft = this.world.draftState
+    if (draft && draft.phase === 'picking') {
+      draft.pickTimer -= dtS
+      if (draft.pickTimer <= 0) {
+        const pickerEid = getCurrentPicker(draft)
+        const bestIndex = autoPickBestItem(draft)
+        if (bestIndex >= 0 && pickerEid >= 0) {
+          const offer = draft.offers[bestIndex]!
+          offer.pickedBy = pickerEid
+          addItemToPlayer(this.world, pickerEid, offer.itemId, reapplyAllItemEffects)
+          advanceDraft(draft)
+        } else {
+          // No items left — force completion
+          draft.phase = 'complete'
+        }
+      }
+    }
+
+    this.campTimerRemaining -= dtS
+    this.campStatusBroadcastAccum += dtS
+
+    // Auto-advance when timer expires (fire once)
+    if (this.campTimerRemaining <= 0) {
+      this.campTimerRemaining = 0
+      this.campAutoAdvanced = true
+      this.world.campComplete = true
+      this.broadcastCampStatus()
+      return
+    }
+
+    // Broadcast camp status at ~1Hz (preserve overshoot for accuracy)
+    if (this.campStatusBroadcastAccum >= 1) {
+      this.campStatusBroadcastAccum -= 1
+      this.broadcastCampStatus()
+    }
+  }
+
+  private broadcastCampStatus(): void {
+    const msg: CampStatusMessage = {
+      readyPlayers: Array.from(this.campReadySessions),
+      totalPlayers: this.slots.size,
+      remainingSeconds: Math.max(0, Math.ceil(this.campTimerRemaining)),
+    }
+    this.broadcast('camp-status', msg)
   }
 
   private maybeCompleteCamp(): void {
@@ -864,6 +1240,9 @@ export class GameRoom extends Room<GameRoomState> {
         this.campReadySessions.delete(sessionId)
       }
     }
+
+    // Broadcast updated ready status immediately on change
+    this.broadcastCampStatus()
 
     if (this.slots.size === 0) return
     if (this.campReadySessions.size < this.slots.size) return
@@ -1005,6 +1384,11 @@ export class GameRoom extends Room<GameRoomState> {
     this.world.lagCompShotTickByPlayer.clear()
     this.syncCampTransitionState()
 
+    // Update active player count for co-op scaling (before systems run).
+    // Use connected count (slots.size), not alive count, so scaling doesn't
+    // collapse mid-combat when players die — dead players are still in the run.
+    this.world.activePlayerCount = Math.max(1, this.slots.size)
+
     // 1. Pop one input per player into world.playerInputs (neutral if empty).
     //    Trim backlog aggressively: if queue depth exceeds threshold, discard
     //    oldest samples to cut latency while preserving transient actions.
@@ -1070,6 +1454,8 @@ export class GameRoom extends Room<GameRoomState> {
     stepWorld(this.world, this.systems)
     this.sendShotResults()
     this.syncCampTransitionState()
+    this.tickCampTimer()
+    this.maybeBroadcastRunComplete()
     this.broadcastBulletEvents()
 
     // 3. Update Schema tick
@@ -1086,6 +1472,9 @@ export class GameRoom extends Room<GameRoomState> {
       this.sendInteractablesUpdates()
     }
 
+    // 6. AFK detection — only during active combat (not camp/looting/completed)
+    this.checkAfk()
+
     // Tick duration tracking
     this.lastTickDurationMs = performance.now() - tickStartMs
     this.tickTimingSamples.push(this.lastTickDurationMs)
@@ -1101,6 +1490,146 @@ export class GameRoom extends Room<GameRoomState> {
     this.maybeLogRateLimitDrops()
     this.maybeLogRewindStats()
     this.maybeLogRoomMetrics()
+  }
+
+  private resolveVotekick(): void {
+    const vote = this.activeVote
+    if (!vote) return
+    clearTimeout(vote.timer)
+    this.activeVote = null
+
+    let yesCount = 0
+    let noCount = 0
+    for (const approved of vote.votes.values()) {
+      if (approved) yesCount++
+      else noCount++
+    }
+
+    // Majority of non-target players must approve (use snapshot from vote-start)
+    const passed = yesCount > vote.eligibleCount / 2
+
+    const result: VotekickResultMessage = {
+      voteId: vote.voteId,
+      targetSessionId: vote.targetSessionId,
+      passed,
+    }
+    this.broadcast('votekick-result', result)
+
+    this.logLifecycle('votekick-result', {
+      voteId: vote.voteId,
+      target: vote.targetSessionId,
+      passed,
+      yes: yesCount,
+      no: noCount,
+      eligible: vote.eligibleCount,
+    })
+
+    if (passed) {
+      this.kickedSessionIds.add(vote.targetSessionId)
+      const targetSlot = this.slots.get(vote.targetSessionId)
+      if (targetSlot) {
+        targetSlot.client.send('afk-kick', { reason: 'You have been vote-kicked' })
+        targetSlot.client.leave(4101) // Custom close code for vote-kick
+      }
+    }
+  }
+
+  private checkAfk(): void {
+    const run = this.world.run
+    // Only check during active combat — skip camp, looting, completed, pre-run
+    if (!run || run.completed || run.transition !== 'none') return
+
+    const tick = this.world.tick
+    for (const [sessionId, slot] of this.slots) {
+      // Skip disconnected players (already handled by Disconnected component)
+      if (hasComponent(this.world, Disconnected, slot.eid)) continue
+      // Skip dead players
+      if (hasComponent(this.world, Dead, slot.eid)) continue
+
+      const idleTicks = tick - slot.lastActiveInputTick
+
+      if (idleTicks >= AFK_KICK_TICKS) {
+        this.logLifecycle('afk-kick', { sessionId, eid: slot.eid, idleTicks })
+        slot.client.send('afk-kick', { reason: 'Kicked for being AFK' })
+        slot.client.leave(4100) // Custom close code for AFK
+        continue
+      }
+
+      if (idleTicks >= AFK_WARNING_TICKS && !slot.afkWarned) {
+        slot.afkWarned = true
+        const secondsLeft = Math.ceil((AFK_KICK_TICKS - idleTicks) / TICK_RATE)
+        slot.client.send('afk-warning', { secondsLeft })
+      }
+    }
+  }
+
+  /**
+   * Detect end-of-run (victory or TPK) and broadcast stats once.
+   */
+  private maybeBroadcastRunComplete(): void {
+    if (this.runCompleteSent) return
+    if (this.state.phase !== 'playing') return
+
+    const run = this.world.run
+    if (!run) return
+
+    // Victory: run.completed is set by stageProgression when final stage cleared
+    const victory = run.completed
+
+    // Defeat: all non-disconnected players are Dead (not Downed — reviveSystem handles that)
+    let allDead = false
+    if (!victory && this.slots.size > 0) {
+      allDead = true
+      let hasNonDisconnected = false
+      for (const slot of this.slots.values()) {
+        // Skip disconnected players — they can't be revived
+        if (hasComponent(this.world, Disconnected, slot.eid)) continue
+        hasNonDisconnected = true
+        if (!hasComponent(this.world, Dead, slot.eid)) {
+          allDead = false
+          break
+        }
+      }
+      // If all slots are disconnected, don't trigger TPK — room will self-destruct
+      if (!hasNonDisconnected) allDead = false
+    }
+
+    if (!victory && !allDead) return
+
+    this.runCompleteSent = true
+
+    const duration = (Date.now() - this.runStartedAtMs) / 1000
+    const stagesCleared = victory ? run.totalStages : run.currentStage
+
+    const playerStats: PlayerStatEntry[] = []
+    for (const [sessionId, slot] of this.slots) {
+      const meta = this.state.players.get(sessionId)
+      const stats = getOrCreatePlayerStats(this.world.playerStats, slot.eid)
+      // Strip internal _currentStreak field
+      const { _currentStreak: _, ...publicStats } = stats
+      playerStats.push({
+        sessionId,
+        characterId: slot.characterId,
+        name: meta?.name ?? 'Unknown',
+        stats: publicStats,
+      })
+    }
+
+    const msg: RunCompleteMessage = {
+      victory,
+      duration,
+      stagesCleared,
+      totalStages: run.totalStages,
+      playerStats,
+    }
+    this.broadcast('run-complete', msg)
+
+    this.logLifecycle('run-complete', {
+      victory,
+      duration: Math.round(duration),
+      stagesCleared,
+      playerCount: playerStats.length,
+    })
   }
 
   private maybeLogRateLimitDrops(): void {
@@ -1345,6 +1874,35 @@ export class GameRoom extends Room<GameRoomState> {
         }
       }
 
+      // Draft-pick state
+      const ds = this.world.draftState
+      let draftHud: HudData['draft'] = null
+      if (ds) {
+        const draftPlayerNames: Record<number, string> = {}
+        for (const [sid, s] of this.slots) {
+          const meta = this.state.players.get(sid)
+          draftPlayerNames[s.eid] = meta?.name ?? sid.slice(0, 8)
+        }
+        draftHud = {
+          phase: ds.phase,
+          offers: ds.offers.map(o => ({
+            itemId: o.itemId,
+            name: o.name,
+            description: o.description,
+            rarity: o.rarity,
+            poolIndex: o.poolIndex,
+            pickedBy: o.pickedBy,
+            downside: o.downside,
+          })),
+          currentPickerEid: ds.pickOrder[ds.currentPickIndex] ?? -1,
+          pickTimer: ds.pickTimer,
+          picksCompleted: ds.picksCompleted,
+          totalPicks: ds.totalPicks,
+          pickOrder: ds.pickOrder,
+          playerNames: draftPlayerNames,
+        }
+      }
+
       const hud: HudData = {
         characterId: slot.characterId,
         hp: Health.current[eid]!,
@@ -1386,6 +1944,7 @@ export class GameRoom extends Room<GameRoomState> {
         hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
         objective: objectiveHud,
         campVisitor: campVisitorHud,
+        draft: draftHud,
         boss: bossHud,
       }
       slot.client.send('hud', hud)
@@ -1619,6 +2178,7 @@ export class GameRoom extends Room<GameRoomState> {
       hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
       objective: objectiveHud,
       campVisitor: campVisitorHud,
+      draft: null,
       boss: bossHud,
     }
     slot.client.send('hud', hud)

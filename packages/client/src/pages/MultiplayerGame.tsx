@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import type { CharacterId, LobbyState } from '@high-noon/shared'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import type { CharacterId, LobbyState, CampStatusMessage, VotekickVoteMessage, RunCompleteMessage } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
 import { GameLoop } from '../engine/GameLoop'
@@ -16,6 +16,8 @@ import { ReconnectOverlay } from '../ui/ReconnectOverlay'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
 import { CampPanel } from '../ui/CampPanel'
 import { PauseMenu } from '../ui/PauseMenu'
+import { VotekickPanel } from '../ui/VotekickPanel'
+import { MultiplayerRunEndPanel } from '../ui/MultiplayerRunEndPanel'
 import { ControlsPanel } from '../ui/ControlsPanel'
 import { hasSeenControls, markControlsSeen } from '../ui/controlsPrefs'
 import {
@@ -27,6 +29,9 @@ import {
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
 export function MultiplayerGame() {
+  const [searchParams] = useSearchParams()
+  const roomCodeParam = searchParams.get('code')?.trim().toUpperCase() || undefined
+  const isQuickPlay = searchParams.get('mode') === 'quickplay'
   const containerRef = useRef<HTMLDivElement>(null)
   const [phase, setPhase] = useState<Phase>('loading')
   const [loadProgress, setLoadProgress] = useState(0)
@@ -34,10 +39,12 @@ export function MultiplayerGame() {
   const [retryCount, setRetryCount] = useState(0)
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterId>('sheriff')
   const [localSessionId, setLocalSessionId] = useState<string | null>(null)
+  const [localPlayerEid, setLocalPlayerEid] = useState(-1)
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null)
   const [hudState, setHudState] = useState<HUDState | null>(null)
   const [showCamp, setShowCamp] = useState(false)
   const [campReadySent, setCampReadySent] = useState(false)
+  const [campStatus, setCampStatus] = useState<CampStatusMessage | null>(null)
   const [showSkillTree, setShowSkillTree] = useState(false)
   const [skillTreeData, setSkillTreeData] = useState<SkillTreeUIData | null>(null)
   const [showPauseMenu, setShowPauseMenu] = useState(false)
@@ -49,7 +56,12 @@ export function MultiplayerGame() {
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
   const [reconnectState, setReconnectState] = useState<ReconnectState | null>(null)
   const [shutdownCountdown, setShutdownCountdown] = useState<number | null>(null)
+  const [afkWarning, setAfkWarning] = useState<number | null>(null)
+  const [activeVote, setActiveVote] = useState<VotekickVoteMessage | null>(null)
+  const [runComplete, setRunComplete] = useState<RunCompleteMessage | null>(null)
   const reconnectStateRef = useRef<ReconnectState | null>(null)
+  const runCompleteRef = useRef<RunCompleteMessage | null>(null)
+  const deathTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
@@ -106,6 +118,7 @@ export function MultiplayerGame() {
   useEffect(() => {
     if (phase !== 'connecting') return
     let cancelled = false
+    let afkDismissTimer: ReturnType<typeof setTimeout> | null = null
 
     const net = new NetworkClient()
     netRef.current = net
@@ -114,6 +127,7 @@ export function MultiplayerGame() {
       if (netRef.current !== net) return
       setLocalSessionId(config.sessionId)
       setSelectedCharacter(config.characterId)
+      setLocalPlayerEid(config.playerEid)
     })
 
     net.on('lobby-state', (state) => {
@@ -152,6 +166,51 @@ export function MultiplayerGame() {
       }, 1000)
     })
 
+    net.on('afk-warning', (data) => {
+      if (netRef.current !== net) return
+      setAfkWarning(data.secondsLeft)
+      // Auto-dismiss after 5 seconds (server will re-send if still AFK)
+      if (afkDismissTimer) clearTimeout(afkDismissTimer)
+      afkDismissTimer = setTimeout(() => { afkDismissTimer = null; setAfkWarning(null) }, 5000)
+    })
+
+    net.on('afk-kick', () => {
+      if (netRef.current !== net) return
+      disconnectNetwork()
+      setError('Kicked for being AFK')
+      setPhase('error')
+    })
+
+    net.on('votekick-vote', (data) => {
+      if (netRef.current !== net) return
+      setActiveVote(data)
+    })
+
+    net.on('votekick-result', () => {
+      if (netRef.current !== net) return
+      setActiveVote(null)
+    })
+
+    net.on('run-complete', (data) => {
+      if (netRef.current !== net) return
+      runCompleteRef.current = data
+      // Victory: show immediately. Defeat: delay to let death animation play.
+      if (data.victory) {
+        setRunComplete(data)
+      } else {
+        if (deathTimerRef.current) clearTimeout(deathTimerRef.current)
+        deathTimerRef.current = setTimeout(() => {
+          deathTimerRef.current = null
+          setRunComplete(data)
+        }, 1750)
+      }
+    })
+
+    net.on('camp-status', (data) => {
+      if (netRef.current !== net) return
+      setCampStatus(data)
+    })
+
     net.on('disconnect', () => {
       if (netRef.current !== net) return
       disconnectNetwork()
@@ -163,13 +222,21 @@ export function MultiplayerGame() {
 
     async function connect() {
       try {
-        await net.join({ characterId: 'sheriff' })
+        if (isQuickPlay) {
+          await net.joinQuickPlay({ characterId: selectedCharacter })
+        } else {
+          await net.join({
+            characterId: selectedCharacter,
+            ...(roomCodeParam ? { roomCode: roomCodeParam } : {}),
+          })
+        }
         if (cancelled) return
 
         const config = net.getLatestGameConfig()
         if (config) {
           setLocalSessionId(config.sessionId)
           setSelectedCharacter(config.characterId)
+          setLocalPlayerEid(config.playerEid)
         }
         setPhase(current => current === 'connecting' ? 'lobby' : current)
       } catch (err) {
@@ -188,6 +255,7 @@ export function MultiplayerGame() {
     connect()
     return () => {
       cancelled = true
+      if (afkDismissTimer) clearTimeout(afkDismissTimer)
     }
   }, [phase])
 
@@ -298,6 +366,7 @@ export function MultiplayerGame() {
             if (!isCamp && wasCampRef.current) {
               scene.setWorldVisible(true)
               setCampReadySent(false)
+              setCampStatus(null)
               showingTreeRef.current = false
               setShowSkillTree(false)
               setSkillTreeData(null)
@@ -323,6 +392,7 @@ export function MultiplayerGame() {
     return () => {
       destroyGame()
       disconnectNetwork()
+      if (deathTimerRef.current) clearTimeout(deathTimerRef.current)
     }
   }, [])
 
@@ -365,6 +435,10 @@ export function MultiplayerGame() {
       showingTreeRef.current = true
       setShowSkillTree(true)
     }
+  }, [])
+
+  const handleDraftPick = useCallback((poolIndex: number) => {
+    sceneRef.current?.handleDraftPick(poolIndex)
   }, [])
 
   const handleRideOut = useCallback(() => {
@@ -423,6 +497,12 @@ export function MultiplayerGame() {
     navigate('/')
   }, [navigate])
 
+  const handleBackToMenu = useCallback(() => {
+    destroyGame()
+    disconnectNetwork()
+    navigate('/')
+  }, [navigate])
+
   // Escape key handler
   useEffect(() => {
     if (phase !== 'playing') return
@@ -472,6 +552,10 @@ export function MultiplayerGame() {
     lastSeenRunIntroSequenceRef.current = 0
     sawPrePlayingLobbyRef.current = false
     setCampReadySent(false)
+    setCampStatus(null)
+    setRunComplete(null)
+    runCompleteRef.current = null
+    if (deathTimerRef.current) { clearTimeout(deathTimerRef.current); deathTimerRef.current = null }
     AssetLoader.reset()
     setRetryCount((c) => c + 1)
   }
@@ -534,6 +618,7 @@ export function MultiplayerGame() {
           localSessionId={localSessionId}
           selectedCharacter={selectedCharacter}
           localReady={localReady}
+          roomCode={lobbyState?.roomCode ?? ''}
           onSelectCharacter={handleSelectCharacter}
           onToggleReady={handleToggleReady}
         />
@@ -556,7 +641,7 @@ export function MultiplayerGame() {
     <GameAudioContext.Provider value={soundManager}>
     <div style={styles.container}>
       <div ref={containerRef} style={styles.gameContainer} />
-      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && <GameHUD state={hudState} />}
+      {hudState && !showCamp && !showSkillTree && !showPauseMenu && !showControls && !hudState.isDead && !runComplete && <GameHUD state={hudState} />}
       <GameplayOverlays
         runIntro={runIntro}
         bossIntro={bossIntro}
@@ -571,11 +656,19 @@ export function MultiplayerGame() {
           hasPendingPoints={hudState.pendingPoints > 0}
           rideOutPending={campReadySent}
           playerGold={hudState.goldCollected}
+          campStatus={campStatus ? {
+            readyCount: campStatus.readyPlayers.length,
+            totalPlayers: campStatus.totalPlayers,
+            remainingSeconds: campStatus.remainingSeconds,
+          } : null}
           campVisitor={hudState.campVisitor}
           items={hudState.items}
           hasFoolsErrand={hudState.hasFoolsErrand}
+          draft={hudState.draft}
+          localPlayerEid={localPlayerEid}
           onOpenSkillTree={handleOpenSkillTree}
           onRideOut={handleRideOut}
+          onDraftPick={handleDraftPick}
           onVisitorPurchase={(index) => {
             sceneRef.current?.handleVisitorPurchase(index)
           }}
@@ -631,6 +724,28 @@ export function MultiplayerGame() {
             ? `Server shutting down in ${shutdownCountdown}s...`
             : 'Server has shut down.'}
         </div>
+      )}
+      {afkWarning !== null && (
+        <div style={styles.afkBanner}>
+          AFK WARNING — Move or shoot within {afkWarning}s or be kicked!
+        </div>
+      )}
+      {activeVote && localSessionId && (
+        <VotekickPanel
+          key={activeVote.voteId}
+          vote={activeVote}
+          localSessionId={localSessionId}
+          onCast={(voteId, approve) => {
+            netRef.current?.sendVotekickCast(voteId, approve)
+          }}
+        />
+      )}
+      {runComplete && localSessionId && (
+        <MultiplayerRunEndPanel
+          data={runComplete}
+          localSessionId={localSessionId}
+          onBackToLobby={handleBackToMenu}
+        />
       )}
     </div>
     </GameAudioContext.Provider>
@@ -748,5 +863,19 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.9rem',
     textAlign: 'center',
     zIndex: 90,
+  },
+  afkBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: '0.5rem',
+    backgroundColor: 'rgba(204, 150, 0, 0.9)',
+    color: '#ffffff',
+    fontFamily: 'monospace',
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    zIndex: 91,
   },
 }

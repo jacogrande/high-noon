@@ -15,6 +15,7 @@ import type { GameWorld } from '../world'
 import { Player, Position } from '../components'
 import { GOLD_FEVER_MAX_STACKS, GOLD_PICKUP_RADIUS } from '../content/weapons'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer } from '../upgrade'
+import { getOrCreatePlayerStats } from '../stats'
 
 const playerQuery = defineQuery([Player, Position])
 
@@ -73,6 +74,7 @@ export function goldRushSystem(world: GameWorld, dt: number): void {
           ? Math.round(nugget.value * us.goldMultiplier)
           : nugget.value
         world.goldCollected += gold
+        getOrCreatePlayerStats(world.playerStats, eid).goldCollected += gold
         world.goldNuggets.splice(i, 1)
 
         // Prospector: add Gold Fever stack

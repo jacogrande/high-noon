@@ -12,11 +12,14 @@ import type { StageEncounter } from './content/waves'
 import { getBoss } from './content/bosses'
 import { type NarrativeState } from './content/narrative'
 import type { InputState } from '../net/input'
+import type { FriendlyFireMode } from '../net/lobby'
 import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
 import type { CampVisitorState } from './systems/campVisitor'
+import type { DraftState } from './content/lootDistribution'
+import type { PlayerRunStats } from './stats'
 import type { MapObstacle, ObstacleDestruction, ObstacleHit } from './content/maps/mapObstacleDefs'
 import {
   cloneRunStages,
@@ -445,6 +448,10 @@ export interface GameWorld extends IWorld {
   runIntroText: string | null
   /** Monotonic sequence incremented each time a new run starts */
   runIntroSequence: number
+  /** Number of alive connected players (set by server each tick, defaults to 1 for single-player) */
+  activePlayerCount: number
+  /** Friendly fire mode for multiplayer ('none' = no player-vs-player damage) */
+  friendlyFireMode: FriendlyFireMode
   /** Per-tick flag: true on the tick a stage is cleared */
   stageCleared: boolean
   /** Per-tick flag: true on the tick a wave is cleared */
@@ -519,6 +526,10 @@ export interface GameWorld extends IWorld {
   goldCollected: number
   /** Total enemies killed this run */
   killCount: number
+  /** Per-player kill counts (entity ID → kills) for draft priority */
+  playerKillCounts: Map<number, number>
+  /** Per-player run statistics (entity ID → stats) */
+  playerStats: Map<number, PlayerRunStats>
   /** Shared shovel inventory for stash interactions */
   shovelCount: number
   /** Set to true when last kill was via melee (for Gold Rush 2x) */
@@ -579,6 +590,8 @@ export interface GameWorld extends IWorld {
   lagCompHistoricalRadiusPadding: number
   /** Camp visitor state (non-null during camp phase) */
   campVisitor: CampVisitorState | null
+  /** Draft-pick state for multiplayer camp loot distribution (null in single-player or outside camp) */
+  draftState: DraftState | null
   /** Item pickups on the ground */
   itemPickups: ItemPickupState[]
   /** ID counter for item pickups */
@@ -658,6 +671,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     runIntroTitle: null,
     runIntroText: null,
     runIntroSequence: 0,
+    activePlayerCount: 1,
+    friendlyFireMode: 'none',
     stageCleared: false,
     waveClearedThisTick: false,
     maxProjectiles: 80,
@@ -695,6 +710,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     goldNuggets: [],
     goldCollected: 0,
     killCount: 0,
+    playerKillCounts: new Map(),
+    playerStats: new Map(),
     shovelCount: 0,
     lastKillWasMelee: false,
     lastDamageByEntity: new Map(),
@@ -723,6 +740,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     lagCompBulletSweepStart: new Map(),
     lagCompHistoricalRadiusPadding: 0,
     campVisitor: null,
+    draftState: null,
     itemPickups: [],
     nextItemPickupId: 1,
     hpPotionPickups: [],
@@ -781,6 +799,8 @@ export function resetWorld(world: GameWorld): void {
   world.runIntroTitle = null
   world.runIntroText = null
   world.runIntroSequence = 0
+  world.activePlayerCount = 1
+  world.friendlyFireMode = 'none'
   world.stageCleared = false
   world.waveClearedThisTick = false
   world.maxProjectiles = 80
@@ -816,6 +836,8 @@ export function resetWorld(world: GameWorld): void {
   world.goldNuggets = []
   world.goldCollected = 0
   world.killCount = 0
+  world.playerKillCounts.clear()
+  world.playerStats.clear()
   world.shovelCount = 0
   world.lastKillWasMelee = false
   world.lastDamageByEntity.clear()
@@ -846,6 +868,7 @@ export function resetWorld(world: GameWorld): void {
   delete world.lagCompGetPlayerPosAtTick
   delete world.lagCompGetEnemyStateAtTick
   world.campVisitor = null
+  world.draftState = null
   world.itemPickups = []
   world.nextItemPickupId = 1
   world.hpPotionPickups = []

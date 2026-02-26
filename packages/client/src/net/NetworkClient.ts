@@ -25,7 +25,17 @@ import {
   type LobbyState,
   type LobbyPlayerState,
   type LobbyPhase,
+  type FriendlyFireMode,
+  type CampStatusMessage,
   type PlayerRosterEntry,
+  type PlayerPingRequest,
+  type PlayerPingEvent,
+  type VotekickVoteMessage,
+  type VotekickResultMessage,
+  type RunCompleteMessage,
+  ROOM_CODE_CHARS,
+  ROOM_CODE_LENGTH,
+  QUICK_PLAY_CODE,
 } from '@high-noon/shared'
 
 export interface GameConfig {
@@ -41,6 +51,7 @@ export interface GameConfig {
 export interface JoinOptions {
   name?: string
   characterId?: CharacterId
+  roomCode?: string
   [key: string]: unknown
 }
 
@@ -59,6 +70,7 @@ export type NetworkEventMap = {
   'bullet-despawn': (event: BulletDespawnMessage) => void
   'shot-result': (event: ShotResultMessage) => void
   hud: (data: HudData) => void
+  'camp-status': (data: CampStatusMessage) => void
   interactables: (data: InteractablesData) => void
   'select-node-result': (result: SelectNodeResponse) => void
   'tinkerer-mod-result': (result: TinkererModResponse) => void
@@ -67,6 +79,12 @@ export type NetworkEventMap = {
   'reconnect-state': (state: ReconnectState) => void
   'server-shutdown': (data: { reason: string; countdownMs: number }) => void
   'input-warning': (data: { dropped: number; queueDepth: number }) => void
+  'afk-warning': (data: { secondsLeft: number }) => void
+  'afk-kick': (data: { reason: string }) => void
+  'votekick-vote': (data: VotekickVoteMessage) => void
+  'votekick-result': (data: VotekickResultMessage) => void
+  'run-complete': (data: RunCompleteMessage) => void
+  'player-ping': (event: PlayerPingEvent) => void
   disconnect: () => void
   pong: (clientTime: number, serverTime: number) => void
 }
@@ -129,6 +147,8 @@ export class NetworkClient {
 
     if (!this.room) {
       try {
+        // joinOrCreate passes options to server; filterBy(['roomCode']) ensures
+        // rooms with matching roomCode are paired (or a new room is created).
         this.room = await this.client.joinOrCreate('game', options)
       } catch (err) {
         throw new Error(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`)
@@ -142,6 +162,54 @@ export class NetworkClient {
     // Wait for initial game-config before gameplay starts.
     await this.waitForGameConfig(this.room)
 
+    this.registerRoomHandlers(this.room)
+  }
+
+  /**
+   * Create a new private room with a generated room code.
+   * Other players can join via `join({ roomCode })`.
+   * Returns the generated room code.
+   */
+  async createPrivateRoom(options?: Omit<JoinOptions, 'roomCode'>): Promise<string> {
+    let code = ''
+    for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+      code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]
+    }
+
+    try {
+      this.room = await this.client.create('game', { ...options, roomCode: code })
+    } catch (err) {
+      throw new Error(`Failed to create room: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+
+    this.reconnectionToken = this.room.reconnectionToken
+    sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
+    this.intentionalLeave = false
+
+    await this.waitForGameConfig(this.room)
+    this.registerRoomHandlers(this.room)
+    return code
+  }
+
+  /**
+   * Join a Quick Play room. Uses the sentinel QUICK_PLAY_CODE so Colyseus
+   * matches against any open Quick Play lobby.
+   */
+  async joinQuickPlay(options?: Omit<JoinOptions, 'roomCode'>): Promise<void> {
+    try {
+      this.room = await this.client.joinOrCreate('game', {
+        ...options,
+        roomCode: QUICK_PLAY_CODE,
+      })
+    } catch (err) {
+      throw new Error(`Quick Play failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+
+    this.reconnectionToken = this.room.reconnectionToken
+    sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
+    this.intentionalLeave = false
+
+    await this.waitForGameConfig(this.room)
     this.registerRoomHandlers(this.room)
   }
 
@@ -173,8 +241,28 @@ export class NetworkClient {
     this.room?.send('set-character', { characterId })
   }
 
+  sendFriendlyFire(mode: FriendlyFireMode): void {
+    this.room?.send('set-friendly-fire', { mode })
+  }
+
   sendSelectNode(nodeId: string): void {
     this.room?.send('select-node', { nodeId } satisfies SelectNodeRequest)
+  }
+
+  sendPlayerPing(request: PlayerPingRequest): void {
+    this.room?.send('player-ping', request)
+  }
+
+  sendDraftPick(poolIndex: number): void {
+    this.room?.send('draft-pick', { poolIndex })
+  }
+
+  sendVotekickStart(targetSessionId: string): void {
+    this.room?.send('votekick-start', { targetSessionId })
+  }
+
+  sendVotekickCast(voteId: string, approve: boolean): void {
+    this.room?.send('votekick-cast', { voteId, approve })
   }
 
   sendDebugSpawnPause(): void {
@@ -257,6 +345,10 @@ export class NetworkClient {
       this.emit('hud', data)
     }))
 
+    cleanup.push(room.onMessage('camp-status', (data: CampStatusMessage) => {
+      this.emit('camp-status', data)
+    }))
+
     cleanup.push(room.onMessage('interactables', (data: InteractablesData) => {
       this.emit('interactables', data)
     }))
@@ -315,6 +407,30 @@ export class NetworkClient {
       this.emit('input-warning', data)
     }))
 
+    cleanup.push(room.onMessage('afk-warning', (data: { secondsLeft: number }) => {
+      this.emit('afk-warning', data)
+    }))
+
+    cleanup.push(room.onMessage('afk-kick', (data: { reason: string }) => {
+      this.emit('afk-kick', data)
+    }))
+
+    cleanup.push(room.onMessage('votekick-vote', (data: VotekickVoteMessage) => {
+      this.emit('votekick-vote', data)
+    }))
+
+    cleanup.push(room.onMessage('votekick-result', (data: VotekickResultMessage) => {
+      this.emit('votekick-result', data)
+    }))
+
+    cleanup.push(room.onMessage('run-complete', (data: RunCompleteMessage) => {
+      this.emit('run-complete', data)
+    }))
+
+    cleanup.push(room.onMessage('player-ping', (data: PlayerPingEvent) => {
+      this.emit('player-ping', data)
+    }))
+
     const onLeave = () => {
       if (this.intentionalLeave) return
       this.attemptReconnect()
@@ -361,12 +477,17 @@ export class NetworkClient {
       phase?: unknown
       serverTick?: unknown
       players?: unknown
+      roomCode?: unknown
+      friendlyFire?: unknown
     }
 
     const phase: LobbyPhase = value.phase === 'playing' ? 'playing' : 'lobby'
     const serverTick = typeof value.serverTick === 'number' ? value.serverTick : 0
+    const roomCode = typeof value.roomCode === 'string' ? value.roomCode : ''
+    const ff = value.friendlyFire
+    const friendlyFire = (ff === 'none' || ff === 'reduced' || ff === 'full') ? ff : 'none' as const
     const players = this.normalizeLobbyPlayers(value.players)
-    return { phase, serverTick, players }
+    return { phase, serverTick, players, roomCode, friendlyFire }
   }
 
   private normalizeLobbyPlayers(players: unknown): LobbyPlayerState[] {

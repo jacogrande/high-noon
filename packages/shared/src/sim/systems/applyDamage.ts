@@ -2,6 +2,7 @@ import { hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Bullet, Health, Player } from '../components'
 import { getUpgradeStateForPlayer } from '../upgrade'
+import { getOrCreatePlayerStats } from '../stats'
 
 export interface ApplyDamageOptions {
   amount: number
@@ -77,7 +78,11 @@ export function applyDamage(world: GameWorld, targetEid: number, options: ApplyD
     Health.iframes[targetEid] = Health.iframeDuration[targetEid]!
   }
 
+  // Track damage received for player targets
   const targetIsPlayer = hasComponent(world, Player, targetEid)
+  if (targetIsPlayer && applied > 0) {
+    getOrCreatePlayerStats(world.playerStats, targetEid).damageReceived += applied
+  }
   if (targetIsPlayer && options.fireHealthChanged !== false) {
     world.hooks.fireHealthChanged(world, targetEid, oldHP, newHP)
   } else if (!targetIsPlayer && options.trackAttribution !== false) {

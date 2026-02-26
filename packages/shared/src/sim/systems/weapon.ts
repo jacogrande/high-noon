@@ -19,22 +19,25 @@ import {
   PlayerState,
   PlayerStateType,
   Enemy,
+  Dead,
   Collider,
   Health,
   Invincible,
   Showdown,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
-import { clampDamage } from '../damage'
+import { clampDamage, FRIENDLY_FIRE_DAMAGE_SCALE } from '../damage'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
 import { damageMapObstacle } from './damageHelpers'
 import { isSolidAt } from '../tilemap'
 import { getBulletConfigForCharacter } from '../content/weapons'
+import { getOrCreatePlayerStats } from '../stats'
 
 // Query for entities with weapons (players)
 const weaponQuery = defineQuery([Weapon, Position, Player])
 const enemyTargetQuery = defineQuery([Enemy, Position, Collider, Health])
+const playerTargetQuery = defineQuery([Player, Position, Collider, Health])
 
 const MAX_HISTORICAL_HITSCAN_SAMPLES = 16
 
@@ -268,6 +271,33 @@ function getHitscanCandidates(
     }
   }
 
+  // Friendly fire: also check player targets when enabled
+  if (world.friendlyFireMode !== 'none') {
+    for (const targetEid of playerTargetQuery(world)) {
+      if (targetEid === ownerEid) continue
+      if (Collider.layer[targetEid] !== CollisionLayer.PLAYER) continue
+      if (Health.current[targetEid]! <= 0) continue
+      if (hasComponent(world, Invincible, targetEid)) continue
+      if (Health.iframes[targetEid]! > 0) continue
+      if (hasComponent(world, Dead, targetEid)) continue
+
+      const distance = rayCircleIntersectionDistance(
+        originX, originY, dirX, dirY,
+        Position.x[targetEid]!, Position.y[targetEid]!,
+        Collider.radius[targetEid]!,
+      )
+      if (distance === null) continue
+      if (distance > wallDistance || distance > maxDistance) continue
+
+      const x = originX + dirX * distance
+      const y = originY + dirY * distance
+      const prev = candidatesByTarget.get(targetEid)
+      if (!prev || distance < prev.distance) {
+        candidatesByTarget.set(targetEid, { targetEid, distance, x, y })
+      }
+    }
+  }
+
   const candidates = Array.from(candidatesByTarget.values())
   candidates.sort((a, b) => {
     if (a.distance !== b.distance) return a.distance - b.distance
@@ -377,6 +407,11 @@ function resolveHitscanPellet(
 
     if (hasComponent(world, Player, candidate.targetEid) && getUpgradeStateForPlayer(world, candidate.targetEid).finalArrangementActive) {
       damage = clampDamage(damage * 0.75)
+    }
+
+    // Friendly fire damage reduction for hitscan player-vs-player hits
+    if (hasComponent(world, Player, candidate.targetEid) && world.friendlyFireMode === 'reduced') {
+      damage = clampDamage(damage * FRIENDLY_FIRE_DAMAGE_SCALE)
     }
 
     if (authoritative) {
@@ -551,6 +586,12 @@ export function weaponSystem(
           if (i < pelletCount - 1) {
             Health.iframes[pellet.targetEid] = 0
           }
+          // Per-player stats: hitscan damage + hit
+          if (pellet.damageApplied > 0) {
+            const ps = getOrCreatePlayerStats(world.playerStats, eid)
+            ps.damageDealt += pellet.damageApplied
+            ps.shotsHit++
+          }
         }
 
         // Push one result per pellet so each visual bullet gets an impact point
@@ -627,6 +668,8 @@ export function weaponSystem(
     // Consume round and set fire cooldown
     Cylinder.rounds[eid] = Cylinder.rounds[eid]! - 1
     Cylinder.firstShotAfterReload[eid] = 0
+    // Count pellets fired (not trigger pulls) so accuracy = shotsHit / shotsFired is correct
+    getOrCreatePlayerStats(world.playerStats, eid).shotsFired += pelletCount
 
     // Fire onCylinderEmpty hook when last round consumed
     if (Cylinder.rounds[eid] === 0) {

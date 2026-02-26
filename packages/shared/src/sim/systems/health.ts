@@ -8,13 +8,16 @@
 
 import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Health, Player, Dead, Enemy, EnemyTier, Position, BossPhase } from '../components'
+import { Health, Player, Dead, Downed, Enemy, EnemyTier, Position, BossPhase } from '../components'
+import { NO_TARGET } from '../prefabs'
+import { BLEED_TIMER } from './reviveSystem'
 import { XP_VALUES } from '../content/xp'
 import { awardXP, getUpgradeStateForPlayer } from '../upgrade'
 import { DROP_RARITY_WEIGHTS_FODDER, DROP_RARITY_WEIGHTS_THREAT } from '../content/enemies'
 import { getEnemyDef } from '../content/enemyRegistry'
 import { getRandomItemByRarity, type ItemRarity } from '../content/items'
 import { getBoss } from '../content/bosses'
+import { getOrCreatePlayerStats } from '../stats'
 /** Lifetime in seconds for item pickups dropped by enemies */
 const ENEMY_ITEM_DROP_LIFETIME = 15
 import {
@@ -36,11 +39,24 @@ export function healthSystem(world: GameWorld, dt: number): void {
       Health.iframes[eid] = Math.max(0, Health.iframes[eid]! - dt)
     }
 
-    // Check for death (skip already-dead entities)
-    if (Health.current[eid]! <= 0 && !hasComponent(world, Dead, eid)) {
+    // Check for death (skip already-dead or already-downed entities)
+    if (Health.current[eid]! <= 0 && !hasComponent(world, Dead, eid) && !hasComponent(world, Downed, eid)) {
       if (hasComponent(world, Player, eid)) {
-        // Player death — tag as dead, keep entity for rendering
-        addComponent(world, Dead, eid)
+        if (world.activePlayerCount > 1) {
+          // Co-op: enter downed state (can be revived by allies)
+          addComponent(world, Downed, eid)
+          Downed.bleedTimer[eid] = BLEED_TIMER
+          Downed.reviveProgress[eid] = 0
+          Downed.reviverEid[eid] = NO_TARGET
+          const ps = getOrCreatePlayerStats(world.playerStats, eid)
+          ps.timesDown++
+          ps._currentStreak = 0
+        } else {
+          // Single-player: instant death (no revive possible).
+          // timesDown intentionally stays 0 — no downed state in single-player.
+          addComponent(world, Dead, eid)
+          getOrCreatePlayerStats(world.playerStats, eid)._currentStreak = 0
+        }
       } else {
         const attribution = world.lastDamageByEntity.get(eid)
         const killerPlayerEid = attribution?.ownerPlayerEid ?? null
@@ -55,6 +71,10 @@ export function healthSystem(world: GameWorld, dt: number): void {
         if (isEnemy) {
           // Total enemies eliminated this run, regardless of kill attribution
           world.killCount++
+          // Per-player kill tracking (for draft priority)
+          if (killerPlayerEid !== null) {
+            world.playerKillCounts.set(killerPlayerEid, (world.playerKillCounts.get(killerPlayerEid) ?? 0) + 1)
+          }
           world.pendingGoldRewards.push({
             enemyType: Enemy.type[eid]!,
             killerPlayerEid,
@@ -65,6 +85,17 @@ export function healthSystem(world: GameWorld, dt: number): void {
           const isFodder = Enemy.tier[eid] === EnemyTier.FODDER
           const bossDef = getBoss(enemyType)
           const isBoss = bossDef !== undefined
+
+          // Per-player run stats: kills + streak
+          if (killerPlayerEid !== null) {
+            const ps = getOrCreatePlayerStats(world.playerStats, killerPlayerEid)
+            ps.enemiesKilled++
+            if (isBoss) ps.bossesKilled++
+            ps._currentStreak++
+            if (ps._currentStreak > ps.longestKillStreak) {
+              ps.longestKillStreak = ps._currentStreak
+            }
+          }
 
           // Item drop roll (check enemy registry, then boss registry)
           const dropChance = getEnemyDef(enemyType)?.dropChance ?? bossDef?.dropChance ?? 0

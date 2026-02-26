@@ -30,6 +30,7 @@ import {
 } from '../components'
 import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
 import { forEachInRadius } from '../SpatialHash'
+import { getOrCreatePlayerStats } from '../stats'
 
 // Query for entities currently rolling
 const rollingQuery = defineQuery([Roll, Velocity, Speed, PlayerState])
@@ -100,9 +101,8 @@ export function rollSystem(world: GameWorld, dt: number): void {
       removeComponent(world, Invincible, eid)
     }
 
-    // Detect roll dodges during i-frames (for Second Wind hook)
-    if (shouldBeInvincible && hasComponent(world, Player, eid) &&
-        world.hooks.hasHandlers('onRollDodge') && world.spatialHash) {
+    // Detect roll dodges during i-frames (for Second Wind hook + stats)
+    if (shouldBeInvincible && hasComponent(world, Player, eid) && world.spatialHash) {
       const px = Position.x[eid]!
       const py = Position.y[eid]!
       const playerRadius = Collider.radius[eid]!
@@ -129,6 +129,7 @@ export function rollSystem(world: GameWorld, dt: number): void {
         // Dodge detected!
         if (!dodged) { dodged = new Set(); world.rollDodgedBullets.set(eid, dodged) }
         dodged.add(bulletEid)
+        getOrCreatePlayerStats(world.playerStats, eid).rollDodges++
         world.hooks.fireRollDodge(world, eid, bulletEid)
       })
     }
