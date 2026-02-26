@@ -8,7 +8,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Position, Health, Dead, ZPosition } from '../components'
+import { Position, Health, Dead, Downed, ZPosition } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import {
   LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL,
@@ -32,7 +32,7 @@ export function hazardTileSystem(world: GameWorld, dt: number): void {
       continue
     }
 
-    if (hasComponent(world, Dead, eid)) continue
+    if (hasComponent(world, Dead, eid) || hasComponent(world, Downed, eid)) continue
 
     const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
     if (z > JUMP_AIRBORNE_THRESHOLD) continue

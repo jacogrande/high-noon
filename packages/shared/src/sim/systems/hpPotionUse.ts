@@ -1,6 +1,6 @@
 import { defineQuery, hasComponent, removeComponent } from 'bitecs'
 import { Button, hasButton } from '../../net/input'
-import { Health, Player, Dead, Poison } from '../components'
+import { Health, Player, Dead, Downed, Poison } from '../components'
 import { INTERACTION_FEEDBACK_DURATION } from '../content/economy'
 import { HP_POTION_HEAL_AMOUNT, HP_POTION_MAX_STACK } from '../content/hpPotion'
 import { getUpgradeStateForPlayer } from '../upgrade'
@@ -23,7 +23,7 @@ export function hpPotionUseSystem(world: GameWorld, _dt: number): void {
 
     Player.potionButtonWasDown[playerEid] = 1
     if (wasDown) continue
-    if (hasComponent(world, Dead, playerEid)) continue
+    if (hasComponent(world, Dead, playerEid) || hasComponent(world, Downed, playerEid)) continue
 
     const currentHP = Health.current[playerEid]!
     const maxHP = Health.max[playerEid]!

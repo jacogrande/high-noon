@@ -8,7 +8,7 @@
 
 import { hasComponent, addComponent, removeComponent, defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Poison, Health } from '../components'
+import { Poison, Health, Dead, Downed } from '../components'
 import { applyDamage } from './applyDamage'
 
 const poisonedQuery = defineQuery([Poison, Health])
@@ -36,6 +36,7 @@ export function poisonSystem(world: GameWorld, dt: number): void {
   const poisoned = poisonedQuery(world)
 
   for (const eid of poisoned) {
+    if (hasComponent(world, Dead, eid) || hasComponent(world, Downed, eid)) continue
     // Apply DOT damage (bypasses i-frames)
     applyDamage(world, eid, {
       amount: Poison.dps[eid]! * dt,

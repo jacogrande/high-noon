@@ -11,7 +11,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Player, Position, Collider, Health, Dead, Invincible, BossPhase } from '../components'
+import { Player, Position, Collider, Health, Dead, Downed, Invincible, BossPhase } from '../components'
 import { applySlow } from './slowDebuff'
 import { applyDamage } from './applyDamage'
 
@@ -31,7 +31,7 @@ export function trapZoneSystem(world: GameWorld, dt: number): void {
         // Check if any player enters trigger radius
         let triggered = false
         for (const peid of players) {
-          if (hasComponent(world, Dead, peid)) continue
+          if (hasComponent(world, Dead, peid) || hasComponent(world, Downed, peid)) continue
           if (hasComponent(world, Invincible, peid)) continue
           if (Health.iframes[peid]! > 0) continue
 
@@ -90,7 +90,7 @@ export function trapZoneSystem(world: GameWorld, dt: number): void {
 
         // Apply slow to players inside radius (re-applied each tick)
         for (const peid of players) {
-          if (hasComponent(world, Dead, peid)) continue
+          if (hasComponent(world, Dead, peid) || hasComponent(world, Downed, peid)) continue
 
           const dx = Position.x[peid]! - trap.x
           const dy = Position.y[peid]! - trap.y
@@ -115,7 +115,7 @@ export function trapZoneSystem(world: GameWorld, dt: number): void {
 
         let triggered = false
         for (const peid of players) {
-          if (hasComponent(world, Dead, peid)) continue
+          if (hasComponent(world, Dead, peid) || hasComponent(world, Downed, peid)) continue
           if (hasComponent(world, Invincible, peid)) continue
           if (Health.iframes[peid]! > 0) continue
 
@@ -146,7 +146,7 @@ export function trapZoneSystem(world: GameWorld, dt: number): void {
 
           // Damage all players in explosion radius
           for (const hitPeid of players) {
-            if (hasComponent(world, Dead, hitPeid)) continue
+            if (hasComponent(world, Dead, hitPeid) || hasComponent(world, Downed, hitPeid)) continue
             if (hasComponent(world, Invincible, hitPeid)) continue
             if (Health.iframes[hitPeid]! > 0) continue
 

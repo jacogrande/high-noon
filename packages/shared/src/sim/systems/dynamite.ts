@@ -32,6 +32,7 @@ import {
 import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { getCharacterIdForPlayer, getUpgradeStateForPlayer, type UpgradeState } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { clampDamage, FRIENDLY_FIRE_DAMAGE_SCALE } from '../damage'
 
 const dynamitePlayerQuery = defineQuery([Player, Showdown, Position, MeleeWeapon])
 const explosionPlayerQuery = defineQuery([Player, Position, Health])
@@ -219,6 +220,30 @@ function detonateDynamite(world: GameWorld, dyn: { x: number; y: number; damage:
             ownerPlayerEid: dyn.ownerId,
           })
         }
+      }
+    }
+
+    // Friendly fire: damage other players in blast radius
+    if (world.friendlyFireMode !== 'none') {
+      const ffScale = world.friendlyFireMode === 'reduced' ? FRIENDLY_FIRE_DAMAGE_SCALE : 1.0
+      for (const playerEid of explosionPlayerQuery(world)) {
+        if (playerEid === ownerEid) continue // self-damage handled above
+        if (hasComponent(world, Dead, playerEid)) continue
+        if (hasComponent(world, Invincible, playerEid)) continue
+        if (Health.iframes[playerEid]! > 0) continue
+
+        const px = Position.x[playerEid]!
+        const py = Position.y[playerEid]!
+        const dx = px - dyn.x
+        const dy = py - dyn.y
+        const distSq = dx * dx + dy * dy
+        if (distSq > dyn.radius * dyn.radius) continue
+
+        applyDamage(world, playerEid, {
+          amount: clampDamage(dyn.damage * ffScale),
+          attackerEid: dyn.ownerId,
+          setIframes: true,
+        })
       }
     }
 

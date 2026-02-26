@@ -8,7 +8,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Player, Position, Health, Dead, Invincible } from '../components'
+import { Player, Position, Health, Dead, Downed, Invincible } from '../components'
 import { applyDamage } from './applyDamage'
 
 const playerQuery = defineQuery([Player, Position, Health])
@@ -30,7 +30,7 @@ export function bossShockwaveSystem(world: GameWorld, dt: number): void {
     const outerSq = outerR * outerR
 
     for (const peid of players) {
-      if (hasComponent(world, Dead, peid)) continue
+      if (hasComponent(world, Dead, peid) || hasComponent(world, Downed, peid)) continue
       if (sw.hitEntities.has(peid)) continue
       if (Health.iframes[peid]! > 0) continue
       if (hasComponent(world, Invincible, peid)) continue

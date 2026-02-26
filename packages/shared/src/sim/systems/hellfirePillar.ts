@@ -9,7 +9,7 @@
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
-import { HellfirePillar, Position, Health, Player, Dead } from '../components'
+import { HellfirePillar, Position, Health, Player, Dead, Downed } from '../components'
 import { applyDamage } from './applyDamage'
 
 const pillarQuery = defineQuery([HellfirePillar, Position, Health])
@@ -43,7 +43,7 @@ export function hellfirePillarSystem(world: GameWorld, dt: number): void {
     // Contact damage to players
     const r2 = damageRadius * damageRadius
     for (const pid of players) {
-      if (Health.current[pid]! <= 0 || hasComponent(world, Dead, pid)) continue
+      if (Health.current[pid]! <= 0 || hasComponent(world, Dead, pid) || hasComponent(world, Downed, pid)) continue
       const dx = Position.x[pid]! - px
       const dy = Position.y[pid]! - py
       if (dx * dx + dy * dy <= r2) {
