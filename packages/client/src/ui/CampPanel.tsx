@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import { VisitorShopPanel } from './VisitorShopPanel'
 import { TinkererModPanel } from './TinkererModPanel'
+import { DraftPickPanel } from './DraftPickPanel'
 import { ItemTooltip } from './ItemTooltip'
 import { useGameAudio } from '../audio/GameAudioContext'
+
+interface CampStatusInfo {
+  readyCount: number
+  totalPlayers: number
+  remainingSeconds: number
+}
 
 interface CampPanelProps {
   stageNumber: number
@@ -11,6 +18,7 @@ interface CampPanelProps {
   hasPendingPoints: boolean
   rideOutPending?: boolean
   playerGold: number
+  campStatus?: CampStatusInfo | null
   campVisitor: {
     visitorName: string
     greeting: string
@@ -33,10 +41,30 @@ interface CampPanelProps {
   } | null
   items: Array<{ itemId: number; key: string; name: string; description: string; rarity: string; stacks: number; downside?: string | undefined }>
   hasFoolsErrand: boolean
+  draft?: {
+    phase: 'picking' | 'complete'
+    offers: Array<{
+      itemId: number
+      name: string
+      description: string
+      rarity: string
+      poolIndex: number
+      pickedBy: number
+      downside: string | undefined
+    }>
+    currentPickerEid: number
+    pickTimer: number
+    picksCompleted: number
+    totalPicks: number
+    pickOrder: number[]
+    playerNames: Record<number, string>
+  } | null
+  localPlayerEid?: number
   onOpenSkillTree: () => void
   onRideOut: () => void
   onVisitorPurchase: (index: number) => void
   onTinkererModSelect: (index: number) => void
+  onDraftPick?: (poolIndex: number) => void
 }
 
 const RARITY_COLORS: Record<string, string> = {
@@ -56,10 +84,14 @@ export function CampPanel({
   campVisitor,
   items,
   hasFoolsErrand,
+  draft = null,
+  localPlayerEid = -1,
+  campStatus = null,
   onOpenSkillTree,
   onRideOut,
   onVisitorPurchase,
   onTinkererModSelect,
+  onDraftPick,
 }: CampPanelProps) {
   const { playClick, playHover: playHoverSound } = useGameAudio()
   const [hoveredItemId, setHoveredItemId] = useState<number | null>(null)
@@ -109,6 +141,22 @@ export function CampPanel({
               ))}
             </div>
           </div>
+        )}
+
+        {/* Draft-pick loot distribution (multiplayer) */}
+        {draft && (
+          <DraftPickPanel
+            phase={draft.phase}
+            offers={draft.offers}
+            currentPickerEid={draft.currentPickerEid}
+            localPlayerEid={localPlayerEid}
+            pickTimer={draft.pickTimer}
+            picksCompleted={draft.picksCompleted}
+            totalPicks={draft.totalPicks}
+            pickOrder={draft.pickOrder}
+            playerNames={draft.playerNames}
+            onPick={onDraftPick ?? (() => {})}
+          />
         )}
 
         {/* Visitor shop or Tinkerer mod panel */}
@@ -167,6 +215,16 @@ export function CampPanel({
           >
             {rideOutPending ? 'WAITING FOR POSSE...' : 'RIDE OUT'}
           </button>
+          {campStatus && campStatus.totalPlayers > 1 && (
+            <div style={styles.campStatusBlock}>
+              <div style={styles.campStatusReady}>
+                {campStatus.readyCount} / {campStatus.totalPlayers} ready
+              </div>
+              <div style={styles.campStatusTimer}>
+                {campStatus.remainingSeconds <= 0 ? 'Advancing...' : `Auto-advance in ${campStatus.remainingSeconds}s`}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -316,5 +374,22 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     cursor: 'default',
     textShadow: 'none',
+  },
+  campStatusBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 4,
+  },
+  campStatusReady: {
+    fontSize: 11,
+    color: '#aaaaaa',
+    letterSpacing: '0.05em',
+  },
+  campStatusTimer: {
+    fontSize: 10,
+    color: '#777777',
+    letterSpacing: '0.05em',
   },
 }

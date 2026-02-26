@@ -11,7 +11,7 @@ import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
 import { getArenaCenterFromTilemap } from '../tilemap'
 import { GOLD_NUGGET_LIFETIME } from './goldRush'
-import { Enemy, Position, Bullet, Player, Health, Dead, ObjectiveRole } from '../components'
+import { Enemy, Position, Bullet, Player, Health, Dead, Downed, ObjectiveRole } from '../components'
 import { removeBullet, spawnNpc } from '../prefabs'
 import { initObjective, cleanupObjective } from './objectiveSystem'
 import { generateMap } from '../content/maps/mapGenerator'
@@ -24,6 +24,7 @@ import {
   pickVisitorGreeting,
 } from './campVisitor'
 import { getUpgradeStateForPlayer, getCharacterIdForPlayer } from '../upgrade'
+import { createDraftState } from '../content/lootDistribution'
 import { getVisitorDef } from '../content/visitors'
 import { getAlivePlayers } from '../queries'
 import { getThread, pickNarrativeLine } from '../content/narrative'
@@ -163,6 +164,9 @@ export function healAllPlayers(world: GameWorld): void {
     Health.current[eid] = Health.max[eid]!
     if (hasComponent(world, Dead, eid)) {
       removeComponent(world, Dead, eid)
+    }
+    if (hasComponent(world, Downed, eid)) {
+      removeComponent(world, Downed, eid)
     }
   }
 }
@@ -306,6 +310,20 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
     world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers, modOffers: [], modOffersByPlayer: new Map() }
   }
   selectCampNarrativeLine(world)
+
+  // Generate draft-pick pool for multiplayer (2+ players)
+  if (alivePlayers.length > 1) {
+    const allPlayerItems = new Map<number, number>()
+    for (const pEid of alivePlayers) {
+      const state = getUpgradeStateForPlayer(world, pEid)
+      for (const [itemId, stacks] of state.items) {
+        allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
+      }
+    }
+    world.draftState = createDraftState(world.rng, [...alivePlayers], world.playerKillCounts, allPlayerItems)
+  } else {
+    world.draftState = null
+  }
 }
 
 /**
@@ -393,6 +411,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
         world.campVisitor = null
       }
       world.campNarrativeLine = null
+      world.draftState = null
       // Reset per-stage item state for all alive players
       for (const pEid of getAlivePlayers(world)) {
         const us = getUpgradeStateForPlayer(world, pEid)
