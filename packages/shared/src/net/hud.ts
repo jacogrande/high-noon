@@ -112,6 +112,28 @@ export interface HudData {
     modOffers: Array<{ modId: number; modName: string; modDescription: string; taken: boolean; flavor?: string | undefined }>
   } | null
 
+  // Draft-pick loot distribution (multiplayer camp only)
+  draft: {
+    phase: 'picking' | 'complete'
+    offers: Array<{
+      itemId: number
+      name: string
+      description: string
+      rarity: string
+      poolIndex: number
+      pickedBy: number
+      downside: string | undefined
+    }>
+    currentPickerEid: number
+    pickTimer: number
+    picksCompleted: number
+    totalPicks: number
+    /** Snake-draft order as entity IDs */
+    pickOrder: number[]
+    /** Entity ID → player name for display */
+    playerNames: Record<number, string>
+  } | null
+
   // Boss HP bar (top-of-screen)
   boss: {
     name: string

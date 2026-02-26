@@ -81,6 +81,24 @@ export interface HUDState {
     offers: Array<{ itemId: number; itemName: string; itemDescription: string; rarity: string; price: number; sold: boolean; downside?: string | undefined }>
     modOffers: Array<{ modId: number; modName: string; modDescription: string; taken: boolean; flavor?: string | undefined }>
   } | null
+  draft: {
+    phase: 'picking' | 'complete'
+    offers: Array<{
+      itemId: number
+      name: string
+      description: string
+      rarity: string
+      poolIndex: number
+      pickedBy: number
+      downside: string | undefined
+    }>
+    currentPickerEid: number
+    pickTimer: number
+    picksCompleted: number
+    totalPicks: number
+    pickOrder: number[]
+    playerNames: Record<number, string>
+  } | null
   boss: {
     name: string
     hp: number

@@ -7,11 +7,12 @@
 
 import { defineQuery } from 'bitecs'
 import type { GameWorld } from '../world'
-import { Player, Position, Dead } from '../components'
+import { Player, Position, Dead, Downed } from '../components'
 import { hasComponent } from 'bitecs'
 import { addItemToPlayer, getUpgradeStateForPlayer } from '../upgrade'
 import { getItemDef } from '../content/items'
 import { reapplyAllItemEffects } from '../content/itemEffects'
+import { getOrCreatePlayerStats } from '../stats'
 import { ITEM_FEEDBACK_DURATION } from '../content/economy'
 import { HP_POTION_MAX_STACK, HP_POTION_HEAL_AMOUNT } from '../content/hpPotion'
 
@@ -56,7 +57,7 @@ export function itemPickupSystem(world: GameWorld, dt: number): void {
     if (pickup.collected) continue
 
     for (const playerEid of players) {
-      if (hasComponent(world, Dead, playerEid)) continue
+      if (hasComponent(world, Dead, playerEid) || hasComponent(world, Downed, playerEid)) continue
 
       const dx = Position.x[playerEid]! - pickup.x
       const dy = Position.y[playerEid]! - pickup.y
@@ -66,6 +67,7 @@ export function itemPickupSystem(world: GameWorld, dt: number): void {
       const success = addItemToPlayer(world, playerEid, pickup.itemId, reapplyAllItemEffects)
       if (success) {
         pickup.collected = true
+        getOrCreatePlayerStats(world.playerStats, playerEid).itemsCollected++
         const def = getItemDef(pickup.itemId)
         if (def) {
           world.interactionFeedbackByPlayer.set(playerEid, {
@@ -84,7 +86,7 @@ export function itemPickupSystem(world: GameWorld, dt: number): void {
     if (pickup.collected) continue
 
     for (const playerEid of players) {
-      if (hasComponent(world, Dead, playerEid)) continue
+      if (hasComponent(world, Dead, playerEid) || hasComponent(world, Downed, playerEid)) continue
 
       const state = getUpgradeStateForPlayer(world, playerEid)
       if (state.hpPotionCount >= HP_POTION_MAX_STACK) continue
