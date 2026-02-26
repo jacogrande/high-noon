@@ -1,5 +1,7 @@
 import { addComponent, hasComponent, removeComponent } from 'bitecs'
 import {
+  Dead,
+  Downed,
   Health,
   Jump,
   JUMP_LANDING_DURATION,
@@ -187,6 +189,20 @@ export class MultiplayerReconciler {
         Jump.landed[ctx.myClientEid] = 0
         Jump.landingTimer[ctx.myClientEid] = 0
       }
+    }
+
+    // Sync Dead/Downed state from server.
+    const serverDead = (serverPlayer.flags & 1) !== 0
+    const serverDowned = (serverPlayer.flags & 16) !== 0
+    if (serverDead && !hasComponent(ctx.world, Dead, ctx.myClientEid)) {
+      addComponent(ctx.world, Dead, ctx.myClientEid)
+    } else if (!serverDead && hasComponent(ctx.world, Dead, ctx.myClientEid)) {
+      removeComponent(ctx.world, Dead, ctx.myClientEid)
+    }
+    if (serverDowned && !hasComponent(ctx.world, Downed, ctx.myClientEid)) {
+      addComponent(ctx.world, Downed, ctx.myClientEid)
+    } else if (!serverDowned && hasComponent(ctx.world, Downed, ctx.myClientEid)) {
+      removeComponent(ctx.world, Downed, ctx.myClientEid)
     }
 
     // Use authoritative edge-state from snapshot flags.

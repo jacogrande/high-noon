@@ -8,6 +8,7 @@ import {
   CollisionLayer,
   Cylinder,
   Dead,
+  Downed,
   Enemy,
   EnemyAI,
   EnemyTier,
@@ -259,6 +260,16 @@ export class SnapshotIngestor {
         addComponent(ctx.world, Invincible, clientEid)
       } else if (!isInvincible && hasComponent(ctx.world, Invincible, clientEid)) {
         removeComponent(ctx.world, Invincible, clientEid)
+      }
+
+      const isDowned = (p.flags & 16) !== 0
+      if (isDowned && !hasComponent(ctx.world, Downed, clientEid)) {
+        addComponent(ctx.world, Downed, clientEid)
+      } else if (!isDowned && hasComponent(ctx.world, Downed, clientEid)) {
+        removeComponent(ctx.world, Downed, clientEid)
+      }
+      if (isDowned) {
+        Downed.reviveProgress[clientEid] = p.reviveProgress
       }
     }
 

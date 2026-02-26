@@ -55,6 +55,8 @@ import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
 import { hellfirePillarSystem } from './hellfirePillar'
 import { lifespanSystem } from './lifespan'
+import { disconnectedPlayerAISystem } from './disconnectedPlayerAI'
+import { reviveSystem } from './reviveSystem'
 import { tryVisitorPurchase, tryTinkererModSelect, type CampVisitorState, type WeaponModOffer } from './campVisitor'
 
 export {
@@ -111,6 +113,8 @@ export {
   mapObstacleSystem,
   hellfirePillarSystem,
   lifespanSystem,
+  disconnectedPlayerAISystem,
+  reviveSystem,
 }
 
 export type { CampVisitorState, WeaponModOffer }
@@ -123,6 +127,7 @@ export type { CampVisitorState, WeaponModOffer }
  * Consumables like HP potions remain server-authoritative and are excluded.
  */
 export function registerPredictionSystems(systems: SystemRegistry): void {
+  systems.register(disconnectedPlayerAISystem)
   systems.register(playerInputSystem)
   systems.register(rootSystem)
   systems.register(rollSystem)
@@ -175,6 +180,8 @@ export function registerReplaySystems(systems: SystemRegistry): void {
 export function registerAllSystems(systems: SystemRegistry, _characterId: CharacterId = 'sheriff'): void {
   // -- Clear previous tick's per-frame events --
   systems.register(mapObstacleSystem)
+  // -- Disconnected player AI (generates synthetic inputs before playerInput) --
+  systems.register(disconnectedPlayerAISystem)
   // -- Input & abilities (read floorSpeedMul from previous tick) --
   systems.register(playerInputSystem)
   systems.register(hpPotionUseSystem)
@@ -226,6 +233,9 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(buffSystem)
   systems.register(collisionSystem)
   systems.register(interactionSystem)
+  // Revive runs after interactionSystem so its "Hold [E]: Revive" prompt
+  // overrides NPC prompts when a player is near both a downed ally and an NPC.
+  systems.register(reviveSystem)
   systems.register(stashRewardSystem)
   systems.register(itemPickupSystem)
 }

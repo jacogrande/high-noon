@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v10)
+ * Binary Snapshot Serialization (v11)
  *
  * Encodes/decodes authoritative world state into a compact binary format for
  * server→client broadcast at room-configured cadence.
@@ -14,6 +14,7 @@ import {
   ZPosition,
   Health,
   Dead,
+  Downed,
   Invincible,
   Enemy,
   EnemyAI,
@@ -27,12 +28,12 @@ import { NO_TARGET } from '../sim/prefabs'
 // Constants
 // ============================================================================
 
-export const SNAPSHOT_VERSION = 10
+export const SNAPSHOT_VERSION = 12
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + enemyCount(2) */
 export const HEADER_SIZE = 12
-export const PLAYER_SIZE = 38 // v10: includes showdownActive(1) + showdownTargetEid(2)
-export const ENEMY_SIZE = 15 // v10: includes enemy targetEid(2)
+export const PLAYER_SIZE = 39 // v12: +reviveProgress(1)
+export const ENEMY_SIZE = 16 // v11: enemy HP widened from Uint8 to Uint16 (+1 byte)
 
 // ============================================================================
 // Snapshot Types
@@ -55,6 +56,7 @@ export interface PlayerSnapshot {
   rollDirY: number
   showdownActive: number
   showdownTargetEid: number
+  reviveProgress: number
 }
 
 export interface EnemySnapshot {
@@ -109,6 +111,10 @@ let sharedBuffer = new ArrayBuffer(INITIAL_BUFFER_SIZE)
 
 function clampHP(val: number): number {
   return Math.max(0, Math.min(255, val)) | 0
+}
+
+function clampHP16(val: number): number {
+  return Math.max(0, Math.min(65535, val)) | 0
 }
 
 function clampU16(val: number): number {
@@ -211,6 +217,7 @@ export function encodeSnapshot(
     if (hasComponent(world, Invincible, eid)) flags |= 2
     if (Player.rollButtonWasDown[eid] === 1) flags |= 4
     if (Player.jumpButtonWasDown[eid] === 1) flags |= 8
+    if (hasComponent(world, Downed, eid)) flags |= 16
     view.setUint8(offset, flags)
     offset += 1
 
@@ -238,9 +245,16 @@ export function encodeSnapshot(
     offset += 1
     view.setUint16(offset, clampU16(showdownTargetEid), true)
     offset += 2
+
+    // Revive progress (v12): 0-255 quantized from 0.0-1.0
+    const reviveProgress = hasComponent(world, Downed, eid)
+      ? Math.round(Downed.reviveProgress[eid]! * 255)
+      : 0
+    view.setUint8(offset, Math.min(255, Math.max(0, reviveProgress)))
+    offset += 1
   }
 
-  // Enemies (v8: includes targetEid)
+  // Enemies (v11: HP widened to Uint16 for co-op scaling)
   for (let i = 0; i < enemies.length; i++) {
     const eid = enemies[i]!
     view.setUint16(offset, eid, true)
@@ -251,8 +265,8 @@ export function encodeSnapshot(
     offset += 4
     view.setUint8(offset, Enemy.type[eid]!)
     offset += 1
-    view.setUint8(offset, clampHP(Health.current[eid]!))
-    offset += 1
+    view.setUint16(offset, clampHP16(Health.current[eid]!), true)
+    offset += 2
     view.setUint8(offset, EnemyAI.state[eid]!)
     offset += 1
     const target = EnemyAI.targetEid[eid]!
@@ -357,6 +371,8 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 1
     const showdownTargetEid = view.getUint16(offset, true)
     offset += 2
+    const reviveProgress = view.getUint8(offset) / 255
+    offset += 1
     players[i] = {
       eid,
       x,
@@ -374,6 +390,7 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
       rollDirY,
       showdownActive,
       showdownTargetEid,
+      reviveProgress,
     }
   }
 
@@ -387,8 +404,8 @@ export function decodeSnapshot(data: Uint8Array): WorldSnapshot {
     offset += 4
     const type = view.getUint8(offset)
     offset += 1
-    const hp = view.getUint8(offset)
-    offset += 1
+    const hp = view.getUint16(offset, true)
+    offset += 2
     const aiState = view.getUint8(offset)
     offset += 1
     const rawTargetEid = view.getUint16(offset, true)

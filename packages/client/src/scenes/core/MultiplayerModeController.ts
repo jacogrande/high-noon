@@ -69,6 +69,7 @@ import { EnemyRenderer } from '../../render/EnemyRenderer'
 import { ShowdownRenderer } from '../../render/ShowdownRenderer'
 import { LastRitesRenderer } from '../../render/LastRitesRenderer'
 import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { PingRenderer } from '../../render/PingRenderer'
 import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
 import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { BossAttackRenderer } from '../../render/BossAttackRenderer'
@@ -171,6 +172,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly bossShockwaveRenderer: BossShockwaveRenderer
   private readonly bossAttackRenderer: BossAttackRenderer
   private readonly interactableRenderer: InteractableRenderer
+  private readonly pingRenderer: PingRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private currentTilemap: Tilemap | null = null
@@ -315,6 +317,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.npcRenderer = new NpcRenderer(this.spriteRegistry)
     this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
+    this.pingRenderer = new PingRenderer(this.gameApp.layers.fx)
 
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
@@ -466,6 +469,7 @@ export class MultiplayerModeController implements SceneModeController {
           this.world.floorSpeedMul.clear()
           this.currentTilemap = newMap
           refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+          this.pingRenderer.clear()
         }
       }
 
@@ -560,6 +564,10 @@ export class MultiplayerModeController implements SceneModeController {
       this.pendingShotResults.push(event)
     })
 
+    this.net.on('player-ping', (event) => {
+      this.pingRenderer.addPing(event)
+    })
+
     if (initOptions.preconnected) {
       const config = this.net.getLatestGameConfig()
       if (!config) {
@@ -595,6 +603,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.world.floorSpeedMul.clear()
       this.currentTilemap = newMap
       refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+      this.pingRenderer.clear()
     }
     this.serverCharacterIds.set(config.playerEid, config.characterId)
     if (config.roster) {
@@ -1057,6 +1066,18 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Collect and tag input
     const inputState: InputState = this.input.getInputState()
+
+    // Check for ping request (G key — separate from simulation input)
+    const pingType = this.input.consumePingRequest()
+    if (pingType) {
+      const cursorWorld = this.input.getWorldMousePosition()
+      this.net.sendPlayerPing({
+        type: pingType,
+        worldX: cursorWorld.x,
+        worldY: cursorWorld.y,
+      })
+    }
+
     const wantsShoot = (inputState.buttons & Button.SHOOT) !== 0
     if (wantsShoot && !this.shootWasDown) {
       this.shootSeq++
@@ -1349,6 +1370,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.dynamiteRenderer.render(this.world, realDt, this.particles)
     this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
+    this.pingRenderer.update(this.world)
 
     // Update particles
     this.particles.update(realDt)
@@ -1570,6 +1592,7 @@ export class MultiplayerModeController implements SceneModeController {
       minimap,
       objective: hud?.objective ?? null,
       campVisitor: hud?.campVisitor ?? null,
+      draft: hud?.draft ?? null,
       boss: hud?.boss ?? null,
       drawDuel: null, // Draw duel not yet supported in multiplayer
     }
@@ -1629,6 +1652,11 @@ export class MultiplayerModeController implements SceneModeController {
   handleTinkererModSelect(offerIndex: number): boolean {
     this.net.sendTinkererModSelect(offerIndex)
     return true // optimistic; server will confirm via HUD update
+  }
+
+  handleDraftPick(poolIndex: number): boolean {
+    this.net.sendDraftPick(poolIndex)
+    return true
   }
 
   setWorldVisible(visible: boolean): void {
@@ -1755,6 +1783,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.bossShockwaveRenderer.destroy()
     this.bossAttackRenderer.destroy()
     this.showdownRenderer.destroy()
+    this.pingRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

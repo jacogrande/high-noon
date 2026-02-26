@@ -519,6 +519,7 @@ export class SingleplayerModeController implements SceneModeController {
         }
         return null
       })(),
+      draft: null,
       campVisitor: this.world.campVisitor
         ? (() => {
             const cv = this.world.campVisitor!

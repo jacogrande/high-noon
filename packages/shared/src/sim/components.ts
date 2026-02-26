@@ -201,6 +201,30 @@ export const Dead = {
   _tag: new Uint8Array(MAX_ENTITIES),
 }
 
+/**
+ * Downed state for co-op revive mechanics.
+ * In multiplayer (activePlayerCount > 1), players enter Downed instead of Dead
+ * when HP reaches 0. Allies can hold INTERACT near a downed player to revive.
+ * If bleedTimer expires, the player transitions to Dead permanently.
+ */
+export const Downed = {
+  /** Seconds remaining before permanent death */
+  bleedTimer: new Float32Array(MAX_ENTITIES),
+  /** Revive progress 0.0–1.0 */
+  reviveProgress: new Float32Array(MAX_ENTITIES),
+  /** Entity ID of the player currently reviving (NO_TARGET = 0xFFFF if none) */
+  reviverEid: new Uint16Array(MAX_ENTITIES),
+}
+
+/**
+ * Tag: marks a player entity whose client has disconnected but is within the
+ * reconnect window. While Disconnected, a simple AI drives the entity
+ * (follow allies, dodge bullets, no shooting).
+ */
+export const Disconnected = {
+  _tag: new Uint8Array(MAX_ENTITIES),
+}
+
 // ============================================================================
 // Cylinder Components
 // ============================================================================
@@ -563,4 +587,6 @@ export const AllComponents = [
   ObjectiveRole,
   Lifespan,
   HellfirePillar,
+  Disconnected,
+  Downed,
 ] as const

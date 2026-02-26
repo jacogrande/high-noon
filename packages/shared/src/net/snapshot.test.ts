@@ -9,6 +9,7 @@ import {
   Player,
   Roll,
   Dead,
+  Downed,
   Invincible,
   EnemyAI,
   AIState,
@@ -67,6 +68,7 @@ describe('snapshot', () => {
     expect(p.rollDirY).toBe(0)
     expect(p.showdownActive).toBe(0)
     expect(p.showdownTargetEid).toBe(NO_TARGET)
+    expect(p.reviveProgress).toBe(0)
 
     expect(snap.enemies).toHaveLength(1)
     const e = snap.enemies[0]!
@@ -106,6 +108,18 @@ describe('snapshot', () => {
     const p = snap.players[0]!
     expect(p.flags & 1).toBe(1)
     expect(p.flags & 2).toBe(2)
+  })
+
+  it('player flags: Downed encodes correctly with reviveProgress', () => {
+    const world = createGameWorld(2)
+    const eid = spawnPlayer(world, 0, 0, 0)
+    addComponent(world, Downed, eid)
+    Downed.reviveProgress[eid] = 0.5
+
+    const snap = decodeSnapshot(encodeSnapshot(world, 0))
+    const p = snap.players[0]!
+    expect(p.flags & 16).toBe(16)
+    expect(p.reviveProgress).toBeCloseTo(0.5, 1)
   })
 
   it('player flags: rollButtonWasDown encodes correctly', () => {
@@ -247,8 +261,8 @@ describe('snapshot', () => {
       2
     expect(encoded.byteLength).toBe(expectedSize)
 
-    // 12 + 2*38 + 30*15 + 2 = 540 bytes
-    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 30 * ENEMY_SIZE + 2).toBe(540)
+    // 12 + 2*39 + 30*16 + 2 = 572 bytes (v12: +reviveProgress per player)
+    expect(HEADER_SIZE + 2 * PLAYER_SIZE + 30 * ENEMY_SIZE + 2).toBe(572)
   })
 
   it('lastProcessedSeq round-trip with playerSeqs map', () => {
