@@ -28,6 +28,7 @@ import {
   AttackConfig,
   Steering,
   EnemyType,
+  EnemyTier,
   AIState,
   Showdown,
   MeleeWeapon,
@@ -42,6 +43,7 @@ import {
   ObjectiveRole,
   ObjRole,
   Lifespan,
+  HellfirePillar,
 } from './components'
 import {
   PLAYER_RADIUS,
@@ -483,6 +485,44 @@ export function spawnDuelist(world: GameWorld, x: number, y: number, hp?: number
   if (damage !== undefined) {
     AttackConfig.damage[eid] = damage
   }
+  return eid
+}
+
+/** Spawn a Hellfire Pillar — stationary destructible hazard (Old Scratch Phase 3) */
+export function spawnHellfirePillar(
+  world: GameWorld, x: number, y: number,
+  bossEid: number, slotIndex: number,
+): number {
+  const eid = addEntity(world)
+
+  addComponent(world, Position, eid)
+  addComponent(world, Collider, eid)
+  addComponent(world, Health, eid)
+  addComponent(world, Enemy, eid)
+  addComponent(world, HellfirePillar, eid)
+
+  Position.x[eid] = x
+  Position.y[eid] = y
+  Position.prevX[eid] = x
+  Position.prevY[eid] = y
+
+  Collider.radius[eid] = 24
+  Collider.layer[eid] = CollisionLayer.ENEMY
+
+  Health.current[eid] = 40
+  Health.max[eid] = 40
+  Health.iframes[eid] = 0
+  Health.iframeDuration[eid] = 0
+
+  Enemy.type[eid] = EnemyType.HELLFIRE_PILLAR
+  Enemy.tier[eid] = EnemyTier.THREAT
+
+  HellfirePillar.bossEid[eid] = bossEid
+  HellfirePillar.healPerSecond[eid] = 2
+  HellfirePillar.contactDps[eid] = 6
+  HellfirePillar.damageRadius[eid] = 48
+  HellfirePillar.slotIndex[eid] = slotIndex
+
   return eid
 }
 

@@ -500,6 +500,24 @@ export const Lifespan = {
 }
 
 // ============================================================================
+// Hellfire Pillar Component
+// ============================================================================
+
+/** Hellfire Pillar data (Old Scratch Phase 3 destructible hazard) */
+export const HellfirePillar = {
+  /** Boss entity ID this pillar heals */
+  bossEid: new Uint16Array(MAX_ENTITIES),
+  /** HP per second healed to boss */
+  healPerSecond: new Float32Array(MAX_ENTITIES),
+  /** Contact damage per second to nearby players */
+  contactDps: new Float32Array(MAX_ENTITIES),
+  /** Radius for contact damage */
+  damageRadius: new Float32Array(MAX_ENTITIES),
+  /** Index into pillar slot array (0-3) */
+  slotIndex: new Uint8Array(MAX_ENTITIES),
+}
+
+// ============================================================================
 // Component Registration
 // ============================================================================
 
@@ -544,4 +562,5 @@ export const AllComponents = [
   ObjectiveTarget,
   ObjectiveRole,
   Lifespan,
+  HellfirePillar,
 ] as const

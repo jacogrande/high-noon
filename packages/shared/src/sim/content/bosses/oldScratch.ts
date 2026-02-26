@@ -19,9 +19,9 @@ import {
   Position, Velocity, Speed, Collider, Health, Knockback,
   Enemy, EnemyType, EnemyTier, BossPhase,
   EnemyAI, AIState, Detection, AttackConfig, Steering,
-  Player, Bullet, Dead,
+  Player, Bullet, Dead, HellfirePillar,
 } from '../../components'
-import { CollisionLayer, spawnBullet, spawnGhostRider } from '../../prefabs'
+import { CollisionLayer, spawnBullet, spawnGhostRider, spawnHellfirePillar } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { isInArc } from '../../systems/melee'
@@ -35,6 +35,7 @@ import {
 } from '../../tilemap'
 import { ENEMY_BULLET_RANGE, ENEMY_BULLET_SIZE_THREAT, BulletSpriteId } from '../weapons'
 import { PLAYER_RADIUS } from '../player'
+import { ROAD_WIDTH, CENTER_SIZE } from '../maps/crossroadsGenerator'
 
 const playerQuery = defineQuery([Player, Position, Health])
 const enemyQuery = defineQuery([Enemy])
@@ -248,6 +249,85 @@ const PROSPECTOR_P2_CYCLE: number[] = [
 ]
 
 // ============================================================================
+// Phase 3 Attack Enum, Constants & Cycle
+// ============================================================================
+
+export const enum P3Attack {
+  HELLFIRE_SWEEP = 20,
+  SOUL_GEYSER = 21,
+  CROSSROADS_CONVERGENCE = 22,
+  CHAIN_LIGHTNING = 23,
+  STAMPEDE = 24,
+}
+
+// Pillar
+const PILLAR_HP = 40
+const PILLAR_RESPAWN_TIME = 20.0
+
+// Hellfire Sweep
+const HELLFIRE_SWEEP_BULLETS = 8
+const HELLFIRE_SWEEP_SPEED = 400
+const HELLFIRE_SWEEP_DAMAGE = 10
+const HELLFIRE_SWEEP_ARC = Math.PI  // 180°
+
+// Soul Geyser
+const SOUL_GEYSER_COUNT = 3
+const SOUL_GEYSER_RADIUS = 64
+const SOUL_GEYSER_DAMAGE = 15
+const SOUL_GEYSER_TELEGRAPH = 0.8
+const SOUL_GEYSER_SPACING = 0.6
+const SOUL_GEYSER_BURST_DURATION = 0.3
+
+// Crossroads Convergence
+const CONVERGENCE_BULLETS_PER_ROAD = 6
+const CONVERGENCE_SPEED = 350
+const CONVERGENCE_DAMAGE = 8
+const CONVERGENCE_TELEGRAPH = 1.0
+
+// Chain Lightning
+const CHAIN_LIGHTNING_TELEGRAPH = 0.3
+const CHAIN_LIGHTNING_DURATION = 0.5
+const CHAIN_LIGHTNING_DPS = 6.0
+const CHAIN_LIGHTNING_WIDTH = 16
+const CHAIN_LIGHTNING_MIN_PILLARS = 2
+
+// Stampede
+const STAMPEDE_BULLETS = 6
+const STAMPEDE_SPEED = 800
+const STAMPEDE_DAMAGE = 20
+const STAMPEDE_BULLET_SIZE = 32
+const STAMPEDE_TELEGRAPH = 1.2
+
+// Phase 3 telegraph & recovery durations
+const HELLFIRE_SWEEP_TELEGRAPH = 0.3
+const HELLFIRE_SWEEP_RECOVERY = 0.5
+const SOUL_GEYSER_P3_TELEGRAPH = 0.3
+const SOUL_GEYSER_P3_RECOVERY = 0.3
+const CHAIN_LIGHTNING_P3_TELEGRAPH = 0.3
+const CHAIN_LIGHTNING_P3_RECOVERY = 0.3
+const STAMPEDE_RECOVERY = 0.5
+const CONVERGENCE_RECOVERY = 0.5
+
+// Shared road spread for bullet patterns
+const ROAD_HALF_SPREAD = (ROAD_WIDTH * 32) / 2 * 0.8  // 102.4px spread with edge gaps
+
+// Dust storm
+const DUST_STORM_HP_THRESHOLD = 0.5
+const DUST_STORM_VISIBILITY = 200
+
+// Phase 3 base cooldown
+const P3_COOLDOWN = 1.0
+
+// Phase 3 cycle — character-agnostic
+const P3_CYCLE: number[] = [
+  P3Attack.HELLFIRE_SWEEP,
+  P3Attack.SOUL_GEYSER,
+  P3Attack.CROSSROADS_CONVERGENCE,
+  P3Attack.CHAIN_LIGHTNING,
+  P3Attack.STAMPEDE,
+]
+
+// ============================================================================
 // Per-boss state (stored in world.bossState)
 // ============================================================================
 
@@ -264,6 +344,21 @@ export interface FireTrailSegment {
   x: number
   y: number
   timer: number       // time remaining
+}
+
+export interface SoulGeyserZone {
+  x: number; y: number
+  delay: number        // countdown before burst
+  active: boolean
+  duration: number     // burst window remaining
+  hitEntities: Set<number>
+}
+
+export interface ChainLightningState {
+  active: boolean
+  telegraphTimer: number
+  damageTimer: number
+  pairs: Array<{ ax: number; ay: number; bx: number; by: number }>
 }
 
 export interface OldScratchState {
@@ -313,8 +408,11 @@ export interface OldScratchState {
   // Phase 3
   pillarEids: number[]
   pillarRespawnTimers: number[]
+  pillarSpawnPositions: Array<{ x: number; y: number }>
   dustStormActive: boolean
   stampedeTimer: number
+  soulGeysers: SoulGeyserZone[]
+  chainLightning: ChainLightningState | null
 
   // Phase 4
   drawRound: number
@@ -361,8 +459,11 @@ function createOldScratchState(): OldScratchState {
 
     pillarEids: [],
     pillarRespawnTimers: [],
+    pillarSpawnPositions: [],
     dustStormActive: false,
     stampedeTimer: 0,
+    soulGeysers: [],
+    chainLightning: null,
 
     drawRound: 0,
     drawPhase: 'staredown',
@@ -407,8 +508,8 @@ function findPlayerEid(world: GameWorld): number {
 function shrinkRoads(tilemap: Tilemap, insetTiles: number): void {
   const cx = Math.floor(tilemap.width / 2)
   const cy = Math.floor(tilemap.height / 2)
-  const halfRoad = 4 // ROAD_WIDTH / 2
-  const halfCenter = 8 // CENTER_SIZE / 2
+  const halfRoad = ROAD_WIDTH / 2
+  const halfCenter = CENTER_SIZE / 2
   const centerMinX = cx - halfCenter
   const centerMaxX = cx + halfCenter - 1
   const centerMinY = cy - halfCenter
@@ -434,8 +535,8 @@ function shrinkRoads(tilemap: Tilemap, insetTiles: number): void {
 function placeBrimstoneCracks(tilemap: Tilemap): void {
   const cx = Math.floor(tilemap.width / 2)
   const cy = Math.floor(tilemap.height / 2)
-  const halfRoad = 4
-  const halfCenter = 8
+  const halfRoad = ROAD_WIDTH / 2
+  const halfCenter = CENTER_SIZE / 2
   const centerMinY = cy - halfCenter
   const centerMaxY = cy + halfCenter - 1
   const centerMinX = cx - halfCenter
@@ -562,9 +663,11 @@ function enterPhase3(world: GameWorld, eid: number, state: OldScratchState): voi
 
   Speed.current[eid] = P3_SPEED
   Speed.max[eid] = P3_SPEED
+  AttackConfig.cooldown[eid] = P3_COOLDOWN
   AttackConfig.cooldownRemaining[eid] = 0
   EnemyAI.state[eid] = AIState.TELEGRAPH
   EnemyAI.stateTimer[eid] = 0
+  state.attackCycleIndex = 0
 
   // Further arena shrink
   const tilemap = world.tilemap
@@ -572,8 +675,35 @@ function enterPhase3(world: GameWorld, eid: number, state: OldScratchState): voi
     shrinkRoads(tilemap, P3_ROAD_SHRINK_TILES)
   }
 
-  // Hellfire Pillar spawning will be handled in Phase 5 (Sprint 19 Phase 5)
-  // For now, just record lantern positions as pillar slots
+  // Teleport boss to center signpost
+  const landmarks = world.tilemap?.crossroadsLandmarks
+  if (landmarks) {
+    Position.x[eid] = landmarks.signpost.x
+    Position.y[eid] = landmarks.signpost.y
+    Position.prevX[eid] = landmarks.signpost.x
+    Position.prevY[eid] = landmarks.signpost.y
+
+    // Spawn 4 Hellfire Pillars at lantern positions
+    state.pillarEids = []
+    state.pillarSpawnPositions = []
+    state.pillarRespawnTimers = []
+    for (let i = 0; i < landmarks.lanterns.length; i++) {
+      const lantern = landmarks.lanterns[i]!
+      const pillarEid = spawnHellfirePillar(world, lantern.x, lantern.y, eid, i)
+      state.pillarEids.push(pillarEid)
+      state.pillarSpawnPositions.push({ x: lantern.x, y: lantern.y })
+      state.pillarRespawnTimers.push(0)
+    }
+  }
+
+  // Clear stale P1/P2 state
+  state.coffinNails = []
+  state.fireTrails = []
+  state.brimstoneLash = null
+  state.isCharging = false
+  state.counterWindowActive = false
+  state.soulGeysers = []
+  state.chainLightning = null
 }
 
 function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): void {
@@ -587,6 +717,20 @@ function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): voi
   state.drawPhase = 'staredown'
   state.dustStormActive = false
 
+  // Kill all alive pillars
+  for (const pillarEid of state.pillarEids) {
+    if (Health.current[pillarEid]! > 0) {
+      Health.current[pillarEid] = 0
+    }
+  }
+  state.pillarEids = []
+  state.pillarRespawnTimers = []
+
+  // Clear Phase 3 state
+  world.oldScratchStorm = null
+  state.soulGeysers = []
+  state.chainLightning = null
+
   // Clear arena hazards
   const tilemap = world.tilemap
   if (tilemap) {
@@ -599,6 +743,7 @@ function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): voi
 // ============================================================================
 
 function getCycleForCharacter(charId: string, phase: number): number[] {
+  if (phase >= 3) return P3_CYCLE  // character-agnostic
   if (phase >= 2) {
     if (charId === 'undertaker') return UNDERTAKER_P2_CYCLE
     if (charId === 'prospector') return PROSPECTOR_P2_CYCLE
@@ -775,6 +920,140 @@ function countAliveGhostRiders(world: GameWorld): number {
     if (Enemy.type[eid] === EnemyType.GHOST_RIDER && !hasComponent(world, Dead, eid)) count++
   }
   return count
+}
+
+function countAlivePillars(world: GameWorld, state: OldScratchState): number {
+  let count = 0
+  for (const pid of state.pillarEids) {
+    if (hasComponent(world, HellfirePillar, pid) && Health.current[pid]! > 0) count++
+  }
+  return count
+}
+
+// ============================================================================
+// Phase 3 tick helpers
+// ============================================================================
+
+function tickSoulGeysers(
+  world: GameWorld, bossEid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  for (let i = state.soulGeysers.length - 1; i >= 0; i--) {
+    const geyser = state.soulGeysers[i]!
+    if (!geyser.active) {
+      geyser.delay -= dt
+      if (geyser.delay <= 0) {
+        geyser.active = true
+        geyser.duration = SOUL_GEYSER_BURST_DURATION
+        // Apply burst damage on activation
+        if (playerEid >= 0 && Health.current[playerEid]! > 0 && !hasComponent(world, Dead, playerEid)) {
+          const dx = Position.x[playerEid]! - geyser.x
+          const dy = Position.y[playerEid]! - geyser.y
+          if (dx * dx + dy * dy <= SOUL_GEYSER_RADIUS * SOUL_GEYSER_RADIUS) {
+            if (!geyser.hitEntities.has(playerEid)) {
+              geyser.hitEntities.add(playerEid)
+              applyDamage(world, playerEid, {
+                amount: SOUL_GEYSER_DAMAGE,
+                attackerEid: bossEid,
+                setIframes: true,
+              })
+            }
+          }
+        }
+      }
+    } else {
+      geyser.duration -= dt
+      if (geyser.duration <= 0) {
+        state.soulGeysers.splice(i, 1)
+        continue
+      }
+    }
+    // Push telegraph
+    world.bossTelegraphs.push({
+      kind: 'circle',
+      x: geyser.x, y: geyser.y,
+      radius: SOUL_GEYSER_RADIUS,
+      color: geyser.active ? 0xff2200 : 0xff8800,
+      alpha: geyser.active ? 0.4 : 0.2,
+      progress: geyser.active ? 1 : 1 - (geyser.delay / SOUL_GEYSER_TELEGRAPH),
+    })
+  }
+}
+
+function tickChainLightning(
+  world: GameWorld, bossEid: number, state: OldScratchState,
+  playerEid: number, dt: number,
+): void {
+  const cl = state.chainLightning
+  if (!cl || !cl.active) return
+
+  if (cl.telegraphTimer > 0) {
+    cl.telegraphTimer -= dt
+    // Push line telegraphs during telegraph phase
+    for (const pair of cl.pairs) {
+      world.bossTelegraphs.push({
+        kind: 'line',
+        x: pair.ax, y: pair.ay, radius: CHAIN_LIGHTNING_WIDTH,
+        endX: pair.bx, endY: pair.by,
+        color: 0x4488ff, alpha: 0.25,
+        progress: 1 - (cl.telegraphTimer / CHAIN_LIGHTNING_TELEGRAPH),
+      })
+    }
+    return
+  }
+
+  // Damage phase
+  cl.damageTimer -= dt
+  if (cl.damageTimer <= 0) {
+    state.chainLightning = null
+    return
+  }
+
+  // Damage player if within CHAIN_LIGHTNING_WIDTH of any pair
+  if (playerEid >= 0 && Health.current[playerEid]! > 0 && !hasComponent(world, Dead, playerEid)) {
+    const px = Position.x[playerEid]!
+    const py = Position.y[playerEid]!
+    for (const pair of cl.pairs) {
+      const dist = pointToSegmentDist(px, py, pair.ax, pair.ay, pair.bx, pair.by)
+      if (dist <= CHAIN_LIGHTNING_WIDTH) {
+        applyDamage(world, playerEid, {
+          amount: CHAIN_LIGHTNING_DPS * dt,
+          attackerEid: bossEid,
+        })
+        break  // one tick of damage max
+      }
+    }
+  }
+
+  // Push line telegraphs during damage phase
+  for (const pair of cl.pairs) {
+    world.bossTelegraphs.push({
+      kind: 'line',
+      x: pair.ax, y: pair.ay, radius: CHAIN_LIGHTNING_WIDTH,
+      endX: pair.bx, endY: pair.by,
+      color: 0x4488ff, alpha: 0.4,
+      progress: cl.damageTimer / CHAIN_LIGHTNING_DURATION,
+    })
+  }
+}
+
+function tickPillarRespawns(
+  world: GameWorld, eid: number, state: OldScratchState, dt: number,
+): void {
+  for (let i = 0; i < state.pillarEids.length; i++) {
+    const pillarEid = state.pillarEids[i]!
+    if (Health.current[pillarEid]! <= 0) {
+      state.pillarRespawnTimers[i] = (state.pillarRespawnTimers[i] ?? 0) + dt
+      if (state.pillarRespawnTimers[i]! >= PILLAR_RESPAWN_TIME) {
+        const pos = state.pillarSpawnPositions[i]!
+        const newEid = spawnHellfirePillar(world, pos.x, pos.y, eid, i)
+        state.pillarEids[i] = newEid
+        state.pillarRespawnTimers[i] = 0
+      }
+    } else {
+      state.pillarRespawnTimers[i] = 0
+    }
+  }
 }
 
 function tickInfernalCharge(
@@ -954,6 +1233,51 @@ function pushAttackTelegraph(
       })
       break
     }
+    // Phase 3 attack telegraphs
+    case P3Attack.HELLFIRE_SWEEP: {
+      world.bossTelegraphs.push({
+        kind: 'arc', x: ex, y: ey,
+        radius: 200,
+        angle: state.aimAngle, arcHalf: HELLFIRE_SWEEP_ARC / 2,
+        color: 0xff4400, alpha: 0.3, progress,
+      })
+      break
+    }
+    case P3Attack.SOUL_GEYSER: {
+      if (playerEid >= 0) {
+        world.bossTelegraphs.push({
+          kind: 'circle',
+          x: Position.x[playerEid]!, y: Position.y[playerEid]!,
+          radius: SOUL_GEYSER_RADIUS,
+          color: 0xff6600, alpha: 0.25, progress,
+        })
+      }
+      break
+    }
+    case P3Attack.CROSSROADS_CONVERGENCE: {
+      const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+      if (endpoints) {
+        for (const ep of endpoints) {
+          const cx = world.tilemap?.crossroadsLandmarks?.signpost.x ?? ex
+          const cy = world.tilemap?.crossroadsLandmarks?.signpost.y ?? ey
+          world.bossTelegraphs.push({
+            kind: 'line', x: ep.x, y: ep.y, radius: 0,
+            endX: cx, endY: cy,
+            color: 0xff4400, alpha: 0.25, progress,
+          })
+        }
+      }
+      break
+    }
+    // CHAIN_LIGHTNING: telegraph handled by tickChainLightning()
+    case P3Attack.STAMPEDE: {
+      world.bossTelegraphs.push({
+        kind: 'ring', x: ex, y: ey,
+        radius: 120,
+        color: 0xcc4400, alpha: 0.3, progress,
+      })
+      break
+    }
   }
 }
 
@@ -1011,11 +1335,21 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     let idx = state.attackCycleIndex % cycle.length
     let selected = cycle[idx]!
 
-    // Skip unavailable attacks (e.g. Ghost Rider on cooldown or capped)
+    // Skip unavailable attacks (e.g. Ghost Rider on cooldown or capped, Chain Lightning < 2 pillars)
     const maxSkips = cycle.length
     for (let skip = 0; skip < maxSkips; skip++) {
-      if (selected !== P2Attack.SUMMON_GHOST_RIDER) break
-      if (state.ghostRiderCooldown <= 0 && countAliveGhostRiders(world) < GHOST_RIDER_MAX_ALIVE) break
+      let shouldSkip = false
+      if (selected === P2Attack.SUMMON_GHOST_RIDER) {
+        if (state.ghostRiderCooldown > 0 || countAliveGhostRiders(world) >= GHOST_RIDER_MAX_ALIVE) {
+          shouldSkip = true
+        }
+      }
+      if (selected === P3Attack.CHAIN_LIGHTNING as number) {
+        if (countAlivePillars(world, state) < CHAIN_LIGHTNING_MIN_PILLARS) {
+          shouldSkip = true
+        }
+      }
+      if (!shouldSkip) break
       state.attackCycleIndex++
       idx = state.attackCycleIndex % cycle.length
       selected = cycle[idx]!
@@ -1090,6 +1424,27 @@ function tick(world: GameWorld, eid: number, dt: number): void {
         AttackConfig.telegraphDuration[eid] = SUMMON_GHOST_RIDER_TELEGRAPH
         AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY
         break
+      // Phase 3 attacks
+      case P3Attack.HELLFIRE_SWEEP:
+        AttackConfig.telegraphDuration[eid] = HELLFIRE_SWEEP_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = HELLFIRE_SWEEP_RECOVERY
+        break
+      case P3Attack.SOUL_GEYSER:
+        AttackConfig.telegraphDuration[eid] = SOUL_GEYSER_P3_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = SOUL_GEYSER_P3_RECOVERY
+        break
+      case P3Attack.CROSSROADS_CONVERGENCE:
+        AttackConfig.telegraphDuration[eid] = CONVERGENCE_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = CONVERGENCE_RECOVERY
+        break
+      case P3Attack.CHAIN_LIGHTNING:
+        AttackConfig.telegraphDuration[eid] = CHAIN_LIGHTNING_P3_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = CHAIN_LIGHTNING_P3_RECOVERY
+        break
+      case P3Attack.STAMPEDE:
+        AttackConfig.telegraphDuration[eid] = STAMPEDE_TELEGRAPH
+        AttackConfig.recoveryDuration[eid] = STAMPEDE_RECOVERY
+        break
     }
 
     // Phase 2: faster telegraphs for carried-over P1 attacks
@@ -1112,6 +1467,19 @@ function tick(world: GameWorld, eid: number, dt: number): void {
   tickCoffinNails(world, eid, state, playerEid, dt)
   tickFireTrails(world, eid, state, playerEid, dt)
   tickBrimstoneLash(world, eid, state, playerEid, dt)
+  tickSoulGeysers(world, eid, state, playerEid, dt)
+  tickChainLightning(world, eid, state, playerEid, dt)
+
+  // Phase 3: pillar respawns + dust storm
+  if (state.phase === 3) {
+    tickPillarRespawns(world, eid, state, dt)
+
+    // Dust storm check
+    if (!state.dustStormActive && Health.current[eid]! <= P3_HEAL_HP * DUST_STORM_HP_THRESHOLD) {
+      state.dustStormActive = true
+      world.oldScratchStorm = { active: true, visibilityRadius: DUST_STORM_VISIBILITY }
+    }
+  }
 
   // Tick Infernal Charge movement
   if (state.isCharging) {
@@ -1126,9 +1494,9 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     pushAttackTelegraph(world, eid, state, playerEid, stateTimer)
   }
 
-  // Manage counter window
+  // Manage counter window (disabled in Phase 3+ — boss is stationary)
   const inAttackState = aiState === AIState.ATTACK || aiState === AIState.TELEGRAPH || aiState === AIState.RECOVERY
-  if (!inAttackState && state.phase < 4) {
+  if (!inAttackState && state.phase < 3) {
     if (!state.counterWindowActive && state.counterWindowTimer <= 0) {
       state.counterWindowActive = true
       state.counterWindowTimer = COUNTER_WINDOW_DURATION
@@ -1248,8 +1616,8 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
   const state = getState(world, eid)
   if (!state) return
 
-  // P3-P4 handled in later sprints
-  if (state.phase > 2) {
+  // P4 handled in later sprint
+  if (state.phase > 3) {
     transition(eid, AIState.RECOVERY)
     return
   }
@@ -1259,6 +1627,20 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
     return
   }
   state.attackExecuted = true
+
+  // Phase 3 dispatch
+  if (state.phase === 3) {
+    switch (state.selectedAttack) {
+      case P3Attack.HELLFIRE_SWEEP: attackHellfireSweep(world, eid, state); break
+      case P3Attack.SOUL_GEYSER: attackSoulGeyser(world, eid, state); break
+      case P3Attack.CROSSROADS_CONVERGENCE: attackCrossroadsConvergence(world, eid, state); break
+      case P3Attack.CHAIN_LIGHTNING: attackChainLightning(world, eid, state); break
+      case P3Attack.STAMPEDE: attackStampede(world, eid, state); break
+    }
+    state.attackCycleIndex++
+    transition(eid, AIState.RECOVERY)
+    return
+  }
 
   // Dispatch P1 attacks (used in both Phase 1 and Phase 2)
   switch (state.selectedAttack) {
@@ -1591,6 +1973,151 @@ function attackSummonGhostRider(world: GameWorld, eid: number, state: OldScratch
 }
 
 // ============================================================================
+// Phase 3 Attack Implementations
+// ============================================================================
+
+function attackHellfireSweep(world: GameWorld, eid: number, state: OldScratchState): void {
+  const ex = Position.x[eid]!
+  const ey = Position.y[eid]!
+  for (let i = 0; i < HELLFIRE_SWEEP_BULLETS; i++) {
+    const offset = HELLFIRE_SWEEP_ARC * (i / (HELLFIRE_SWEEP_BULLETS - 1) - 0.5)
+    const angle = state.aimAngle + offset
+    spawnBullet(world, {
+      x: ex, y: ey,
+      vx: Math.cos(angle) * HELLFIRE_SWEEP_SPEED,
+      vy: Math.sin(angle) * HELLFIRE_SWEEP_SPEED,
+      damage: HELLFIRE_SWEEP_DAMAGE,
+      range: ENEMY_BULLET_RANGE,
+      ownerId: eid,
+      layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.FIRE_ANIM,
+      size: ENEMY_BULLET_SIZE_THREAT,
+    })
+  }
+}
+
+function attackSoulGeyser(world: GameWorld, _eid: number, state: OldScratchState): void {
+  const playerEid = findPlayerEid(world)
+  if (playerEid < 0) return
+
+  const px = Position.x[playerEid]!
+  const py = Position.y[playerEid]!
+
+  for (let i = 0; i < SOUL_GEYSER_COUNT; i++) {
+    state.soulGeysers.push({
+      x: px, y: py,
+      delay: SOUL_GEYSER_TELEGRAPH + SOUL_GEYSER_SPACING * i,
+      active: false,
+      duration: SOUL_GEYSER_BURST_DURATION,
+      hitEntities: new Set(),
+    })
+  }
+}
+
+function attackCrossroadsConvergence(world: GameWorld, eid: number, _state: OldScratchState): void {
+  const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+  const center = world.tilemap?.crossroadsLandmarks?.signpost
+  if (!endpoints || !center) return
+
+  for (const ep of endpoints) {
+    // Direction from endpoint to center
+    const dx = center.x - ep.x
+    const dy = center.y - ep.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist <= 0) continue
+    const dirX = dx / dist
+    const dirY = dy / dist
+
+    // Perpendicular direction for spread
+    const perpX = -dirY
+    const perpY = dirX
+
+    for (let i = 0; i < CONVERGENCE_BULLETS_PER_ROAD; i++) {
+      const spread = ROAD_HALF_SPREAD * (2 * i / (CONVERGENCE_BULLETS_PER_ROAD - 1) - 1)
+      spawnBullet(world, {
+        x: ep.x + perpX * spread,
+        y: ep.y + perpY * spread,
+        vx: dirX * CONVERGENCE_SPEED,
+        vy: dirY * CONVERGENCE_SPEED,
+        damage: CONVERGENCE_DAMAGE,
+        range: dist + 100,  // enough to pass through center
+        ownerId: eid,
+        layer: CollisionLayer.ENEMY_BULLET,
+        spriteId: BulletSpriteId.FIRE_ANIM,
+        size: ENEMY_BULLET_SIZE_THREAT,
+      })
+    }
+  }
+}
+
+function attackChainLightning(world: GameWorld, _eid: number, state: OldScratchState): void {
+  // Gather alive pillar positions
+  const positions: Array<{ x: number; y: number }> = []
+  for (const pid of state.pillarEids) {
+    if (Health.current[pid]! > 0) {
+      positions.push({ x: Position.x[pid]!, y: Position.y[pid]! })
+    }
+  }
+  if (positions.length < CHAIN_LIGHTNING_MIN_PILLARS) return
+
+  // Build all pairs
+  const pairs: ChainLightningState['pairs'] = []
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      pairs.push({
+        ax: positions[i]!.x, ay: positions[i]!.y,
+        bx: positions[j]!.x, by: positions[j]!.y,
+      })
+    }
+  }
+
+  state.chainLightning = {
+    active: true,
+    telegraphTimer: CHAIN_LIGHTNING_TELEGRAPH,
+    damageTimer: CHAIN_LIGHTNING_DURATION,
+    pairs,
+  }
+}
+
+function attackStampede(world: GameWorld, eid: number, _state: OldScratchState): void {
+  const endpoints = world.tilemap?.crossroadsLandmarks?.roadEndpoints
+  if (!endpoints || endpoints.length < 2) return
+
+  // Pick random road; opposite = srcIdx ^ 1 (N=0,S=1,W=2,E=3 → XOR pairs correctly)
+  const destIdx = Math.floor(world.rng.next() * endpoints.length)
+  const srcIdx = destIdx ^ 1
+  const src = endpoints[srcIdx]!
+  const dest = endpoints[destIdx]!
+
+  const dx = dest.x - src.x
+  const dy = dest.y - src.y
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist <= 0) return
+  const dirX = dx / dist
+  const dirY = dy / dist
+
+  // Perpendicular for spread
+  const perpX = -dirY
+  const perpY = dirX
+
+  for (let i = 0; i < STAMPEDE_BULLETS; i++) {
+    const spread = ROAD_HALF_SPREAD * (2 * i / (STAMPEDE_BULLETS - 1) - 1)
+    spawnBullet(world, {
+      x: src.x + perpX * spread,
+      y: src.y + perpY * spread,
+      vx: dirX * STAMPEDE_SPEED,
+      vy: dirY * STAMPEDE_SPEED,
+      damage: STAMPEDE_DAMAGE,
+      range: dist + 200,
+      ownerId: eid,
+      layer: CollisionLayer.ENEMY_BULLET,
+      spriteId: BulletSpriteId.FIRE_ANIM,
+      size: STAMPEDE_BULLET_SIZE,
+    })
+  }
+}
+
+// ============================================================================
 // Module registration
 // ============================================================================
 
@@ -1680,3 +2207,22 @@ export const OLD_SCRATCH_BRIMSTONE_LASH_WIDTH = BRIMSTONE_LASH_WIDTH
 export const OLD_SCRATCH_SUMMON_GHOST_RIDER_TELEGRAPH = SUMMON_GHOST_RIDER_TELEGRAPH
 export const OLD_SCRATCH_GHOST_RIDER_MAX_ALIVE = GHOST_RIDER_MAX_ALIVE
 export const OLD_SCRATCH_GHOST_RIDER_SUMMON_COOLDOWN = GHOST_RIDER_SUMMON_COOLDOWN
+
+// Phase 3 attack constants
+export const OLD_SCRATCH_PILLAR_HP = PILLAR_HP
+export const OLD_SCRATCH_PILLAR_RESPAWN_TIME = PILLAR_RESPAWN_TIME
+export const OLD_SCRATCH_P3_COOLDOWN = P3_COOLDOWN
+export const OLD_SCRATCH_HELLFIRE_SWEEP_BULLETS = HELLFIRE_SWEEP_BULLETS
+export const OLD_SCRATCH_HELLFIRE_SWEEP_DAMAGE = HELLFIRE_SWEEP_DAMAGE
+export const OLD_SCRATCH_SOUL_GEYSER_DAMAGE = SOUL_GEYSER_DAMAGE
+export const OLD_SCRATCH_SOUL_GEYSER_RADIUS = SOUL_GEYSER_RADIUS
+export const OLD_SCRATCH_SOUL_GEYSER_COUNT = SOUL_GEYSER_COUNT
+export const OLD_SCRATCH_CONVERGENCE_BULLETS_PER_ROAD = CONVERGENCE_BULLETS_PER_ROAD
+export const OLD_SCRATCH_CONVERGENCE_DAMAGE = CONVERGENCE_DAMAGE
+export const OLD_SCRATCH_CHAIN_LIGHTNING_DURATION = CHAIN_LIGHTNING_DURATION
+export const OLD_SCRATCH_CHAIN_LIGHTNING_WIDTH = CHAIN_LIGHTNING_WIDTH
+export const OLD_SCRATCH_CHAIN_LIGHTNING_MIN_PILLARS = CHAIN_LIGHTNING_MIN_PILLARS
+export const OLD_SCRATCH_STAMPEDE_BULLETS = STAMPEDE_BULLETS
+export const OLD_SCRATCH_STAMPEDE_DAMAGE = STAMPEDE_DAMAGE
+export const OLD_SCRATCH_DUST_STORM_HP_THRESHOLD = DUST_STORM_HP_THRESHOLD
+export const OLD_SCRATCH_DUST_STORM_VISIBILITY = DUST_STORM_VISIBILITY

@@ -72,6 +72,7 @@ function clearEnemiesCore(world: GameWorld, keepLoot: boolean): void {
   world.bossTelegraphs = []
   world.hollowManVeils = []
   world.hollowManStorm = null
+  world.oldScratchStorm = null
   world.trapZones = []
   world.trapDetonations = []
   if (!keepLoot) {

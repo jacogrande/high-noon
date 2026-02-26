@@ -53,6 +53,7 @@ import { mapObstacleSystem } from './mapObstacle'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
 import { itemPickupSystem } from './itemPickup'
+import { hellfirePillarSystem } from './hellfirePillar'
 import { lifespanSystem } from './lifespan'
 import { tryVisitorPurchase, tryTinkererModSelect, type CampVisitorState, type WeaponModOffer } from './campVisitor'
 
@@ -108,6 +109,7 @@ export {
   tryTinkererModSelect,
   trapZoneSystem,
   mapObstacleSystem,
+  hellfirePillarSystem,
   lifespanSystem,
 }
 
@@ -199,6 +201,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   // -- Enemy AI & steering (read floorSpeedMul from previous tick) --
   systems.register(enemyDetectionSystem)
   systems.register(bossPhaseSystem)
+  systems.register(hellfirePillarSystem)
   systems.register(enemyAISystem)
   systems.register(spatialHashSystem)
   systems.register(slowDebuffSystem)

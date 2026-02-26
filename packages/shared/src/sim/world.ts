@@ -611,6 +611,8 @@ export interface GameWorld extends IWorld {
   hollowManVeils: Array<{ x: number; y: number; radius: number; timer: number }>
   /** Hollow Man dust storm state (null when inactive) */
   hollowManStorm: { active: boolean; timer: number; duration: number; visibilityRadius: number } | null
+  /** Old Scratch dust storm state (null when inactive) */
+  oldScratchStorm: { active: boolean; visibilityRadius: number } | null
   /** Active trap zones (bear traps, caltrops) from bosses */
   trapZones: TrapZone[]
   /** Per-tick trap detonation events for client VFX */
@@ -737,6 +739,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     vultureDiveImpacts: [],
     hollowManVeils: [],
     hollowManStorm: null,
+    oldScratchStorm: null,
     trapZones: [],
     trapDetonations: [],
     mapObstacles: [],
@@ -859,6 +862,7 @@ export function resetWorld(world: GameWorld): void {
   world.vultureDiveImpacts = []
   world.hollowManVeils = []
   world.hollowManStorm = null
+  world.oldScratchStorm = null
   world.trapZones = []
   world.trapDetonations = []
   world.mapObstacles = []

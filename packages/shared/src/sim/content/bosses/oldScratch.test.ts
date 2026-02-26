@@ -56,7 +56,7 @@ import {
   OLD_SCRATCH_DEVILS_DYNAMITE_DAMAGE,
   OLD_SCRATCH_DEVILS_DYNAMITE_RADIUS,
   OLD_SCRATCH_DEVILS_DYNAMITE_FUSE,
-  P1Attack, P2Attack,
+  P1Attack, P2Attack, P3Attack,
   OLD_SCRATCH_P2_TELEGRAPH_MUL,
   OLD_SCRATCH_CROSSROADS_SALVO_BULLETS,
   OLD_SCRATCH_BRIMSTONE_LASH_DURATION,
@@ -64,11 +64,26 @@ import {
   OLD_SCRATCH_GHOST_RIDER_MAX_ALIVE,
   OLD_SCRATCH_GHOST_RIDER_SUMMON_COOLDOWN,
   OLD_SCRATCH_SNAP_SHOT_DAMAGE,
+  OLD_SCRATCH_PILLAR_HP,
+  OLD_SCRATCH_PILLAR_RESPAWN_TIME,
+  OLD_SCRATCH_HELLFIRE_SWEEP_BULLETS,
+  OLD_SCRATCH_HELLFIRE_SWEEP_DAMAGE,
+  OLD_SCRATCH_SOUL_GEYSER_DAMAGE,
+  OLD_SCRATCH_SOUL_GEYSER_RADIUS,
+  OLD_SCRATCH_SOUL_GEYSER_COUNT,
+  OLD_SCRATCH_CONVERGENCE_BULLETS_PER_ROAD,
+  OLD_SCRATCH_CONVERGENCE_DAMAGE,
+  OLD_SCRATCH_CHAIN_LIGHTNING_MIN_PILLARS,
+  OLD_SCRATCH_STAMPEDE_BULLETS,
+  OLD_SCRATCH_STAMPEDE_DAMAGE,
+  OLD_SCRATCH_DUST_STORM_HP_THRESHOLD,
+  OLD_SCRATCH_DUST_STORM_VISIBILITY,
 } from './oldScratch'
 import type { OldScratchState } from './oldScratch'
 import { TileType, getTile } from '../../tilemap'
-import { spawnGhostRider } from '../../prefabs'
-import { Lifespan, EnemyTier } from '../../components'
+import { spawnGhostRider, spawnHellfirePillar } from '../../prefabs'
+import { Lifespan, EnemyTier, HellfirePillar } from '../../components'
+import { hellfirePillarSystem } from '../../systems/hellfirePillar'
 import { GHOST_RIDER_LIFESPAN } from '../enemies'
 
 const bulletQuery = defineQuery([Bullet])
@@ -1338,6 +1353,404 @@ describe('Old Scratch — Phase 2 integration', () => {
       // Tick a few frames to process zones/charges
       for (let i = 0; i < 10; i++) {
         bossPhaseSystem(world, 1 / 60)
+      }
+    }
+
+    expect(true).toBe(true)
+  })
+})
+
+// ============================================================================
+// Hellfire Pillar tests
+// ============================================================================
+
+describe('Old Scratch — Hellfire Pillars', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+  })
+
+  test('pillar spawns with correct stats', () => {
+    const pillarEid = spawnHellfirePillar(world, 100, 200, bossEid, 0)
+
+    expect(Health.current[pillarEid]).toBe(OLD_SCRATCH_PILLAR_HP)
+    expect(Health.max[pillarEid]).toBe(OLD_SCRATCH_PILLAR_HP)
+    expect(Collider.radius[pillarEid]).toBe(24)
+    expect(HellfirePillar.damageRadius[pillarEid]).toBe(48)
+    expect(HellfirePillar.healPerSecond[pillarEid]).toBe(2)
+    expect(HellfirePillar.contactDps[pillarEid]).toBe(6)
+    expect(Enemy.type[pillarEid]).toBe(EnemyType.HELLFIRE_PILLAR)
+    expect(Enemy.tier[pillarEid]).toBe(EnemyTier.THREAT)
+  })
+
+  test('pillar heals boss at 2 HP/s', () => {
+    const pillarEid = spawnHellfirePillar(world, 100, 200, bossEid, 0)
+    const startHP = 200
+    Health.current[bossEid] = startHP
+
+    hellfirePillarSystem(world, 1.0)
+
+    expect(Health.current[bossEid]).toBeCloseTo(startHP + 2, 1)
+  })
+
+  test('pillar contact damage 6 DPS to player within 48px', () => {
+    const px = Position.x[playerEid]!
+    const py = Position.y[playerEid]!
+    spawnHellfirePillar(world, px, py, bossEid, 0)
+
+    const startHP = Health.current[playerEid]!
+    hellfirePillarSystem(world, 1.0)
+
+    expect(Health.current[playerEid]!).toBeLessThan(startHP)
+    expect(startHP - Health.current[playerEid]!).toBeCloseTo(6, 0)
+  })
+
+  test('pillar destruction stops healing', () => {
+    const pillarEid = spawnHellfirePillar(world, 100, 200, bossEid, 0)
+    Health.current[bossEid] = 200
+    Health.current[pillarEid] = 0
+
+    const startHP = Health.current[bossEid]
+    hellfirePillarSystem(world, 1.0)
+
+    expect(Health.current[bossEid]).toBe(startHP)
+  })
+
+  test('pillar respawns after PILLAR_RESPAWN_TIME at original position', () => {
+    // Enter phase 3 to get pillars
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+    Health.current[bossEid] = Health.max[bossEid]! * 0.44
+    bossPhaseSystem(world, 1 / 60)
+
+    const state = getState(world, bossEid)
+    expect(state.pillarEids.length).toBe(4)
+
+    const firstPillarEid = state.pillarEids[0]!
+    const originalPos = { ...state.pillarSpawnPositions[0]! }
+    Health.current[firstPillarEid] = 0
+
+    // Tick past respawn time
+    for (let i = 0; i < Math.ceil(OLD_SCRATCH_PILLAR_RESPAWN_TIME * 60) + 2; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    const newPillarEid = state.pillarEids[0]!
+    expect(newPillarEid).not.toBe(firstPillarEid)
+    expect(Health.current[newPillarEid]! > 0).toBe(true)
+    expect(Position.x[newPillarEid]).toBeCloseTo(originalPos.x, 0)
+    expect(Position.y[newPillarEid]).toBeCloseTo(originalPos.y, 0)
+  })
+})
+
+// ============================================================================
+// Phase 3 transition tests
+// ============================================================================
+
+describe('Old Scratch — Phase 3 transition', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+  })
+
+  function enterPhase3(): void {
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+    Health.current[bossEid] = Health.max[bossEid]! * 0.44
+    bossPhaseSystem(world, 1 / 60)
+  }
+
+  test('enterPhase3 spawns 4 pillars at lantern positions', () => {
+    enterPhase3()
+    const state = getState(world, bossEid)
+    expect(state.pillarEids.length).toBe(4)
+
+    const landmarks = world.tilemap!.crossroadsLandmarks!
+    for (let i = 0; i < 4; i++) {
+      const pid = state.pillarEids[i]!
+      expect(Health.current[pid]! > 0).toBe(true)
+      expect(Position.x[pid]).toBeCloseTo(landmarks.lanterns[i]!.x, 0)
+      expect(Position.y[pid]).toBeCloseTo(landmarks.lanterns[i]!.y, 0)
+    }
+  })
+
+  test('enterPhase3 heals boss to 250 HP', () => {
+    enterPhase3()
+    expect(Health.current[bossEid]).toBe(OLD_SCRATCH_P3_HEAL_HP)
+  })
+
+  test('enterPhase3 teleports boss to signpost center', () => {
+    enterPhase3()
+    const signpost = world.tilemap!.crossroadsLandmarks!.signpost
+    expect(Position.x[bossEid]).toBeCloseTo(signpost.x, 0)
+    expect(Position.y[bossEid]).toBeCloseTo(signpost.y, 0)
+  })
+
+  test('Phase 3 cycle is character-agnostic', () => {
+    enterPhase3()
+    const state = getState(world, bossEid)
+
+    for (const charId of ['sheriff', 'undertaker', 'prospector']) {
+      state.characterId = charId
+      state.attackCycleIndex = 0
+
+      EnemyAI.state[bossEid] = AIState.TELEGRAPH
+      EnemyAI.stateTimer[bossEid] = 0
+
+      bossPhaseSystem(world, 1 / 60)
+      expect(state.selectedAttack).toBe(P3Attack.HELLFIRE_SWEEP as number)
+    }
+  })
+})
+
+// ============================================================================
+// Phase 3 attack tests
+// ============================================================================
+
+describe('Old Scratch — Phase 3 attacks', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter Phase 3
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+    Health.current[bossEid] = Health.max[bossEid]! * 0.44
+    bossPhaseSystem(world, 1 / 60)
+  })
+
+  function prepareP3Attack(attackType: number): void {
+    const state = getState(world, bossEid)
+    state.selectedAttack = attackType
+    state.attackExecuted = false
+    state.phase = 3
+
+    const dx = Position.x[playerEid]! - Position.x[bossEid]!
+    const dy = Position.y[playerEid]! - Position.y[bossEid]!
+    state.aimAngle = Math.atan2(dy, dx)
+
+    EnemyAI.state[bossEid] = AIState.ATTACK
+    EnemyAI.stateTimer[bossEid] = 0
+    EnemyAI.targetEid[bossEid] = playerEid
+  }
+
+  test('Hellfire Sweep spawns 8 bullets', () => {
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    prepareP3Attack(P3Attack.HELLFIRE_SWEEP)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_HELLFIRE_SWEEP_BULLETS)
+  })
+
+  test('Soul Geyser queues 3 zones in state', () => {
+    prepareP3Attack(P3Attack.SOUL_GEYSER)
+    triggerAttack(world, bossEid)
+    const state = getState(world, bossEid)
+    expect(state.soulGeysers.length).toBe(OLD_SCRATCH_SOUL_GEYSER_COUNT)
+  })
+
+  test('Soul Geyser damages player on burst', () => {
+    prepareP3Attack(P3Attack.SOUL_GEYSER)
+    triggerAttack(world, bossEid)
+
+    const startHP = Health.current[playerEid]!
+    // Tick until first geyser activates (delay ≈ 0.8s)
+    for (let i = 0; i < 60; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(Health.current[playerEid]!).toBeLessThan(startHP)
+  })
+
+  test('Crossroads Convergence fires 24 bullets (6 × 4 roads)', () => {
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    prepareP3Attack(P3Attack.CROSSROADS_CONVERGENCE)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_CONVERGENCE_BULLETS_PER_ROAD * 4)
+  })
+
+  test('Chain Lightning damages player between pillar pair', () => {
+    const state = getState(world, bossEid)
+    expect(state.pillarEids.length).toBeGreaterThanOrEqual(2)
+
+    const p1 = state.pillarEids[0]!
+    const p2 = state.pillarEids[1]!
+    const midX = (Position.x[p1]! + Position.x[p2]!) / 2
+    const midY = (Position.y[p1]! + Position.y[p2]!) / 2
+    Position.x[playerEid] = midX
+    Position.y[playerEid] = midY
+
+    prepareP3Attack(P3Attack.CHAIN_LIGHTNING)
+    triggerAttack(world, bossEid)
+
+    expect(state.chainLightning).not.toBeNull()
+    expect(state.chainLightning!.pairs.length).toBeGreaterThanOrEqual(1)
+
+    const startHP = Health.current[playerEid]!
+    // Tick past telegraph + into damage phase
+    for (let i = 0; i < 60; i++) {
+      bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(Health.current[playerEid]!).toBeLessThan(startHP)
+  })
+
+  test('Chain Lightning skips when < 2 pillars alive', () => {
+    const state = getState(world, bossEid)
+
+    // Kill all but 1 pillar
+    for (let i = 1; i < state.pillarEids.length; i++) {
+      Health.current[state.pillarEids[i]!] = 0
+    }
+
+    state.attackCycleIndex = 3  // CHAIN_LIGHTNING is index 3 in P3_CYCLE
+
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+
+    // Should have skipped to STAMPEDE (index 4)
+    expect(state.selectedAttack).toBe(P3Attack.STAMPEDE as number)
+  })
+
+  test('Stampede fires 6 fast bullets', () => {
+    const before = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    prepareP3Attack(P3Attack.STAMPEDE)
+    triggerAttack(world, bossEid)
+    const after = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(after - before).toBe(OLD_SCRATCH_STAMPEDE_BULLETS)
+  })
+})
+
+// ============================================================================
+// Dust storm + cleanup tests
+// ============================================================================
+
+describe('Old Scratch — dust storm & Phase 4 cleanup', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    playerEid = spawnPlayer(world, 768, 768)
+    bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter Phase 3
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+    Health.current[bossEid] = Health.max[bossEid]! * 0.44
+    bossPhaseSystem(world, 1 / 60)
+  })
+
+  test('dust storm activates at HP ≤ 50% of P3_HEAL_HP (125)', () => {
+    const threshold = OLD_SCRATCH_P3_HEAL_HP * OLD_SCRATCH_DUST_STORM_HP_THRESHOLD
+    Health.current[bossEid] = threshold
+    bossPhaseSystem(world, 1 / 60)
+
+    expect(world.oldScratchStorm).not.toBeNull()
+    expect(world.oldScratchStorm!.active).toBe(true)
+    expect(world.oldScratchStorm!.visibilityRadius).toBe(OLD_SCRATCH_DUST_STORM_VISIBILITY)
+  })
+
+  test('enterPhase4 clears dust storm and destroys all pillars', () => {
+    const state = getState(world, bossEid)
+
+    state.dustStormActive = true
+    world.oldScratchStorm = { active: true, visibilityRadius: 200 }
+
+    // Enter Phase 4
+    Health.current[bossEid] = Health.max[bossEid]! * 0.14
+    bossPhaseSystem(world, 1 / 60)
+
+    expect(world.oldScratchStorm).toBeNull()
+    expect(state.pillarEids.length).toBe(0)
+  })
+
+  test('Phase 3 disables Infernal Counter window', () => {
+    const state = getState(world, bossEid)
+    expect(state.phase).toBe(3)
+
+    EnemyAI.state[bossEid] = AIState.IDLE
+    state.counterCooldown = 0
+    state.counterWindowActive = false
+    state.counterWindowTimer = 0
+
+    bossPhaseSystem(world, 1 / 60)
+
+    expect(state.counterWindowActive).toBe(false)
+  })
+})
+
+// ============================================================================
+// Full Phase 3 integration test
+// ============================================================================
+
+describe('Old Scratch — Phase 3 integration', () => {
+  test('full Phase 3 cycle with pillars + all 5 attacks completes without crash', () => {
+    const world = createGameWorld(42)
+    const map = generateCrossroads(STAGE_4_MAP_CONFIG)
+    setWorldTilemap(world, map)
+    const playerEid = spawnPlayer(world, 768, 768)
+    const bossEid = spawnOldScratch(world, 800, 768)
+
+    // Enter Phase 3
+    Health.current[bossEid] = Health.max[bossEid]! * 0.74
+    bossPhaseSystem(world, 1 / 60)
+    Health.current[bossEid] = Health.max[bossEid]! * 0.44
+    bossPhaseSystem(world, 1 / 60)
+
+    const state = getState(world, bossEid)
+    expect(state.phase).toBe(3)
+
+    const attacks = [
+      P3Attack.HELLFIRE_SWEEP,
+      P3Attack.SOUL_GEYSER,
+      P3Attack.CROSSROADS_CONVERGENCE,
+      P3Attack.CHAIN_LIGHTNING,
+      P3Attack.STAMPEDE,
+    ]
+
+    for (const atk of attacks) {
+      state.selectedAttack = atk as number
+      state.attackExecuted = false
+      state.phase = 3
+
+      const dx = Position.x[playerEid]! - Position.x[bossEid]!
+      const dy = Position.y[playerEid]! - Position.y[bossEid]!
+      state.aimAngle = Math.atan2(dy, dx)
+
+      EnemyAI.state[bossEid] = AIState.ATTACK
+      EnemyAI.stateTimer[bossEid] = 0
+      getBoss(EnemyType.OLD_SCRATCH)!.attack(world, bossEid, 1 / 60)
+
+      for (let i = 0; i < 10; i++) {
+        bossPhaseSystem(world, 1 / 60)
+        hellfirePillarSystem(world, 1 / 60)
       }
     }
 
