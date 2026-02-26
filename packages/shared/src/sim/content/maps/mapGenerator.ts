@@ -11,6 +11,7 @@ import { createTilemap, addLayer, setTile, getTile, TileType, type Tilemap, type
 import type { MapConfig, HazardConfig } from './mapConfig'
 import type { BuildingProfile } from './buildingProfiles'
 import type { MapObstacle, MapObstacleDef, WeightedObstacleDef } from './mapObstacleDefs'
+import { generateCrossroads } from './crossroadsGenerator'
 
 // ── Town layout constants ──────────────────────────────────────────────
 const UNIQUE_BUILDING_IDS = new Set(['general_store', 'saloon', 'barber', 'sheriff', 'bank'])
@@ -430,6 +431,19 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
   ensureConnectivity(map, centerX, centerY)
 
   return map
+}
+
+/**
+ * Generate a tilemap using the appropriate generator for the map config.
+ *
+ * Routes to `generateCrossroads` for crossroads-style maps and
+ * `generateArena` for all other (procedural) maps.
+ */
+export function generateMap(config: MapConfig, baseSeed: number, stageIndex: number): Tilemap {
+  if (config.baseTiles.style === 'crossroads_dirt') {
+    return generateCrossroads(config)
+  }
+  return generateArena(config, baseSeed, stageIndex)
 }
 
 /**

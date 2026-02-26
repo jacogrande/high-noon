@@ -8,7 +8,7 @@
 
 import { EnemyType } from '../components'
 import type { MapConfig } from './maps/mapConfig'
-import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './maps/mapConfig'
+import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG, STAGE_4_MAP_CONFIG } from './maps/mapConfig'
 import { STAGE_1_DUEL, STAGE_2_PROTECT, STAGE_3_INTERCEPT } from './objectives'
 
 export interface FodderPool {
@@ -197,9 +197,26 @@ export const STAGE_3_ENCOUNTER: StageEncounter = {
   ],
 }
 
-/** Default 3-stage run */
+/** Stage 4: Crossroads — Old Scratch final boss (1 wave, no fodder) */
+export const STAGE_4_ENCOUNTER: StageEncounter = {
+  mapConfig: STAGE_4_MAP_CONFIG,
+  // No objective — the boss IS the encounter
+  waves: [
+    {
+      fodderBudget: 0,
+      fodderPool: [],
+      maxFodderAlive: 0,
+      threats: [{ type: EnemyType.OLD_SCRATCH, count: 1 }],
+      spawnDelay: 2,
+      threatClearRatio: 1.0,
+    },
+  ],
+}
+
+/** Default 4-stage run */
 export const DEFAULT_RUN_STAGES: StageEncounter[] = [
   STAGE_1_ENCOUNTER,
   STAGE_2_ENCOUNTER,
   STAGE_3_ENCOUNTER,
+  STAGE_4_ENCOUNTER,
 ]

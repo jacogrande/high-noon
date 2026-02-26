@@ -8,7 +8,7 @@
 import { hasComponent, removeEntity } from 'bitecs'
 import {
   createGameWorld,
-  generateArena,
+  generateMap,
   setWorldTilemap,
   getPlayableBoundsFromTilemap,
   getArenaCenterFromTilemap,
@@ -273,7 +273,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.world = createGameWorld(0, getCharacterDef(selectedCharacterId))
     this.world.playerFireMode = 'hitscan'
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
-    const tilemap = generateArena(stage0Config, this.world.initialSeed, 0)
+    const tilemap = generateMap(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, tilemap)
 
     // Renderers
@@ -445,7 +445,7 @@ export class MultiplayerModeController implements SceneModeController {
         const stageIndex = data.stageNumber - 1
         const stageConfig = DEFAULT_RUN_STAGES[stageIndex]
         if (stageConfig) {
-          const newMap = generateArena(stageConfig.mapConfig, this.world.initialSeed, stageIndex)
+          const newMap = generateMap(stageConfig.mapConfig, this.world.initialSeed, stageIndex)
           this.world.tilemap = newMap
           this.world.flowField = null
           this.world.spatialHash = null
@@ -574,7 +574,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.world.initialSeed = config.seed
       // Regenerate stage 0 tilemap with correct seed
       const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
-      const newMap = generateArena(stage0Config, config.seed, 0)
+      const newMap = generateMap(stage0Config, config.seed, 0)
       this.world.tilemap = newMap
       this.world.flowField = null
       this.world.spatialHash = null

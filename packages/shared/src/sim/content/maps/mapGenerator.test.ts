@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { generateArena } from './mapGenerator'
-import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG } from './mapConfig'
+import { generateArena, generateMap } from './mapGenerator'
+import { STAGE_1_MAP_CONFIG, STAGE_2_MAP_CONFIG, STAGE_3_MAP_CONFIG, STAGE_4_MAP_CONFIG } from './mapConfig'
 import { TOWN_BUILDINGS } from './buildingProfiles'
 import {
   BASE_TILE_VARIANTS_PER_STYLE,
@@ -790,6 +790,34 @@ describe('mapGenerator', () => {
       expect(map1.tileSize).toBe(32)
       expect(map2.tileSize).toBe(32)
       expect(map3.tileSize).toBe(32)
+    })
+  })
+
+  describe('generateMap dispatcher', () => {
+    test('routes STAGE_1_MAP_CONFIG to procedural arena', () => {
+      const map = generateMap(STAGE_1_MAP_CONFIG, 12345, 0)
+      expect(map.width).toBe(STAGE_1_MAP_CONFIG.width)
+      expect(map.height).toBe(STAGE_1_MAP_CONFIG.height)
+      // Procedural maps have road networks (town layout)
+      expect(map.roadNetwork).toBeDefined()
+      expect(map.crossroadsLandmarks).toBeUndefined()
+    })
+
+    test('routes STAGE_4_MAP_CONFIG to crossroads generator', () => {
+      const map = generateMap(STAGE_4_MAP_CONFIG, 12345, 3)
+      expect(map.width).toBe(STAGE_4_MAP_CONFIG.width)
+      expect(map.height).toBe(STAGE_4_MAP_CONFIG.height)
+      // Crossroads maps have landmarks, no road network
+      expect(map.crossroadsLandmarks).toBeDefined()
+      expect(map.crossroadsLandmarks!.signpost).toBeDefined()
+      expect(map.crossroadsLandmarks!.lanterns).toHaveLength(4)
+    })
+
+    test('crossroads ignores seed (always deterministic)', () => {
+      const map1 = generateMap(STAGE_4_MAP_CONFIG, 111, 3)
+      const map2 = generateMap(STAGE_4_MAP_CONFIG, 999, 3)
+      // Same layout regardless of seed
+      expect(map1.crossroadsLandmarks!.signpost).toEqual(map2.crossroadsLandmarks!.signpost)
     })
   })
 })

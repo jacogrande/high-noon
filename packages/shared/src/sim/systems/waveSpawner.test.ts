@@ -7,9 +7,10 @@ import { waveSpawnerSystem, pickSpawnPosition } from './waveSpawner'
 import { healthSystem } from './health'
 import { spawnPlayer } from '../prefabs'
 import { SeededRng } from '../../math/rng'
-import { STAGE_1_ENCOUNTER, type StageEncounter, type WaveDefinition } from '../content/waves'
-import { STAGE_1_MAP_CONFIG } from '../content/maps/mapConfig'
+import { STAGE_1_ENCOUNTER, STAGE_4_ENCOUNTER, DEFAULT_RUN_STAGES, type StageEncounter, type WaveDefinition } from '../content/waves'
+import { STAGE_1_MAP_CONFIG, STAGE_4_MAP_CONFIG } from '../content/maps/mapConfig'
 import { generateArena } from '../content/maps/mapGenerator'
+import { generateCrossroads } from '../content/maps/crossroadsGenerator'
 import { isSolidAt } from '../tilemap'
 
 const TEST_SEED = 12345
@@ -634,6 +635,65 @@ describe('waveSpawnerSystem', () => {
         expect(Position.x[e1]).toBe(Position.x[e2])
         expect(Position.y[e1]).toBe(Position.y[e2])
       }
+    })
+  })
+
+  describe('Stage 4 encounter', () => {
+    test('STAGE_4_ENCOUNTER has 1 wave with Old Scratch threat', () => {
+      expect(STAGE_4_ENCOUNTER.waves).toHaveLength(1)
+      const wave = STAGE_4_ENCOUNTER.waves[0]!
+      expect(wave.threats).toHaveLength(1)
+      expect(wave.threats[0]!.type).toBe(EnemyType.OLD_SCRATCH)
+      expect(wave.threats[0]!.count).toBe(1)
+    })
+
+    test('STAGE_4_ENCOUNTER has no objective', () => {
+      expect(STAGE_4_ENCOUNTER.objective).toBeUndefined()
+    })
+
+    test('DEFAULT_RUN_STAGES has 4 entries', () => {
+      expect(DEFAULT_RUN_STAGES).toHaveLength(4)
+      expect(DEFAULT_RUN_STAGES[3]).toBe(STAGE_4_ENCOUNTER)
+    })
+
+    test('zero-fodder wave spawns no fodder', () => {
+      const encounter = makeEncounter({
+        fodderBudget: 0,
+        fodderPool: [],
+        maxFodderAlive: 0,
+        threats: [{ type: EnemyType.SHOOTER, count: 1 }],
+        spawnDelay: 0,
+      })
+      setEncounter(world, encounter)
+
+      // Run several ticks
+      for (let i = 0; i < 10; i++) {
+        waveSpawnerSystem(world, 1 / 60)
+      }
+
+      const counts = countByTier(world)
+      expect(counts.fodder).toBe(0)
+      expect(counts.threat).toBe(1)
+    })
+
+    test('boss on crossroads spawns at signpost center', () => {
+      const crossroadsMap = generateCrossroads(STAGE_4_MAP_CONFIG)
+      const crossWorld = createGameWorld(TEST_SEED)
+      setWorldTilemap(crossWorld, crossroadsMap)
+      spawnPlayer(crossWorld, 400, 400)
+      setEncounter(crossWorld, STAGE_4_ENCOUNTER)
+
+      // Tick past the spawn delay (2 seconds)
+      for (let i = 0; i < 130; i++) {
+        waveSpawnerSystem(crossWorld, 1 / 60)
+      }
+
+      const signpost = crossroadsMap.crossroadsLandmarks!.signpost
+      const enemies = enemyQuery(crossWorld)
+      const boss = enemies.find(eid => Enemy.type[eid] === EnemyType.OLD_SCRATCH)
+      expect(boss).toBeDefined()
+      expect(Position.x[boss!]).toBe(signpost.x)
+      expect(Position.y[boss!]).toBe(signpost.y)
     })
   })
 })

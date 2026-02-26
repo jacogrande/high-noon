@@ -11,7 +11,7 @@ import {
   spawnPlayer,
   setWorldTilemap,
   startRun,
-  generateArena,
+  generateMap,
   getPlayableBoundsFromTilemap,
   getArenaCenterFromTilemap,
   DEFAULT_RUN_STAGES,
@@ -189,7 +189,7 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Generate first stage's tilemap from the run config
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
-    this.tilemap = generateArena(stage0Config, this.world.initialSeed, 0)
+    this.tilemap = generateMap(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, this.tilemap)
     this.systems = createSystemRegistry()
 

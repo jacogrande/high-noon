@@ -632,6 +632,8 @@ When `Health.current[eid] <= 0`, Old Scratch enters a death sequence:
 
 **Goal:** Wire Old Scratch and the crossroads into the run progression as Stage 4.
 
+> Implemented: `generateMap()` dispatcher routes `crossroads_dirt` style to `generateCrossroads`, all other styles to `generateArena`. `STAGE_4_ENCOUNTER` defined with zero-fodder, single Old Scratch threat wave, no objective. `DEFAULT_RUN_STAGES` updated to 4 entries. All production `generateArena` call sites (stageProgression, SingleplayerModeController, MultiplayerModeController, GameRoom) switched to `generateMap`. Boss center spawn: wave spawner checks `crossroadsLandmarks` + boss module to spawn at signpost center instead of edge. 6 new tests (3 mapGenerator dispatcher, 3 encounter definition + wave spawner).
+
 ### 7.1 New Objective Type
 
 Add to `packages/shared/src/sim/content/objectives.ts`:

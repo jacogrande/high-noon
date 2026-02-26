@@ -14,7 +14,7 @@ import { GOLD_NUGGET_LIFETIME } from './goldRush'
 import { Enemy, Position, Bullet, Player, Health, Dead, ObjectiveRole } from '../components'
 import { removeBullet, spawnNpc } from '../prefabs'
 import { initObjective, cleanupObjective } from './objectiveSystem'
-import { generateArena } from '../content/maps/mapGenerator'
+import { generateMap } from '../content/maps/mapGenerator'
 import { STAGE_NPC_SPAWNS } from '../content/npcs'
 import { getTile, TileType } from '../tilemap'
 import {
@@ -270,7 +270,7 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
   // Pre-generate the next stage's map now so campComplete doesn't cause a frame hitch
   const nextStageIndex = run.currentStage + 1
   const nextStage = run.stages[nextStageIndex]!
-  run.pendingTilemap = generateArena(nextStage.mapConfig, world.initialSeed, nextStageIndex)
+  run.pendingTilemap = generateMap(nextStage.mapConfig, world.initialSeed, nextStageIndex)
 
   // Generate camp visitor
   const visitor = selectCampVisitor(world.rng, run.previousVisitorIds)
@@ -404,7 +404,7 @@ export function stageProgressionSystem(world: GameWorld, dt: number): void {
       applySoftFailureBranch(world, completedStage, run.currentStage)
       const nextStage = run.stages[run.currentStage]!
       // Use pre-generated map (built on camp entry), fall back to generating if missing
-      const newMap = run.pendingTilemap ?? generateArena(nextStage.mapConfig, world.initialSeed, run.currentStage)
+      const newMap = run.pendingTilemap ?? generateMap(nextStage.mapConfig, world.initialSeed, run.currentStage)
       run.pendingTilemap = null
       swapTilemap(world, newMap)
       setEncounter(world, nextStage)

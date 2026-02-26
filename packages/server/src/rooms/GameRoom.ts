@@ -4,7 +4,7 @@ import {
   createGameWorld,
   setWorldTilemap,
   startRun,
-  generateArena,
+  generateMap,
   createSystemRegistry,
   registerAllSystems,
   stepWorld,
@@ -340,7 +340,7 @@ export class GameRoom extends Room<GameRoomState> {
     this.world.lagCompGetPlayerPosAtTick = (eid, tick) => this.rewindHistory.getPlayerAtTick(eid, tick)
     this.world.lagCompGetEnemyStateAtTick = (eid, tick) => this.rewindHistory.getEnemyStateAtTick(eid, tick)
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
-    setWorldTilemap(this.world, generateArena(stage0Config, seed, 0))
+    setWorldTilemap(this.world, generateMap(stage0Config, seed, 0))
 
     this.systems = createSystemRegistry()
     registerAllSystems(this.systems)

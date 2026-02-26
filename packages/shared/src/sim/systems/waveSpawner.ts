@@ -224,7 +224,14 @@ export function waveSpawnerSystem(world: GameWorld, dt: number): void {
       let threatCount = 0
       for (const threat of waveDef.threats) {
         for (let i = 0; i < threat.count; i++) {
-          const pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 400, 80)
+          let pos: { x: number; y: number }
+          const bossModule = getBoss(threat.type)
+          if (bossModule && world.tilemap?.crossroadsLandmarks) {
+            // Boss on crossroads: spawn at signpost center
+            pos = world.tilemap.crossroadsLandmarks.signpost
+          } else {
+            pos = pickSpawnPosition(rng, playerX, playerY, world.tilemap, 200, 400, 80)
+          }
           const eid = spawnEnemy(world, threat.type, pos.x, pos.y)
           enc.activeWaveThreatEids.add(eid)
           threatsSpawnedThisTick++
