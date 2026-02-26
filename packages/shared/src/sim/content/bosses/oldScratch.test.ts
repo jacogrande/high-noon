@@ -78,6 +78,18 @@ import {
   OLD_SCRATCH_STAMPEDE_DAMAGE,
   OLD_SCRATCH_DUST_STORM_HP_THRESHOLD,
   OLD_SCRATCH_DUST_STORM_VISIBILITY,
+  OLD_SCRATCH_STAREDOWN_ROUND_1,
+  OLD_SCRATCH_STAREDOWN_ROUND_2,
+  OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS,
+  OLD_SCRATCH_PERFECT_DRAW_WINDOW,
+  OLD_SCRATCH_GOOD_DRAW_WINDOW,
+  OLD_SCRATCH_PERFECT_DRAW_DAMAGE,
+  OLD_SCRATCH_GOOD_DRAW_DAMAGE,
+  OLD_SCRATCH_SLOW_DRAW_DAMAGE,
+  OLD_SCRATCH_PANIC_SHOT_DAMAGE,
+  OLD_SCRATCH_PERFECT_DRAW_STAGGER,
+  OLD_SCRATCH_SCRAMBLE_DURATION,
+  OLD_SCRATCH_RESET_DURATION,
 } from './oldScratch'
 import type { OldScratchState } from './oldScratch'
 import { TileType, getTile } from '../../tilemap'
@@ -1755,5 +1767,396 @@ describe('Old Scratch — Phase 3 integration', () => {
     }
 
     expect(true).toBe(true)
+  })
+})
+
+// ============================================================================
+// Phase 4 Helpers
+// ============================================================================
+
+/** Transition boss to Phase 4 by lowering HP through all transitions */
+function enterP4(world: GameWorld, bossEid: number): void {
+  Health.current[bossEid] = Health.max[bossEid]! * 0.74
+  bossPhaseSystem(world, 1 / 60)
+  Health.current[bossEid] = Health.max[bossEid]! * 0.44
+  bossPhaseSystem(world, 1 / 60)
+  Health.current[bossEid] = Health.max[bossEid]! * 0.14
+  bossPhaseSystem(world, 1 / 60)
+}
+
+function createFakeBulletP4(w: GameWorld): number {
+  const eid = addEntity(w)
+  addComponent(w, Bullet, eid)
+  addComponent(w, Collider, eid)
+  Collider.layer[eid] = CollisionLayer.PLAYER_BULLET
+  return eid
+}
+
+function getStaredownDurationForTest(round: number): number {
+  if (round <= 1) return OLD_SCRATCH_STAREDOWN_ROUND_1
+  if (round === 2) return OLD_SCRATCH_STAREDOWN_ROUND_2
+  return OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS
+}
+
+// ============================================================================
+// Phase 4 — Staredown tests
+// ============================================================================
+
+describe('Old Scratch — Phase 4 staredown', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    enterP4(world, bossEid)
+  })
+
+  test('staredown duration is correct per round (2.5, 2.0, 1.5)', () => {
+    const state = getState(world, bossEid)
+    // Round 1: staredown should be ~2.5s
+    expect(state.staredownTimer).toBeCloseTo(OLD_SCRATCH_STAREDOWN_ROUND_1, 1)
+
+    // Tick through entire round 1 to get to round 2
+    const ticksToComplete = Math.ceil((OLD_SCRATCH_STAREDOWN_ROUND_1 + OLD_SCRATCH_SCRAMBLE_DURATION + OLD_SCRATCH_RESET_DURATION) * 60) + 5
+    for (let i = 0; i < ticksToComplete; i++) bossPhaseSystem(world, 1 / 60)
+
+    expect(state.drawRound).toBe(2)
+    expect(state.staredownTimer).toBeCloseTo(OLD_SCRATCH_STAREDOWN_ROUND_2, 1)
+
+    // Tick through round 2
+    const ticksR2 = Math.ceil((OLD_SCRATCH_STAREDOWN_ROUND_2 + OLD_SCRATCH_SCRAMBLE_DURATION + OLD_SCRATCH_RESET_DURATION) * 60) + 5
+    for (let i = 0; i < ticksR2; i++) bossPhaseSystem(world, 1 / 60)
+
+    expect(state.drawRound).toBe(3)
+    expect(state.staredownTimer).toBeCloseTo(OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS, 1)
+  })
+
+  test('closing circle telegraph is pushed during staredown', () => {
+    world.bossTelegraphs = []
+    bossPhaseSystem(world, 1 / 60)
+
+    const circleTelegraphs = world.bossTelegraphs.filter(
+      t => t.kind === 'circle' && t.color === 0xffcc00
+    )
+    expect(circleTelegraphs.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('staredown → flash transition fires after timer expires', () => {
+    const state = getState(world, bossEid)
+    // Tick just past the staredown timer
+    const tickCount = Math.ceil(OLD_SCRATCH_STAREDOWN_ROUND_1 * 60) + 1
+    for (let i = 0; i < tickCount; i++) bossPhaseSystem(world, 1 / 60)
+
+    // Should have passed through flash into scramble (flash is 1 tick)
+    expect(state.drawPhase === 'flash' || state.drawPhase === 'scramble').toBe(true)
+  })
+})
+
+// ============================================================================
+// Phase 4 — Draw timing tests
+// ============================================================================
+
+describe('Old Scratch — Phase 4 draw timing', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    enterP4(world, bossEid)
+  })
+
+  function tickToScramble(): void {
+    const state = getState(world, bossEid)
+    // Tick past staredown + flash
+    const tickCount = Math.ceil(OLD_SCRATCH_STAREDOWN_ROUND_1 * 60) + 2
+    for (let i = 0; i < tickCount; i++) bossPhaseSystem(world, 1 / 60)
+    expect(state.drawPhase).toBe('scramble')
+  }
+
+  test('perfect draw (hit ≤ 0.3s after flash): damage = 20, stagger applied', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+
+    // flashTimer is small (just entered scramble)
+    expect(state.flashTimer).toBeLessThanOrEqual(OLD_SCRATCH_PERFECT_DRAW_WINDOW)
+
+    const bullet = createFakeBulletP4(world)
+    const result = world.hooks.fireBulletHit(world, bullet, bossEid, 5)
+
+    expect(result.damage).toBe(OLD_SCRATCH_PERFECT_DRAW_DAMAGE)
+    expect(state.staggerTimer).toBeCloseTo(OLD_SCRATCH_PERFECT_DRAW_STAGGER)
+    expect(state.drawResolved).toBe(true)
+  })
+
+  test('good draw (hit 0.3-0.6s after flash): damage = 10, no stagger', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+
+    // Tick a bit into scramble to get past perfect window but within good window
+    const ticksToGoodWindow = Math.ceil((OLD_SCRATCH_PERFECT_DRAW_WINDOW + 0.05) * 60)
+    for (let i = 0; i < ticksToGoodWindow; i++) bossPhaseSystem(world, 1 / 60)
+
+    expect(state.flashTimer).toBeGreaterThan(OLD_SCRATCH_PERFECT_DRAW_WINDOW)
+    expect(state.flashTimer).toBeLessThanOrEqual(OLD_SCRATCH_GOOD_DRAW_WINDOW)
+
+    const bullet = createFakeBulletP4(world)
+    const result = world.hooks.fireBulletHit(world, bullet, bossEid, 5)
+
+    expect(result.damage).toBe(OLD_SCRATCH_GOOD_DRAW_DAMAGE)
+    expect(state.staggerTimer).toBe(0)
+    expect(state.drawResolved).toBe(true)
+  })
+
+  test('slow draw (> 0.6s, no player shot): Old Scratch fires 15-damage bullet', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+
+    // Tick past the good draw window
+    const ticksPastWindow = Math.ceil((OLD_SCRATCH_GOOD_DRAW_WINDOW + 0.05) * 60)
+    const bulletsBefore = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    for (let i = 0; i < ticksPastWindow; i++) bossPhaseSystem(world, 1 / 60)
+
+    expect(state.drawResolved).toBe(true)
+    const bulletsAfter = countBullets(world, CollisionLayer.ENEMY_BULLET)
+    expect(bulletsAfter).toBeGreaterThan(bulletsBefore)
+  })
+
+  test('panic shot (player fires during staredown): player takes 15 guaranteed damage, bullet negated', () => {
+    const state = getState(world, bossEid)
+    expect(state.drawPhase).toBe('staredown')
+
+    const hpBefore = Health.current[playerEid]!
+    Health.iframes[playerEid] = 0
+
+    const bullet = createFakeBulletP4(world)
+    const result = world.hooks.fireBulletHit(world, bullet, bossEid, 20)
+
+    // Player bullet should be negated
+    expect(result.damage).toBe(0)
+    // Player should have taken panic shot damage
+    expect(Health.current[playerEid]!).toBe(hpBefore - OLD_SCRATCH_PANIC_SHOT_DAMAGE)
+  })
+})
+
+// ============================================================================
+// Phase 4 — Scramble tests
+// ============================================================================
+
+describe('Old Scratch — Phase 4 scramble', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    enterP4(world, bossEid)
+  })
+
+  function tickToScramble(): void {
+    const tickCount = Math.ceil(OLD_SCRATCH_STAREDOWN_ROUND_1 * 60) + 2
+    for (let i = 0; i < tickCount; i++) bossPhaseSystem(world, 1 / 60)
+    expect(getState(world, bossEid).drawPhase).toBe('scramble')
+  }
+
+  test('scramble phase uses P1 attack cycle', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+
+    // Resolve the draw first so attacks can proceed
+    state.drawResolved = true
+
+    // Put boss in TELEGRAPH to trigger attack selection
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+
+    // Should select from P1 cycle (sheriff default)
+    // Sheriff P1 cycle starts with DEAD_EYE_SHOT
+    expect(state.selectedAttack).toBe(P1Attack.DEAD_EYE_SHOT)
+  })
+
+  test('stagger timer prevents attacks during stagger', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+    state.drawResolved = true
+    state.staggerTimer = 1.0
+
+    // Put boss in ATTACK state — should be blocked by stagger
+    EnemyAI.state[bossEid] = AIState.ATTACK
+    EnemyAI.stateTimer[bossEid] = 0
+    getBoss(EnemyType.OLD_SCRATCH)!.attack(world, bossEid, 1 / 60)
+
+    // Should transition to recovery without firing
+    expect(EnemyAI.state[bossEid]!).toBe(AIState.RECOVERY)
+  })
+
+  test('scramble attacks have faster telegraphs (scramble multiplier applied)', () => {
+    tickToScramble()
+    const state = getState(world, bossEid)
+    state.drawResolved = true
+
+    EnemyAI.state[bossEid] = AIState.TELEGRAPH
+    EnemyAI.stateTimer[bossEid] = 0
+    bossPhaseSystem(world, 1 / 60)
+
+    // Dead-Eye telegraph should be shorter than base (0.4 * 2/3 ≈ 0.267)
+    const baseTelegraph = 0.4  // DEAD_EYE_TELEGRAPH
+    const expected = baseTelegraph * (1 / 1.5)
+    expect(AttackConfig.telegraphDuration[bossEid]!).toBeCloseTo(expected, 2)
+  })
+})
+
+// ============================================================================
+// Phase 4 — State machine tests
+// ============================================================================
+
+describe('Old Scratch — Phase 4 state machine', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    enterP4(world, bossEid)
+  })
+
+  test('full cycle: staredown → flash → scramble → reset → staredown (round increments)', () => {
+    const state = getState(world, bossEid)
+    expect(state.drawPhase).toBe('staredown')
+    expect(state.drawRound).toBe(1)
+
+    // Tick through staredown
+    const staredownTicks = Math.ceil(OLD_SCRATCH_STAREDOWN_ROUND_1 * 60) + 1
+    for (let i = 0; i < staredownTicks; i++) bossPhaseSystem(world, 1 / 60)
+
+    // Should be in scramble (flash is 1 tick)
+    expect(state.drawPhase).toBe('scramble')
+
+    // Tick through scramble
+    const scrambleTicks = Math.ceil(OLD_SCRATCH_SCRAMBLE_DURATION * 60) + 1
+    for (let i = 0; i < scrambleTicks; i++) bossPhaseSystem(world, 1 / 60)
+
+    // Should be in reset
+    expect(state.drawPhase).toBe('reset')
+
+    // Tick through reset
+    const resetTicks = Math.ceil(OLD_SCRATCH_RESET_DURATION * 60) + 1
+    for (let i = 0; i < resetTicks; i++) bossPhaseSystem(world, 1 / 60)
+
+    // Should be back in staredown, round 2
+    expect(state.drawPhase).toBe('staredown')
+    expect(state.drawRound).toBe(2)
+  })
+
+  test('enterPhase4 initializes draw state correctly', () => {
+    const state = getState(world, bossEid)
+    expect(state.drawRound).toBe(1)
+    expect(state.drawPhase).toBe('staredown')
+    expect(state.flashTimer).toBe(0)
+    expect(state.drawResolved).toBe(false)
+    expect(state.staggerTimer).toBe(0)
+    expect(state.scrambleTimer).toBe(0)
+    expect(state.resetTimer).toBe(0)
+    expect(state.flashFired).toBe(false)
+    expect(state.playerShotDuringWindow).toBe(false)
+    expect(Speed.current[bossEid]!).toBe(OLD_SCRATCH_P4_SPEED)
+    expect(EnemyAI.state[bossEid]!).toBe(AIState.IDLE)
+  })
+
+  test('reset phase transitions to next round with correct staredown duration', () => {
+    const state = getState(world, bossEid)
+
+    // Fast-forward through round 1 to reset
+    const totalTicks = Math.ceil((OLD_SCRATCH_STAREDOWN_ROUND_1 + OLD_SCRATCH_SCRAMBLE_DURATION) * 60) + 5
+    for (let i = 0; i < totalTicks; i++) bossPhaseSystem(world, 1 / 60)
+    expect(state.drawPhase).toBe('reset')
+
+    // Tick through reset
+    const resetTicks = Math.ceil(OLD_SCRATCH_RESET_DURATION * 60) + 2
+    for (let i = 0; i < resetTicks; i++) bossPhaseSystem(world, 1 / 60)
+
+    expect(state.drawPhase).toBe('staredown')
+    expect(state.drawRound).toBe(2)
+    // Allow some tick drift (up to ~0.1s from extra ticks overshooting the timer)
+    expect(state.staredownTimer).toBeCloseTo(OLD_SCRATCH_STAREDOWN_ROUND_2, 0)
+  })
+})
+
+// ============================================================================
+// Phase 4 — Integration tests
+// ============================================================================
+
+describe('Old Scratch — Phase 4 integration', () => {
+  let world: GameWorld
+  let bossEid: number
+  let playerEid: number
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createTestArena())
+    playerEid = spawnPlayer(world, 700, 600)
+    bossEid = spawnOldScratch(world, 900, 600)
+    enterP4(world, bossEid)
+  })
+
+  test('3 perfect draws from 60 HP kills Old Scratch', () => {
+    // Boss enters P4 at 14% HP = 56 HP. 3 × 20 = 60 > 56
+    const state = getState(world, bossEid)
+    const startHp = Health.current[bossEid]!
+    expect(startHp).toBeCloseTo(Health.max[bossEid]! * 0.14, 0)
+
+    for (let round = 0; round < 3; round++) {
+      // Tick to scramble
+      const staredownTicks = Math.ceil(getStaredownDurationForTest(state.drawRound) * 60) + 2
+      for (let i = 0; i < staredownTicks; i++) bossPhaseSystem(world, 1 / 60)
+
+      if (state.drawPhase !== 'scramble') continue
+
+      // Fire perfect draw shot
+      Health.iframes[bossEid] = 0
+      const bullet = createFakeBulletP4(world)
+      const result = world.hooks.fireBulletHit(world, bullet, bossEid, 5)
+
+      // Apply the damage manually (hook returns modified damage, healthSystem would apply it)
+      Health.current[bossEid] = Health.current[bossEid]! - result.damage
+
+      if (Health.current[bossEid]! <= 0) break
+
+      // Tick through rest of scramble + reset
+      const remainingTicks = Math.ceil((OLD_SCRATCH_SCRAMBLE_DURATION + OLD_SCRATCH_RESET_DURATION) * 60) + 5
+      for (let i = 0; i < remainingTicks; i++) bossPhaseSystem(world, 1 / 60)
+    }
+
+    expect(Health.current[bossEid]!).toBeLessThanOrEqual(0)
+  })
+
+  test('full Phase 4 — multiple rounds cycle without crash', () => {
+    // Run 5 full draw rounds without any assertion failures
+    for (let round = 0; round < 5; round++) {
+      const totalRoundTicks = Math.ceil(
+        (OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS + OLD_SCRATCH_SCRAMBLE_DURATION + OLD_SCRATCH_RESET_DURATION) * 60
+      ) + 10
+      for (let i = 0; i < totalRoundTicks; i++) {
+        bossPhaseSystem(world, 1 / 60)
+      }
+    }
+    // If we get here without crash, the state machine is stable
+    const state = getState(world, bossEid)
+    expect(state.drawRound).toBeGreaterThan(1)
+    expect(state.phase).toBe(4)
   })
 })

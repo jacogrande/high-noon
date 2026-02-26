@@ -384,7 +384,7 @@ export interface GroundCrack {
  * Boss modules populate these each tick; client renderers read them.
  */
 export interface BossTelegraph {
-  kind: 'arc' | 'circle' | 'line' | 'ring'
+  kind: 'arc' | 'circle' | 'flash' | 'line' | 'ring'
   x: number
   y: number
   radius: number

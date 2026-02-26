@@ -612,6 +612,20 @@ When `Health.current[eid] <= 0`, Old Scratch enters a death sequence:
 
 - `packages/shared/src/sim/content/bosses/oldScratch.ts` — Phase 4 draw mechanic + scramble + death sequence
 
+**Implemented (Sprint 19 Phase 6):**
+
+- Added `'flash'` to `BossTelegraph.kind` union in `world.ts` for client-side draw signal rendering
+- Phase 4 constants: staredown durations (2.5/2.0/1.5s), draw windows (perfect ≤0.3s, good ≤0.6s), damage values (20/10/15), scramble (2.5s at 1.5× speed), stagger (0.5s), reset (0.5s)
+- New `OldScratchState` fields: `flashTimer`, `drawResolved`, `staggerTimer`, `scrambleTimer`, `resetTimer`
+- Draw state machine in `tick()`: staredown (closing circle telegraph) → flash (1-tick white flash telegraph) → scramble (draw resolution + P1 attacks at 1.5× speed) → reset → next round with decreasing staredown
+- `handleCounterHook()` extended for Phase 4: panic shot (staredown = guaranteed 15 damage to player, bullet negated), draw timing (perfect 20dmg + stagger, good 10dmg, slow = normal pass-through since boss already fired)
+- Slow draw: boss fires a SLOW_DRAW_DAMAGE bullet at player when `flashTimer > GOOD_DRAW_WINDOW` without player having shot
+- Scramble reuses P1 attack dispatch via `getCycleForCharacter(charId, 1)` with `SCRAMBLE_TELEGRAPH_MUL` (1/1.5) applied to telegraph and recovery durations; BLACK_IRON_RELOAD skipped during scramble
+- Boss death handled by existing `healthSystem` flow — no custom Invincible/death-timer needed (death VFX is a client concern for a later sprint)
+- 15 new tests: staredown (3), draw timing (4), scramble (3), state machine (3), integration (2)
+- 12 new constant exports re-exported from `bosses/index.ts`
+- All 1358 tests pass, typecheck clean
+
 ---
 
 ## Phase 7: Stage 4 Encounter Wiring

@@ -318,6 +318,36 @@ const DUST_STORM_VISIBILITY = 200
 // Phase 3 base cooldown
 const P3_COOLDOWN = 1.0
 
+// ============================================================================
+// Phase 4 Constants — The Final Draw
+// ============================================================================
+
+// Staredown durations per round
+const STAREDOWN_ROUND_1 = 2.5
+const STAREDOWN_ROUND_2 = 2.0
+const STAREDOWN_ROUND_3_PLUS = 1.5
+
+// Draw timing windows (seconds after flash)
+const PERFECT_DRAW_WINDOW = 0.3
+const GOOD_DRAW_WINDOW = 0.6
+
+// Draw damage values
+const PERFECT_DRAW_DAMAGE = 20
+const GOOD_DRAW_DAMAGE = 10
+const SLOW_DRAW_DAMAGE = 15    // Old Scratch fires at player
+const PANIC_SHOT_DAMAGE = 15   // guaranteed hit for shooting during staredown
+const DRAW_SHOT_SPEED = 800    // speed of Old Scratch's slow-draw/panic shot
+
+// Stagger (after perfect draw, boss can't act)
+const PERFECT_DRAW_STAGGER = 0.5
+
+// Scramble phase
+const SCRAMBLE_DURATION = 2.5
+const SCRAMBLE_TELEGRAPH_MUL = 1 / 1.5  // faster telegraphs
+
+// Reset phase
+const RESET_DURATION = 0.5
+
 // Phase 3 cycle — character-agnostic
 const P3_CYCLE: number[] = [
   P3Attack.HELLFIRE_SWEEP,
@@ -420,6 +450,11 @@ export interface OldScratchState {
   staredownTimer: number
   flashFired: boolean
   playerShotDuringWindow: boolean
+  flashTimer: number            // time elapsed since flash (for draw timing)
+  drawResolved: boolean         // true once draw outcome is determined this round
+  staggerTimer: number          // boss stagger remaining (can't attack)
+  scrambleTimer: number         // scramble countdown
+  resetTimer: number            // reset countdown
 
   // Phase transition guard
   phaseTransitionDone: Set<number>
@@ -470,6 +505,11 @@ function createOldScratchState(): OldScratchState {
     staredownTimer: 0,
     flashFired: false,
     playerShotDuringWindow: false,
+    flashTimer: 0,
+    drawResolved: false,
+    staggerTimer: 0,
+    scrambleTimer: 0,
+    resetTimer: 0,
 
     phaseTransitionDone: new Set(),
   }
@@ -715,6 +755,15 @@ function enterPhase4(world: GameWorld, eid: number, state: OldScratchState): voi
 
   state.drawRound = 1
   state.drawPhase = 'staredown'
+  state.staredownTimer = STAREDOWN_ROUND_1
+  state.flashTimer = 0
+  state.drawResolved = false
+  state.staggerTimer = 0
+  state.scrambleTimer = 0
+  state.resetTimer = 0
+  state.flashFired = false
+  state.playerShotDuringWindow = false
+  state.attackCycleIndex = 0
   state.dustStormActive = false
 
   // Kill all alive pillars
@@ -752,6 +801,12 @@ function getCycleForCharacter(charId: string, phase: number): number[] {
   if (charId === 'undertaker') return UNDERTAKER_CYCLE
   if (charId === 'prospector') return PROSPECTOR_CYCLE
   return SHERIFF_CYCLE  // default
+}
+
+function getStaredownDuration(round: number): number {
+  if (round <= 1) return STAREDOWN_ROUND_1
+  if (round === 2) return STAREDOWN_ROUND_2
+  return STAREDOWN_ROUND_3_PLUS
 }
 
 // ============================================================================
@@ -1316,6 +1371,184 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     }
   }
 
+  // ====== Phase 4: The Final Draw state machine ======
+  if (state.phase === 4) {
+    const bossX = Position.x[eid]!
+    const bossY = Position.y[eid]!
+
+    if (state.drawPhase === 'staredown') {
+      const duration = getStaredownDuration(state.drawRound)
+      state.staredownTimer -= dt
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+
+      // Push closing circle telegraph
+      world.bossTelegraphs.push({
+        kind: 'circle',
+        x: bossX, y: bossY,
+        radius: 80,
+        color: 0xffcc00,
+        alpha: 0.3,
+        progress: 1 - (state.staredownTimer / duration),
+      })
+
+      if (state.staredownTimer <= 0) {
+        state.drawPhase = 'flash'
+        state.flashFired = true
+        state.flashTimer = 0
+        state.drawResolved = false
+      }
+    } else if (state.drawPhase === 'flash') {
+      // Flash lasts exactly 1 tick
+      world.bossTelegraphs.push({
+        kind: 'flash',
+        x: bossX, y: bossY,
+        radius: 0,
+        color: 0xffffff,
+        alpha: 1,
+        progress: 1,
+      })
+      state.drawPhase = 'scramble'
+      state.scrambleTimer = SCRAMBLE_DURATION
+      state.flashFired = false
+    } else if (state.drawPhase === 'scramble') {
+      // Count time since flash for draw timing
+      state.flashTimer += dt
+
+      // Slow draw: if player hasn't shot and window expired, boss fires
+      if (!state.drawResolved && state.flashTimer > GOOD_DRAW_WINDOW) {
+        state.drawResolved = true
+        const playerEid = findPlayerEid(world)
+        if (playerEid >= 0) {
+          const dx = Position.x[playerEid]! - bossX
+          const dy = Position.y[playerEid]! - bossY
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist > 0) {
+            spawnBullet(world, {
+              x: bossX, y: bossY,
+              vx: (dx / dist) * DRAW_SHOT_SPEED,
+              vy: (dy / dist) * DRAW_SHOT_SPEED,
+              damage: SLOW_DRAW_DAMAGE,
+              range: ENEMY_BULLET_RANGE,
+              ownerId: eid,
+              layer: CollisionLayer.ENEMY_BULLET,
+              spriteId: BulletSpriteId.FIRE_ANIM,
+              size: ENEMY_BULLET_SIZE_THREAT,
+            })
+          }
+        }
+      }
+
+      // Stagger timer
+      if (state.staggerTimer > 0) {
+        state.staggerTimer -= dt
+      } else {
+        // Run P1 attack cycle at 1.5× speed via normal AI flow
+        const aiState = EnemyAI.state[eid]!
+        const stateTimer = EnemyAI.stateTimer[eid]!
+
+        // Attack selection at TELEGRAPH entry
+        if (aiState === AIState.TELEGRAPH && stateTimer === 0) {
+          const cycle = getCycleForCharacter(state.characterId, 1)
+          const idx = state.attackCycleIndex % cycle.length
+          let selected = cycle[idx]!
+
+          // Skip BLACK_IRON_RELOAD during scramble (no vulnerability windows)
+          if (selected === P1Attack.BLACK_IRON_RELOAD) {
+            state.attackCycleIndex++
+            const idx2 = state.attackCycleIndex % cycle.length
+            selected = cycle[idx2]!
+          }
+
+          state.selectedAttack = selected
+          state.attackExecuted = false
+
+          // Lock aim toward player
+          const peid = findPlayerEid(world)
+          if (peid >= 0) {
+            const dx = Position.x[peid]! - Position.x[eid]!
+            const dy = Position.y[peid]! - Position.y[eid]!
+            state.aimAngle = Math.atan2(dy, dx)
+          }
+
+          // Set telegraph duration per attack, then apply scramble speed multiplier
+          switch (state.selectedAttack) {
+            case P1Attack.DEAD_EYE_SHOT:
+              AttackConfig.telegraphDuration[eid] = DEAD_EYE_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.DEVILS_FAN:
+              AttackConfig.telegraphDuration[eid] = DEVILS_FAN_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.SIDEWINDER:
+              AttackConfig.telegraphDuration[eid] = SIDEWINDER_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              state.sidewinderSign = world.rng.next() < 0.5 ? 1 : -1
+              break
+            case P1Attack.BRIMSTONE_BLAST:
+              AttackConfig.telegraphDuration[eid] = BRIMSTONE_BLAST_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.COFFIN_NAIL:
+              AttackConfig.telegraphDuration[eid] = COFFIN_NAIL_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.SHADOW_STEP:
+              AttackConfig.telegraphDuration[eid] = SHADOW_STEP_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.HELLPICK_SWING:
+              AttackConfig.telegraphDuration[eid] = HELLPICK_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.INFERNAL_CHARGE:
+              AttackConfig.telegraphDuration[eid] = INFERNAL_CHARGE_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+            case P1Attack.DEVILS_DYNAMITE:
+              AttackConfig.telegraphDuration[eid] = DEVILS_DYNAMITE_TELEGRAPH * SCRAMBLE_TELEGRAPH_MUL
+              AttackConfig.recoveryDuration[eid] = DEFAULT_P1_RECOVERY * SCRAMBLE_TELEGRAPH_MUL
+              break
+          }
+        }
+
+        // Push telegraph during TELEGRAPH state
+        if (aiState === AIState.TELEGRAPH) {
+          Velocity.x[eid] = 0
+          Velocity.y[eid] = 0
+          pushAttackTelegraph(world, eid, state, findPlayerEid(world), stateTimer)
+        }
+      }
+
+      state.scrambleTimer -= dt
+      if (state.scrambleTimer <= 0) {
+        state.drawPhase = 'reset'
+        state.resetTimer = RESET_DURATION
+        EnemyAI.state[eid] = AIState.IDLE
+        EnemyAI.stateTimer[eid] = 0
+      }
+    } else if (state.drawPhase === 'reset') {
+      state.resetTimer -= dt
+      Velocity.x[eid] = 0
+      Velocity.y[eid] = 0
+
+      if (state.resetTimer <= 0) {
+        state.drawRound++
+        state.drawPhase = 'staredown'
+        state.staredownTimer = getStaredownDuration(state.drawRound)
+        state.flashFired = false
+        state.drawResolved = false
+        state.flashTimer = 0
+        state.playerShotDuringWindow = false
+        EnemyAI.state[eid] = AIState.IDLE
+        EnemyAI.stateTimer[eid] = 0
+      }
+    }
+
+    return  // Phase 4 completely replaces normal AI
+  }
+
   // Tick counter cooldown
   if (state.counterCooldown > 0) {
     state.counterCooldown -= dt
@@ -1545,6 +1778,41 @@ function handleCounterHook(
   const state = world.bossState.get(bossEid) as OldScratchState | undefined
   if (!state) return { damage, pierce: false }
 
+  // Phase 4 panic shot: player fires during staredown
+  if (state.phase === 4 && state.drawPhase === 'staredown') {
+    // Check bullet is a player bullet
+    if (hasComponent(world, Bullet, bulletEid) && Collider.layer[bulletEid] === CollisionLayer.PLAYER_BULLET) {
+      const playerEid = findPlayerEid(world)
+      if (playerEid >= 0) {
+        applyDamage(world, playerEid, {
+          amount: PANIC_SHOT_DAMAGE,
+          attackerEid: bossEid,
+          setIframes: true,
+        })
+      }
+      return { damage: 0, pierce: false }
+    }
+  }
+
+  // Phase 4 draw timing: player hits boss during scramble
+  if (state.phase === 4 && state.drawPhase === 'scramble' && !state.drawResolved) {
+    if (hasComponent(world, Bullet, bulletEid) && Collider.layer[bulletEid] === CollisionLayer.PLAYER_BULLET) {
+      state.drawResolved = true
+      state.playerShotDuringWindow = true
+
+      if (state.flashTimer <= PERFECT_DRAW_WINDOW) {
+        // Perfect draw: bonus damage + stagger
+        state.staggerTimer = PERFECT_DRAW_STAGGER
+        return { damage: PERFECT_DRAW_DAMAGE, pierce: false }
+      } else if (state.flashTimer <= GOOD_DRAW_WINDOW) {
+        // Good draw: bonus damage, no stagger
+        return { damage: GOOD_DRAW_DAMAGE, pierce: false }
+      }
+      // Slow draw: normal damage passes through (Old Scratch already fired)
+      return { damage, pierce: false }
+    }
+  }
+
   // Counter only triggers during active counter window with cooldown ready
   if (!state.counterWindowActive || state.counterCooldown > 0) {
     return { damage, pierce: false }
@@ -1616,10 +1884,13 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
   const state = getState(world, eid)
   if (!state) return
 
-  // P4 handled in later sprint
-  if (state.phase > 3) {
-    transition(eid, AIState.RECOVERY)
-    return
+  // Phase 4 scramble: use P1 attacks at 1.5× speed
+  if (state.phase === 4) {
+    if (state.drawPhase !== 'scramble' || state.staggerTimer > 0) {
+      transition(eid, AIState.RECOVERY)
+      return
+    }
+    // Fall through to P1 dispatch below
   }
 
   if (state.attackExecuted) {
@@ -2226,3 +2497,17 @@ export const OLD_SCRATCH_STAMPEDE_BULLETS = STAMPEDE_BULLETS
 export const OLD_SCRATCH_STAMPEDE_DAMAGE = STAMPEDE_DAMAGE
 export const OLD_SCRATCH_DUST_STORM_HP_THRESHOLD = DUST_STORM_HP_THRESHOLD
 export const OLD_SCRATCH_DUST_STORM_VISIBILITY = DUST_STORM_VISIBILITY
+
+// Phase 4 draw duel constants
+export const OLD_SCRATCH_STAREDOWN_ROUND_1 = STAREDOWN_ROUND_1
+export const OLD_SCRATCH_STAREDOWN_ROUND_2 = STAREDOWN_ROUND_2
+export const OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS = STAREDOWN_ROUND_3_PLUS
+export const OLD_SCRATCH_PERFECT_DRAW_WINDOW = PERFECT_DRAW_WINDOW
+export const OLD_SCRATCH_GOOD_DRAW_WINDOW = GOOD_DRAW_WINDOW
+export const OLD_SCRATCH_PERFECT_DRAW_DAMAGE = PERFECT_DRAW_DAMAGE
+export const OLD_SCRATCH_GOOD_DRAW_DAMAGE = GOOD_DRAW_DAMAGE
+export const OLD_SCRATCH_SLOW_DRAW_DAMAGE = SLOW_DRAW_DAMAGE
+export const OLD_SCRATCH_PANIC_SHOT_DAMAGE = PANIC_SHOT_DAMAGE
+export const OLD_SCRATCH_PERFECT_DRAW_STAGGER = PERFECT_DRAW_STAGGER
+export const OLD_SCRATCH_SCRAMBLE_DURATION = SCRAMBLE_DURATION
+export const OLD_SCRATCH_RESET_DURATION = RESET_DURATION
