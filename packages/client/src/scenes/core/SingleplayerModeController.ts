@@ -1210,6 +1210,12 @@ export class SingleplayerModeController implements SceneModeController {
     // Render trap zones (bear traps, caltrops)
     this.renderers.trapZoneRenderer.render(this.world)
 
+    // Render Deadeye laser sight telegraphs
+    this.renderers.laserSightRenderer.render(this.world)
+
+    // Render Dustdevil lingering damage zones
+    this.renderers.dustZoneRenderer.render(this.world)
+
     // Render map obstacles (crates, barrels, boulders, etc.)
     this.renderers.mapObstacleRenderer.render(this.world)
 

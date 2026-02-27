@@ -1336,6 +1336,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.renderers.lastRitesRenderer.render(this.world, alpha, realDt)
     this.pingRenderer.update(this.world)
     this.renderers.trapZoneRenderer.render(this.world)
+    this.renderers.laserSightRenderer.render(this.world)
+    this.renderers.dustZoneRenderer.render(this.world)
     this.renderers.mapObstacleRenderer.render(this.world)
 
     // Update dust storm fog-of-war

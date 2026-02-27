@@ -26,6 +26,13 @@ export const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.DYNAMITE_TOSSER]: 0xff6600,
   [EnemyType.RATTLESNAKE]: 0x889944,
 
+  // Stage 1 introductory enemies
+  [EnemyType.DRIFTER]: 0xc4956a,
+  [EnemyType.KNIFE_DRIFTER]: 0xb07850,
+  [EnemyType.DEADEYE]: 0x774444,
+  [EnemyType.SPITTER]: 0x66aa55,
+  [EnemyType.DUSTDEVIL]: 0xaa8844,
+
   // Threats
   [EnemyType.SHOOTER]: 0xaa44dd,
   [EnemyType.CHARGER]: 0xaa1111,
@@ -99,6 +106,13 @@ export const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.VULTURE]: 2,
   [EnemyType.GHOST_RIDER]: 2.5,
   [EnemyType.COYOTE]: 1.5,
+
+  // Stage 1
+  [EnemyType.DRIFTER]: 1.5,
+  [EnemyType.KNIFE_DRIFTER]: 1.5,
+  [EnemyType.DEADEYE]: 2,
+  [EnemyType.SPITTER]: 2,
+  [EnemyType.DUSTDEVIL]: 1.5,
 
   // Bosses
   [EnemyType.MAD_DOG]: 2.5,

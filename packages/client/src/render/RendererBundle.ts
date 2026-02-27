@@ -19,6 +19,8 @@ import { GroundCrackRenderer } from './GroundCrackRenderer'
 import { BossShockwaveRenderer } from './BossShockwaveRenderer'
 import { BossAttackRenderer } from './BossAttackRenderer'
 import { TrapZoneRenderer } from './TrapZoneRenderer'
+import { LaserSightRenderer } from './LaserSightRenderer'
+import { DustZoneRenderer } from './DustZoneRenderer'
 import { MapObstacleRenderer } from './MapObstacleRenderer'
 import { InteractableRenderer } from './InteractableRenderer'
 import { TilemapRenderer, CollisionDebugRenderer } from './TilemapRenderer'
@@ -42,6 +44,8 @@ export class RendererBundle {
   readonly bossShockwaveRenderer: BossShockwaveRenderer
   readonly bossAttackRenderer: BossAttackRenderer
   readonly trapZoneRenderer: TrapZoneRenderer
+  readonly laserSightRenderer: LaserSightRenderer
+  readonly dustZoneRenderer: DustZoneRenderer
   readonly mapObstacleRenderer: MapObstacleRenderer
   readonly interactableRenderer: InteractableRenderer
   readonly tilemapRenderer: TilemapRenderer
@@ -64,6 +68,8 @@ export class RendererBundle {
     this.bossShockwaveRenderer = new BossShockwaveRenderer(layers.entities)
     this.bossAttackRenderer = new BossAttackRenderer(layers.entities)
     this.trapZoneRenderer = new TrapZoneRenderer(layers.entities)
+    this.laserSightRenderer = new LaserSightRenderer(layers.entities)
+    this.dustZoneRenderer = new DustZoneRenderer(layers.entities)
     this.mapObstacleRenderer = new MapObstacleRenderer(layers.entities)
     this.interactableRenderer = new InteractableRenderer(layers.entities)
     this.tilemapRenderer = new TilemapRenderer(layers.background)
@@ -87,6 +93,8 @@ export class RendererBundle {
     this.bossShockwaveRenderer.destroy()
     this.bossAttackRenderer.destroy()
     this.trapZoneRenderer.destroy()
+    this.laserSightRenderer.destroy()
+    this.dustZoneRenderer.destroy()
     this.mapObstacleRenderer.destroy()
     this.showdownRenderer.destroy()
     this.tumbleweedRenderer.destroy()

@@ -59,43 +59,57 @@ export interface StageEncounter {
   bossPool?: number[]
 }
 
-/** Stage 1: Town Outskirts — easy intro (2 waves) */
+/** Stage 1: Town Outskirts — introductory encounter (3 waves)
+ *
+ *  Teaches core bullet hell skills one at a time:
+ *  Wave 1: Drifters (shoot things, basic kiting)
+ *  Wave 2: Deadeyes + Spitters (keep moving, dodge patterns)
+ *  Wave 3: Full mix + Dustdevils (spatial awareness) → boss
+ */
 export const STAGE_1_ENCOUNTER: StageEncounter = {
   mapConfig: STAGE_1_MAP_CONFIG,
   objective: STAGE_1_DUEL,
   bossPool: [EnemyType.BOOMSTICK, EnemyType.MAD_DOG, EnemyType.DALTON],
   waves: [
-    // Wave 1: Swarmers + 1 shooter
+    // Wave 1: Drifters only — learn to shoot and kite
     {
       fodderBudget: 6,
       fodderPool: [
-        { type: EnemyType.SWARMER, weight: 3 },
-        { type: EnemyType.GRUNT, weight: 1 },
-        { type: EnemyType.RATTLESNAKE, weight: 1 },
+        { type: EnemyType.DRIFTER, weight: 3 },
+        { type: EnemyType.KNIFE_DRIFTER, weight: 2 },
       ],
       maxFodderAlive: 4,
-      threats: [
-        { type: EnemyType.SHOOTER, count: 1 },
-        { type: EnemyType.LASSO_BANDIT, count: 1 },
-      ],
+      threats: [],
       spawnDelay: 0,
       threatClearRatio: 1.0,
     },
-    // Wave 2: Mixed fodder + stage boss
+    // Wave 2: Introduce Deadeyes + Spitters — learn to keep moving and dodge spreads
     {
-      fodderBudget: 10,
+      fodderBudget: 8,
       fodderPool: [
-        { type: EnemyType.SWARMER, weight: 2 },
-        { type: EnemyType.GRUNT, weight: 2 },
-        { type: EnemyType.GOBLIN_ROGUE, weight: 2 },
-        { type: EnemyType.RATTLESNAKE, weight: 1 },
-        { type: EnemyType.DYNAMITE_TOSSER, weight: 1 },
+        { type: EnemyType.DRIFTER, weight: 3 },
+        { type: EnemyType.KNIFE_DRIFTER, weight: 1 },
+        { type: EnemyType.SPITTER, weight: 2 },
       ],
       maxFodderAlive: 5,
       threats: [
-        { type: EnemyType.BOOMSTICK, count: 1 },
-        { type: EnemyType.ARMORED_BANDIT, count: 1 },
-        { type: EnemyType.VULTURE, count: 1 },
+        { type: EnemyType.DEADEYE, count: 2 },
+      ],
+      spawnDelay: 2,
+      threatClearRatio: 1.0,
+    },
+    // Wave 3: Full roster + Dustdevils — spatial awareness, then boss
+    {
+      fodderBudget: 10,
+      fodderPool: [
+        { type: EnemyType.DRIFTER, weight: 2 },
+        { type: EnemyType.KNIFE_DRIFTER, weight: 1 },
+        { type: EnemyType.SPITTER, weight: 2 },
+        { type: EnemyType.DUSTDEVIL, weight: 2 },
+      ],
+      maxFodderAlive: 5,
+      threats: [
+        { type: EnemyType.DEADEYE, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,
