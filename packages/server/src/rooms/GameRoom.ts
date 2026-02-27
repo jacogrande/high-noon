@@ -208,22 +208,6 @@ interface JoinOptions {
   roomCode?: string
 }
 
-interface MutableShotResultState {
-  pendingShotResults?: Array<{
-    shooterEid: number
-    shootSeq: number
-    tick: number
-    hit: boolean
-    hitX: number
-    hitY: number
-    targetEid: number
-    damageApplied: number
-    rewindTicks: number
-    rewindClamped: boolean
-  }>
-  hitscanVirtualBulletOwners?: Map<number, number>
-}
-
 interface ReadyMessage {
   ready: boolean
 }
@@ -423,7 +407,6 @@ export class GameRoom extends Room<GameRoomState> {
   override onCreate(options?: JoinOptions) {
     const seed = Date.now()
     this.world = createGameWorld(seed)
-    this.ensureShotResultState()
     this.world.playerFireMode = 'hitscan'
     this.world.lagComp.enabled = true
     this.world.lagComp.maxRewindTicks = REWIND_MAX_TICKS
@@ -957,19 +940,8 @@ export class GameRoom extends Room<GameRoomState> {
     }
   }
 
-  private ensureShotResultState(): void {
-    const mutable = this.world as GameWorld & MutableShotResultState
-    if (!Array.isArray(mutable.pendingShotResults)) {
-      mutable.pendingShotResults = []
-    }
-    if (!(mutable.hitscanVirtualBulletOwners instanceof Map)) {
-      mutable.hitscanVirtualBulletOwners = new Map<number, number>()
-    }
-  }
-
   private getPendingShotResults() {
-    this.ensureShotResultState()
-    return (this.world as GameWorld & Required<Pick<MutableShotResultState, 'pendingShotResults'>>).pendingShotResults
+    return this.world.pendingShotResults
   }
 
   private sendGameConfig(client: Client, slot: PlayerSlot): void {
