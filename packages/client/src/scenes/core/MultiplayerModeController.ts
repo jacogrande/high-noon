@@ -53,6 +53,7 @@ import {
   type CharacterId,
   type PlayerRosterEntry,
   getBulletConfigForCharacter,
+  CHARACTER_RECOIL,
 } from '@high-noon/shared'
 import { SoundManager } from '../../audio/SoundManager'
 import { SOUND_DEFS } from '../../audio/sounds'
@@ -74,7 +75,11 @@ import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
 import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
 import { BossAttackRenderer } from '../../render/BossAttackRenderer'
 import { InteractableRenderer } from '../../render/InteractableRenderer'
-import { TilemapRenderer } from '../../render/TilemapRenderer'
+import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
+import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
+import { MapObstacleRenderer } from '../../render/MapObstacleRenderer'
+import { DustStormEffect } from '../../render/DustStormEffect'
+import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
 import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
 import { NpcRenderer } from '../../render/NpcRenderer'
 import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
@@ -173,6 +178,11 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly bossAttackRenderer: BossAttackRenderer
   private readonly interactableRenderer: InteractableRenderer
   private readonly pingRenderer: PingRenderer
+  private readonly trapZoneRenderer: TrapZoneRenderer
+  private readonly mapObstacleRenderer: MapObstacleRenderer
+  private readonly dustStormEffect: DustStormEffect
+  private readonly tumbleweedRenderer: TumbleweedRenderer
+  private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly lightingSystem: LightingSystem
   private readonly tilemapRenderer: TilemapRenderer
   private currentTilemap: Tilemap | null = null
@@ -318,6 +328,11 @@ export class MultiplayerModeController implements SceneModeController {
     this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
     this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.pingRenderer = new PingRenderer(this.gameApp.layers.fx)
+    this.trapZoneRenderer = new TrapZoneRenderer(this.gameApp.layers.entities)
+    this.mapObstacleRenderer = new MapObstacleRenderer(this.gameApp.layers.entities)
+    this.dustStormEffect = new DustStormEffect(this.gameApp.layers.entities)
+    this.tumbleweedRenderer = new TumbleweedRenderer(this.gameApp.layers.entities)
+    this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
@@ -393,6 +408,7 @@ export class MultiplayerModeController implements SceneModeController {
       MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys,
       {
         toggleDebugOverlay: () => this.debugRenderer.toggle(),
+        toggleCollisionDebugOverlay: () => this.collisionDebugRenderer.toggle(),
         toggleSpawnPause: () => this.net.sendDebugSpawnPause(),
         cycleNetOverlay: () => this.cycleNetOverlay(),
         recordLagReport: () => this.recordLagReport(),
@@ -1021,9 +1037,10 @@ export class MultiplayerModeController implements SceneModeController {
       this.lastWaveActive = waveActive
     }
 
-    // Stage-complete detection
-    if (this.latestHud?.stageStatus === 'completed') {
-      // Emit once on transition (stageCleared handled by server)
+    // Stage-complete detection — trigger cosmetic tumbleweeds
+    if (this.latestHud?.stageStatus === 'completed' && this.currentTilemap) {
+      const tmBounds = getPlayableBoundsFromTilemap(this.currentTilemap)
+      this.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
     }
 
     // Gold pickup detection
@@ -1163,6 +1180,7 @@ export class MultiplayerModeController implements SceneModeController {
         }
       }
 
+      const recoil = CHARACTER_RECOIL[this.authoritativeCharacterId]
       this.dryFireCooldown = emitCylinderPresentationEvents({
         events: this.gameplayEvents,
         actorEid: this.myClientEid,
@@ -1176,8 +1194,9 @@ export class MultiplayerModeController implements SceneModeController {
         aimAngle: angle,
         muzzleX: barrelTip?.x ?? Position.x[this.myClientEid]!,
         muzzleY: barrelTip?.y ?? Position.y[this.myClientEid]!,
-        fireTrauma: 0.15,
-        fireKickStrength: 5,
+        fireTrauma: recoil.fireTrauma,
+        fireKickStrength: recoil.cameraKickStrength,
+        fireSlowdownMs: recoil.fireSlowdownMs,
       })
     }
     emitMeleeSwingEvents(this.gameplayEvents, this.world, this.myClientEid)
@@ -1304,6 +1323,7 @@ export class MultiplayerModeController implements SceneModeController {
 
     // Clear debug
     this.debugRenderer.clear()
+    this.collisionDebugRenderer.clear()
     this.interactableRenderer.render(this.latestInteractables, realDt)
 
     // Local player presentation is decoupled from simulation ECS state:
@@ -1371,6 +1391,16 @@ export class MultiplayerModeController implements SceneModeController {
     this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
     this.lastRitesRenderer.render(this.world, alpha, realDt)
     this.pingRenderer.update(this.world)
+    this.trapZoneRenderer.render(this.world)
+    this.mapObstacleRenderer.render(this.world)
+
+    // Update dust storm fog-of-war
+    if (this.myClientEid >= 0) {
+      this.dustStormEffect.update(this.world, Position.x[this.myClientEid]!, Position.y[this.myClientEid]!)
+    }
+
+    // Update tumbleweeds
+    this.tumbleweedRenderer.update(realDt)
 
     // Update particles
     this.particles.update(realDt)
@@ -1784,6 +1814,11 @@ export class MultiplayerModeController implements SceneModeController {
     this.bossAttackRenderer.destroy()
     this.showdownRenderer.destroy()
     this.pingRenderer.destroy()
+    this.trapZoneRenderer.destroy()
+    this.mapObstacleRenderer.destroy()
+    this.dustStormEffect.destroy()
+    this.tumbleweedRenderer.destroy()
+    this.collisionDebugRenderer.destroy()
     this.bulletRenderer.destroy()
     this.spriteRegistry.destroy()
   }

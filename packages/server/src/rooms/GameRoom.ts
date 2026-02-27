@@ -425,12 +425,12 @@ export class GameRoom extends Room<GameRoomState> {
     this.world = createGameWorld(seed)
     this.ensureShotResultState()
     this.world.playerFireMode = 'hitscan'
-    this.world.lagCompEnabled = true
-    this.world.lagCompMaxRewindTicks = REWIND_MAX_TICKS
-    this.world.lagCompHistoricalRadiusPadding = REWIND_HISTORICAL_RADIUS_PADDING
+    this.world.lagComp.enabled = true
+    this.world.lagComp.maxRewindTicks = REWIND_MAX_TICKS
+    this.world.lagComp.historicalRadiusPadding = REWIND_HISTORICAL_RADIUS_PADDING
     this.rewindHistory = new RewindHistory(REWIND_HISTORY_TICKS)
-    this.world.lagCompGetPlayerPosAtTick = (eid, tick) => this.rewindHistory.getPlayerAtTick(eid, tick)
-    this.world.lagCompGetEnemyStateAtTick = (eid, tick) => this.rewindHistory.getEnemyStateAtTick(eid, tick)
+    this.world.lagComp.getPlayerPosAtTick = (eid, tick) => this.rewindHistory.getPlayerAtTick(eid, tick)
+    this.world.lagComp.getEnemyStateAtTick = (eid, tick) => this.rewindHistory.getEnemyStateAtTick(eid, tick)
     const stage0Config = DEFAULT_RUN_STAGES[0]!.mapConfig
     setWorldTilemap(this.world, generateMap(stage0Config, seed, 0))
 
@@ -683,6 +683,7 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Skill tree node selection (server-authoritative)
     this.onMessage('select-node', (client, data: SelectNodeRequest) => {
+      if (this.state.phase !== 'playing') return
       const slot = this.slots.get(client.sessionId)
       if (!slot) return
       if (typeof data?.nodeId !== 'string' || data.nodeId.length === 0 || data.nodeId.length > 64) return
@@ -790,7 +791,12 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Add to Colyseus Schema (for lobby metadata)
     const meta = new PlayerMeta()
-    meta.name = options?.name ?? client.sessionId.slice(0, 8)
+    const MAX_NAME_LENGTH = 24
+    const rawName = String(options?.name ?? '')
+      .trim()
+      .replace(/[^\x20-\x7E]/g, '')
+      .slice(0, MAX_NAME_LENGTH)
+    meta.name = rawName || client.sessionId.slice(0, 8)
     meta.characterId = characterId
     this.state.players.set(client.sessionId, meta)
 
@@ -932,10 +938,10 @@ export class GameRoom extends Room<GameRoomState> {
     this.slots.clear()
     this.pendingReconnects.clear()
     this.rewindHistory.clear()
-    this.world.lagCompShotTickByPlayer.clear()
-    this.world.lagCompBulletShotTick.clear()
-    this.world.lagCompBulletSpawnTick.clear()
-    this.world.lagCompBulletSweepStart.clear()
+    this.world.lagComp.shotTickByPlayer.clear()
+    this.world.lagComp.bulletShotTick.clear()
+    this.world.lagComp.bulletSpawnTick.clear()
+    this.world.lagComp.bulletSweepStart.clear()
     this.getPendingShotResults().length = 0
     this.rewindTickSamples.length = 0
     this.rewindLatencyMsAccum = 0
@@ -998,7 +1004,7 @@ export class GameRoom extends Room<GameRoomState> {
   }
 
   private buildBulletSpawnMessage(eid: number, bulletId: number): BulletSpawnMessage {
-    const shotTick = this.world.lagCompBulletShotTick.get(eid)
+    const shotTick = this.world.lagComp.bulletShotTick.get(eid)
     const base: BulletSpawnMessage = {
       bulletId,
       tick: this.world.tick,
@@ -1376,7 +1382,7 @@ export class GameRoom extends Room<GameRoomState> {
       }
     }
     const rewind = slot.tickMapper.clampRewindTick(this.world.tick, estimatedTick, REWIND_MAX_TICKS)
-    this.world.lagCompShotTickByPlayer.set(slot.eid, rewind.tick)
+    this.world.lagComp.shotTickByPlayer.set(slot.eid, rewind.tick)
     this.rewindClampedByPlayer.set(slot.eid, rewind.clamped)
     if (isNewShootCommand) {
       this.rewindShotsTotal++
@@ -1396,7 +1402,7 @@ export class GameRoom extends Room<GameRoomState> {
   private serverTick() {
     const tickStartMs = performance.now()
     this.rewindHistory.record(this.world)
-    this.world.lagCompShotTickByPlayer.clear()
+    this.world.lagComp.shotTickByPlayer.clear()
     this.syncCampTransitionState()
 
     // Update active player count for co-op scaling (before systems run).
