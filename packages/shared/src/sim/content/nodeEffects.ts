@@ -423,16 +423,16 @@ function registerBrace(hooks: HookRegistry): void {
   hooks.register('onHealthChanged', 'brace', (
     world: GameWorld,
     playerEid: number,
-    _oldHP: number,
+    oldHP: number,
     newHP: number,
   ) => {
     // Only reduce damage while actively charging a melee swing
     if (MeleeWeapon.charging[playerEid] === 1) {
       // Undo the damage that was just applied, apply 70% of it instead
-      const damageTaken = _oldHP - newHP
+      const damageTaken = oldHP - newHP
       if (damageTaken > 0) {
         const reducedDamage = Math.round(damageTaken * 0.7)
-        Health.current[playerEid] = Math.min(_oldHP - reducedDamage, Health.max[playerEid]!)
+        Health.current[playerEid] = Math.min(oldHP - reducedDamage, Health.max[playerEid]!)
       }
     }
   }, -5) // Run early to adjust damage before other hooks see it
