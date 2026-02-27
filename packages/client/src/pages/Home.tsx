@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { VERSION, ROOM_CODE_LENGTH } from '@high-noon/shared'
+import { VERSION, ROOM_CODE_LENGTH, ROOM_CODE_CHARS } from '@high-noon/shared'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
 import { SettingsPanel } from '../ui/SettingsPanel'
 
@@ -80,7 +80,11 @@ export function Home() {
                   placeholder="ROOM CODE"
                   maxLength={ROOM_CODE_LENGTH}
                   value={joinCode}
-                  onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={e => {
+                    // Strip invalid characters (only allow ROOM_CODE_CHARS)
+                    const sanitized = e.target.value.toUpperCase().split('').filter(c => ROOM_CODE_CHARS.includes(c)).join('')
+                    setJoinCode(sanitized.slice(0, ROOM_CODE_LENGTH))
+                  }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && joinCode.length === ROOM_CODE_LENGTH) {
                       navigate(`/play-multi?code=${joinCode}`)

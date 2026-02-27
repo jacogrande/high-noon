@@ -33,8 +33,6 @@ import {
   type VotekickVoteMessage,
   type VotekickResultMessage,
   type RunCompleteMessage,
-  ROOM_CODE_CHARS,
-  ROOM_CODE_LENGTH,
   QUICK_PLAY_CODE,
 } from '@high-noon/shared'
 
@@ -166,18 +164,14 @@ export class NetworkClient {
   }
 
   /**
-   * Create a new private room with a generated room code.
+   * Create a new private room. The server generates the room code
+   * authoritatively (returned via lobby state).
    * Other players can join via `join({ roomCode })`.
-   * Returns the generated room code.
+   * Returns the server-generated room code.
    */
   async createPrivateRoom(options?: Omit<JoinOptions, 'roomCode'>): Promise<string> {
-    let code = ''
-    for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-      code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]
-    }
-
     try {
-      this.room = await this.client.create('game', { ...options, roomCode: code })
+      this.room = await this.client.create('game', { ...options })
     } catch (err) {
       throw new Error(`Failed to create room: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
@@ -188,7 +182,10 @@ export class NetworkClient {
 
     await this.waitForGameConfig(this.room)
     this.registerRoomHandlers(this.room)
-    return code
+
+    // Read the server-generated room code from the room's Schema state
+    const roomState = (this.room as unknown as { state?: { roomCode?: string } }).state
+    return roomState?.roomCode ?? ''
   }
 
   /**
@@ -281,6 +278,8 @@ export class NetworkClient {
   /** Whether auto-reconnect should be suppressed (e.g. server shutdown). */
   private suppressReconnect = false
 
+  /** Disconnect and clear all state. Note: clears all event listeners including
+   *  'disconnect' — callers should handle cleanup before calling this. */
   disconnect(): void {
     this.intentionalLeave = true
     sessionStorage.removeItem('hn-reconnect-token')
@@ -577,11 +576,12 @@ export class NetworkClient {
     this.emit('reconnect-state', { status: 'attempting', attempt: 0, maxAttempts: RECONNECT_MAX_ATTEMPTS })
 
     for (let attempt = 0; attempt < RECONNECT_MAX_ATTEMPTS; attempt++) {
-      const delay = Math.min(
-        RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt),
+      // First attempt is immediate; subsequent attempts use exponential backoff
+      const delay = attempt === 0 ? 0 : Math.min(
+        RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
         RECONNECT_MAX_DELAY_MS,
       )
-      await new Promise(r => setTimeout(r, delay))
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
 
       // Check if intentionally disconnected during wait
       if (this.intentionalLeave) {
