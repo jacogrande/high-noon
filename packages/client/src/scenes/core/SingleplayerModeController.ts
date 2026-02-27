@@ -187,6 +187,14 @@ export class SingleplayerModeController implements SceneModeController {
   private lastWaveActive = false
   private lastGold = 0
   private wasDead = false
+  // HUD sub-object caches to reduce allocation in getHUDState()
+  private cachedItems: HUDState['items'] = []
+  private lastItemsHash = 0
+  private cachedBoss: HUDState['boss'] = null
+  private lastBossHP = -1
+  private cachedCampVisitor: HUDState['campVisitor'] = null
+  private lastCampVisitorId = -1
+  private lastCampVisitorSoldMask = 0
 
   constructor(gameApp: GameApp, characterId: CharacterId = 'sheriff') {
     this.gameApp = gameApp
@@ -399,18 +407,7 @@ export class SingleplayerModeController implements SceneModeController {
       interactionFeedbackDescription: playerEid !== null
         ? (this.world.interactionFeedbackByPlayer.get(playerEid)?.description ?? null)
         : null,
-      items: Array.from(state.items.entries()).map(([itemId, stacks]) => {
-        const def = getItemDef(itemId)
-        return {
-          itemId,
-          key: def?.key ?? '',
-          name: def?.name ?? '???',
-          description: def?.description ?? '',
-          rarity: def?.rarity ?? 'brass',
-          stacks,
-          downside: def?.downside,
-        }
-      }),
+      items: this.getCachedItems(state),
       hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
       minimap: buildSingleplayerMinimapState(this.world, playerEid),
       objective: this.world.objective
@@ -434,19 +431,7 @@ export class SingleplayerModeController implements SceneModeController {
             return base
           })()
         : null,
-      boss: (() => {
-        const bosses = bossQuery(this.world)
-        if (bosses.length === 0) return null
-        let totalHP = 0, totalMaxHP = 0, name = 'BOSS', anyAlive = false
-        for (const beid of bosses) {
-          totalMaxHP += Health.max[beid]!
-          const hp = Health.current[beid]!
-          if (hp > 0) { anyAlive = true; totalHP += hp }
-          name = getBoss(Enemy.type[beid]!)?.displayName ?? name
-        }
-        if (!anyAlive) return null
-        return { name, hp: totalHP, maxHP: totalMaxHP }
-      })(),
+      boss: this.getCachedBoss(),
       drawDuel: (() => {
         const bosses = bossQuery(this.world)
         for (const beid of bosses) {
@@ -465,40 +450,111 @@ export class SingleplayerModeController implements SceneModeController {
         return null
       })(),
       draft: null,
-      campVisitor: this.world.campVisitor
-        ? (() => {
-            const cv = this.world.campVisitor!
-            const vDef = getVisitorDef(cv.visitorId)
-            return {
-              visitorId: cv.visitorId,
-              visitorName: vDef?.name ?? 'Visitor',
-              greeting: cv.greeting,
-              offers: cv.offers.map(o => {
-                const def = getItemDef(o.itemId)
-                return {
-                  itemId: o.itemId,
-                  itemName: def?.name ?? '???',
-                  itemDescription: def?.description ?? '',
-                  rarity: def?.rarity ?? 'brass',
-                  price: o.price,
-                  sold: o.sold,
-                  downside: def?.downside,
-                }
-              }),
-              modOffers: cv.modOffers.map(mo => {
-                const mDef = getWeaponModDef(mo.modId)
-                return {
-                  modId: mo.modId,
-                  modName: mDef?.name ?? '???',
-                  modDescription: mDef?.description ?? '',
-                  taken: mo.taken,
-                  flavor: mDef?.flavor,
-                }
-              }),
-            }
-          })()
-        : null,
+      campVisitor: this.getCachedCampVisitor(),
     }
+  }
+
+  /** Cache items array — only rebuild when items Map content changes. */
+  private getCachedItems(state: { items: Map<number, number> }): HUDState['items'] {
+    let hash = state.items.size
+    for (const [id, count] of state.items) {
+      hash = ((hash << 5) - hash + id * 997 + count) | 0
+    }
+    if (hash !== this.lastItemsHash) {
+      this.lastItemsHash = hash
+      this.cachedItems = Array.from(state.items.entries()).map(([itemId, stacks]) => {
+        const def = getItemDef(itemId)
+        return {
+          itemId,
+          key: def?.key ?? '',
+          name: def?.name ?? '???',
+          description: def?.description ?? '',
+          rarity: def?.rarity ?? 'brass',
+          stacks,
+          downside: def?.downside,
+        }
+      })
+    }
+    return this.cachedItems
+  }
+
+  /** Cache boss bar — only rebuild when boss HP total changes. */
+  private getCachedBoss(): HUDState['boss'] {
+    const bosses = bossQuery(this.world)
+    if (bosses.length === 0) {
+      if (this.lastBossHP !== 0) {
+        this.lastBossHP = 0
+        this.cachedBoss = null
+      }
+      return this.cachedBoss
+    }
+    let totalHP = 0
+    for (const beid of bosses) totalHP += Health.current[beid]!
+    if (totalHP !== this.lastBossHP) {
+      this.lastBossHP = totalHP
+      let totalMaxHP = 0, name = 'BOSS', anyAlive = false
+      for (const beid of bosses) {
+        totalMaxHP += Health.max[beid]!
+        const hp = Health.current[beid]!
+        if (hp > 0) { anyAlive = true }
+        name = getBoss(Enemy.type[beid]!)?.displayName ?? name
+      }
+      this.cachedBoss = anyAlive ? { name, hp: totalHP, maxHP: totalMaxHP } : null
+    }
+    return this.cachedBoss
+  }
+
+  /** Cache camp visitor — only rebuild when visitor spawns or offer state changes. */
+  private getCachedCampVisitor(): HUDState['campVisitor'] {
+    const cv = this.world.campVisitor
+    if (!cv) {
+      if (this.lastCampVisitorId !== -1) {
+        this.lastCampVisitorId = -1
+        this.lastCampVisitorSoldMask = 0
+        this.cachedCampVisitor = null
+      }
+      return this.cachedCampVisitor
+    }
+    let soldMask = 0
+    for (let i = 0; i < cv.offers.length; i++) {
+      if (cv.offers[i]!.sold) soldMask |= (1 << i)
+    }
+    for (let i = 0; i < cv.modOffers.length; i++) {
+      if (cv.modOffers[i]!.taken) soldMask |= (1 << (i + 16))
+    }
+    if (cv.visitorId !== this.lastCampVisitorId || soldMask !== this.lastCampVisitorSoldMask) {
+      this.lastCampVisitorId = cv.visitorId
+      this.lastCampVisitorSoldMask = soldMask
+      const vDef = getVisitorDef(cv.visitorId)
+      this.cachedCampVisitor = {
+        visitorId: cv.visitorId,
+        visitorName: vDef?.name ?? 'Visitor',
+        greeting: cv.greeting,
+        offers: cv.offers.map(o => {
+          const def = getItemDef(o.itemId)
+          return {
+            itemId: o.itemId,
+            itemName: def?.name ?? '???',
+            itemDescription: def?.description ?? '',
+            rarity: def?.rarity ?? 'brass',
+            price: o.price,
+            sold: o.sold,
+            downside: def?.downside,
+          }
+        }),
+        modOffers: cv.modOffers.map(mo => {
+          const mDef = getWeaponModDef(mo.modId)
+          return {
+            modId: mo.modId,
+            modName: mDef?.name ?? '???',
+            modDescription: mDef?.description ?? '',
+            taken: mo.taken,
+            flavor: mDef?.flavor,
+          }
+        }),
+      }
+    }
+    return this.cachedCampVisitor
   }
 
   consumePendingBossIntro(): { bossName: string; taunt: string } | null {
