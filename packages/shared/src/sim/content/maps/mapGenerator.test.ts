@@ -709,13 +709,17 @@ describe('mapGenerator', () => {
       expect(map.mapObstacles!.length).toBeGreaterThan(0)
     })
 
-    test('obstacle tiles are stamped as WALL or HALF_WALL', () => {
+    test('obstacle tiles are stamped as WALL, HALF_WALL, or floor hazard', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
       const solidLayer = map.layers[0]!
+      const floorLayer = map.layers[1]!
       for (const obs of map.mapObstacles!) {
         for (const tile of obs.tiles) {
-          const tileVal = solidLayer.data[tile.tileY * map.width + tile.tileX]!
-          expect(tileVal === TileType.WALL || tileVal === TileType.HALF_WALL).toBe(true)
+          const solidVal = solidLayer.data[tile.tileY * map.width + tile.tileX]!
+          const floorVal = floorLayer.data[tile.tileY * map.width + tile.tileX]!
+          const isSolid = solidVal === TileType.WALL || solidVal === TileType.HALF_WALL
+          const isFloorHazard = floorVal === TileType.CACTUS
+          expect(isSolid || isFloorHazard).toBe(true)
         }
       }
     })

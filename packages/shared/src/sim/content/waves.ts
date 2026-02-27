@@ -110,6 +110,7 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
       maxFodderAlive: 5,
       threats: [
         { type: EnemyType.DEADEYE, count: 1 },
+        { type: EnemyType.BOOMSTICK, count: 1 },
       ],
       spawnDelay: 3,
       threatClearRatio: 1.0,

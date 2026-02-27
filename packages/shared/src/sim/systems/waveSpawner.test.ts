@@ -473,15 +473,19 @@ describe('waveSpawnerSystem', () => {
     test('stage 1 final wave includes a boss from the pool', () => {
       setEncounter(world, STAGE_1_ENCOUNTER)
 
-      // Wave 1 activate + clear
+      // Wave 1 (no threats) — auto-clears immediately
       waveSpawnerSystem(world, 1 / 60)
+
+      // Wave 2 activates after its spawnDelay (2s)
+      waveSpawnerSystem(world, 2.1)
+      // Kill wave 2 threats (Deadeyes) to advance
       for (const eid of getThreatEids(world)) killEnemy(world, eid)
       waveSpawnerSystem(world, 1 / 60)
 
-      // Wave 2 activates after delay
+      // Wave 3 (final) activates after its spawnDelay (3s)
       waveSpawnerSystem(world, 3.1)
       const types = countByType(world)
-      expect(world.encounter!.currentWave).toBe(1)
+      expect(world.encounter!.currentWave).toBe(2)
       // Boss pool randomization picks one of Boomstick, Mad Dog, or Dalton (2 entities)
       const bossCount = (types[EnemyType.BOOMSTICK] ?? 0)
         + (types[EnemyType.MAD_DOG] ?? 0)

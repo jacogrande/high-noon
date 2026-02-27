@@ -12,6 +12,7 @@ import {
   FALLEN_TREE_DEF,
   LOW_WALL_DEF,
   FENCE_RAIL_DEF,
+  CACTUS_DEF,
   STAGE_1_OBSTACLE_POOL,
   STAGE_2_OBSTACLE_POOL,
   STAGE_3_OBSTACLE_POOL,
@@ -26,6 +27,7 @@ const ALL_DEFS: MapObstacleDef[] = [
   FALLEN_TREE_DEF,
   LOW_WALL_DEF,
   FENCE_RAIL_DEF,
+  CACTUS_DEF,
 ]
 
 describe('mapObstacleDefs', () => {
@@ -35,6 +37,7 @@ describe('mapObstacleDefs', () => {
         const allOffsets = [
           ...def.walls.map(o => o),
           ...(def.halfWalls ?? []).map(o => o),
+          ...(def.floorTiles ?? []).map(o => o),
         ]
         expect(allOffsets.length).toBeGreaterThan(0)
 
@@ -49,12 +52,13 @@ describe('mapObstacleDefs', () => {
   })
 
   describe('jumpable defs use HALF_WALL, non-jumpable use WALL', () => {
-    test('jumpable obstacles have halfWalls and no walls', () => {
+    test('jumpable obstacles have halfWalls or floorTiles and no walls', () => {
       const jumpable = ALL_DEFS.filter(d => d.jumpable)
       expect(jumpable.length).toBeGreaterThan(0)
       for (const def of jumpable) {
-        expect(def.halfWalls).toBeDefined()
-        expect(def.halfWalls!.length).toBeGreaterThan(0)
+        const hasHalfWalls = (def.halfWalls ?? []).length > 0
+        const hasFloorTiles = (def.floorTiles ?? []).length > 0
+        expect(hasHalfWalls || hasFloorTiles).toBe(true)
         expect(def.walls.length).toBe(0)
       }
     })
