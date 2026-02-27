@@ -20,15 +20,18 @@ const playerQuery = defineQuery([Player, Position])
 const enemyQuery = defineQuery([Enemy, Position, Collider])
 
 /**
- * Ring-buffer history of lightweight hit-validation state used for
+ * Fixed-size ring buffer of lightweight hit-validation state used for
  * lag-compensated rewind checks on the authoritative server.
  */
 export class RewindHistory {
-  private readonly frames: RewindFrame[] = []
-  private readonly maxFrames: number
+  private readonly buffer: (RewindFrame | null)[]
+  private readonly capacity: number
+  private head = 0 // index of oldest entry
+  private count = 0
 
   constructor(maxFrames = 32) {
-    this.maxFrames = Math.max(1, Math.trunc(maxFrames))
+    this.capacity = Math.max(1, Math.trunc(maxFrames))
+    this.buffer = new Array<RewindFrame | null>(this.capacity).fill(null)
   }
 
   record(world: GameWorld): void {
@@ -50,35 +53,40 @@ export class RewindHistory {
       })
     }
 
-    this.frames.push({
-      tick: world.tick,
-      players,
-      enemies,
-    })
+    const writeIdx = (this.head + this.count) % this.capacity
+    this.buffer[writeIdx] = { tick: world.tick, players, enemies }
 
-    if (this.frames.length > this.maxFrames) {
-      this.frames.shift()
+    if (this.count < this.capacity) {
+      this.count++
+    } else {
+      // Overwrite oldest — advance head
+      this.head = (this.head + 1) % this.capacity
     }
   }
 
   clear(): void {
-    this.frames.length = 0
+    this.buffer.fill(null)
+    this.head = 0
+    this.count = 0
   }
 
   hasTick(tick: number): boolean {
     const safeTick = Math.trunc(tick)
-    for (let i = this.frames.length - 1; i >= 0; i--) {
-      if (this.frames[i]!.tick === safeTick) return true
+    for (let i = this.count - 1; i >= 0; i--) {
+      const frame = this.buffer[(this.head + i) % this.capacity]!
+      if (frame.tick === safeTick) return true
     }
     return false
   }
 
   getOldestTick(): number | null {
-    return this.frames.length > 0 ? this.frames[0]!.tick : null
+    return this.count > 0 ? this.buffer[this.head]!.tick : null
   }
 
   getNewestTick(): number | null {
-    return this.frames.length > 0 ? this.frames[this.frames.length - 1]!.tick : null
+    if (this.count === 0) return null
+    const newestIdx = (this.head + this.count - 1) % this.capacity
+    return this.buffer[newestIdx]!.tick
   }
 
   getPlayerAtTick(eid: number, tick: number): RewindPlayerState | null {
@@ -93,8 +101,8 @@ export class RewindHistory {
 
   private findFrameAtOrBefore(tick: number): RewindFrame | null {
     const safeTick = Math.trunc(tick)
-    for (let i = this.frames.length - 1; i >= 0; i--) {
-      const frame = this.frames[i]!
+    for (let i = this.count - 1; i >= 0; i--) {
+      const frame = this.buffer[(this.head + i) % this.capacity]!
       if (frame.tick <= safeTick) return frame
     }
     return null
