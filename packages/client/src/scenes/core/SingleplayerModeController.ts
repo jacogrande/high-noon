@@ -70,22 +70,8 @@ import { INTERNAL_WIDTH, INTERNAL_HEIGHT, WORLD_SCALE, type GameApp } from '../.
 import { Input } from '../../engine/Input'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
-import { DebugRenderer, type DebugStats } from '../../render/DebugRenderer'
-import { SpriteRegistry } from '../../render/SpriteRegistry'
-import { PlayerRenderer } from '../../render/PlayerRenderer'
-import { BulletRenderer } from '../../render/BulletRenderer'
-import { EnemyRenderer } from '../../render/EnemyRenderer'
-import { ShowdownRenderer } from '../../render/ShowdownRenderer'
-import { LastRitesRenderer } from '../../render/LastRitesRenderer'
-import { DynamiteRenderer } from '../../render/DynamiteRenderer'
-import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
-import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
-import { BossAttackRenderer } from '../../render/BossAttackRenderer'
-import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
-import { MapObstacleRenderer } from '../../render/MapObstacleRenderer'
-import { InteractableRenderer } from '../../render/InteractableRenderer'
-import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
-import { DustStormEffect } from '../../render/DustStormEffect'
+import { type DebugStats } from '../../render/DebugRenderer'
+import { RendererBundle } from '../../render/RendererBundle'
 import { DrawFlashOverlay } from '../../render/DrawFlashOverlay'
 import { LetterboxOverlay } from '../../render/LetterboxOverlay'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
@@ -94,9 +80,6 @@ import { SOUND_DEFS } from '../../audio/sounds'
 import { AmbientManager } from '../../audio/AmbientManager'
 import { ParticlePool, FloatingTextPool, ChatBubblePool, KillStreakTracker, emitMovementDust, emitRollDust, emitWoodSplinters, emitRockDebris, emitObstacleHit, emitHellfireSparks, emitGhostTrail, emitDustSwirl } from '../../fx'
 import { TimeScale } from '../../engine/TimeScale'
-import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
-import { NpcRenderer } from '../../render/NpcRenderer'
-import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import { GameplayEventBuffer } from './GameplayEvents'
 import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { FullWorldSimulationDriver } from './SimulationDriver'
@@ -168,25 +151,8 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly systems: SystemRegistry
   private readonly simulationDriver: FullWorldSimulationDriver
   private readonly tilemap: Tilemap
-  private readonly debugRenderer: DebugRenderer
-  private readonly spriteRegistry: SpriteRegistry
-  private readonly playerRenderer: PlayerRenderer
-  private readonly bulletRenderer: BulletRenderer
-  private readonly enemyRenderer: EnemyRenderer
-  private readonly npcRenderer: NpcRenderer
-  private readonly objectiveRenderer: ObjectiveRenderer
-  private readonly showdownRenderer: ShowdownRenderer
-  private readonly lastRitesRenderer: LastRitesRenderer
-  private readonly dynamiteRenderer: DynamiteRenderer
-  private readonly groundCrackRenderer: GroundCrackRenderer
-  private readonly bossShockwaveRenderer: BossShockwaveRenderer
-  private readonly bossAttackRenderer: BossAttackRenderer
-  private readonly trapZoneRenderer: TrapZoneRenderer
-  private readonly mapObstacleRenderer: MapObstacleRenderer
-  private readonly interactableRenderer: InteractableRenderer
+  private readonly renderers: RendererBundle
   private readonly lightingSystem: LightingSystem
-  private readonly tilemapRenderer: TilemapRenderer
-  private readonly collisionDebugRenderer: CollisionDebugRenderer
   private currentTilemap: Tilemap | null = null
   private readonly sound: SoundManager
   private readonly ambient: AmbientManager
@@ -201,14 +167,12 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly handleKeyDown: (e: KeyboardEvent) => void
   private readonly timeScale: TimeScale
   private readonly killStreakTracker: KillStreakTracker
-  private readonly tumbleweedRenderer: TumbleweedRenderer
   private lastProcessedLevel = 0
   private dryFireCooldown = 0
   private paused = false
   private dustAccumulator = 0
   private footstepAccumulator = 0
   private wasRolling = false
-  private readonly dustStormEffect: DustStormEffect
   private readonly drawFlashOverlay: DrawFlashOverlay
   private readonly letterboxOverlay: LetterboxOverlay
   private lastDrawPhase: string | null = null
@@ -244,36 +208,18 @@ export class SingleplayerModeController implements SceneModeController {
     registerAllSystems(this.systems)
     this.simulationDriver = new FullWorldSimulationDriver(this.world, this.systems)
 
-    // Renderers
-    this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
-    this.tilemapRenderer.render(this.tilemap)
+    // Renderers (shared bundle + mode-specific overlays)
+    this.renderers = new RendererBundle(this.gameApp.layers)
+    this.renderers.tilemapRenderer.render(this.tilemap)
     // Insert building roof overlay above entities so roofs render over players
     const entitiesIdx = this.gameApp.world.getChildIndex(this.gameApp.layers.entities)
-    this.gameApp.world.addChildAt(this.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
+    this.gameApp.world.addChildAt(this.renderers.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, INTERNAL_WIDTH, INTERNAL_HEIGHT)
     // Lightmap composites in RT space (overlay, above worldContainer)
     this.gameApp.overlay.addChild(this.lightingSystem.getLightmapSprite())
     seedHazardLights(this.lightingSystem, this.tilemap)
     this.currentTilemap = this.tilemap
 
-    this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
-    this.interactableRenderer = new InteractableRenderer(this.gameApp.layers.entities)
-    this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
-    this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
-    this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
-    this.groundCrackRenderer = new GroundCrackRenderer(this.gameApp.layers.entities)
-    this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
-    this.bossAttackRenderer = new BossAttackRenderer(this.gameApp.layers.entities)
-    this.trapZoneRenderer = new TrapZoneRenderer(this.gameApp.layers.entities)
-    this.mapObstacleRenderer = new MapObstacleRenderer(this.gameApp.layers.entities)
-    this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
-    this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
-    this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer, this.gameApp.layers.entities)
-    this.npcRenderer = new NpcRenderer(this.spriteRegistry)
-    this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
-    this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
-    this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
-    this.dustStormEffect = new DustStormEffect(this.gameApp.layers.entities)
     this.drawFlashOverlay = new DrawFlashOverlay(
       this.gameApp.layers.ui,
       () => this.gameApp.width,
@@ -286,7 +232,7 @@ export class SingleplayerModeController implements SceneModeController {
     )
 
     // Debug graphics in entity layer (world space)
-    this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
+    this.gameApp.layers.entities.addChild(this.renderers.debugRenderer.getContainer())
 
     // Spawn player at arena center
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(this.tilemap)
@@ -295,7 +241,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Start the multi-stage run
     startRun(this.world, DEFAULT_RUN_STAGES)
 
-    this.playerRenderer.sync(this.world)
+    this.renderers.playerRenderer.sync(this.world)
 
     // Camera — viewport in world units (RT size / world scale)
     this.camera = new Camera()
@@ -318,14 +264,13 @@ export class SingleplayerModeController implements SceneModeController {
     this.chatBubblePool = new ChatBubblePool(this.gameApp.layers.ui)
     this.timeScale = new TimeScale()
     this.killStreakTracker = new KillStreakTracker()
-    this.tumbleweedRenderer = new TumbleweedRenderer(this.gameApp.layers.entities)
     this.gameplayEvents = new GameplayEventBuffer()
     this.gameplayEventProcessor = new GameplayEventProcessor({
       camera: this.camera,
       sound: this.sound,
       particles: this.particles,
       floatingText: this.floatingText,
-      playerRenderer: this.playerRenderer,
+      playerRenderer: this.renderers.playerRenderer,
       hitStop: this.hitStop,
       spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
       killStreakTracker: this.killStreakTracker,
@@ -344,8 +289,8 @@ export class SingleplayerModeController implements SceneModeController {
     this.handleKeyDown = createSceneDebugHotkeyHandler(
       SINGLEPLAYER_PRESENTATION_POLICY.debugHotkeys,
       {
-        toggleDebugOverlay: () => this.debugRenderer.toggle(),
-        toggleCollisionDebugOverlay: () => this.collisionDebugRenderer.toggle(),
+        toggleDebugOverlay: () => this.renderers.debugRenderer.toggle(),
+        toggleCollisionDebugOverlay: () => this.renderers.collisionDebugRenderer.toggle(),
         toggleSpawnPause: () => this.toggleSpawnPause(),
       },
     )
@@ -368,13 +313,13 @@ export class SingleplayerModeController implements SceneModeController {
   }
 
   private isPlayerDead(): boolean {
-    const eid = this.playerRenderer.getPlayerEntity()
+    const eid = this.renderers.playerRenderer.getPlayerEntity()
     return eid !== null && hasComponent(this.world, Dead, eid)
   }
 
   /** Returns current HUD display state */
   getHUDState(): HUDState {
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
     const enc = this.world.encounter
     const state = this.world.upgradeState
     const { xp, level } = state
@@ -613,7 +558,7 @@ export class SingleplayerModeController implements SceneModeController {
   }
 
   selectNode(nodeId: string): boolean {
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
     const success = takeNode(this.world.upgradeState, nodeId, this.world)
     if (success) {
@@ -624,13 +569,13 @@ export class SingleplayerModeController implements SceneModeController {
   }
 
   handleVisitorPurchase(offerIndex: number): boolean {
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
     return tryVisitorPurchase(this.world, playerEid, offerIndex)
   }
 
   handleTinkererModSelect(offerIndex: number): boolean {
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
     return tryTinkererModSelect(this.world, playerEid, offerIndex)
   }
@@ -660,7 +605,7 @@ export class SingleplayerModeController implements SceneModeController {
       const visualBulletId = this.pendingVisualShots.shift()
       if (
         visualBulletId !== undefined &&
-        this.bulletRenderer.resolveVisualBulletImpact(
+        this.renderers.bulletRenderer.resolveVisualBulletImpact(
           visualBulletId,
           result.hitX,
           result.hitY,
@@ -684,7 +629,7 @@ export class SingleplayerModeController implements SceneModeController {
   }
 
   private processVisualBulletImpacts(): void {
-    const impacts = this.bulletRenderer.consumeVisualImpacts()
+    const impacts = this.renderers.bulletRenderer.consumeVisualImpacts()
     if (impacts.length === 0) return
 
     this.gameplayEventProcessor.processAll(
@@ -708,7 +653,7 @@ export class SingleplayerModeController implements SceneModeController {
     if (this.hitStop.isFrozen) return
 
     // Get player entity for position lookups
-    const playerEid = this.playerRenderer.getPlayerEntity()
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
 
     // Set player world position as aim reference
     if (playerEid !== null) {
@@ -738,15 +683,15 @@ export class SingleplayerModeController implements SceneModeController {
     // Detect tilemap change (stage transition)
     if (this.world.tilemap !== this.currentTilemap && this.world.tilemap) {
       this.currentTilemap = this.world.tilemap
-      refreshTilemap(this.world.tilemap, this.tilemapRenderer, this.camera, this.lightingSystem)
+      refreshTilemap(this.world.tilemap, this.renderers.tilemapRenderer, this.camera, this.lightingSystem)
     }
 
     // Map obstacle destruction VFX
     if (this.world.obstacleDestructions.length > 0) {
       // Invalidate tilemap render so cleared tiles are updated visually
-      this.tilemapRenderer.invalidate()
+      this.renderers.tilemapRenderer.invalidate()
       if (this.world.tilemap) {
-        this.tilemapRenderer.render(this.world.tilemap)
+        this.renderers.tilemapRenderer.render(this.world.tilemap)
       }
       for (const dest of this.world.obstacleDestructions) {
         if (isWoodObstacle(dest.type)) {
@@ -771,11 +716,11 @@ export class SingleplayerModeController implements SceneModeController {
     emitBossPhaseTransitionEvents(this.gameplayEvents, this.world)
 
     // Set showdown target for enemy tinting
-    this.enemyRenderer.showdownTargetEid =
+    this.renderers.enemyRenderer.showdownTargetEid =
       playerEid !== null && hasComponent(this.world, Showdown, playerEid) && Showdown.active[playerEid]! === 1
         ? Showdown.targetEid[playerEid]!
         : NO_TARGET
-    this.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
+    this.renderers.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
 
     // Detect player damage (i-frames went from 0 to >0)
     if (playerEid !== null) {
@@ -791,17 +736,17 @@ export class SingleplayerModeController implements SceneModeController {
 
     syncRenderersAndQueueEvents({
       world: this.world,
-      playerRenderer: this.playerRenderer,
-      enemyRenderer: this.enemyRenderer,
-      bulletRenderer: this.bulletRenderer,
+      playerRenderer: this.renderers.playerRenderer,
+      enemyRenderer: this.renderers.enemyRenderer,
+      bulletRenderer: this.renderers.bulletRenderer,
       events: this.gameplayEvents,
-      npcRenderer: this.npcRenderer,
-      objectiveRenderer: this.objectiveRenderer,
+      npcRenderer: this.renderers.npcRenderer,
+      objectiveRenderer: this.renderers.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
     })
     emitBossIntroEvents({
       events: this.gameplayEvents,
-      enemyRenderer: this.enemyRenderer,
+      enemyRenderer: this.renderers.enemyRenderer,
       narrativeThreadId: this.world.narrative?.threadId ?? null,
     })
 
@@ -810,7 +755,7 @@ export class SingleplayerModeController implements SceneModeController {
       const newRounds = Cylinder.rounds[playerEid]!
       const nowReloading = Cylinder.reloading[playerEid]!
       const angle = Player.aimAngle[playerEid]!
-      const barrelTip = this.playerRenderer.getBarrelTipFromState(this.world, playerEid)
+      const barrelTip = this.renderers.playerRenderer.getBarrelTipFromState(this.world, playerEid)
       const muzzleX = barrelTip?.x ?? Position.x[playerEid]!
       const muzzleY = barrelTip?.y ?? Position.y[playerEid]!
       if (this.world.playerFireMode === 'hitscan' && didFireRound(prevRounds, newRounds)) {
@@ -821,7 +766,7 @@ export class SingleplayerModeController implements SceneModeController {
           const angleOffset = pelletCount > 1
             ? spreadAngle * (i / (pelletCount - 1) - 0.5)
             : 0
-          const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+          const visualBulletId = this.renderers.bulletRenderer.spawnVisualBullet(
             muzzleX,
             muzzleY,
             angle + angleOffset,
@@ -950,7 +895,7 @@ export class SingleplayerModeController implements SceneModeController {
     // Stage-clear tumbleweeds
     if (this.world.stageCleared) {
       const tmBounds = getPlayableBoundsFromTilemap(this.tilemap)
-      this.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
+      this.renderers.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
       this.gameplayEvents.push({ type: 'stage-complete' })
     }
 
@@ -1075,7 +1020,7 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Update per-building dither visibility
     {
-      const eid = this.playerRenderer.getPlayerEntity()
+      const eid = this.renderers.playerRenderer.getPlayerEntity()
       if (eid !== null) {
         const px = Position.x[eid]!
         const py = Position.y[eid]!
@@ -1086,13 +1031,13 @@ export class SingleplayerModeController implements SceneModeController {
         const sin = Math.sin(camState.angle)
         const screenX = (dx * cos - dy * sin) * screenZoom + this.gameApp.width / 2
         const screenY = (dx * sin + dy * cos) * screenZoom + this.gameApp.height / 2
-        this.tilemapRenderer.updateBuildingVisibility(px, py, screenX, screenY)
+        this.renderers.tilemapRenderer.updateBuildingVisibility(px, py, screenX, screenY)
       }
     }
 
     // Clear debug graphics
-    this.debugRenderer.clear()
-    this.collisionDebugRenderer.clear()
+    this.renderers.debugRenderer.clear()
+    this.renderers.collisionDebugRenderer.clear()
 
     const interactables: InteractablesData = {
       salesman: this.world.salesman
@@ -1133,17 +1078,17 @@ export class SingleplayerModeController implements SceneModeController {
         })),
       horse: this.world.horse?.active ? { x: this.world.horse.x, y: this.world.horse.y } : null,
     }
-    this.interactableRenderer.render(interactables, realDt)
+    this.renderers.interactableRenderer.render(interactables, realDt)
 
     // Apply render time scale for slow-mo effects
     const scaledDt = this.timeScale.update(realDt)
 
     // Render player with interpolation
-    this.playerRenderer.render(this.world, alpha, realDt)
+    this.renderers.playerRenderer.render(this.world, alpha, realDt)
 
     // Dust clouds from player movement
     {
-      const eid = this.playerRenderer.getPlayerEntity()
+      const eid = this.renderers.playerRenderer.getPlayerEntity()
       if (eid !== null) {
         const isRolling = PlayerState.state[eid] === PlayerStateType.ROLLING
         if (isRolling && !this.wasRolling) {
@@ -1174,52 +1119,52 @@ export class SingleplayerModeController implements SceneModeController {
     }
 
     // Advance and render local-only cosmetic player bullets.
-    this.bulletRenderer.updateVisualBullets(realDt)
+    this.renderers.bulletRenderer.updateVisualBullets(realDt)
     this.processVisualBulletImpacts()
 
     // Render bullets with interpolation
-    this.bulletRenderer.render(this.world, alpha, realDt)
+    this.renderers.bulletRenderer.render(this.world, alpha, realDt)
 
     // Render enemies with interpolation
-    this.enemyRenderer.render(this.world, alpha, realDt)
+    this.renderers.enemyRenderer.render(this.world, alpha, realDt)
 
     // Render NPCs with interpolation
-    this.npcRenderer.render(this.world, alpha)
+    this.renderers.npcRenderer.render(this.world, alpha)
 
     // Render objective targets
-    this.objectiveRenderer.render(this.world, alpha)
+    this.renderers.objectiveRenderer.render(this.world, alpha)
 
     // Render boss attack telegraphs (below entities)
-    this.bossAttackRenderer.render(this.world, this.particles, realDt)
+    this.renderers.bossAttackRenderer.render(this.world, this.particles, realDt)
 
     // Render ground cracks (below entities)
-    this.groundCrackRenderer.render(this.world)
+    this.renderers.groundCrackRenderer.render(this.world)
 
     // Render boss shockwave rings
-    this.bossShockwaveRenderer.render(this.world)
+    this.renderers.bossShockwaveRenderer.render(this.world)
 
     // Render trap zones (bear traps, caltrops)
-    this.trapZoneRenderer.render(this.world)
+    this.renderers.trapZoneRenderer.render(this.world)
 
     // Render map obstacles (crates, barrels, boulders, etc.)
-    this.mapObstacleRenderer.render(this.world)
+    this.renderers.mapObstacleRenderer.render(this.world)
 
     // Render dynamite pixel-fuse telegraphs + throw arcs.
-    this.dynamiteRenderer.render(this.world, realDt, this.particles)
+    this.renderers.dynamiteRenderer.render(this.world, realDt, this.particles)
 
     // Render showdown mark + line
-    const playerEid = this.playerRenderer.getPlayerEntity()
-    this.showdownRenderer.render(this.world, playerEid !== null ? [playerEid] : [], alpha, realDt)
-    this.lastRitesRenderer.render(this.world, alpha, realDt)
+    const playerEid = this.renderers.playerRenderer.getPlayerEntity()
+    this.renderers.showdownRenderer.render(this.world, playerEid !== null ? [playerEid] : [], alpha, realDt)
+    this.renderers.lastRitesRenderer.render(this.world, alpha, realDt)
 
     // Update animated tile tinting
-    this.tilemapRenderer.update(realDt)
+    this.renderers.tilemapRenderer.update(realDt)
 
     // Update dust storm fog-of-war
     {
-      const eid = this.playerRenderer.getPlayerEntity()
+      const eid = this.renderers.playerRenderer.getPlayerEntity()
       if (eid !== null) {
-        this.dustStormEffect.update(this.world, Position.x[eid]!, Position.y[eid]!)
+        this.renderers.dustStormEffect.update(this.world, Position.x[eid]!, Position.y[eid]!)
       }
     }
 
@@ -1258,11 +1203,11 @@ export class SingleplayerModeController implements SceneModeController {
     }
 
     // Dust swirl particles during storm
-    if (this.dustStormEffect.isActive) {
+    if (this.renderers.dustStormEffect.isActive) {
       this.dustSwirlAccumulator += realDt
       if (this.dustSwirlAccumulator >= DUST_SWIRL_INTERVAL) {
         this.dustSwirlAccumulator = 0
-        const eid = this.playerRenderer.getPlayerEntity()
+        const eid = this.renderers.playerRenderer.getPlayerEntity()
         if (eid !== null) {
           const px = Position.x[eid]!
           const py = Position.y[eid]!
@@ -1272,7 +1217,7 @@ export class SingleplayerModeController implements SceneModeController {
     }
 
     // Update tumbleweeds
-    this.tumbleweedRenderer.update(scaledDt)
+    this.renderers.tumbleweedRenderer.update(scaledDt)
 
     // Update particles (visual-only, uses scaled dt for slow-mo)
     this.particles.update(scaledDt)
@@ -1326,11 +1271,11 @@ export class SingleplayerModeController implements SceneModeController {
     const stats: DebugStats = {
       fps,
       tick: this.world.tick,
-      entityCount: this.spriteRegistry.count,
+      entityCount: this.renderers.spriteRegistry.count,
       playerState: playerEid !== null
         ? (PLAYER_STATE_NAMES[PlayerState.state[playerEid]!] ?? 'unknown')
         : '(none)',
-      enemyCount: this.enemyRenderer.count,
+      enemyCount: this.renderers.enemyRenderer.count,
       enemyStates,
       playerHP: playerEid !== null ? Health.current[playerEid]! : 0,
       playerMaxHP: playerEid !== null ? Health.max[playerEid]! : 0,
@@ -1356,7 +1301,7 @@ export class SingleplayerModeController implements SceneModeController {
       pendingPts: this.world.upgradeState.pendingPoints,
     }
 
-    this.debugRenderer.updateStats(stats)
+    this.renderers.debugRenderer.updateStats(stats)
   }
 
   destroy(): void {
@@ -1370,28 +1315,9 @@ export class SingleplayerModeController implements SceneModeController {
     this.input.destroy()
     this.deathPresentation.destroy()
     this.lightingSystem.destroy()
-    this.debugRenderer.destroy()
-    this.collisionDebugRenderer.destroy()
-    this.tilemapRenderer.destroy()
-    this.interactableRenderer.destroy()
-    this.playerRenderer.destroy()
-    this.npcRenderer.destroy()
-    this.objectiveRenderer.destroy()
     this.chatBubblePool.destroy()
-    this.enemyRenderer.destroy()
-    this.lastRitesRenderer.destroy()
-    this.dynamiteRenderer.destroy()
-    this.groundCrackRenderer.destroy()
-    this.bossShockwaveRenderer.destroy()
-    this.bossAttackRenderer.destroy()
-    this.trapZoneRenderer.destroy()
-    this.mapObstacleRenderer.destroy()
-    this.showdownRenderer.destroy()
-    this.tumbleweedRenderer.destroy()
-    this.dustStormEffect.destroy()
     this.drawFlashOverlay.destroy()
     this.letterboxOverlay.destroy()
-    this.bulletRenderer.destroy()
-    this.spriteRegistry.destroy()
+    this.renderers.destroy()
   }
 }

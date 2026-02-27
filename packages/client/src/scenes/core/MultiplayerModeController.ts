@@ -62,27 +62,10 @@ import { INTERNAL_WIDTH, INTERNAL_HEIGHT, WORLD_SCALE, type GameApp } from '../.
 import { Input } from '../../engine/Input'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
-import { DebugRenderer, type DebugStats } from '../../render/DebugRenderer'
-import { SpriteRegistry } from '../../render/SpriteRegistry'
-import { PlayerRenderer } from '../../render/PlayerRenderer'
-import { BulletRenderer } from '../../render/BulletRenderer'
-import { EnemyRenderer } from '../../render/EnemyRenderer'
-import { ShowdownRenderer } from '../../render/ShowdownRenderer'
-import { LastRitesRenderer } from '../../render/LastRitesRenderer'
-import { DynamiteRenderer } from '../../render/DynamiteRenderer'
+import { type DebugStats } from '../../render/DebugRenderer'
+import { RendererBundle } from '../../render/RendererBundle'
 import { PingRenderer } from '../../render/PingRenderer'
-import { GroundCrackRenderer } from '../../render/GroundCrackRenderer'
-import { BossShockwaveRenderer } from '../../render/BossShockwaveRenderer'
-import { BossAttackRenderer } from '../../render/BossAttackRenderer'
-import { InteractableRenderer } from '../../render/InteractableRenderer'
-import { TilemapRenderer, CollisionDebugRenderer } from '../../render/TilemapRenderer'
-import { TrapZoneRenderer } from '../../render/TrapZoneRenderer'
-import { MapObstacleRenderer } from '../../render/MapObstacleRenderer'
-import { DustStormEffect } from '../../render/DustStormEffect'
-import { TumbleweedRenderer } from '../../render/TumbleweedRenderer'
 import { ParticlePool, FloatingTextPool, ChatBubblePool } from '../../fx'
-import { NpcRenderer } from '../../render/NpcRenderer'
-import { ObjectiveRenderer } from '../../render/ObjectiveRenderer'
 import { LightingSystem, createMuzzleFlashLight } from '../../lighting'
 import { ClockSync } from '../../net/ClockSync'
 import { InputBuffer } from '../../net/InputBuffer'
@@ -163,28 +146,9 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly camera: Camera
   private readonly renderPause: HitStop
   private readonly world: GameWorld
-  private readonly debugRenderer: DebugRenderer
-  private readonly spriteRegistry: SpriteRegistry
-  private readonly playerRenderer: PlayerRenderer
-  private readonly bulletRenderer: BulletRenderer
-  private readonly enemyRenderer: EnemyRenderer
-  private readonly npcRenderer: NpcRenderer
-  private readonly objectiveRenderer: ObjectiveRenderer
-  private readonly showdownRenderer: ShowdownRenderer
-  private readonly lastRitesRenderer: LastRitesRenderer
-  private readonly dynamiteRenderer: DynamiteRenderer
-  private readonly groundCrackRenderer: GroundCrackRenderer
-  private readonly bossShockwaveRenderer: BossShockwaveRenderer
-  private readonly bossAttackRenderer: BossAttackRenderer
-  private readonly interactableRenderer: InteractableRenderer
+  private readonly renderers: RendererBundle
   private readonly pingRenderer: PingRenderer
-  private readonly trapZoneRenderer: TrapZoneRenderer
-  private readonly mapObstacleRenderer: MapObstacleRenderer
-  private readonly dustStormEffect: DustStormEffect
-  private readonly tumbleweedRenderer: TumbleweedRenderer
-  private readonly collisionDebugRenderer: CollisionDebugRenderer
   private readonly lightingSystem: LightingSystem
-  private readonly tilemapRenderer: TilemapRenderer
   private currentTilemap: Tilemap | null = null
   private readonly particles: ParticlePool
   private readonly floatingText: FloatingTextPool
@@ -301,41 +265,21 @@ export class MultiplayerModeController implements SceneModeController {
     const tilemap = generateMap(stage0Config, this.world.initialSeed, 0)
     setWorldTilemap(this.world, tilemap)
 
-    // Renderers
-    this.tilemapRenderer = new TilemapRenderer(this.gameApp.layers.background)
-    this.tilemapRenderer.render(tilemap)
+    // Renderers (shared bundle + mode-specific ping renderer)
+    this.renderers = new RendererBundle(this.gameApp.layers)
+    this.renderers.tilemapRenderer.render(tilemap)
     // Insert building roof overlay above entities so roofs render over players
     const entitiesIdx = this.gameApp.world.getChildIndex(this.gameApp.layers.entities)
-    this.gameApp.world.addChildAt(this.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
+    this.gameApp.world.addChildAt(this.renderers.tilemapRenderer.getRoofContainer(), entitiesIdx + 1)
     this.lightingSystem = new LightingSystem(this.gameApp.app.renderer, INTERNAL_WIDTH, INTERNAL_HEIGHT)
     // Lightmap composites in RT space (overlay, above worldContainer)
     this.gameApp.overlay.addChild(this.lightingSystem.getLightmapSprite())
     seedHazardLights(this.lightingSystem, tilemap)
     this.currentTilemap = tilemap
-
-    this.debugRenderer = new DebugRenderer(this.gameApp.layers.ui)
-    this.interactableRenderer = new InteractableRenderer(this.gameApp.layers.entities)
-    this.spriteRegistry = new SpriteRegistry(this.gameApp.layers.entities)
-    this.lastRitesRenderer = new LastRitesRenderer(this.gameApp.layers.entities)
-    this.dynamiteRenderer = new DynamiteRenderer(this.gameApp.layers.entities)
-    this.groundCrackRenderer = new GroundCrackRenderer(this.gameApp.layers.entities)
-    this.bossShockwaveRenderer = new BossShockwaveRenderer(this.gameApp.layers.entities)
-    this.bossAttackRenderer = new BossAttackRenderer(this.gameApp.layers.entities)
-    this.playerRenderer = new PlayerRenderer(this.gameApp.layers.entities)
-    this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
-    this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer, this.gameApp.layers.entities)
-    this.npcRenderer = new NpcRenderer(this.spriteRegistry)
-    this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, this.gameApp.layers.entities)
-    this.showdownRenderer = new ShowdownRenderer(this.gameApp.layers.entities)
     this.pingRenderer = new PingRenderer(this.gameApp.layers.fx)
-    this.trapZoneRenderer = new TrapZoneRenderer(this.gameApp.layers.entities)
-    this.mapObstacleRenderer = new MapObstacleRenderer(this.gameApp.layers.entities)
-    this.dustStormEffect = new DustStormEffect(this.gameApp.layers.entities)
-    this.tumbleweedRenderer = new TumbleweedRenderer(this.gameApp.layers.entities)
-    this.collisionDebugRenderer = new CollisionDebugRenderer(this.gameApp.layers.ui)
 
     // Debug graphics in entity layer (world space)
-    this.gameApp.layers.entities.addChild(this.debugRenderer.getContainer())
+    this.gameApp.layers.entities.addChild(this.renderers.debugRenderer.getContainer())
 
     // Camera — viewport in world units (RT size / world scale)
     this.camera = new Camera()
@@ -393,7 +337,7 @@ export class MultiplayerModeController implements SceneModeController {
       sound: this.sound,
       particles: this.particles,
       floatingText: this.floatingText,
-      playerRenderer: this.playerRenderer,
+      playerRenderer: this.renderers.playerRenderer,
       renderPause: this.renderPause,
       spawnMuzzleLight: (x, y) => this.lightingSystem.addLight(createMuzzleFlashLight(x, y)),
     })
@@ -407,8 +351,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.handleKeyDown = createSceneDebugHotkeyHandler(
       MULTIPLAYER_PRESENTATION_POLICY.debugHotkeys,
       {
-        toggleDebugOverlay: () => this.debugRenderer.toggle(),
-        toggleCollisionDebugOverlay: () => this.collisionDebugRenderer.toggle(),
+        toggleDebugOverlay: () => this.renderers.debugRenderer.toggle(),
+        toggleCollisionDebugOverlay: () => this.renderers.collisionDebugRenderer.toggle(),
         toggleSpawnPause: () => this.net.sendDebugSpawnPause(),
         cycleNetOverlay: () => this.cycleNetOverlay(),
         recordLagReport: () => this.recordLagReport(),
@@ -484,7 +428,7 @@ export class MultiplayerModeController implements SceneModeController {
           this.world.spatialHash = null
           this.world.floorSpeedMul.clear()
           this.currentTilemap = newMap
-          refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+          refreshTilemap(newMap, this.renderers.tilemapRenderer, this.camera, this.lightingSystem)
           this.pingRenderer.clear()
         }
       }
@@ -618,7 +562,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.world.spatialHash = null
       this.world.floorSpeedMul.clear()
       this.currentTilemap = newMap
-      refreshTilemap(newMap, this.tilemapRenderer, this.camera, this.lightingSystem)
+      refreshTilemap(newMap, this.renderers.tilemapRenderer, this.camera, this.lightingSystem)
       this.pingRenderer.clear()
     }
     this.serverCharacterIds.set(config.playerEid, config.characterId)
@@ -724,7 +668,7 @@ export class MultiplayerModeController implements SceneModeController {
       localCharacterId: this.authoritativeCharacterId,
       resolveCharacterIdForServerEid: (serverEid: number) => this.serverCharacterIds.get(serverEid),
       setMyClientEid: (eid: number) => { this.myClientEid = eid },
-      setLocalPlayerRenderEid: (eid: number | null) => { this.playerRenderer.localPlayerEid = eid },
+      setLocalPlayerRenderEid: (eid: number | null) => { this.renderers.playerRenderer.localPlayerEid = eid },
       resolveRttMs: () => this.clockSync.isConverged() ? this.clockSync.getRTT() : 0,
     }
   }
@@ -773,18 +717,18 @@ export class MultiplayerModeController implements SceneModeController {
       if (result.shooterServerEid !== this.myServerEid) {
         const remoteClientEid = this.playerEntities.get(result.shooterServerEid)
         if (remoteClientEid !== undefined) {
-          const barrelTip = this.playerRenderer.getBarrelTipPosition(remoteClientEid)
+          const barrelTip = this.renderers.playerRenderer.getBarrelTipPosition(remoteClientEid)
           const startX = barrelTip?.x ?? Position.x[remoteClientEid]!
           const startY = barrelTip?.y ?? Position.y[remoteClientEid]!
           const angle = Math.atan2(result.hitY - startY, result.hitX - startX)
           const remoteCharId = this.serverCharacterIds.get(result.shooterServerEid) ?? 'sheriff'
           const remoteBulletCfg = getBulletConfigForCharacter(remoteCharId)
-          const visualId = this.bulletRenderer.spawnVisualBullet(
+          const visualId = this.renderers.bulletRenderer.spawnVisualBullet(
             startX, startY, angle,
             remoteBulletCfg.visualSpeed, remoteBulletCfg.visualMaxLifetime,
             remoteBulletCfg.spriteId, remoteBulletCfg.size,
           )
-          this.bulletRenderer.resolveVisualBulletImpact(
+          this.renderers.bulletRenderer.resolveVisualBulletImpact(
             visualId, result.hitX, result.hitY,
             result.hit ? 'entity' : 'wall',
           )
@@ -819,7 +763,7 @@ export class MultiplayerModeController implements SceneModeController {
       const visualBulletId = this.takePendingVisualShot(result.shootSeq)
       if (
         visualBulletId !== null &&
-        this.bulletRenderer.resolveVisualBulletImpact(
+        this.renderers.bulletRenderer.resolveVisualBulletImpact(
           visualBulletId,
           result.hitX,
           result.hitY,
@@ -857,7 +801,7 @@ export class MultiplayerModeController implements SceneModeController {
   }
 
   private processVisualBulletImpacts(): void {
-    const impacts = this.bulletRenderer.consumeVisualImpacts()
+    const impacts = this.renderers.bulletRenderer.consumeVisualImpacts()
     if (impacts.length === 0) return
 
     this.gameplayEventProcessor.processAll(
@@ -1040,7 +984,7 @@ export class MultiplayerModeController implements SceneModeController {
     // Stage-complete detection — trigger cosmetic tumbleweeds
     if (this.latestHud?.stageStatus === 'completed' && this.currentTilemap) {
       const tmBounds = getPlayableBoundsFromTilemap(this.currentTilemap)
-      this.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
+      this.renderers.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
     }
 
     // Gold pickup detection
@@ -1147,7 +1091,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.telemetry.onPredictedBulletsSpawned(spawnedPredictedBullets)
 
     const angle = Player.aimAngle[this.myClientEid]!
-    const barrelTip = this.playerRenderer.getBarrelTipFromState(
+    const barrelTip = this.renderers.playerRenderer.getBarrelTipFromState(
       this.world,
       this.myClientEid,
       Position.x[this.myClientEid]! + error.x,
@@ -1167,7 +1111,7 @@ export class MultiplayerModeController implements SceneModeController {
           const angleOffset = pelletCount > 1
             ? spreadAngle * (i / (pelletCount - 1) - 0.5)
             : 0
-          const visualBulletId = this.bulletRenderer.spawnVisualBullet(
+          const visualBulletId = this.renderers.bulletRenderer.spawnVisualBullet(
             muzzleX,
             muzzleY,
             angle + angleOffset,
@@ -1208,11 +1152,11 @@ export class MultiplayerModeController implements SceneModeController {
     emitBossPhaseTransitionEvents(this.gameplayEvents, this.world)
 
     // Showdown target tinting for enemies
-    this.enemyRenderer.showdownTargetEid =
+    this.renderers.enemyRenderer.showdownTargetEid =
       hasComponent(this.world, Showdown, this.myClientEid) && Showdown.active[this.myClientEid]! === 1
         ? Showdown.targetEid[this.myClientEid]!
         : NO_TARGET
-    this.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
+    this.renderers.enemyRenderer.lastRitesZone = this.world.lastRites?.active ? this.world.lastRites : null
 
     // Advance local animation tick (monotonic, decoupled from snapshot tick)
     this.predictionTick++
@@ -1264,21 +1208,21 @@ export class MultiplayerModeController implements SceneModeController {
     this.reconciler.decayError(rawDt, getCorrectionSpeed(errorMag))
 
     // Feed monotonic prediction tick to player renderer for local player animation
-    this.playerRenderer.localPlayerTick = this.predictionTick
+    this.renderers.playerRenderer.localPlayerTick = this.predictionTick
 
     syncRenderersAndQueueEvents({
       world: this.world,
-      playerRenderer: this.playerRenderer,
-      enemyRenderer: this.enemyRenderer,
-      bulletRenderer: this.bulletRenderer,
+      playerRenderer: this.renderers.playerRenderer,
+      enemyRenderer: this.renderers.enemyRenderer,
+      bulletRenderer: this.renderers.bulletRenderer,
       events: this.gameplayEvents,
-      npcRenderer: this.npcRenderer,
-      objectiveRenderer: this.objectiveRenderer,
+      npcRenderer: this.renderers.npcRenderer,
+      objectiveRenderer: this.renderers.objectiveRenderer,
       chatBubblePool: this.chatBubblePool,
     })
     emitBossIntroEvents({
       events: this.gameplayEvents,
-      enemyRenderer: this.enemyRenderer,
+      enemyRenderer: this.renderers.enemyRenderer,
       narrativeThreadId: this.latestHud?.narrativeThreadId ?? null,
     })
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
@@ -1318,13 +1262,13 @@ export class MultiplayerModeController implements SceneModeController {
       const sin = Math.sin(camState.angle)
       const screenX = (dx * cos - dy * sin) * screenZoom + this.gameApp.width / 2
       const screenY = (dx * sin + dy * cos) * screenZoom + this.gameApp.height / 2
-      this.tilemapRenderer.updateBuildingVisibility(px, py, screenX, screenY)
+      this.renderers.tilemapRenderer.updateBuildingVisibility(px, py, screenX, screenY)
     }
 
     // Clear debug
-    this.debugRenderer.clear()
-    this.collisionDebugRenderer.clear()
-    this.interactableRenderer.render(this.latestInteractables, realDt)
+    this.renderers.debugRenderer.clear()
+    this.renderers.collisionDebugRenderer.clear()
+    this.renderers.interactableRenderer.render(this.latestInteractables, realDt)
 
     // Local player presentation is decoupled from simulation ECS state:
     // provide a render-only override instead of mutating Position arrays.
@@ -1335,14 +1279,14 @@ export class MultiplayerModeController implements SceneModeController {
       const currY = Position.y[this.myClientEid]!
       const renderX = prevX + (currX - prevX) * _loopAlpha + error.x
       const renderY = prevY + (currY - prevY) * _loopAlpha + error.y
-      this.playerRenderer.setRenderPositionOverride(this.myClientEid, renderX, renderY)
+      this.renderers.playerRenderer.setRenderPositionOverride(this.myClientEid, renderX, renderY)
     }
 
     // Render entities
-    this.playerRenderer.render(this.world, alpha, realDt)
+    this.renderers.playerRenderer.render(this.world, alpha, realDt)
 
     if (this.myClientEid >= 0) {
-      this.playerRenderer.clearRenderPositionOverride(this.myClientEid)
+      this.renderers.playerRenderer.clearRenderPositionOverride(this.myClientEid)
     }
 
     // Footstep + roll sounds for local player
@@ -1367,10 +1311,10 @@ export class MultiplayerModeController implements SceneModeController {
       }
     }
 
-    this.bulletRenderer.updateVisualBullets(realDt)
+    this.renderers.bulletRenderer.updateVisualBullets(realDt)
     this.processVisualBulletImpacts()
     if (this.myClientEid >= 0 && (error.x !== 0 || error.y !== 0)) {
-      this.bulletRenderer.renderWithLocalOffset(
+      this.renderers.bulletRenderer.renderWithLocalOffset(
         this.world,
         alpha,
         this.predictedEntityTracker.getLocalTimelineBullets(),
@@ -1379,28 +1323,28 @@ export class MultiplayerModeController implements SceneModeController {
         realDt,
       )
     } else {
-      this.bulletRenderer.render(this.world, alpha, realDt)
+      this.renderers.bulletRenderer.render(this.world, alpha, realDt)
     }
-    this.enemyRenderer.render(this.world, alpha, realDt)
-    this.npcRenderer.render(this.world, alpha)
-    this.objectiveRenderer.render(this.world, alpha)
-    this.bossAttackRenderer.render(this.world)
-    this.groundCrackRenderer.render(this.world)
-    this.bossShockwaveRenderer.render(this.world)
-    this.dynamiteRenderer.render(this.world, realDt, this.particles)
-    this.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
-    this.lastRitesRenderer.render(this.world, alpha, realDt)
+    this.renderers.enemyRenderer.render(this.world, alpha, realDt)
+    this.renderers.npcRenderer.render(this.world, alpha)
+    this.renderers.objectiveRenderer.render(this.world, alpha)
+    this.renderers.bossAttackRenderer.render(this.world)
+    this.renderers.groundCrackRenderer.render(this.world)
+    this.renderers.bossShockwaveRenderer.render(this.world)
+    this.renderers.dynamiteRenderer.render(this.world, realDt, this.particles)
+    this.renderers.showdownRenderer.render(this.world, this.playerEntities.values(), alpha, realDt)
+    this.renderers.lastRitesRenderer.render(this.world, alpha, realDt)
     this.pingRenderer.update(this.world)
-    this.trapZoneRenderer.render(this.world)
-    this.mapObstacleRenderer.render(this.world)
+    this.renderers.trapZoneRenderer.render(this.world)
+    this.renderers.mapObstacleRenderer.render(this.world)
 
     // Update dust storm fog-of-war
     if (this.myClientEid >= 0) {
-      this.dustStormEffect.update(this.world, Position.x[this.myClientEid]!, Position.y[this.myClientEid]!)
+      this.renderers.dustStormEffect.update(this.world, Position.x[this.myClientEid]!, Position.y[this.myClientEid]!)
     }
 
     // Update tumbleweeds
-    this.tumbleweedRenderer.update(realDt)
+    this.renderers.tumbleweedRenderer.update(realDt)
 
     // Update particles
     this.particles.update(realDt)
@@ -1439,9 +1383,9 @@ export class MultiplayerModeController implements SceneModeController {
     const stats: DebugStats = {
       fps,
       tick: this.world.tick,
-      entityCount: this.spriteRegistry.count,
+      entityCount: this.renderers.spriteRegistry.count,
       playerState: 'mp',
-      enemyCount: this.enemyRenderer.count,
+      enemyCount: this.renderers.enemyRenderer.count,
       enemyStates: '',
       playerHP: this.myClientEid >= 0 ? Health.current[this.myClientEid]! : 0,
       playerMaxHP: this.myClientEid >= 0 ? Health.max[this.myClientEid]! : 0,
@@ -1466,7 +1410,7 @@ export class MultiplayerModeController implements SceneModeController {
       pingMs: this.clockSync.isConverged() ? this.clockSync.getRTT() : undefined,
       netTelemetry: this.telemetry.getOverlayText(this.overlayMode),
     }
-    this.debugRenderer.updateStats(stats)
+    this.renderers.debugRenderer.updateStats(stats)
     this.telemetry.maybeLog(now)
 
     // Feed NetGraph when in graphs mode
@@ -1799,27 +1743,8 @@ export class MultiplayerModeController implements SceneModeController {
     this.input.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.netGraph.destroy()
-    this.debugRenderer.destroy()
-    this.tilemapRenderer.destroy()
-    this.interactableRenderer.destroy()
-    this.playerRenderer.destroy()
-    this.npcRenderer.destroy()
-    this.objectiveRenderer.destroy()
     this.chatBubblePool.destroy()
-    this.enemyRenderer.destroy()
-    this.lastRitesRenderer.destroy()
-    this.dynamiteRenderer.destroy()
-    this.groundCrackRenderer.destroy()
-    this.bossShockwaveRenderer.destroy()
-    this.bossAttackRenderer.destroy()
-    this.showdownRenderer.destroy()
     this.pingRenderer.destroy()
-    this.trapZoneRenderer.destroy()
-    this.mapObstacleRenderer.destroy()
-    this.dustStormEffect.destroy()
-    this.tumbleweedRenderer.destroy()
-    this.collisionDebugRenderer.destroy()
-    this.bulletRenderer.destroy()
-    this.spriteRegistry.destroy()
+    this.renderers.destroy()
   }
 }
