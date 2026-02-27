@@ -317,16 +317,6 @@ function consumeInputToken(slot: PlayerSlot, nowMs: number): boolean {
   return true
 }
 
-const ROOM_CODE_CHARSET = new Set(ROOM_CODE_CHARS.split(''))
-
-function isValidRoomCode(code: string): boolean {
-  if (code.length !== ROOM_CODE_LENGTH) return false
-  for (const ch of code) {
-    if (!ROOM_CODE_CHARSET.has(ch)) return false
-  }
-  return true
-}
-
 function generateRoomCode(): string {
   let code = ''
   for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
@@ -374,6 +364,8 @@ export class GameRoom extends Room<GameRoomState> {
   private metricsLogTick = 0
   private roomCode = ''
   private isQuickPlay = false
+  /** Session ID of the room creator (host). Used to gate lobby config changes. */
+  private ownerSessionId = ''
   private activeVote: {
     voteId: string
     targetSessionId: string
@@ -447,15 +439,13 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Generate room code before setState so the first state broadcast includes it.
     // Quick Play rooms use a sentinel code for Colyseus filterBy matching.
-    // Private rooms use the client-provided code. Default: generate a fresh one.
+    // Room codes are always generated server-side to prevent collisions.
     const incomingCode = typeof options?.roomCode === 'string'
       ? options.roomCode.trim().toUpperCase()
       : ''
     if (incomingCode === QUICK_PLAY_CODE) {
       this.roomCode = QUICK_PLAY_CODE
       this.isQuickPlay = true
-    } else if (incomingCode.length === ROOM_CODE_LENGTH && isValidRoomCode(incomingCode)) {
-      this.roomCode = incomingCode
     } else {
       this.roomCode = generateRoomCode()
     }
@@ -621,7 +611,7 @@ export class GameRoom extends Room<GameRoomState> {
       if (!slot) return
       const run = this.world.run
       if (!run || run.completed || run.transition !== 'camp') return
-      if (typeof data?.offerIndex !== 'number') return
+      if (typeof data?.offerIndex !== 'number' || !Number.isInteger(data.offerIndex) || data.offerIndex < 0) return
 
       tryVisitorPurchase(this.world, slot.eid, data.offerIndex)
     })
@@ -681,10 +671,10 @@ export class GameRoom extends Room<GameRoomState> {
       this.broadcastPlayerRoster()
     })
 
-    // Friendly fire toggle (lobby only, host sets for the room)
+    // Friendly fire toggle (lobby only, host-only)
     this.onMessage('set-friendly-fire', (client, data) => {
       if (this.state.phase !== 'lobby') return
-      if (!this.slots.has(client.sessionId)) return
+      if (client.sessionId !== this.ownerSessionId) return
       const mode = typeof data === 'string' ? data : (data as { mode?: string })?.mode
       if (mode !== 'none' && mode !== 'reduced' && mode !== 'full') return
       this.state.friendlyFire = mode
@@ -722,7 +712,10 @@ export class GameRoom extends Room<GameRoomState> {
       const voteId = `vk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
       const targetMeta = this.state.players.get(data.targetSessionId)
       const initiatorMeta = this.state.players.get(client.sessionId)
-      const eligibleCount = this.slots.size - 1 // Snapshot at vote-start time
+      // Snapshot eligible voter count at vote-start. If players disconnect mid-vote,
+      // their absent votes count as implicit "no" (eligibleCount is not reduced).
+      // This prevents a small minority from forcing a kick after others leave.
+      const eligibleCount = this.slots.size - 1
 
       this.activeVote = {
         voteId,
@@ -823,6 +816,11 @@ export class GameRoom extends Room<GameRoomState> {
     }
     this.slots.set(client.sessionId, slot)
 
+    // First player to join is the room owner (host)
+    if (this.ownerSessionId === '') {
+      this.ownerSessionId = client.sessionId
+    }
+
     // Send game config to the joining client
     this.sendGameConfig(client, slot)
     this.sendCurrentBullets(client)
@@ -837,7 +835,9 @@ export class GameRoom extends Room<GameRoomState> {
       this.pendingReconnects.add(client.sessionId)
       // Mark entity as disconnected so AI takes over
       const dcSlot = this.slots.get(client.sessionId)
-      if (dcSlot && hasComponent(this.world, Player, dcSlot.eid) && !hasComponent(this.world, Dead, dcSlot.eid)) {
+      if (dcSlot && hasComponent(this.world, Player, dcSlot.eid)
+          && !hasComponent(this.world, Dead, dcSlot.eid)
+          && !hasComponent(this.world, Downed, dcSlot.eid)) {
         addComponent(this.world, Disconnected, dcSlot.eid)
       }
       try {
@@ -1173,6 +1173,13 @@ export class GameRoom extends Room<GameRoomState> {
         this.campStatusBroadcastAccum = 0
         this.campAutoAdvanced = false
         this.broadcastCampStatus()
+      } else {
+        // Transitioning back to combat — reset AFK timers so idle time during
+        // camp doesn't count toward the AFK kick threshold.
+        for (const slot of this.slots.values()) {
+          slot.lastActiveInputTick = this.world.tick
+          slot.afkWarned = false
+        }
       }
     }
   }
@@ -1190,10 +1197,16 @@ export class GameRoom extends Room<GameRoomState> {
       if (draft.pickTimer <= 0) {
         const pickerEid = getCurrentPicker(draft)
         const bestIndex = autoPickBestItem(draft)
-        if (bestIndex >= 0 && pickerEid >= 0) {
+        // Verify the picker's slot still exists (may have disconnected during pick window)
+        const pickerSlotExists = pickerEid >= 0 &&
+          [...this.slots.values()].some(s => s.eid === pickerEid)
+        if (bestIndex >= 0 && pickerEid >= 0 && pickerSlotExists) {
           const offer = draft.offers[bestIndex]!
           offer.pickedBy = pickerEid
           addItemToPlayer(this.world, pickerEid, offer.itemId, reapplyAllItemEffects)
+          advanceDraft(draft)
+        } else if (pickerEid >= 0 && !pickerSlotExists) {
+          // Picker disconnected — skip their turn and advance
           advanceDraft(draft)
         } else {
           // No items left — force completion
@@ -1223,7 +1236,7 @@ export class GameRoom extends Room<GameRoomState> {
 
   private broadcastCampStatus(): void {
     const msg: CampStatusMessage = {
-      readyPlayers: Array.from(this.campReadySessions),
+      readyCount: this.campReadySessions.size,
       totalPlayers: this.slots.size,
       remainingSeconds: Math.max(0, Math.ceil(this.campTimerRemaining)),
     }
@@ -1235,6 +1248,8 @@ export class GameRoom extends Room<GameRoomState> {
     const run = this.world.run
     if (!run || run.completed || run.transition !== 'camp') return
 
+    // Prune stale ready entries for disconnected players.
+    // (Deleting from a Set during for..of iteration is safe in JS — skipped entries.)
     for (const sessionId of this.campReadySessions) {
       if (!this.slots.has(sessionId)) {
         this.campReadySessions.delete(sessionId)
@@ -1385,9 +1400,14 @@ export class GameRoom extends Room<GameRoomState> {
     this.syncCampTransitionState()
 
     // Update active player count for co-op scaling (before systems run).
-    // Use connected count (slots.size), not alive count, so scaling doesn't
-    // collapse mid-combat when players die — dead players are still in the run.
-    this.world.activePlayerCount = Math.max(1, this.slots.size)
+    // Count connected players only (exclude disconnected/AI-driven slots) so
+    // difficulty doesn't stay inflated while a player is absent. Dead-but-connected
+    // players still count — they're in the run, just not alive.
+    let connectedCount = 0
+    for (const [sid] of this.slots) {
+      if (!this.pendingReconnects.has(sid)) connectedCount++
+    }
+    this.world.activePlayerCount = Math.max(1, connectedCount)
 
     // 1. Pop one input per player into world.playerInputs (neutral if empty).
     //    Trim backlog aggressively: if queue depth exceeds threshold, discard
@@ -1576,29 +1596,26 @@ export class GameRoom extends Room<GameRoomState> {
     // Victory: run.completed is set by stageProgression when final stage cleared
     const victory = run.completed
 
-    // Defeat: all non-disconnected players are Dead (not Downed — reviveSystem handles that)
+    // Defeat: all players are Dead or Disconnected (disconnected players count as
+    // dead for TPK — they can't be revived and shouldn't hold the room open)
     let allDead = false
     if (!victory && this.slots.size > 0) {
       allDead = true
-      let hasNonDisconnected = false
       for (const slot of this.slots.values()) {
-        // Skip disconnected players — they can't be revived
+        // Disconnected players are treated as dead for TPK purposes
         if (hasComponent(this.world, Disconnected, slot.eid)) continue
-        hasNonDisconnected = true
         if (!hasComponent(this.world, Dead, slot.eid)) {
           allDead = false
           break
         }
       }
-      // If all slots are disconnected, don't trigger TPK — room will self-destruct
-      if (!hasNonDisconnected) allDead = false
     }
 
     if (!victory && !allDead) return
 
     this.runCompleteSent = true
 
-    const duration = (Date.now() - this.runStartedAtMs) / 1000
+    const duration = Math.max(0, (Date.now() - this.runStartedAtMs) / 1000)
     const stagesCleared = victory ? run.totalStages : run.currentStage
 
     const playerStats: PlayerStatEntry[] = []
@@ -1734,220 +1751,208 @@ export class GameRoom extends Room<GameRoomState> {
     this.tickTimingSamples.length = 0
   }
 
-  private sendHudUpdates() {
-    // Wave status (global, same for all players — compute once)
+  /** Build the full HUD payload for a single player slot. */
+  private buildHudForSlot(slot: PlayerSlot): HudData {
+    const eid = slot.eid
+    const state = getUpgradeStateForPlayer(this.world, eid)
     const enc = this.world.encounter
-    const waveNumber = enc ? enc.currentWave + 1 : 0
-    const totalWaves = enc ? enc.definition.waves.length : 0
-    const waveStatus: HudData['waveStatus'] = enc
-      ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
-      : 'none'
-
-    // Stage progression (global)
     const run = this.world.run
+
+    const hasShowdown = hasComponent(this.world, Showdown, eid)
+    const hasCylinder = hasComponent(this.world, Cylinder, eid)
+    const abilityHud = deriveAbilityHudState(
+      slot.characterId,
+      {
+        showdownCooldown: state.showdownCooldown,
+        showdownDuration: state.showdownDuration,
+        dynamiteCooldown: state.dynamiteCooldown,
+        dynamiteFuse: state.dynamiteFuse,
+        dynamiteCooking: state.dynamiteCooking,
+        dynamiteCookTimer: state.dynamiteCookTimer,
+      },
+      hasShowdown
+        ? {
+            showdownActive: Showdown.active[eid]! === 1,
+            showdownCooldown: Showdown.cooldown[eid]!,
+            showdownDuration: Showdown.duration[eid]!,
+          }
+        : undefined,
+    )
+
+    const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
+    const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
+
+    // Build items array from player's inventory
+    const items: HudData['items'] = []
+    for (const [itemId, stacks] of state.items) {
+      const def = getItemDef(itemId)
+      if (def) {
+        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
+      }
+    }
+
+    const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
+
+    // Camp visitor data (per-player mod offers)
+    const cv = this.world.campVisitor
+    const campVisitorHud: HudData['campVisitor'] = cv
+      ? (() => {
+          const vDef = getVisitorDef(cv.visitorId)
+          return {
+            visitorId: cv.visitorId,
+            visitorName: vDef?.name ?? 'Visitor',
+            greeting: cv.greeting,
+            offers: cv.offers.map(o => {
+              const oDef = getItemDef(o.itemId)
+              return {
+                itemId: o.itemId,
+                itemName: oDef?.name ?? '???',
+                itemDescription: oDef?.description ?? '',
+                rarity: oDef?.rarity ?? 'brass',
+                price: o.price,
+                sold: o.sold,
+                downside: oDef?.downside,
+              }
+            }),
+            modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
+              const mDef = getWeaponModDef(mo.modId)
+              return {
+                modId: mo.modId,
+                modName: mDef?.name ?? '???',
+                modDescription: mDef?.description ?? '',
+                taken: mo.taken,
+                flavor: mDef?.flavor,
+              }
+            }),
+          }
+        })()
+      : null
+
+    // Objective data
+    const obj = this.world.objective
+    let objectiveHud: HudData['objective'] = null
+    if (obj) {
+      const baseObj = {
+        type: obj.type,
+        description: obj.description,
+        status: obj.status,
+        progress: obj.type === 'protect'
+          ? (obj.targetEids.length > 0
+              ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
+              : 1)
+          : obj.type === 'duel'
+            ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
+                ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
+                : 0)
+            : obj.escapedCount / (obj.escapeThreshold || 1),
+      }
+      objectiveHud = obj.type === 'duel'
+        ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
+        : baseObj
+    }
+
+    // Boss HP bar — aggregate across all boss entities
+    let bossHud: HudData['boss'] = null
+    const bosses = bossQuery(this.world)
+    if (bosses.length > 0) {
+      let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
+      for (const beid of bosses) {
+        totalMaxHP += Health.max[beid]!
+        const hp = Health.current[beid]!
+        if (hp > 0) { anyAlive = true; totalHP += hp }
+        bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
+      }
+      if (anyAlive) {
+        bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
+      }
+    }
+
+    // Draft-pick state
+    const ds = this.world.draftState
+    let draftHud: HudData['draft'] = null
+    if (ds) {
+      const draftPlayerNames: Record<number, string> = {}
+      for (const [sid, s] of this.slots) {
+        const meta = this.state.players.get(sid)
+        draftPlayerNames[s.eid] = meta?.name ?? sid.slice(0, 8)
+      }
+      draftHud = {
+        phase: ds.phase,
+        offers: ds.offers.map(o => ({
+          itemId: o.itemId,
+          name: o.name,
+          description: o.description,
+          rarity: o.rarity,
+          poolIndex: o.poolIndex,
+          pickedBy: o.pickedBy,
+          downside: o.downside,
+        })),
+        currentPickerEid: ds.pickOrder[ds.currentPickIndex] ?? -1,
+        pickTimer: ds.pickTimer,
+        picksCompleted: ds.picksCompleted,
+        totalPicks: ds.totalPicks,
+        pickOrder: ds.pickOrder,
+        playerNames: draftPlayerNames,
+      }
+    }
+
     const stageNumber = run ? run.currentStage + 1 : 0
-    const totalStages = run ? run.totalStages : 0
     const stageStatus: HudData['stageStatus'] = run
       ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition === 'looting' ? 'looting' : run.transition !== 'none' ? 'clearing' : 'active')
       : 'none'
     const narrativeThreadId = this.world.narrative?.threadId ?? null
-    const narrativeThreadName = narrativeThreadId ? (getThread(narrativeThreadId)?.name ?? null) : null
-    const campNarrativeLine = this.world.campNarrativeLine
-    const resolutionText = this.world.resolutionText
-    const runIntroTitle = this.world.runIntroTitle
-    const runIntroText = this.world.runIntroText
-    const runIntroSequence = this.world.runIntroSequence
-    const goldCollected = this.world.goldCollected
 
+    return {
+      characterId: slot.characterId,
+      hp: Health.current[eid]!,
+      maxHp: Health.max[eid]!,
+      hpPotions: state.hpPotionCount,
+      hpPotionsMax: HP_POTION_MAX_STACK,
+      cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
+      cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
+      isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
+      reloadProgress: hasCylinder && Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
+        ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
+        : 0,
+      showCylinder: hasCylinder,
+      ...abilityHud,
+      xp: state.xp,
+      level: state.level,
+      goldCollected: this.world.goldCollected,
+      killCount: this.world.killCount,
+      shovelCount: this.world.shovelCount,
+      interactionPrompt: this.world.interactionPromptByPlayer.get(eid) ?? null,
+      interactionFeedbackDescription: feedbackDesc,
+      pendingPoints: state.pendingPoints,
+      xpForCurrentLevel: xpForCurrent,
+      xpForNextLevel: xpForNext,
+      waveNumber: enc ? enc.currentWave + 1 : 0,
+      totalWaves: enc ? enc.definition.waves.length : 0,
+      waveStatus: enc
+        ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
+        : 'none',
+      stageNumber,
+      totalStages: run ? run.totalStages : 0,
+      stageStatus,
+      narrativeThreadId,
+      narrativeThreadName: narrativeThreadId ? (getThread(narrativeThreadId)?.name ?? null) : null,
+      campNarrativeLine: this.world.campNarrativeLine,
+      resolutionText: this.world.resolutionText,
+      runIntroTitle: this.world.runIntroTitle,
+      runIntroText: this.world.runIntroText,
+      runIntroSequence: this.world.runIntroSequence,
+      items,
+      hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
+      objective: objectiveHud,
+      campVisitor: campVisitorHud,
+      draft: draftHud,
+      boss: bossHud,
+    }
+  }
+
+  private sendHudUpdates() {
     for (const [, slot] of this.slots) {
-      const eid = slot.eid
-      const state = getUpgradeStateForPlayer(this.world, eid)
-      const shovelCount = this.world.shovelCount
-      const interactionPrompt = this.world.interactionPromptByPlayer.get(eid) ?? null
-      const hasShowdown = hasComponent(this.world, Showdown, eid)
-      const hasCylinder = hasComponent(this.world, Cylinder, eid)
-      const abilityHud = deriveAbilityHudState(
-        slot.characterId,
-        {
-          showdownCooldown: state.showdownCooldown,
-          showdownDuration: state.showdownDuration,
-          dynamiteCooldown: state.dynamiteCooldown,
-          dynamiteFuse: state.dynamiteFuse,
-          dynamiteCooking: state.dynamiteCooking,
-          dynamiteCookTimer: state.dynamiteCookTimer,
-        },
-        hasShowdown
-          ? {
-              showdownActive: Showdown.active[eid]! === 1,
-              showdownCooldown: Showdown.cooldown[eid]!,
-              showdownDuration: Showdown.duration[eid]!,
-            }
-          : undefined,
-      )
-
-      const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
-      const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
-
-      // Build items array from player's inventory
-      const items: HudData['items'] = []
-      for (const [itemId, stacks] of state.items) {
-        const def = getItemDef(itemId)
-        if (def) {
-          items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
-        }
-      }
-
-      // Interaction feedback description (item received, etc.)
-      const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
-
-      // Camp visitor data
-      const cv = this.world.campVisitor
-      const campVisitorHud: HudData['campVisitor'] = cv
-        ? (() => {
-            const vDef = getVisitorDef(cv.visitorId)
-            return {
-              visitorId: cv.visitorId,
-              visitorName: vDef?.name ?? 'Visitor',
-              greeting: cv.greeting,
-              offers: cv.offers.map(o => {
-                const oDef = getItemDef(o.itemId)
-                return {
-                  itemId: o.itemId,
-                  itemName: oDef?.name ?? '???',
-                  itemDescription: oDef?.description ?? '',
-                  rarity: oDef?.rarity ?? 'brass',
-                  price: o.price,
-                  sold: o.sold,
-                  downside: oDef?.downside,
-                }
-              }),
-              modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
-                const mDef = getWeaponModDef(mo.modId)
-                return {
-                  modId: mo.modId,
-                  modName: mDef?.name ?? '???',
-                  modDescription: mDef?.description ?? '',
-                  taken: mo.taken,
-                  flavor: mDef?.flavor,
-                }
-              }),
-            }
-          })()
-        : null
-
-      // Objective data (global, same for all players)
-      const obj = this.world.objective
-      let objectiveHud: HudData['objective'] = null
-      if (obj) {
-        const baseObj = {
-          type: obj.type,
-          description: obj.description,
-          status: obj.status,
-          progress: obj.type === 'protect'
-            ? (obj.targetEids.length > 0
-                ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
-                : 1)
-            : obj.type === 'duel'
-              ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
-                  ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
-                  : 0)
-              : obj.escapedCount / (obj.escapeThreshold || 1),
-        }
-        objectiveHud = obj.type === 'duel'
-          ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
-          : baseObj
-      }
-
-      // Boss HP bar — aggregate across all boss entities (multi-entity support)
-      let bossHud: HudData['boss'] = null
-      const bosses = bossQuery(this.world)
-      if (bosses.length > 0) {
-        let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
-        for (const beid of bosses) {
-          totalMaxHP += Health.max[beid]!
-          const hp = Health.current[beid]!
-          if (hp > 0) { anyAlive = true; totalHP += hp }
-          bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
-        }
-        if (anyAlive) {
-          bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
-        }
-      }
-
-      // Draft-pick state
-      const ds = this.world.draftState
-      let draftHud: HudData['draft'] = null
-      if (ds) {
-        const draftPlayerNames: Record<number, string> = {}
-        for (const [sid, s] of this.slots) {
-          const meta = this.state.players.get(sid)
-          draftPlayerNames[s.eid] = meta?.name ?? sid.slice(0, 8)
-        }
-        draftHud = {
-          phase: ds.phase,
-          offers: ds.offers.map(o => ({
-            itemId: o.itemId,
-            name: o.name,
-            description: o.description,
-            rarity: o.rarity,
-            poolIndex: o.poolIndex,
-            pickedBy: o.pickedBy,
-            downside: o.downside,
-          })),
-          currentPickerEid: ds.pickOrder[ds.currentPickIndex] ?? -1,
-          pickTimer: ds.pickTimer,
-          picksCompleted: ds.picksCompleted,
-          totalPicks: ds.totalPicks,
-          pickOrder: ds.pickOrder,
-          playerNames: draftPlayerNames,
-        }
-      }
-
-      const hud: HudData = {
-        characterId: slot.characterId,
-        hp: Health.current[eid]!,
-        maxHp: Health.max[eid]!,
-        hpPotions: state.hpPotionCount,
-        hpPotionsMax: HP_POTION_MAX_STACK,
-        cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
-        cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
-        isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
-        reloadProgress: hasCylinder && Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
-          ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
-          : 0,
-        showCylinder: hasCylinder,
-        ...abilityHud,
-        xp: state.xp,
-        level: state.level,
-        goldCollected,
-        killCount: this.world.killCount,
-        shovelCount,
-        interactionPrompt,
-        interactionFeedbackDescription: feedbackDesc,
-        pendingPoints: state.pendingPoints,
-        xpForCurrentLevel: xpForCurrent,
-        xpForNextLevel: xpForNext,
-        waveNumber,
-        totalWaves,
-        waveStatus,
-        stageNumber,
-        totalStages,
-        stageStatus,
-        narrativeThreadId,
-        narrativeThreadName,
-        campNarrativeLine,
-        resolutionText,
-        runIntroTitle,
-        runIntroText,
-        runIntroSequence,
-        items,
-        hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
-        objective: objectiveHud,
-        campVisitor: campVisitorHud,
-        draft: draftHud,
-        boss: bossHud,
-      }
-      slot.client.send('hud', hud)
+      slot.client.send('hud', this.buildHudForSlot(slot))
     }
   }
 
@@ -2020,168 +2025,7 @@ export class GameRoom extends Room<GameRoomState> {
 
   /** Send HUD to a single client (used on reconnect). */
   private sendHudToClient(slot: PlayerSlot): void {
-    const eid = slot.eid
-    const state = getUpgradeStateForPlayer(this.world, eid)
-    const enc = this.world.encounter
-    const run = this.world.run
-
-    const hasCylinder = hasComponent(this.world, Cylinder, eid)
-    const hasShowdownComp = hasComponent(this.world, Showdown, eid)
-    const abilityHud = deriveAbilityHudState(
-      slot.characterId,
-      {
-        showdownCooldown: state.showdownCooldown,
-        showdownDuration: state.showdownDuration,
-        dynamiteCooldown: state.dynamiteCooldown,
-        dynamiteFuse: state.dynamiteFuse,
-        dynamiteCooking: state.dynamiteCooking,
-        dynamiteCookTimer: state.dynamiteCookTimer,
-      },
-      hasShowdownComp
-        ? {
-            showdownActive: Showdown.active[eid]! === 1,
-            showdownCooldown: Showdown.cooldown[eid]!,
-            showdownDuration: Showdown.duration[eid]!,
-          }
-        : undefined,
-    )
-
-    const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
-    const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
-
-    const items: HudData['items'] = []
-    for (const [itemId, stacks] of state.items) {
-      const def = getItemDef(itemId)
-      if (def) {
-        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
-      }
-    }
-
-    const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
-
-    const cv = this.world.campVisitor
-    const campVisitorHud: HudData['campVisitor'] = cv
-      ? (() => {
-          const vDef = getVisitorDef(cv.visitorId)
-          return {
-            visitorId: cv.visitorId,
-            visitorName: vDef?.name ?? 'Visitor',
-            greeting: cv.greeting,
-            offers: cv.offers.map(o => {
-              const oDef = getItemDef(o.itemId)
-              return {
-                itemId: o.itemId,
-                itemName: oDef?.name ?? '???',
-                itemDescription: oDef?.description ?? '',
-                rarity: oDef?.rarity ?? 'brass',
-                price: o.price,
-                sold: o.sold,
-                downside: oDef?.downside,
-              }
-            }),
-            modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
-              const mDef = getWeaponModDef(mo.modId)
-              return {
-                modId: mo.modId,
-                modName: mDef?.name ?? '???',
-                modDescription: mDef?.description ?? '',
-                taken: mo.taken,
-                flavor: mDef?.flavor,
-              }
-            }),
-          }
-        })()
-      : null
-
-    const obj = this.world.objective
-    let objectiveHud: HudData['objective'] = null
-    if (obj) {
-      const baseObj = {
-        type: obj.type,
-        description: obj.description,
-        status: obj.status,
-        progress: obj.type === 'protect'
-          ? (obj.targetEids.length > 0
-              ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
-              : 1)
-          : obj.type === 'duel'
-            ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
-                ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
-                : 0)
-            : obj.escapedCount / (obj.escapeThreshold || 1),
-      }
-      objectiveHud = obj.type === 'duel'
-        ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
-        : baseObj
-    }
-
-    let bossHud: HudData['boss'] = null
-    const bosses = bossQuery(this.world)
-    if (bosses.length > 0) {
-      let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
-      for (const beid of bosses) {
-        totalMaxHP += Health.max[beid]!
-        const hp = Health.current[beid]!
-        if (hp > 0) { anyAlive = true; totalHP += hp }
-        bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
-      }
-      if (anyAlive) {
-        bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
-      }
-    }
-
-    const stageNumber = run ? run.currentStage + 1 : 0
-    const stageStatus: HudData['stageStatus'] = run
-      ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition === 'looting' ? 'looting' : run.transition !== 'none' ? 'clearing' : 'active')
-      : 'none'
-
-    const hud: HudData = {
-      characterId: slot.characterId,
-      hp: Health.current[eid]!,
-      maxHp: Health.max[eid]!,
-      hpPotions: state.hpPotionCount,
-      hpPotionsMax: HP_POTION_MAX_STACK,
-      cylinderRounds: hasCylinder ? Cylinder.rounds[eid]! : 0,
-      cylinderMax: hasCylinder ? Cylinder.maxRounds[eid]! : 0,
-      isReloading: hasCylinder ? Cylinder.reloading[eid]! === 1 : false,
-      reloadProgress: hasCylinder && Cylinder.reloading[eid]! === 1 && Cylinder.reloadTime[eid]! > 0
-        ? Math.min(1, Cylinder.reloadTimer[eid]! / Cylinder.reloadTime[eid]!)
-        : 0,
-      showCylinder: hasCylinder,
-      ...abilityHud,
-      xp: state.xp,
-      level: state.level,
-      goldCollected: this.world.goldCollected,
-      killCount: this.world.killCount,
-      shovelCount: this.world.shovelCount,
-      interactionPrompt: this.world.interactionPromptByPlayer.get(eid) ?? null,
-      interactionFeedbackDescription: feedbackDesc,
-      pendingPoints: state.pendingPoints,
-      xpForCurrentLevel: xpForCurrent,
-      xpForNextLevel: xpForNext,
-      waveNumber: enc ? enc.currentWave + 1 : 0,
-      totalWaves: enc ? enc.definition.waves.length : 0,
-      waveStatus: enc
-        ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
-        : 'none',
-      stageNumber,
-      totalStages: run ? run.totalStages : 0,
-      stageStatus,
-      narrativeThreadId: this.world.narrative?.threadId ?? null,
-      narrativeThreadName: this.world.narrative?.threadId ? (getThread(this.world.narrative.threadId)?.name ?? null) : null,
-      campNarrativeLine: this.world.campNarrativeLine,
-      resolutionText: this.world.resolutionText,
-      runIntroTitle: this.world.runIntroTitle,
-      runIntroText: this.world.runIntroText,
-      runIntroSequence: this.world.runIntroSequence,
-      items,
-      hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
-      objective: objectiveHud,
-      campVisitor: campVisitorHud,
-      draft: null,
-      boss: bossHud,
-    }
-    slot.client.send('hud', hud)
+    slot.client.send('hud', this.buildHudForSlot(slot))
   }
 
   /** Send interactables to a single client (used on reconnect). */
