@@ -317,6 +317,31 @@ export interface RewindEnemyState {
   alive: boolean
 }
 
+/**
+ * Lag compensation state sub-object.
+ * Groups all rewind/lag-comp fields for server-side hit verification.
+ */
+export interface LagCompState {
+  /** Enables server-side lag-compensated shot rewind in shared systems */
+  enabled: boolean
+  /** Max rewind distance in ticks for lag compensation */
+  maxRewindTicks: number
+  /** Per-player shot command tick for current simulation step */
+  shotTickByPlayer: Map<number, number>
+  /** Per-bullet originating shot tick for early historical hit checks */
+  bulletShotTick: Map<number, number>
+  /** Per-bullet authoritative server spawn tick (for first-tick historical checks) */
+  bulletSpawnTick: Map<number, number>
+  /** Per-bullet first-tick rewind sweep start point (lag-comp catch-up segment) */
+  bulletSweepStart: Map<number, { x: number; y: number }>
+  /** Radius padding applied only during historical lag-comp overlap checks */
+  historicalRadiusPadding: number
+  /** Resolve historical player position for a rewind tick */
+  getPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
+  /** Resolve historical enemy state for a rewind tick */
+  getEnemyStateAtTick?: (eid: number, tick: number) => RewindEnemyState | null
+}
+
 export type PlayerFireMode = 'projectile' | 'hitscan'
 
 export interface PendingShotResult {
@@ -576,20 +601,8 @@ export interface GameWorld extends IWorld {
   simulationScope: 'all' | 'local-player'
   /** Local player entity used when simulationScope is 'local-player' */
   localPlayerEid: number
-  /** Enables server-side lag-compensated shot rewind in shared systems */
-  lagCompEnabled: boolean
-  /** Max rewind distance in ticks for lag compensation */
-  lagCompMaxRewindTicks: number
-  /** Per-player shot command tick for current simulation step */
-  lagCompShotTickByPlayer: Map<number, number>
-  /** Per-bullet originating shot tick for early historical hit checks */
-  lagCompBulletShotTick: Map<number, number>
-  /** Per-bullet authoritative server spawn tick (for first-tick historical checks) */
-  lagCompBulletSpawnTick: Map<number, number>
-  /** Per-bullet first-tick rewind sweep start point (lag-comp catch-up segment) */
-  lagCompBulletSweepStart: Map<number, { x: number; y: number }>
-  /** Radius padding applied only during historical lag-comp overlap checks */
-  lagCompHistoricalRadiusPadding: number
+  /** Lag compensation state (server-side rewind/hit verification) */
+  lagComp: LagCompState
   /** Camp visitor state (non-null during camp phase) */
   campVisitor: CampVisitorState | null
   /** Draft-pick state for multiplayer camp loot distribution (null in single-player or outside camp) */
@@ -642,10 +655,6 @@ export interface GameWorld extends IWorld {
   obstacleHits: ObstacleHit[]
   /** Per-tick boss phase change events for client VFX */
   bossPhaseChanges: Array<{ eid: number; newPhase: number; x: number; y: number }>
-  /** Resolve historical player position for a rewind tick */
-  lagCompGetPlayerPosAtTick?: (eid: number, tick: number) => RewindPlayerState | null
-  /** Resolve historical enemy state for a rewind tick */
-  lagCompGetEnemyStateAtTick?: (eid: number, tick: number) => RewindEnemyState | null
 }
 
 /**
@@ -735,13 +744,15 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     campComplete: false,
     simulationScope: 'all',
     localPlayerEid: -1,
-    lagCompEnabled: false,
-    lagCompMaxRewindTicks: 0,
-    lagCompShotTickByPlayer: new Map(),
-    lagCompBulletShotTick: new Map(),
-    lagCompBulletSpawnTick: new Map(),
-    lagCompBulletSweepStart: new Map(),
-    lagCompHistoricalRadiusPadding: 0,
+    lagComp: {
+      enabled: false,
+      maxRewindTicks: 0,
+      shotTickByPlayer: new Map(),
+      bulletShotTick: new Map(),
+      bulletSpawnTick: new Map(),
+      bulletSweepStart: new Map(),
+      historicalRadiusPadding: 0,
+    },
     campVisitor: null,
     draftState: null,
     itemPickups: [],
@@ -862,15 +873,15 @@ export function resetWorld(world: GameWorld): void {
   world.campComplete = false
   world.simulationScope = 'all'
   world.localPlayerEid = -1
-  world.lagCompEnabled = false
-  world.lagCompMaxRewindTicks = 0
-  world.lagCompShotTickByPlayer.clear()
-  world.lagCompBulletShotTick.clear()
-  world.lagCompBulletSpawnTick.clear()
-  world.lagCompBulletSweepStart.clear()
-  world.lagCompHistoricalRadiusPadding = 0
-  delete world.lagCompGetPlayerPosAtTick
-  delete world.lagCompGetEnemyStateAtTick
+  world.lagComp.enabled = false
+  world.lagComp.maxRewindTicks = 0
+  world.lagComp.shotTickByPlayer.clear()
+  world.lagComp.bulletShotTick.clear()
+  world.lagComp.bulletSpawnTick.clear()
+  world.lagComp.bulletSweepStart.clear()
+  world.lagComp.historicalRadiusPadding = 0
+  delete world.lagComp.getPlayerPosAtTick
+  delete world.lagComp.getEnemyStateAtTick
   world.campVisitor = null
   world.draftState = null
   world.itemPickups = []

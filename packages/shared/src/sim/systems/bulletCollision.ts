@@ -14,13 +14,12 @@
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { FriendlyFireMode } from '../../net/lobby'
-import { Bullet, Position, Velocity, Collider, Health, Invincible, Showdown, Player, Enemy, EnemyType, FrontArmor, Flying } from '../components'
-import { CollisionLayer, MAX_COLLIDER_RADIUS, NO_TARGET, removeBullet } from '../prefabs'
-import { clampDamage, FRIENDLY_FIRE_DAMAGE_SCALE } from '../damage'
+import { Bullet, Position, Velocity, Collider, Health, Invincible, Player, Enemy, Flying } from '../components'
+import { CollisionLayer, MAX_COLLIDER_RADIUS, removeBullet } from '../prefabs'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
-import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { resolveDamageModifiers } from './resolveDamageModifiers'
 import { damageMapObstacle } from './damageHelpers'
 import { getOrCreatePlayerStats } from '../stats'
 
@@ -132,7 +131,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
     const x = Position.x[eid]!
     const y = Position.y[eid]!
-    const sweepStart = world.lagCompBulletSweepStart.get(eid)
+    const sweepStart = world.lagComp.bulletSweepStart.get(eid)
     const startX = sweepStart?.x ?? Position.prevX[eid]!
     const startY = sweepStart?.y ?? Position.prevY[eid]!
     const radius = Collider.radius[eid]!
@@ -147,13 +146,9 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     // Authoritative player-bullet hit checks prefer direct ECS scans so
     // local prediction and server authority do not diverge on stale hashes.
     const useSpatialHash = !localOnly && Collider.layer[eid] !== CollisionLayer.PLAYER_BULLET
-    // Determine Showdown state for this bullet's owner
     const bulletOwner = Bullet.ownerId[eid]!
-    const ownerHasShowdown =
-      hasComponent(world, Showdown, bulletOwner) && Showdown.active[bulletOwner] === 1
-    const showdownTarget = ownerHasShowdown ? Showdown.targetEid[bulletOwner]! : NO_TARGET
-    const shotTick = world.lagCompBulletShotTick.get(eid)
-    const spawnTick = world.lagCompBulletSpawnTick.get(eid)
+    const shotTick = world.lagComp.bulletShotTick.get(eid)
+    const spawnTick = world.lagComp.bulletSpawnTick.get(eid)
     const withinHistoricalWindow =
       spawnTick !== undefined
         ? world.tick <= spawnTick
@@ -166,11 +161,11 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
           : world.tick
     const useHistoricalEnemyOverlap =
       !localOnly &&
-      world.lagCompEnabled &&
+      world.lagComp.enabled &&
       Collider.layer[eid] === CollisionLayer.PLAYER_BULLET &&
       shotTick !== undefined &&
       withinHistoricalWindow &&
-      world.lagCompGetEnemyStateAtTick !== undefined
+      world.lagComp.getEnemyStateAtTick !== undefined
     const ignoreRadiusFilter = useHistoricalEnemyOverlap && !useSpatialHash
 
     forEachPotentialTarget(world, useSpatialHash, x, y, queryRadius, ignoreRadiusFilter, (targetEid) => {
@@ -210,9 +205,9 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
         const endTick = Math.max(shotTick, historicalWindowEndTick)
         const startTick = Math.max(shotTick, endTick - (MAX_HISTORICAL_OVERLAP_SAMPLES - 1))
         for (let historicalTick = startTick; historicalTick <= endTick && !overlaps; historicalTick++) {
-          const historical = world.lagCompGetEnemyStateAtTick?.(targetEid, historicalTick)
+          const historical = world.lagComp.getEnemyStateAtTick?.(targetEid, historicalTick)
           if (!historical || !historical.alive) continue
-          const historicalMinDist = radius + historical.radius + world.lagCompHistoricalRadiusPadding
+          const historicalMinDist = radius + historical.radius + world.lagComp.historicalRadiusPadding
           overlaps = overlapsSweptCircle(
             startX,
             startY,
@@ -226,65 +221,38 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       }
       if (!overlaps) return
 
-      // Determine damage and pierce behavior
-      let damage = Bullet.damage[eid]!
+      // Determine damage and pierce behavior via shared pipeline
+      const isPlayerBullet = Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET
+      const modResult = resolveDamageModifiers({
+        world,
+        baseDamage: Bullet.damage[eid]!,
+        bulletId: eid,
+        ownerEid: bulletOwner,
+        targetEid,
+        isPlayerBullet,
+        bulletLayer: Collider.layer[eid]!,
+        targetLayer: Collider.layer[targetEid]!,
+        authoritative: !localOnly,
+        frontArmorBulletEid: eid,
+      })
+      let { damage } = modResult
       let shouldRemoveBullet = true
       let shouldStopIteration = true
 
-      // Friendly fire damage reduction
-      if (Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET &&
-          Collider.layer[targetEid]! === CollisionLayer.PLAYER &&
-          world.friendlyFireMode === 'reduced') {
-        damage = clampDamage(damage * FRIENDLY_FIRE_DAMAGE_SCALE)
-      }
-
-      // FrontArmor: reduce damage for frontal player bullet hits
-      if (hasComponent(world, FrontArmor, targetEid) &&
-          Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET) {
-        const bulletAngle = Math.atan2(Velocity.y[eid]!, Velocity.x[eid]!)
-        const facingAngle = FrontArmor.facingAngle[targetEid]!
-        // Bullet hits "from the front" when bullet direction ≈ opposite of facing
-        let angleDiff = bulletAngle - (facingAngle + Math.PI)
-        // Normalize to [-PI, PI]. +PI maps to -PI which is fine since
-        // abs(-PI) > arcHalfAngle (PI/2) so armor won't trigger at the seam.
-        angleDiff = ((angleDiff % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI
-        if (Math.abs(angleDiff) <= FrontArmor.arcHalfAngle[targetEid]!) {
-          damage = clampDamage(damage * FrontArmor.reductionMultiplier[targetEid]!)
-        }
-      }
-
-      if (ownerHasShowdown && targetEid !== showdownTarget) {
-        // Pierce: bullet passes through non-target
+      if (modResult.showdownPierce) {
         shouldRemoveBullet = false
         shouldStopIteration = false
         let hits = world.bulletPierceHits.get(eid)
         if (!hits) { hits = new Set(); world.bulletPierceHits.set(eid, hits) }
         hits.add(targetEid)
-      } else if (ownerHasShowdown && targetEid === showdownTarget) {
-        // Target hit: bonus damage, bullet stops
-        const ownerState = getUpgradeStateForPlayer(world, bulletOwner)
-        damage = clampDamage(damage * ownerState.showdownDamageMultiplier)
       }
 
-      // Fire onBulletHit hooks for player bullets (pierce, JJE bonus, etc.)
-      // Keep this server-authoritative to avoid prediction-only gameplay side-effects.
-      const isPlayerBullet = Collider.layer[eid]! === CollisionLayer.PLAYER_BULLET
-      if (!localOnly && isPlayerBullet && world.hooks.hasHandlers('onBulletHit')) {
-        const hookResult = world.hooks.fireBulletHit(world, eid, targetEid, damage)
-        damage = hookResult.damage
-        if (hookResult.pierce && shouldRemoveBullet) {
-          // Hook requested pierce — track hit entity so we don't hit again
-          shouldRemoveBullet = false
-          shouldStopIteration = false
-          let hits = world.bulletPierceHits.get(eid)
-          if (!hits) { hits = new Set(); world.bulletPierceHits.set(eid, hits) }
-          hits.add(targetEid)
-        }
-      }
-
-      // Final Arrangement: 25% damage reduction when player is below 50% HP
-      if (hasComponent(world, Player, targetEid) && getUpgradeStateForPlayer(world, targetEid).finalArrangementActive) {
-        damage = clampDamage(damage * 0.75)
+      if (modResult.hookPierce && shouldRemoveBullet) {
+        shouldRemoveBullet = false
+        shouldStopIteration = false
+        let hits = world.bulletPierceHits.get(eid)
+        if (!hits) { hits = new Set(); world.bulletPierceHits.set(eid, hits) }
+        hits.add(targetEid)
       }
 
       if (localOnly) {
@@ -337,7 +305,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     if (hitEntity) {
       // Rewind catch-up sweep start is only used for the first collision step.
       if (sweepStart) {
-        world.lagCompBulletSweepStart.delete(eid)
+        world.lagComp.bulletSweepStart.delete(eid)
       }
       continue // skip wall check for this bullet
     }
@@ -364,7 +332,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       if (hitTrap) {
         // Rewind catch-up sweep start is only used for the first collision step.
         if (sweepStart) {
-          world.lagCompBulletSweepStart.delete(eid)
+          world.lagComp.bulletSweepStart.delete(eid)
         }
         continue
       }
@@ -391,7 +359,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
       }
       if (hitObs) {
         if (sweepStart) {
-          world.lagCompBulletSweepStart.delete(eid)
+          world.lagComp.bulletSweepStart.delete(eid)
         }
         continue
       }
@@ -419,7 +387,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
 
     // Rewind catch-up sweep start is only used for the first collision step.
     if (sweepStart) {
-      world.lagCompBulletSweepStart.delete(eid)
+      world.lagComp.bulletSweepStart.delete(eid)
     }
   }
 

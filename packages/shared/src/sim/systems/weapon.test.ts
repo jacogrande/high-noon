@@ -249,11 +249,11 @@ describe('weaponSystem', () => {
 
   describe('lag-comp rewound spawn', () => {
     test('spawns from historical origin and fast-forwards bullet by rewind ticks', () => {
-      world.lagCompEnabled = true
-      world.lagCompMaxRewindTicks = 10
+      world.lagComp.enabled = true
+      world.lagComp.maxRewindTicks = 10
       world.tick = 20
-      world.lagCompShotTickByPlayer.set(playerEid, 17)
-      world.lagCompGetPlayerPosAtTick = () => ({ x: 50, y: 60 })
+      world.lagComp.shotTickByPlayer.set(playerEid, 17)
+      world.lagComp.getPlayerPosAtTick = () => ({ x: 50, y: 60 })
 
       setInput(world, playerEid, createShootInput(0))
       weaponSystem(world, 1 / 60)
@@ -269,17 +269,17 @@ describe('weaponSystem', () => {
       expect(Position.prevY[eid]).toBeCloseTo(60)
       expect(Position.x[eid]).toBeCloseTo(50 + vx * rewindSeconds)
       expect(Position.y[eid]).toBeCloseTo(60 + vy * rewindSeconds)
-      expect(world.lagCompBulletShotTick.get(eid)).toBe(17)
-      expect(world.lagCompBulletSpawnTick.get(eid)).toBe(20)
-      expect(world.lagCompBulletSweepStart.get(eid)).toEqual({ x: 50, y: 60 })
+      expect(world.lagComp.bulletShotTick.get(eid)).toBe(17)
+      expect(world.lagComp.bulletSpawnTick.get(eid)).toBe(20)
+      expect(world.lagComp.bulletSweepStart.get(eid)).toEqual({ x: 50, y: 60 })
     })
 
     test('falls back to current player origin when historical state is unavailable', () => {
-      world.lagCompEnabled = true
-      world.lagCompMaxRewindTicks = 10
+      world.lagComp.enabled = true
+      world.lagComp.maxRewindTicks = 10
       world.tick = 25
-      world.lagCompShotTickByPlayer.set(playerEid, 20)
-      world.lagCompGetPlayerPosAtTick = () => null
+      world.lagComp.shotTickByPlayer.set(playerEid, 20)
+      world.lagComp.getPlayerPosAtTick = () => null
 
       setInput(world, playerEid, createShootInput())
       weaponSystem(world, 1 / 60)
@@ -289,9 +289,9 @@ describe('weaponSystem', () => {
       const eid = bulletEid!
       expect(Position.x[eid]).toBe(100)
       expect(Position.y[eid]).toBe(100)
-      expect(world.lagCompBulletShotTick.has(eid)).toBe(false)
-      expect(world.lagCompBulletSpawnTick.has(eid)).toBe(false)
-      expect(world.lagCompBulletSweepStart.has(eid)).toBe(false)
+      expect(world.lagComp.bulletShotTick.has(eid)).toBe(false)
+      expect(world.lagComp.bulletSpawnTick.has(eid)).toBe(false)
+      expect(world.lagComp.bulletSweepStart.has(eid)).toBe(false)
     })
   })
 

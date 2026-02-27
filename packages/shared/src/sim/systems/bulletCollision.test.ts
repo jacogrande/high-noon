@@ -267,11 +267,11 @@ describe('bulletCollisionSystem', () => {
         ownerId: playerEid,
       })
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 100
-      world.lagCompBulletShotTick.set(bulletEid, 99)
-      world.lagCompBulletSpawnTick.set(bulletEid, 100)
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 99)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 100)
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 99) return null
         return {
           x: OPEN_X,
@@ -304,12 +304,12 @@ describe('bulletCollisionSystem', () => {
       const enemyRadius = Collider.radius[enemyEid]!
       const outsideBy = 2
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 100
-      world.lagCompHistoricalRadiusPadding = 3
-      world.lagCompBulletShotTick.set(bulletEid, 99)
-      world.lagCompBulletSpawnTick.set(bulletEid, 100)
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.historicalRadiusPadding = 3
+      world.lagComp.bulletShotTick.set(bulletEid, 99)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 100)
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 99) return null
         return {
           x: OPEN_X + bulletRadius + enemyRadius + outsideBy,
@@ -338,11 +338,11 @@ describe('bulletCollisionSystem', () => {
         ownerId: playerEid,
       })
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 120
-      world.lagCompBulletShotTick.set(bulletEid, 110)
-      world.lagCompBulletSpawnTick.set(bulletEid, 120)
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 110)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 120)
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 110) return null
         return {
           x: OPEN_X,
@@ -371,11 +371,11 @@ describe('bulletCollisionSystem', () => {
         ownerId: playerEid,
       })
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 120
-      world.lagCompBulletShotTick.set(bulletEid, 110)
-      world.lagCompBulletSpawnTick.set(bulletEid, 120)
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 110)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 120)
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid) return null
         if (tick === 115) {
           return {
@@ -414,12 +414,12 @@ describe('bulletCollisionSystem', () => {
       Position.prevX[bulletEid] = OPEN_X + 30
       Position.prevY[bulletEid] = OPEN_Y
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 120
-      world.lagCompBulletShotTick.set(bulletEid, 110)
-      world.lagCompBulletSpawnTick.set(bulletEid, 120)
-      world.lagCompBulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 110)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 120)
+      world.lagComp.bulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 110) return null
         return {
           x: OPEN_X,
@@ -433,7 +433,7 @@ describe('bulletCollisionSystem', () => {
 
       expect(Health.current[enemyEid]).toBe(14)
       expect(hasComponent(world, Bullet, bulletEid)).toBe(false)
-      expect(world.lagCompBulletSweepStart.has(bulletEid)).toBe(false)
+      expect(world.lagComp.bulletSweepStart.has(bulletEid)).toBe(false)
     })
 
     test('rewind sweep start is consumed after one collision step even without a hit', () => {
@@ -451,12 +451,12 @@ describe('bulletCollisionSystem', () => {
       Position.prevX[bulletEid] = OPEN_X + 30
       Position.prevY[bulletEid] = OPEN_Y
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 120
-      world.lagCompBulletShotTick.set(bulletEid, 110)
-      world.lagCompBulletSpawnTick.set(bulletEid, 120)
-      world.lagCompBulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 110)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 120)
+      world.lagComp.bulletSweepStart.set(bulletEid, { x: OPEN_X, y: OPEN_Y })
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 110) return null
         return {
           x: OPEN_X + 300,
@@ -470,7 +470,7 @@ describe('bulletCollisionSystem', () => {
 
       expect(Health.current[enemyEid]).toBe(20)
       expect(hasComponent(world, Bullet, bulletEid)).toBe(true)
-      expect(world.lagCompBulletSweepStart.has(bulletEid)).toBe(false)
+      expect(world.lagComp.bulletSweepStart.has(bulletEid)).toBe(false)
     })
 
     test('historical overlap window closes after spawn tick', () => {
@@ -486,11 +486,11 @@ describe('bulletCollisionSystem', () => {
         ownerId: playerEid,
       })
 
-      world.lagCompEnabled = true
+      world.lagComp.enabled = true
       world.tick = 121
-      world.lagCompBulletShotTick.set(bulletEid, 110)
-      world.lagCompBulletSpawnTick.set(bulletEid, 120)
-      world.lagCompGetEnemyStateAtTick = (eid, tick) => {
+      world.lagComp.bulletShotTick.set(bulletEid, 110)
+      world.lagComp.bulletSpawnTick.set(bulletEid, 120)
+      world.lagComp.getEnemyStateAtTick = (eid, tick) => {
         if (eid !== enemyEid || tick !== 110) return null
         return {
           x: OPEN_X,

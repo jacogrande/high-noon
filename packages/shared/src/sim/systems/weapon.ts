@@ -23,12 +23,12 @@ import {
   Collider,
   Health,
   Invincible,
-  Showdown,
 } from '../components'
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
-import { clampDamage, FRIENDLY_FIRE_DAMAGE_SCALE } from '../damage'
+import { clampDamage } from '../damage'
 import { getUpgradeStateForPlayer } from '../upgrade'
 import { applyDamage } from './applyDamage'
+import { resolveDamageModifiers } from './resolveDamageModifiers'
 import { damageMapObstacle } from './damageHelpers'
 import { isSolidAt } from '../tilemap'
 import { getBulletConfigForCharacter } from '../content/weapons'
@@ -64,21 +64,21 @@ interface HitscanPelletResult {
 }
 
 function getRewoundFireContext(world: GameWorld, playerEid: number, x: number, y: number, dt: number): RewoundFireContext {
-  if (!world.lagCompEnabled || world.lagCompMaxRewindTicks <= 0) {
+  if (!world.lagComp.enabled || world.lagComp.maxRewindTicks <= 0) {
     return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
   }
 
-  const shotTick = world.lagCompShotTickByPlayer.get(playerEid)
+  const shotTick = world.lagComp.shotTickByPlayer.get(playerEid)
   if (shotTick === undefined) {
     return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
   }
 
-  const historicalPos = world.lagCompGetPlayerPosAtTick?.(playerEid, shotTick)
+  const historicalPos = world.lagComp.getPlayerPosAtTick?.(playerEid, shotTick)
   if (!historicalPos) {
     return { originX: x, originY: y, rewindSeconds: 0, shotTick: null }
   }
 
-  const rewindTicks = Math.max(0, Math.min(world.lagCompMaxRewindTicks, world.tick - shotTick))
+  const rewindTicks = Math.max(0, Math.min(world.lagComp.maxRewindTicks, world.tick - shotTick))
   return {
     originX: historicalPos.x,
     originY: historicalPos.y,
@@ -193,9 +193,9 @@ function getHistoricalRayDistance(
 
   if (
     shotTick === null ||
-    !world.lagCompEnabled ||
+    !world.lagComp.enabled ||
     world.simulationScope === 'local-player' ||
-    world.lagCompGetEnemyStateAtTick === undefined
+    world.lagComp.getEnemyStateAtTick === undefined
   ) {
     return bestDistance
   }
@@ -203,7 +203,7 @@ function getHistoricalRayDistance(
   const endTick = world.tick
   const startTick = Math.max(shotTick, endTick - (MAX_HISTORICAL_HITSCAN_SAMPLES - 1))
   for (let tick = startTick; tick <= endTick; tick++) {
-    const historical = world.lagCompGetEnemyStateAtTick(targetEid, tick)
+    const historical = world.lagComp.getEnemyStateAtTick(targetEid, tick)
     if (!historical || !historical.alive) continue
     const d = rayCircleIntersectionDistance(
       originX,
@@ -212,7 +212,7 @@ function getHistoricalRayDistance(
       dirY,
       historical.x,
       historical.y,
-      historical.radius + world.lagCompHistoricalRadiusPadding,
+      historical.radius + world.lagComp.historicalRadiusPadding,
     )
     if (d === null) continue
     if (bestDistance === null || d < bestDistance) {
@@ -371,11 +371,6 @@ function resolveHitscanPellet(
     }
   }
 
-  const ownerHasShowdown =
-    hasComponent(world, Showdown, ownerEid) && Showdown.active[ownerEid] === 1
-  const showdownTarget = ownerHasShowdown ? Showdown.targetEid[ownerEid]! : NO_TARGET
-
-  const hasBulletHooks = authoritative && world.hooks.hasHandlers('onBulletHit')
   const virtualBulletId = world.nextVirtualBulletId--
   world.hitscanVirtualBulletOwners.set(virtualBulletId, ownerEid)
 
@@ -385,37 +380,24 @@ function resolveHitscanPellet(
   let firstHitY = originY + dirY * Math.min(range, wallDistance)
 
   for (const candidate of candidates) {
-    let damage = baseDamage
-    let shouldContinue = false
+    const modResult = resolveDamageModifiers({
+      world,
+      baseDamage,
+      bulletId: virtualBulletId,
+      ownerEid,
+      targetEid: candidate.targetEid,
+      isPlayerBullet: true,
+      bulletLayer: CollisionLayer.PLAYER_BULLET,
+      targetLayer: Collider.layer[candidate.targetEid]!,
+      authoritative,
+      // No frontArmorBulletEid — hitscan has no Velocity component
+    })
 
-    if (ownerHasShowdown && candidate.targetEid !== showdownTarget) {
-      shouldContinue = true
-    } else if (ownerHasShowdown && candidate.targetEid === showdownTarget) {
-      const ownerState = getUpgradeStateForPlayer(world, ownerEid)
-      damage = clampDamage(damage * ownerState.showdownDamageMultiplier)
-    }
-
-    if (hasBulletHooks) {
-      const hookResult = world.hooks.fireBulletHit(world, virtualBulletId, candidate.targetEid, damage)
-      damage = hookResult.damage
-      if (hookResult.pierce) {
-        shouldContinue = true
-      }
-    }
-
-    // Friendly fire damage reduction for hitscan player-vs-player hits
-    // Order: friendly fire → final arrangement (matches projectile path in bulletCollision.ts)
-    if (hasComponent(world, Player, candidate.targetEid) && world.friendlyFireMode === 'reduced') {
-      damage = clampDamage(damage * FRIENDLY_FIRE_DAMAGE_SCALE)
-    }
-
-    if (hasComponent(world, Player, candidate.targetEid) && getUpgradeStateForPlayer(world, candidate.targetEid).finalArrangementActive) {
-      damage = clampDamage(damage * 0.75)
-    }
+    const shouldContinue = modResult.showdownPierce || modResult.hookPierce
 
     if (authoritative) {
       const result = applyDamage(world, candidate.targetEid, {
-        amount: damage,
+        amount: modResult.damage,
         attackerEid: ownerEid,
         setIframes: true,
       })
@@ -645,7 +627,7 @@ export function weaponSystem(
           Position.prevY[bulletEid] = rewoundFire.originY
           Position.x[bulletEid] = catchupX
           Position.y[bulletEid] = catchupY
-          world.lagCompBulletSweepStart.set(bulletEid, {
+          world.lagComp.bulletSweepStart.set(bulletEid, {
             x: rewoundFire.originX,
             y: rewoundFire.originY,
           })
@@ -658,8 +640,8 @@ export function weaponSystem(
         }
 
         if (rewoundFire.shotTick !== null) {
-          world.lagCompBulletShotTick.set(bulletEid, rewoundFire.shotTick)
-          world.lagCompBulletSpawnTick.set(bulletEid, world.tick)
+          world.lagComp.bulletShotTick.set(bulletEid, rewoundFire.shotTick)
+          world.lagComp.bulletSpawnTick.set(bulletEid, world.tick)
         }
       }
     }
