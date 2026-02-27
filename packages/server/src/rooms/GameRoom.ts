@@ -1934,9 +1934,9 @@ export class GameRoom extends Room<GameRoomState> {
     }
   }
 
-  private sendInteractablesUpdates() {
+  private buildInteractablesPayload(): InteractablesData {
     const salesman = this.world.salesman
-    const payload: InteractablesData = {
+    return {
       salesman: salesman
         ? {
             x: salesman.x,
@@ -1975,7 +1975,10 @@ export class GameRoom extends Room<GameRoomState> {
         })),
       horse: this.world.horse?.active ? { x: this.world.horse.x, y: this.world.horse.y } : null,
     }
+  }
 
+  private sendInteractablesUpdates() {
+    const payload = this.buildInteractablesPayload()
     for (const [, slot] of this.slots) {
       slot.client.send('interactables', payload)
     }
@@ -2008,47 +2011,7 @@ export class GameRoom extends Room<GameRoomState> {
 
   /** Send interactables to a single client (used on reconnect). */
   private sendInteractablesToClient(client: Client): void {
-    const salesman = this.world.salesman
-    const payload: InteractablesData = {
-      salesman: salesman
-        ? {
-            x: salesman.x,
-            y: salesman.y,
-            stageIndex: salesman.stageIndex,
-            camp: salesman.camp,
-            active: salesman.active,
-            shovelPrice: getShovelPrice(salesman.stageIndex),
-          }
-        : null,
-      stashes: this.world.stashes.map((stash) => ({
-        id: stash.id,
-        x: stash.x,
-        y: stash.y,
-        stageIndex: stash.stageIndex,
-        opened: stash.opened,
-      })),
-      itemPickups: this.world.itemPickups
-        .filter(p => !p.collected)
-        .map(p => {
-          const def = getItemDef(p.itemId)
-          return {
-            id: p.id,
-            itemId: p.itemId,
-            x: p.x,
-            y: p.y,
-            rarity: def?.rarity ?? 'brass',
-          }
-        }),
-      hpPotionPickups: this.world.hpPotionPickups
-        .filter(p => !p.collected)
-        .map(p => ({
-          id: p.id,
-          x: p.x,
-          y: p.y,
-        })),
-      horse: this.world.horse?.active ? { x: this.world.horse.x, y: this.world.horse.y } : null,
-    }
-    client.send('interactables', payload)
+    client.send('interactables', this.buildInteractablesPayload())
   }
 
   private broadcastSnapshot() {
