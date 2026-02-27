@@ -128,7 +128,7 @@ export function DraftPickPanel({
                   PICK
                 </button>
               ) : (
-                <div style={styles.unavailableBadge}>AVAILABLE</div>
+                <div style={styles.unavailableBadge}>WAITING</div>
               )}
             </div>
           )

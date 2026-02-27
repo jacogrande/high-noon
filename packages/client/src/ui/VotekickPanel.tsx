@@ -13,11 +13,13 @@ export function VotekickPanel({ vote, localSessionId, onCast }: Props) {
   const isTarget = localSessionId === vote.targetSessionId
 
   useEffect(() => {
+    setTimeLeft(vote.expiresInS)
+    setVoted(false)
     const interval = setInterval(() => {
       setTimeLeft(prev => Math.max(0, prev - 1))
     }, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [vote.voteId, vote.expiresInS])
 
   const handleVote = (approve: boolean) => {
     if (voted || isTarget) return

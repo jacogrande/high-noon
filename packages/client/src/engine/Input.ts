@@ -76,6 +76,8 @@ export class Input {
         this.transientButtons |= Button.USE_HP_POTION
         break
       case 'KeyG':
+        // G = location ping, Ctrl/Cmd+G = danger ping.
+        // Note: Ctrl+G may be intercepted by some browsers (e.g., find-next in Firefox).
         this._pingRequested = (e.ctrlKey || e.metaKey) ? 'danger' : 'location'
         break
     }

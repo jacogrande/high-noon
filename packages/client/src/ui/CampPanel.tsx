@@ -199,7 +199,6 @@ export function CampPanel({
             style={rideOutPending ? styles.rideOutButtonDisabled : styles.rideOutButton}
             disabled={rideOutPending}
             onClick={() => {
-              if (rideOutPending) return
               playClick()
               onRideOut()
             }}

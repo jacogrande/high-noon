@@ -19,6 +19,7 @@ function formatAccuracy(fired: number, hit: number): string {
   return `${Math.round((hit / fired) * 100)}%`
 }
 
+// Accent colors per character — keep in sync with character definitions.
 const CHARACTER_COLORS: Record<string, string> = {
   sheriff: '#ffcc00',
   undertaker: '#aa88ff',
@@ -66,6 +67,7 @@ export function MultiplayerRunEndPanel({
               <tr>
                 <th style={{ ...styles.th, textAlign: 'left' }}>PLAYER</th>
                 <th style={styles.th}>KILLS</th>
+                <th style={styles.th}>BOSS</th>
                 <th style={styles.th}>DMG</th>
                 <th style={styles.th}>ACC</th>
                 <th style={styles.th}>TAKEN</th>
@@ -89,6 +91,7 @@ export function MultiplayerRunEndPanel({
                       {isLocal && <span style={styles.youTag}> (you)</span>}
                     </td>
                     <td style={styles.td}>{entry.stats.enemiesKilled}</td>
+                    <td style={styles.td}>{entry.stats.bossesKilled}</td>
                     <td style={styles.td}>{Math.round(entry.stats.damageDealt)}</td>
                     <td style={styles.td}>
                       {formatAccuracy(entry.stats.shotsFired, entry.stats.shotsHit)}

@@ -62,6 +62,7 @@ export function MultiplayerGame() {
   const reconnectStateRef = useRef<ReconnectState | null>(null)
   const runCompleteRef = useRef<RunCompleteMessage | null>(null)
   const deathTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shutdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const showingTreeRef = useRef(false)
   const wasCampRef = useRef(false)
   const sceneRef = useRef<CoreGameScene | null>(null)
@@ -155,15 +156,18 @@ export function MultiplayerGame() {
     net.on('server-shutdown', (data) => {
       if (netRef.current !== net) return
       setShutdownCountdown(Math.ceil(data.countdownMs / 1000))
+      if (shutdownIntervalRef.current) clearInterval(shutdownIntervalRef.current)
       const interval = setInterval(() => {
         setShutdownCountdown(prev => {
           if (prev === null || prev <= 1) {
             clearInterval(interval)
+            shutdownIntervalRef.current = null
             return 0
           }
           return prev - 1
         })
       }, 1000)
+      shutdownIntervalRef.current = interval
     })
 
     net.on('afk-warning', (data) => {
@@ -393,6 +397,7 @@ export function MultiplayerGame() {
       destroyGame()
       disconnectNetwork()
       if (deathTimerRef.current) clearTimeout(deathTimerRef.current)
+      if (shutdownIntervalRef.current) clearInterval(shutdownIntervalRef.current)
     }
   }, [])
 
@@ -657,7 +662,7 @@ export function MultiplayerGame() {
           rideOutPending={campReadySent}
           playerGold={hudState.goldCollected}
           campStatus={campStatus ? {
-            readyCount: campStatus.readyPlayers.length,
+            readyCount: campStatus.readyCount,
             totalPlayers: campStatus.totalPlayers,
             remainingSeconds: campStatus.remainingSeconds,
           } : null}
