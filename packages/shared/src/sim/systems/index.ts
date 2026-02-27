@@ -25,8 +25,6 @@ import { debugSpawnSystem } from './debugSpawn'
 import { flowFieldSystem } from './flowField'
 import { enemyDetectionSystem } from './enemyDetection'
 import { bossPhaseSystem } from './bossPhase'
-// Trigger boss module registration
-import '../content/bosses'
 import { enemyAISystem } from './enemyAI'
 import { enemySteeringSystem } from './enemySteering'
 import { enemyAttackSystem } from './enemyAttack'

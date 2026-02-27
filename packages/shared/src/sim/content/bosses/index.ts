@@ -1,7 +1,8 @@
 /**
  * Boss Registry Barrel
  *
- * Importing this module triggers side-effect registration of all boss modules.
+ * Importing this module triggers registration of all boss modules.
+ * Registration is idempotent — safe to import multiple times.
  */
 
 // Side-effect imports — register boss modules
@@ -13,7 +14,7 @@ import './hollowMan'
 import './oldScratch'
 
 // Re-export registry API
-export { getBoss, isBoss, allBosses, registerBoss } from './registry'
+export { getBoss, isBoss, allBosses, registerBoss, isBossRegistryInitialized } from './registry'
 export type { BossModule } from './registry'
 
 // Re-export boss constants needed by external consumers (SnapshotIngestor, tests, etc.)

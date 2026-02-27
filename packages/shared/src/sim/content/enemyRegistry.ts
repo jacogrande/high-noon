@@ -75,11 +75,9 @@ export interface EnemyDefinition {
 
 const registry = new Map<number, EnemyDefinition>()
 
-/** Register an enemy definition. Throws on duplicate type ID. */
+/** Register an enemy definition. Idempotent — skips if type already registered. */
 export function registerEnemy(def: EnemyDefinition): void {
-  if (registry.has(def.type)) {
-    throw new Error(`Duplicate enemy registration for type ${def.type} (${def.name})`)
-  }
+  if (registry.has(def.type)) return
   registry.set(def.type, def)
 }
 
@@ -96,4 +94,9 @@ export function allEnemyDefs(): Iterable<EnemyDefinition> {
 /** Check if a type is registered in the enemy registry. */
 export function isRegisteredEnemy(type: number): boolean {
   return registry.has(type)
+}
+
+/** Returns true if any enemies have been registered. */
+export function isEnemyRegistryInitialized(): boolean {
+  return registry.size > 0
 }

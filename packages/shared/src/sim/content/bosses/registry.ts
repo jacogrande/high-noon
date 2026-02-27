@@ -32,7 +32,13 @@ export interface BossModule {
 const registry = new Map<number, BossModule>()
 
 export function registerBoss(mod: BossModule): void {
+  if (registry.has(mod.type)) return // idempotent — safe to call multiple times
   registry.set(mod.type, mod)
+}
+
+/** Returns true if any bosses have been registered. */
+export function isBossRegistryInitialized(): boolean {
+  return registry.size > 0
 }
 
 export function getBoss(type: number): BossModule | undefined {

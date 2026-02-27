@@ -707,3 +707,4 @@ registerEnemy({
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
 })
+
