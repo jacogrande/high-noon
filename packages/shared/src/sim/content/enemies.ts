@@ -793,7 +793,7 @@ registerEnemy({
   dropChance: 0.05,
   aggroRange: 400,
   attackRange: 300,
-  losRequired: false,
+  losRequired: true,
   telegraphDuration: DEADEYE_TELEGRAPH_DURATION,
   recoveryDuration: 1.0,
   cooldown: 3.8,

@@ -328,8 +328,14 @@ export class MapObstacleRenderer {
       .roundRect(leftArmX, leftArmY, armW, armH, 2)
       .fill({ color: CACTUS_ARM, alpha: 0.9 })
     this.graphics
+      .roundRect(leftArmX, leftArmY, armW, armH, 2)
+      .stroke({ color: CACTUS_STROKE, width: 1, alpha: 0.7 })
+    this.graphics
       .roundRect(leftArmX, leftArmY - armH * 0.6, armW, armH * 0.6, 2)
       .fill({ color: CACTUS_ARM, alpha: 0.9 })
+    this.graphics
+      .roundRect(leftArmX, leftArmY - armH * 0.6, armW, armH * 0.6, 2)
+      .stroke({ color: CACTUS_STROKE, width: 1, alpha: 0.7 })
 
     // Right arm (goes up)
     const rightArmX = cx + trunkW / 2
@@ -338,8 +344,14 @@ export class MapObstacleRenderer {
       .roundRect(rightArmX, rightArmY, armW, armH, 2)
       .fill({ color: CACTUS_ARM, alpha: 0.9 })
     this.graphics
+      .roundRect(rightArmX, rightArmY, armW, armH, 2)
+      .stroke({ color: CACTUS_STROKE, width: 1, alpha: 0.7 })
+    this.graphics
       .roundRect(rightArmX, rightArmY - armH * 0.7, armW, armH * 0.7, 2)
       .fill({ color: CACTUS_ARM, alpha: 0.9 })
+    this.graphics
+      .roundRect(rightArmX, rightArmY - armH * 0.7, armW, armH * 0.7, 2)
+      .stroke({ color: CACTUS_STROKE, width: 1, alpha: 0.7 })
 
     // Spine dots along trunk
     for (let dy = -trunkH * 0.35; dy < trunkH * 0.35; dy += 6) {

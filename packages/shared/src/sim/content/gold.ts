@@ -12,6 +12,11 @@ export const GOLD_BASE_VALUES: Record<number, number> = {
   [EnemyType.CHARGER]: 5,
   [EnemyType.GOBLIN_BARBARIAN]: 2,
   [EnemyType.GOBLIN_ROGUE]: 1,
+  [EnemyType.DRIFTER]: 1,
+  [EnemyType.KNIFE_DRIFTER]: 1,
+  [EnemyType.DEADEYE]: 4,
+  [EnemyType.SPITTER]: 2,
+  [EnemyType.DUSTDEVIL]: 2,
   [EnemyType.BOOMSTICK]: 20,
 }
 

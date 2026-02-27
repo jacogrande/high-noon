@@ -9,6 +9,11 @@ export const XP_VALUES: Record<number, number> = {
   [EnemyType.BOOMSTICK]: 20,
   [EnemyType.GOBLIN_BARBARIAN]: 2,
   [EnemyType.GOBLIN_ROGUE]: 1,
+  [EnemyType.DRIFTER]: 1,
+  [EnemyType.KNIFE_DRIFTER]: 1,
+  [EnemyType.DEADEYE]: 5,
+  [EnemyType.SPITTER]: 2,
+  [EnemyType.DUSTDEVIL]: 2,
   [EnemyType.MAD_DOG]: 20,
 }
 
