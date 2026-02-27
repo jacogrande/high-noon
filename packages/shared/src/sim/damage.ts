@@ -1,6 +1,6 @@
 /** Clamp damage to uint8 range [0, 255] */
 export function clampDamage(value: number): number {
-  return Math.min(255, Math.round(value))
+  return Math.max(0, Math.min(255, Math.round(value)))
 }
 
 /** Damage multiplier for friendly fire in 'reduced' mode (25%) */

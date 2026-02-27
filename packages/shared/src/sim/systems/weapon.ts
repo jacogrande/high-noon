@@ -405,13 +405,14 @@ function resolveHitscanPellet(
       }
     }
 
-    if (hasComponent(world, Player, candidate.targetEid) && getUpgradeStateForPlayer(world, candidate.targetEid).finalArrangementActive) {
-      damage = clampDamage(damage * 0.75)
-    }
-
     // Friendly fire damage reduction for hitscan player-vs-player hits
+    // Order: friendly fire → final arrangement (matches projectile path in bulletCollision.ts)
     if (hasComponent(world, Player, candidate.targetEid) && world.friendlyFireMode === 'reduced') {
       damage = clampDamage(damage * FRIENDLY_FIRE_DAMAGE_SCALE)
+    }
+
+    if (hasComponent(world, Player, candidate.targetEid) && getUpgradeStateForPlayer(world, candidate.targetEid).finalArrangementActive) {
+      damage = clampDamage(damage * 0.75)
     }
 
     if (authoritative) {
