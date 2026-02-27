@@ -282,6 +282,15 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
   const [greeting, greetingIdx] = pickVisitorGreeting(world.rng, visitor, run.lastGreetingIndex)
   run.lastGreetingIndex = greetingIdx
 
+  // Compute combined item inventory across all players (used by visitor offers and draft pool)
+  const allPlayerItems = new Map<number, number>()
+  for (const pEid of alivePlayers) {
+    const state = getUpgradeStateForPlayer(world, pEid)
+    for (const [itemId, stacks] of state.items) {
+      allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
+    }
+  }
+
   const visitorDef = getVisitorDef(visitor.id)
   const isTinkerer = visitorDef?.key === 'tinkerer'
 
@@ -299,13 +308,6 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
     world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers: [], modOffers: firstPlayerOffers, modOffersByPlayer }
   } else {
     // Other visitors: generate item offers
-    const allPlayerItems = new Map<number, number>()
-    for (const pEid of alivePlayers) {
-      const state = getUpgradeStateForPlayer(world, pEid)
-      for (const [itemId, stacks] of state.items) {
-        allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
-      }
-    }
     const offers = generateVisitorOffers(world.rng, visitor, allPlayerItems)
     world.campVisitor = { visitorId: visitor.id, greeting, greetingIndex: greetingIdx, offers, modOffers: [], modOffersByPlayer: new Map() }
   }
@@ -313,13 +315,6 @@ function enterCampPhase(world: GameWorld, run: NonNullable<GameWorld['run']>): v
 
   // Generate draft-pick pool for multiplayer (2+ players)
   if (alivePlayers.length > 1) {
-    const allPlayerItems = new Map<number, number>()
-    for (const pEid of alivePlayers) {
-      const state = getUpgradeStateForPlayer(world, pEid)
-      for (const [itemId, stacks] of state.items) {
-        allPlayerItems.set(itemId, Math.max(allPlayerItems.get(itemId) ?? 0, stacks))
-      }
-    }
     world.draftState = createDraftState(world.rng, [...alivePlayers], world.playerKillCounts, allPlayerItems)
   } else {
     world.draftState = null

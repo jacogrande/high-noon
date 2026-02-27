@@ -4,8 +4,8 @@
  */
 
 export interface CampStatusMessage {
-  /** Session IDs of players who have clicked "Ride Out" */
-  readyPlayers: string[]
+  /** Number of players who have clicked "Ride Out" */
+  readyCount: number
   /** Total connected players */
   totalPlayers: number
   /** Seconds remaining before auto-advance (0 when auto-advanced) */

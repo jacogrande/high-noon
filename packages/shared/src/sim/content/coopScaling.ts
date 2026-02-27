@@ -52,7 +52,7 @@ export function applyCoopHpScale(
   if (activePlayerCount <= 1) return
   const scalars = getCoopScalars(activePlayerCount)
   const mul = isBoss ? scalars.bossHpMultiplier : scalars.enemyHpMultiplier
-  Health.max[eid] = Math.round(Health.max[eid]! * mul)
+  Health.max[eid] = Math.max(1, Math.round(Health.max[eid]! * mul))
   Health.current[eid] = Health.max[eid]!
 }
 
@@ -73,10 +73,10 @@ export function getCoopScalars(playerCount: number): CoopScalars {
     }
   }
 
-  // Find surrounding breakpoints and interpolate
+  // Find surrounding breakpoints and interpolate.
+  // Guaranteed to find a bracket because pc is clamped to [1,8] and breakpoints span [1,8].
   let lower = BREAKPOINTS[0]!
   let upper = BREAKPOINTS[BREAKPOINTS.length - 1]!
-
   for (let i = 0; i < BREAKPOINTS.length - 1; i++) {
     if (pc >= BREAKPOINTS[i]![0] && pc <= BREAKPOINTS[i + 1]![0]) {
       lower = BREAKPOINTS[i]!

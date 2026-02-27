@@ -118,11 +118,13 @@ export function reviveSystem(world: GameWorld, dt: number): void {
   }
 
   // --- All-players-downed check ---
-  // If every player is either Dead or Downed, nobody can perform a revive.
-  // Immediately transition all Downed → Dead to trigger game-over.
+  // Re-query after the loop above (some entities may have bled out → Dead or
+  // been revived → no longer Downed). bitECS queries reflect immediate changes.
   const stillDowned = downedQuery(world)
   if (stillDowned.length === 0) return
 
+  // If no alive (non-Dead, non-Downed) players remain, nobody can revive anyone.
+  // Transition all remaining Downed → Dead to trigger game-over.
   const alive = getAlivePlayers(world)
   if (alive.length === 0) {
     for (const eid of stillDowned) {

@@ -43,7 +43,9 @@ export function healthSystem(world: GameWorld, dt: number): void {
     if (Health.current[eid]! <= 0 && !hasComponent(world, Dead, eid) && !hasComponent(world, Downed, eid)) {
       if (hasComponent(world, Player, eid)) {
         if (world.activePlayerCount > 1) {
-          // Co-op: enter downed state (can be revived by allies)
+          // Co-op: enter downed state (can be revived by allies).
+          // activePlayerCount defaults to 1 in createGameWorld, so single-player
+          // always takes the else branch (instant death).
           addComponent(world, Downed, eid)
           Downed.bleedTimer[eid] = BLEED_TIMER
           Downed.reviveProgress[eid] = 0

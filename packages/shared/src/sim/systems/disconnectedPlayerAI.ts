@@ -36,6 +36,8 @@ import type { NetworkInput } from '../../net/input'
 import { forEachInRadius } from '../SpatialHash'
 
 const disconnectedQuery = defineQuery([Player, Disconnected, Position, Health])
+// Includes Dead/Downed entities — filtered out manually in the loop below.
+// bitECS doesn't support Not() query constraints, so we check components in-line.
 const alivePlayerQuery = defineQuery([Player, Position, Health])
 
 /** Distance at which disconnected player starts following an ally (px) */
@@ -44,6 +46,8 @@ const FOLLOW_DIST = 64
 const DODGE_SCAN_RADIUS = 80
 /** How close a bullet's path must pass to trigger a dodge (px) */
 const DODGE_THREAT_DIST = 20
+/** Max flight time (seconds) for a bullet to be considered a threat */
+const DODGE_MAX_FLIGHT_TIME_S = 0.5
 
 export function disconnectedPlayerAISystem(world: GameWorld, _dt: number): void {
   const disconnected = disconnectedQuery(world)
@@ -113,9 +117,9 @@ export function disconnectedPlayerAISystem(world: GameWorld, _dt: number): void 
         const dx = px - bx
         const dy = py - by
         const t = (dx * bvx + dy * bvy) / (speed * speed)
-        // t < 0: bullet already past us. t > 0.5: bullet is >0.5s of travel
-        // away (200-300px at typical speeds, well beyond DODGE_SCAN_RADIUS).
-        if (t < 0 || t > 0.5) return
+        // t < 0: bullet already past us. t > DODGE_MAX_FLIGHT_TIME_S: bullet is too
+        // far away (200-300px at typical speeds, well beyond DODGE_SCAN_RADIUS).
+        if (t < 0 || t > DODGE_MAX_FLIGHT_TIME_S) return
 
         const closestX = bx + bvx * t
         const closestY = by + bvy * t

@@ -34,7 +34,8 @@ export interface DraftOffer {
   rarity: ItemRarity
   /** Index in the draft pool (stable identifier for pick messages) */
   poolIndex: number
-  /** Entity ID of the player who picked this, or -1 if available */
+  /** Entity ID of the player who picked this, or -1 if available.
+   *  Uses -1 (not NO_TARGET/0xFFFF) since this is a plain JS number, not a typed array slot. */
   pickedBy: number
   downside: string | undefined
 }
@@ -91,10 +92,12 @@ export function generateDraftPool(
     candidates.push({ def, weight: rarityWeight })
   }
 
+  // Pre-compute total weight (maintained incrementally as items are picked)
+  let totalWeight = 0
+  for (const c of candidates) totalWeight += c.weight
+
   for (let i = 0; i < totalOffers && candidates.length > 0; i++) {
     // Weighted random selection
-    let totalWeight = 0
-    for (const c of candidates) totalWeight += c.weight
     let roll = rng.next() * totalWeight
     let picked: typeof candidates[0] | null = null
     for (const c of candidates) {
@@ -103,7 +106,8 @@ export function generateDraftPool(
     }
     if (!picked) picked = candidates[candidates.length - 1]!
 
-    // Remove picked candidate to avoid duplicates and simplify retries
+    // Remove picked candidate and update running total
+    totalWeight -= picked.weight
     const idx = candidates.indexOf(picked)
     if (idx >= 0) candidates.splice(idx, 1)
 
