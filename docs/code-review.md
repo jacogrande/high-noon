@@ -461,7 +461,7 @@ const shutdown = async (signal: string) => {
 
 ## Low
 
-### 28. Over-exported balance constants in `enemies.ts`
+### ~~28. Over-exported balance constants in `enemies.ts`~~ FIXED
 
 **File**: `packages/shared/src/sim/content/enemies.ts`
 
@@ -471,7 +471,7 @@ const shutdown = async (signal: string) => {
 
 ---
 
-### 29. `registerBoss` silently overwrites duplicates
+### ~~29. `registerBoss` silently overwrites duplicates~~ FIXED
 
 **File**: `packages/shared/src/sim/content/bosses/registry.ts:36`
 
@@ -481,7 +481,7 @@ const shutdown = async (signal: string) => {
 
 ---
 
-### 30. Boss radii hardcoded in `prefabs.ts` to avoid circular dependency
+### ~~30. Boss radii hardcoded in `prefabs.ts` to avoid circular dependency~~ FIXED
 
 **File**: `packages/shared/src/sim/prefabs.ts:68-82`
 
@@ -496,7 +496,7 @@ If boss radii are updated in their own files, `prefabs.ts` silently uses stale v
 
 ---
 
-### 31. Synthetic sprite registry ID offsets are fragile
+### ~~31. Synthetic sprite registry ID offsets are fragile~~ FIXED
 
 **File**: `packages/client/src/render/EnemyRenderer.ts:53-55`
 
@@ -506,7 +506,7 @@ If boss radii are updated in their own files, `prefabs.ts` silently uses stale v
 
 ---
 
-### 32. `STATE_LABELS` array must match `AIState` enum with no check
+### ~~32. `STATE_LABELS` array must match `AIState` enum with no check~~ FIXED
 
 **File**: `packages/client/src/scenes/core/SingleplayerModeController.ts:154`
 
@@ -520,7 +520,7 @@ If a new AI state is inserted in the middle of the enum, this array silently pro
 
 ---
 
-### 33. Missing network cleanup in useEffect for multiplayer connection
+### ~~33. Missing network cleanup in useEffect for multiplayer connection~~ FIXED
 
 **File**: `packages/client/src/pages/MultiplayerGame.tsx:119-264`
 
@@ -530,7 +530,7 @@ The effect creates a new `NetworkClient` on `phase === 'connecting'` but the cle
 
 ---
 
-### 34. Room codes use `Math.random()` instead of CSPRNG
+### ~~34. Room codes use `Math.random()` instead of CSPRNG~~ FIXED
 
 **File**: `packages/server/src/rooms/GameRoom.ts:320`
 
@@ -538,7 +538,7 @@ Room codes influence matchmaking and are user-facing. `crypto.getRandomValues` o
 
 ---
 
-### 35. `process.env.NODE_ENV` in shared package
+### ~~35. `process.env.NODE_ENV` in shared package~~ FIXED
 
 **File**: `packages/shared/src/sim/content/maps/mapGenerator.ts:838`
 

@@ -15,7 +15,7 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Position, Velocity, Collider, Bullet, ZPosition, Flying } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
-import { MAX_COLLIDER_RADIUS } from '../prefabs'
+import { getMaxColliderRadius } from '../prefabs'
 import type { Tilemap } from '../tilemap'
 import { getTilesInCircle, getTileBounds, isSolidAt, getSolidTileTypeAt, TileType } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
@@ -307,7 +307,7 @@ export function collisionSystem(world: GameWorld, _dt: number): void {
       const r1 = Collider.radius[eid1]!
       const layer1 = Collider.layer[eid1]!
 
-      const queryRadius = r1 + MAX_COLLIDER_RADIUS
+      const queryRadius = r1 + getMaxColliderRadius()
 
       forEachInRadius(world.spatialHash, x1, y1, queryRadius, (eid2) => {
         if (eid1 === eid2) return

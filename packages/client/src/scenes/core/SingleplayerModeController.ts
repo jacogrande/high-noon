@@ -134,7 +134,15 @@ function getStaredownDuration(round: number): number {
   return OLD_SCRATCH_STAREDOWN_ROUND_3_PLUS
 }
 
-const STATE_LABELS = ['IDL', 'CHS', 'TEL', 'ATK', 'REC', 'STN', 'FLE']
+const STATE_LABELS: Record<number, string> = {
+  [AIState.IDLE]: 'IDL',
+  [AIState.CHASE]: 'CHS',
+  [AIState.TELEGRAPH]: 'TEL',
+  [AIState.ATTACK]: 'ATK',
+  [AIState.RECOVERY]: 'REC',
+  [AIState.STUNNED]: 'STN',
+  [AIState.FLEE]: 'FLE',
+}
 
 const PLAYER_STATE_NAMES: Record<number, string> = {
   [PlayerStateType.IDLE]: 'idle',
@@ -1311,13 +1319,16 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Enemy AI state distribution
     const aiEnemies = enemyAIQuery(this.world)
-    const stateCounts = [0, 0, 0, 0, 0, 0, 0]
+    const stateCounts = new Map<number, number>()
     for (const eid of aiEnemies) {
       const s = EnemyAI.state[eid]!
-      if (s < 7) stateCounts[s] = stateCounts[s]! + 1
+      stateCounts.set(s, (stateCounts.get(s) ?? 0) + 1)
     }
-    const enemyStates = STATE_LABELS
-      .map((label, i) => stateCounts[i]! > 0 ? `${label}:${stateCounts[i]}` : null)
+    const enemyStates = Object.entries(STATE_LABELS)
+      .map(([key, label]) => {
+        const count = stateCounts.get(Number(key)) ?? 0
+        return count > 0 ? `${label}:${count}` : null
+      })
       .filter(Boolean)
       .join(' ')
 

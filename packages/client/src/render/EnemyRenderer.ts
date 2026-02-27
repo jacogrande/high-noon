@@ -47,21 +47,13 @@ const BOSS_BAR_HEIGHT = 6
 const ENEMY_BAR_Y_PADDING = 10
 /** Vertical offset above Boomstick origin */
 const BOSS_BAR_Y_OFFSET = 30
-/** Synthetic SpriteRegistry ID offsets for enemy health bar graphics */
-const ENEMY_BAR_BG_ID_OFFSET = 20000
-const ENEMY_BAR_FILL_ID_OFFSET = 30000
-
 import {
   ENEMY_COLORS, isSpriteEnemy, resolveSpriteId, getSpriteScale,
 } from './enemyRenderDefs'
 
-function getEnemyBarBgId(eid: number): number {
-  return ENEMY_BAR_BG_ID_OFFSET + eid
-}
-
-function getEnemyBarFillId(eid: number): number {
-  return ENEMY_BAR_FILL_ID_OFFSET + eid
-}
+/** Aux tags for enemy health-bar graphics in SpriteRegistry */
+const BAR_BG_TAG = 'barBg'
+const BAR_FILL_TAG = 'barFill'
 
 function getEnemyBarWidth(type: number, radius: number): number {
   if (isBoss(type)) return BOSS_BAR_WIDTH
@@ -251,10 +243,10 @@ export class EnemyRenderer {
           const barWidth = getEnemyBarWidth(type, radius)
           const barHeight = getEnemyBarHeight(type)
           const barYOffset = getEnemyBarYOffset(type, radius)
-          const bgId = getEnemyBarBgId(eid)
-          const fillId = getEnemyBarFillId(eid)
-          this.registry.createRect(bgId, barWidth, barHeight, 0x111111)
-          this.registry.createRect(fillId, barWidth, barHeight, getHealthBarColor(1))
+          const bg = new Graphics().rect(-barWidth / 2, -barHeight / 2, barWidth, barHeight).fill({ color: 0x111111 })
+          const fill = new Graphics().rect(-barWidth / 2, -barHeight / 2, barWidth, barHeight).fill({ color: getHealthBarColor(1) })
+          this.registry.setAux(eid, BAR_BG_TAG, bg)
+          this.registry.setAux(eid, BAR_FILL_TAG, fill)
           this.healthBars.add(eid)
           this.healthBarWidths.set(eid, barWidth)
           this.healthBarYOffsets.set(eid, barYOffset)
@@ -362,8 +354,8 @@ export class EnemyRenderer {
         this.lastDirection.delete(eid)
 
         if (this.healthBars.has(eid)) {
-          this.registry.remove(getEnemyBarBgId(eid))
-          this.registry.remove(getEnemyBarFillId(eid))
+          this.registry.removeAux(eid, BAR_BG_TAG)
+          this.registry.removeAux(eid, BAR_FILL_TAG)
           this.healthBars.delete(eid)
           this.healthBarWidths.delete(eid)
           this.healthBarYOffsets.delete(eid)
@@ -867,26 +859,31 @@ export class EnemyRenderer {
   private updateEnemyHealthBar(eid: number, renderX: number, renderY: number, alpha: number): void {
     if (!this.healthBars.has(eid)) return
 
-    const bgId = getEnemyBarBgId(eid)
-    const fillId = getEnemyBarFillId(eid)
+    const bg = this.registry.getAux(eid, BAR_BG_TAG)
+    const fill = this.registry.getAux(eid, BAR_FILL_TAG) as Graphics | undefined
+    if (!bg || !fill) return
+
     const barWidth = this.healthBarWidths.get(eid) ?? ENEMY_BAR_MIN_WIDTH
     const yOffset = this.healthBarYOffsets.get(eid) ?? ENEMY_BAR_Y_PADDING
+    const type = this.enemyTypes.get(eid) ?? 0
+    const barHeight = getEnemyBarHeight(type)
 
     const hp = Health.current[eid]!
     const maxHP = Math.max(1, Health.max[eid]!)
     const ratio = Math.max(0, Math.min(1, hp / maxHP))
     const barY = renderY - yOffset
 
-    this.registry.setPosition(bgId, renderX, barY)
-    this.registry.setAlpha(bgId, alpha * 0.9)
+    bg.position.set(renderX, barY)
+    bg.alpha = alpha * 0.9
 
-    const scaledWidth = barWidth * ratio
     const leftEdgeX = renderX - barWidth / 2
-    const fillCenterX = leftEdgeX + scaledWidth / 2
-    this.registry.setScale(fillId, ratio, 1)
-    this.registry.setPosition(fillId, fillCenterX, barY)
-    this.registry.setColor(fillId, getHealthBarColor(ratio))
-    this.registry.setAlpha(fillId, alpha)
+    const fillCenterX = leftEdgeX + (barWidth * ratio) / 2
+    fill.scale.set(ratio, 1)
+    fill.position.set(fillCenterX, barY)
+    fill.clear()
+    fill.rect(-barWidth / 2, -barHeight / 2, barWidth, barHeight)
+    fill.fill({ color: getHealthBarColor(ratio) })
+    fill.alpha = alpha
   }
 
   /**
@@ -926,8 +923,8 @@ export class EnemyRenderer {
     this.currentEntities.clear()
 
     for (const eid of this.healthBars) {
-      this.registry.remove(getEnemyBarBgId(eid))
-      this.registry.remove(getEnemyBarFillId(eid))
+      this.registry.removeAux(eid, BAR_BG_TAG)
+      this.registry.removeAux(eid, BAR_FILL_TAG)
     }
     this.healthBars.clear()
     this.healthBarWidths.clear()

@@ -257,7 +257,7 @@ export function placeTownBuildings(
   placeStrip(map, westFarLots, computeWestFarLotX, outerSkipZones, placedBuildings, placedCenters, FAR_LOT_GAP, rng, westFarLotsYOff, 0)
   placeStrip(map, eastFarLots, computeEastFarLotX, outerSkipZones, placedBuildings, placedCenters, FAR_LOT_GAP, rng, eastFarLotsYOff, 0)
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     const finalPlacedIds = new Set(placedBuildings.map(b => b.profileId))
     for (const id of UNIQUE_BUILDING_IDS) {
       if (!finalPlacedIds.has(id)) {

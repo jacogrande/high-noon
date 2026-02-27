@@ -15,9 +15,9 @@ import type { Container } from 'pixi.js'
 
 const objectiveTargetQuery = defineQuery([ObjectiveTarget, Position])
 
-/** Synthetic sprite IDs for objective health bar graphics */
-const OBJ_BAR_BG_OFFSET = 40000
-const OBJ_BAR_FILL_OFFSET = 41000
+/** Aux tags for objective health-bar graphics in SpriteRegistry */
+const OBJ_BAR_BG_TAG = 'objBarBg'
+const OBJ_BAR_FILL_TAG = 'objBarFill'
 
 const BAR_WIDTH = 40
 const BAR_HEIGHT = 5
@@ -55,8 +55,10 @@ export class ObjectiveRenderer {
         if (type === ObjTargetType.PROTECT_ENTITY) {
           this.registry.createCircle(eid, PROTECT_RADIUS, PROTECT_COLOR)
           // Health bar
-          this.registry.createRect(OBJ_BAR_BG_OFFSET + eid, BAR_WIDTH, BAR_HEIGHT, 0x111111)
-          this.registry.createRect(OBJ_BAR_FILL_OFFSET + eid, BAR_WIDTH, BAR_HEIGHT, PROTECT_COLOR)
+          const bg = new Graphics().rect(-BAR_WIDTH / 2, -BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT).fill({ color: 0x111111 })
+          const fill = new Graphics().rect(-BAR_WIDTH / 2, -BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT).fill({ color: PROTECT_COLOR })
+          this.registry.setAux(eid, OBJ_BAR_BG_TAG, bg)
+          this.registry.setAux(eid, OBJ_BAR_FILL_TAG, fill)
         } else if (type === ObjTargetType.INTERCEPT_DEST) {
           // Pulsing marker
           this.registry.createCircle(eid, INTERCEPT_MARKER_RADIUS, INTERCEPT_COLOR)
@@ -68,9 +70,7 @@ export class ObjectiveRenderer {
     // Remove old
     for (const eid of this.trackedEntities) {
       if (!current.has(eid)) {
-        this.registry.remove(eid)
-        this.registry.remove(OBJ_BAR_BG_OFFSET + eid)
-        this.registry.remove(OBJ_BAR_FILL_OFFSET + eid)
+        this.registry.remove(eid)  // also removes aux
         this.trackedEntities.delete(eid)
       }
     }
@@ -104,32 +104,28 @@ export class ObjectiveRenderer {
       const type = ObjectiveTarget.type[eid]!
 
       if (type === ObjTargetType.PROTECT_ENTITY && hasComponent(world, Health, eid)) {
-        // Update health bar
-        const hp = Health.current[eid]!
-        const maxHP = Math.max(1, Health.max[eid]!)
-        const ratio = Math.max(0, Math.min(1, hp / maxHP))
-        const barY = renderY - BAR_Y_OFFSET
+        const bg = this.registry.getAux(eid, OBJ_BAR_BG_TAG)
+        const fill = this.registry.getAux(eid, OBJ_BAR_FILL_TAG) as Graphics | undefined
+        if (bg && fill) {
+          const hp = Health.current[eid]!
+          const maxHP = Math.max(1, Health.max[eid]!)
+          const ratio = Math.max(0, Math.min(1, hp / maxHP))
+          const barY = renderY - BAR_Y_OFFSET
 
-        const bgId = OBJ_BAR_BG_OFFSET + eid
-        const fillId = OBJ_BAR_FILL_OFFSET + eid
+          bg.position.set(renderX, barY)
+          bg.alpha = 0.9
 
-        this.registry.setPosition(bgId, renderX, barY)
-        this.registry.setAlpha(bgId, 0.9)
+          const leftEdgeX = renderX - BAR_WIDTH / 2
+          const fillCenterX = leftEdgeX + (BAR_WIDTH * ratio) / 2
+          fill.scale.set(ratio, 1)
+          fill.position.set(fillCenterX, barY)
+          fill.alpha = 1
 
-        const scaledWidth = BAR_WIDTH * ratio
-        const leftEdgeX = renderX - BAR_WIDTH / 2
-        const fillCenterX = leftEdgeX + scaledWidth / 2
-        this.registry.setScale(fillId, ratio, 1)
-        this.registry.setPosition(fillId, fillCenterX, barY)
-        this.registry.setAlpha(fillId, 1)
-
-        // Color shift as HP decreases
-        if (ratio < 0.3) {
-          this.registry.setColor(fillId, 0xff4444)
-        } else if (ratio < 0.6) {
-          this.registry.setColor(fillId, 0xffaa44)
-        } else {
-          this.registry.setColor(fillId, PROTECT_COLOR)
+          // Color shift as HP decreases
+          const color = ratio < 0.3 ? 0xff4444 : ratio < 0.6 ? 0xffaa44 : PROTECT_COLOR
+          fill.clear()
+          fill.rect(-BAR_WIDTH / 2, -BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT)
+          fill.fill({ color })
         }
       }
 
@@ -155,9 +151,7 @@ export class ObjectiveRenderer {
 
   destroy(): void {
     for (const eid of this.trackedEntities) {
-      this.registry.remove(eid)
-      this.registry.remove(OBJ_BAR_BG_OFFSET + eid)
-      this.registry.remove(OBJ_BAR_FILL_OFFSET + eid)
+      this.registry.remove(eid)  // also removes aux
     }
     this.trackedEntities.clear()
     if (this.ringGraphics) {

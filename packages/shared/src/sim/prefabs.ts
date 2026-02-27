@@ -64,22 +64,23 @@ import {
   GHOST_RIDER_LIFESPAN,
 } from './content/enemies'
 import { allEnemyDefs } from './content/enemyRegistry'
+import { allBosses } from './content/bosses/registry'
 
-/** Boss radii inlined here to avoid circular dep (bosses → prefabs → bosses) */
-const BOOMSTICK_RADIUS = 18
-
-/** Mad Dog Maguire radius (largest humanoid) */
-const MAD_DOG_RADIUS = 20
-
-/** Largest collider radius across all entity types (for spatial hash query padding) */
-function computeMaxColliderRadius(): number {
-  let max = Math.max(PLAYER_RADIUS, BOOMSTICK_RADIUS, MAD_DOG_RADIUS)
+/** Largest collider radius across all entity types (for spatial hash query padding).
+ *  Lazily computed on first access so that boss & enemy registries are populated. */
+let _maxColliderRadius = 0
+export function getMaxColliderRadius(): number {
+  if (_maxColliderRadius > 0) return _maxColliderRadius
+  let max = PLAYER_RADIUS
   for (const def of allEnemyDefs()) {
     if (def.radius > max) max = def.radius
   }
+  for (const boss of allBosses()) {
+    if (boss.radius > max) max = boss.radius
+  }
+  _maxColliderRadius = max
   return max
 }
-export const MAX_COLLIDER_RADIUS = computeMaxColliderRadius()
 
 /** Collision layers */
 export const CollisionLayer = {

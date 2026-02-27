@@ -28,7 +28,7 @@ import {
   Player,
   Root,
 } from '../components'
-import { CollisionLayer, MAX_COLLIDER_RADIUS } from '../prefabs'
+import { CollisionLayer, getMaxColliderRadius } from '../prefabs'
 import { forEachInRadius } from '../SpatialHash'
 import { getOrCreatePlayerStats } from '../stats'
 
@@ -106,7 +106,7 @@ export function rollSystem(world: GameWorld, dt: number): void {
       const px = Position.x[eid]!
       const py = Position.y[eid]!
       const playerRadius = Collider.radius[eid]!
-      const queryRadius = playerRadius + MAX_COLLIDER_RADIUS
+      const queryRadius = playerRadius + getMaxColliderRadius()
 
       let dodged = world.rollDodgedBullets.get(eid)
 

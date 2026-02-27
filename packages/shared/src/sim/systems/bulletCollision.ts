@@ -15,7 +15,7 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import type { FriendlyFireMode } from '../../net/lobby'
 import { Bullet, Position, Velocity, Collider, Health, Invincible, Player, Enemy, Flying } from '../components'
-import { CollisionLayer, MAX_COLLIDER_RADIUS, removeBullet } from '../prefabs'
+import { CollisionLayer, getMaxColliderRadius, removeBullet } from '../prefabs'
 import { isSolidAt } from '../tilemap'
 import { forEachInRadius } from '../SpatialHash'
 import { applyDamage } from './applyDamage'
@@ -142,7 +142,7 @@ export function bulletCollisionSystem(world: GameWorld, _dt: number): void {
     const travelX = x - startX
     const travelY = y - startY
     const travelDist = Math.sqrt(travelX * travelX + travelY * travelY)
-    const queryRadius = radius + MAX_COLLIDER_RADIUS + travelDist
+    const queryRadius = radius + getMaxColliderRadius() + travelDist
     // Authoritative player-bullet hit checks prefer direct ECS scans so
     // local prediction and server authority do not diverge on stale hashes.
     const useSpatialHash = !localOnly && Collider.layer[eid] !== CollisionLayer.PLAYER_BULLET

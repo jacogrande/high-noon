@@ -27,6 +27,8 @@ export type DisplayObject = Graphics | Container | Sprite
  */
 export class SpriteRegistry {
   private readonly sprites = new Map<number, SpriteData>()
+  /** Secondary display objects keyed by "eid:tag" (e.g. health bar bg/fill) */
+  private readonly aux = new Map<string, Graphics | Container | Sprite>()
   private readonly container: Container
 
   constructor(entityLayer: Container) {
@@ -213,8 +215,50 @@ export class SpriteRegistry {
     }
   }
 
+  // ── Auxiliary display objects (health bars, objective bars, etc.) ───
+
+  /** Store a secondary display object for an entity under a named tag. */
+  setAux(eid: number, tag: string, obj: Graphics | Container | Sprite): void {
+    const key = `${eid}:${tag}`
+    const prev = this.aux.get(key)
+    if (prev) {
+      this.container.removeChild(prev)
+      prev.destroy()
+    }
+    this.aux.set(key, obj)
+    this.container.addChild(obj)
+  }
+
+  /** Get a secondary display object by entity + tag. */
+  getAux(eid: number, tag: string): (Graphics | Container | Sprite) | undefined {
+    return this.aux.get(`${eid}:${tag}`)
+  }
+
+  /** Remove a specific auxiliary object. */
+  removeAux(eid: number, tag: string): void {
+    const key = `${eid}:${tag}`
+    const obj = this.aux.get(key)
+    if (obj) {
+      this.container.removeChild(obj)
+      obj.destroy()
+      this.aux.delete(key)
+    }
+  }
+
+  /** Remove all auxiliary objects for an entity. */
+  removeAllAux(eid: number): void {
+    const prefix = `${eid}:`
+    for (const [key, obj] of this.aux) {
+      if (key.startsWith(prefix)) {
+        this.container.removeChild(obj)
+        obj.destroy()
+        this.aux.delete(key)
+      }
+    }
+  }
+
   /**
-   * Remove sprite for an entity
+   * Remove sprite for an entity (also removes all aux objects)
    */
   remove(eid: number): void {
     const data = this.sprites.get(eid)
@@ -223,6 +267,7 @@ export class SpriteRegistry {
       data.displayObject.destroy()
       this.sprites.delete(eid)
     }
+    this.removeAllAux(eid)
   }
 
   /**
@@ -240,12 +285,16 @@ export class SpriteRegistry {
   }
 
   /**
-   * Clean up all sprites
+   * Clean up all sprites and aux objects
    */
   destroy(): void {
     for (const data of this.sprites.values()) {
       data.displayObject.destroy()
     }
     this.sprites.clear()
+    for (const obj of this.aux.values()) {
+      obj.destroy()
+    }
+    this.aux.clear()
   }
 }

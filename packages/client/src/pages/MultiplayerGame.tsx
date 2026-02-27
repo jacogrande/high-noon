@@ -260,6 +260,11 @@ export function MultiplayerGame() {
     return () => {
       cancelled = true
       if (afkDismissTimer) clearTimeout(afkDismissTimer)
+      // Disconnect on cleanup to prevent duplicate connections in StrictMode
+      if (netRef.current === net) {
+        net.disconnect()
+        netRef.current = null
+      }
     }
   }, [phase])
 

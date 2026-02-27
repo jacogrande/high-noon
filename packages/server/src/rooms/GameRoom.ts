@@ -302,9 +302,10 @@ function consumeInputToken(slot: PlayerSlot, nowMs: number): boolean {
 }
 
 function generateRoomCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(ROOM_CODE_LENGTH))
   let code = ''
   for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]
+    code += ROOM_CODE_CHARS[bytes[i]! % ROOM_CODE_CHARS.length]
   }
   return code
 }
@@ -693,7 +694,7 @@ export class GameRoom extends Room<GameRoomState> {
       const lastVoteTime = this.votekickCooldowns.get(client.sessionId) ?? 0
       if (Date.now() - lastVoteTime < VOTEKICK_COOLDOWN_S * 1000) return
 
-      const voteId = `vk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const voteId = `vk-${Date.now()}-${crypto.randomUUID().slice(0, 6)}`
       const targetMeta = this.state.players.get(data.targetSessionId)
       const initiatorMeta = this.state.players.get(client.sessionId)
       // Snapshot eligible voter count at vote-start. If players disconnect mid-vote,
