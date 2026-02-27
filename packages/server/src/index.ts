@@ -10,7 +10,10 @@ async function main() {
   await server.listen(PORT)
   console.log(`[Server] High Noon listening on ws://localhost:${PORT}`)
 
+  let shuttingDown = false
   const shutdown = async (signal: string) => {
+    if (shuttingDown) return
+    shuttingDown = true
     console.log(`[Server] ${signal} received, initiating graceful shutdown`)
     try {
       const rooms = await matchMaker.query({})
