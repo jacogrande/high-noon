@@ -12,8 +12,6 @@ export interface BossModule {
   readonly type: number
   /** Display name for HUD HP bar */
   readonly displayName: string
-  /** Circle renderer color (client-only metadata) */
-  readonly color: number
   /** Collider radius */
   readonly radius: number
   /** Item drop chance on death (0-1) */

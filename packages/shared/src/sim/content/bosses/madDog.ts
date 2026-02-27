@@ -814,7 +814,6 @@ function hitPlayersInRadiusWhirlwind(
 const madDogModule: BossModule = {
   type: EnemyType.MAD_DOG,
   displayName: 'MAD DOG MAGUIRE',
-  color: 0x993311,
   radius: RADIUS,
   dropChance: DROP_CHANCE,
   spawn,

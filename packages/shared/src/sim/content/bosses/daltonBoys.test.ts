@@ -86,7 +86,6 @@ describe('Dalton Boys (spawn)', () => {
     expect(mod.displayName).toBe('THE DALTON BOYS')
     expect(mod.showIndividualBars).toBe(true)
     expect(mod.spawnCount).toBe(2)
-    expect(mod.color).toBe(0xcc7733)
     expect(mod.dropChance).toBe(0.50)
   })
 })

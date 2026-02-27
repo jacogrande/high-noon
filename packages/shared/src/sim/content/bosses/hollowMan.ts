@@ -957,7 +957,6 @@ function tickConvergence(world: GameWorld, eid: number, state: HollowManState, d
 const hollowManModule: BossModule = {
   type: EnemyType.HOLLOW_MAN,
   displayName: 'THE HOLLOW MAN',
-  color: 0x665544,
   radius: RADIUS,
   dropChance: DROP_CHANCE,
   spawn,

@@ -257,9 +257,6 @@ registerEnemy({
   separationRadius: SWARMER_SEPARATION_RADIUS,
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
-  color: 0xffaaaa,
-  spriteId: 'swarmer',
-  spriteScale: 1.5,
 })
 
 registerEnemy({
@@ -289,9 +286,6 @@ registerEnemy({
   separationRadius: GRUNT_SEPARATION_RADIUS,
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
-  color: 0xff6633,
-  spriteId: 'grunt',
-  spriteScale: 2,
 })
 
 registerEnemy({
@@ -321,9 +315,6 @@ registerEnemy({
   separationRadius: SHOOTER_SEPARATION_RADIUS,
   initialDelayMin: 0.5,
   initialDelayMax: 1.0,
-  color: 0xaa44dd,
-  spriteId: 'shooter',
-  spriteScale: 2,
 })
 
 registerEnemy({
@@ -349,9 +340,6 @@ registerEnemy({
   separationRadius: CHARGER_SEPARATION_RADIUS,
   initialDelayMin: 0.5,
   initialDelayMax: 1.0,
-  color: 0xaa1111,
-  spriteId: 'charger',
-  spriteScale: 2.5,
 })
 
 registerEnemy({
@@ -379,9 +367,6 @@ registerEnemy({
   separationRadius: GOBLIN_BARBARIAN_SEPARATION_RADIUS,
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
-  color: 0x44aa44,
-  spriteId: 'goblin_barbarian',
-  spriteScale: 2,
 })
 
 registerEnemy({
@@ -409,9 +394,6 @@ registerEnemy({
   separationRadius: GOBLIN_ROGUE_SEPARATION_RADIUS,
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
-  color: 0x66cc66,
-  spriteId: 'goblin_rogue',
-  spriteScale: 2,
 })
 
 registerEnemy({
@@ -435,9 +417,6 @@ registerEnemy({
   separationRadius: 0,
   initialDelayMin: 0,
   initialDelayMax: 0,
-  color: 0x44ddff,
-  spriteId: 'runner',
-  spriteScale: 1.5,
 })
 
 registerEnemy({
@@ -465,9 +444,6 @@ registerEnemy({
   separationRadius: DUELIST_SEPARATION_RADIUS,
   initialDelayMin: 0.1,
   initialDelayMax: 0.1,
-  color: 0xddaa33,
-  spriteId: 'duelist',
-  spriteScale: 2.5,
 })
 
 // ============================================================================
@@ -499,9 +475,6 @@ registerEnemy({
   separationRadius: 24,
   initialDelayMin: 0.3,
   initialDelayMax: 0.7,
-  color: 0xcc8844,
-  spriteId: 'lasso_bandit',
-  spriteScale: 2,
 })
 
 // ============================================================================
@@ -532,9 +505,6 @@ registerEnemy({
   separationRadius: 20,
   initialDelayMin: 0.3,
   initialDelayMax: 0.6,
-  color: 0xff6600,
-  spriteId: 'dynamite_tosser',
-  spriteScale: 2,
 })
 
 // ============================================================================
@@ -571,9 +541,6 @@ registerEnemy({
   separationRadius: 28,
   initialDelayMin: 0.3,
   initialDelayMax: 0.7,
-  color: 0x888888,
-  spriteId: 'armored_bandit',
-  spriteScale: 2.5,
 })
 
 // ============================================================================
@@ -601,9 +568,6 @@ registerEnemy({
   separationRadius: 24,
   initialDelayMin: 0.3,
   initialDelayMax: 0.7,
-  color: 0x44ddaa,
-  spriteId: 'healer_shaman',
-  spriteScale: 2,
 })
 
 // ============================================================================
@@ -638,9 +602,6 @@ registerEnemy({
   separationRadius: 14,
   initialDelayMin: 0.1,
   initialDelayMax: 0.3,
-  color: 0x889944,
-  spriteId: 'rattlesnake',
-  spriteScale: 1.5,
 })
 
 // ============================================================================
@@ -672,9 +633,6 @@ registerEnemy({
   separationRadius: 20,
   initialDelayMin: 0.3,
   initialDelayMax: 0.7,
-  color: 0x554433,
-  spriteId: 'vulture',
-  spriteScale: 2,
 })
 
 // ============================================================================
@@ -723,8 +681,6 @@ registerEnemy({
   separationRadius: GHOST_RIDER_SEPARATION_RADIUS,
   initialDelayMin: 0,
   initialDelayMax: 0,
-  color: 0x6688cc,
-  spriteScale: 1.5,
 })
 
 registerEnemy({
@@ -750,7 +706,4 @@ registerEnemy({
   separationRadius: COYOTE_SEPARATION_RADIUS,
   initialDelayMin: 0.2,
   initialDelayMax: 0.5,
-  color: 0xc4a35a,
-  spriteId: 'coyote',
-  spriteScale: 1.5,
 })

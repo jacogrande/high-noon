@@ -616,7 +616,6 @@ function hitPlayersInRadius(
 const daltonModule: BossModule = {
   type: EnemyType.DALTON,
   displayName: 'THE DALTON BOYS',
-  color: 0xcc7733,
   radius: 14,
   dropChance: DROP_CHANCE,
   showIndividualBars: true,

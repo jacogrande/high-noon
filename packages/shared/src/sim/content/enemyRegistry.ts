@@ -67,10 +67,6 @@ export interface EnemyDefinition {
   readonly initialDelayMin: number   // Min initial delay on spawn (seconds)
   readonly initialDelayMax: number   // Max initial delay on spawn (seconds)
 
-  // Rendering (read by client, stored here to keep definitions self-contained)
-  readonly color: number             // Fallback circle color / tint reference
-  readonly spriteId?: string         // Sprite sheet ID (undefined = circle fallback)
-  readonly spriteScale: number       // Sprite render scale multiplier
 }
 
 // ---------------------------------------------------------------------------

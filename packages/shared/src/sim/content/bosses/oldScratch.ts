@@ -2402,7 +2402,6 @@ function attackStampede(world: GameWorld, eid: number, _state: OldScratchState):
 const oldScratchModule: BossModule = {
   type: EnemyType.OLD_SCRATCH,
   displayName: 'OLD SCRATCH',
-  color: 0x991111,
   radius: RADIUS,
   dropChance: DROP_CHANCE,
   spawn,

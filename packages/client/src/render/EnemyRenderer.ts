@@ -12,8 +12,7 @@ import type { GameWorld, OldScratchState } from '@high-noon/shared'
 import {
   Enemy, EnemyType, EnemyTier, Position, Velocity, Collider, EnemyAI, AIState,
   AttackConfig, Health, BossPhase, FrontArmor, Flying, NO_TARGET,
-  isBoss, allBosses, getBoss,
-  getEnemyDef, allEnemyDefs,
+  isBoss, getBoss, getEnemyDef,
   VULTURE_DIVE_SPEED, VULTURE_DIVE_DURATION, VULTURE_DIVE_AOE_RADIUS,
 } from '@high-noon/shared'
 import { SpriteRegistry } from './SpriteRegistry'
@@ -38,8 +37,6 @@ const DEATH_EFFECT_DURATION = 0.15
 const SPRITE_DEATH_DURATION = 3 / 8
 /** Duration of spawn effect in seconds */
 const SPAWN_EFFECT_DURATION = 0.5
-/** Sprite scale for goblin enemies */
-const GOBLIN_SPRITE_SCALE = 2
 /** Default enemy health bar dimensions (world-space px) */
 const ENEMY_BAR_MIN_WIDTH = 20
 const ENEMY_BAR_HEIGHT = 4
@@ -54,70 +51,9 @@ const BOSS_BAR_Y_OFFSET = 30
 const ENEMY_BAR_BG_ID_OFFSET = 20000
 const ENEMY_BAR_FILL_ID_OFFSET = 30000
 
-/** Colors per enemy type — populated from enemy registry + boss registry */
-const ENEMY_COLORS: Record<number, number> = {
-  [EnemyType.AFTERIMAGE]: 0x8888aa,      // ghostly blue-grey (not in registry)
-}
-
-// Populate from enemy registry
-for (const def of allEnemyDefs()) {
-  ENEMY_COLORS[def.type] = def.color
-}
-
-// Populate boss colors from boss registry
-for (const boss of allBosses()) {
-  ENEMY_COLORS[boss.type] = boss.color
-}
-
-/** Enemy type → sprite sheet ID — populated from enemy registry */
-const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {}
-
-// Populate from enemy registry
-for (const def of allEnemyDefs()) {
-  if (def.spriteId) ENEMY_SPRITE_ID[def.type] = def.spriteId
-}
-
-// Boss sprites not in enemy registry — add manually
-ENEMY_SPRITE_ID[EnemyType.MAD_DOG] = 'mad_dog'
-ENEMY_SPRITE_ID[EnemyType.BOOMSTICK] = 'boomstick'
-ENEMY_SPRITE_ID[EnemyType.COYOTE_JANE] = 'coyote_jane'
-ENEMY_SPRITE_ID[EnemyType.OLD_SCRATCH] = 'old_scratch'
-ENEMY_SPRITE_ID[EnemyType.GHOST_RIDER] = 'ghost_rider'
-// Hellfire Pillar uses custom Graphics, no sprite sheet
-
-/** Per-type sprite scale — populated from enemy registry */
-const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {}
-
-// Populate from enemy registry
-for (const def of allEnemyDefs()) {
-  ENEMY_SPRITE_SCALE[def.type] = def.spriteScale
-}
-
-// Boss scales not in enemy registry — add manually
-ENEMY_SPRITE_SCALE[EnemyType.MAD_DOG] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.BOOMSTICK] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.DALTON] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.COYOTE_JANE] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.HOLLOW_MAN] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.OLD_SCRATCH] = 2.5
-ENEMY_SPRITE_SCALE[EnemyType.GHOST_RIDER] = 2.5
-
-function isSpriteEnemy(type: number): boolean {
-  return ENEMY_SPRITE_ID[type] !== undefined || type === EnemyType.DALTON
-}
-
-/** Resolve sprite ID per entity. DALTON brothers share one EnemyType but use
- *  different sprite sheets — differentiate by Collider.radius (Emmett=14, Bob=12). */
-function resolveSpriteId(type: number, eid: number): string {
-  if (type === EnemyType.DALTON) {
-    return Collider.radius[eid]! >= 14 ? 'dalton_emmett' : 'dalton_bob'
-  }
-  return ENEMY_SPRITE_ID[type]!
-}
-
-function getSpriteScale(type: number): number {
-  return ENEMY_SPRITE_SCALE[type] ?? GOBLIN_SPRITE_SCALE
-}
+import {
+  ENEMY_COLORS, isSpriteEnemy, resolveSpriteId, getSpriteScale,
+} from './enemyRenderDefs'
 
 function getEnemyBarBgId(eid: number): number {
   return ENEMY_BAR_BG_ID_OFFSET + eid

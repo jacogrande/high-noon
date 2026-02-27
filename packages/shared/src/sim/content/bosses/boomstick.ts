@@ -225,7 +225,6 @@ function rollBoomDelay(world: GameWorld, phase: number): number {
 const boomstickModule: BossModule = {
   type: EnemyType.BOOMSTICK,
   displayName: 'REVEREND BOOMSTICK',
-  color: 0xffcc33,
   radius: RADIUS,
   dropChance: 0.50,
 

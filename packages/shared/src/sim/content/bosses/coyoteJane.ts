@@ -742,7 +742,6 @@ function attack(world: GameWorld, eid: number, _dt: number): void {
 const coyoteJaneModule: BossModule = {
   type: EnemyType.COYOTE_JANE,
   displayName: 'COYOTE JANE',
-  color: 0x8b6914,
   radius: RADIUS,
   dropChance: DROP_CHANCE,
   spawn,
