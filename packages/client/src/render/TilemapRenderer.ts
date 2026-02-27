@@ -24,7 +24,8 @@ function isStageBaseTile(tileType: number): boolean {
     tileType === TileType.BRAMBLE ||
     tileType === TileType.ROAD ||
     tileType === TileType.BRIMSTONE ||
-    tileType === TileType.DARKNESS
+    tileType === TileType.DARKNESS ||
+    tileType === TileType.CACTUS
   )
 }
 
@@ -168,6 +169,8 @@ export class TilemapRenderer {
           } else if (tile === TileType.DARKNESS) {
             sprite.tint = 0x110022
             this.animatedTileSprites.push({ sprite, tileType: tile })
+          } else if (tile === TileType.CACTUS) {
+            sprite.tint = 0x2d8a4e
           }
 
           this.container.addChild(sprite)

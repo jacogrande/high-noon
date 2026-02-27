@@ -160,6 +160,7 @@ export const TileType = {
   ROAD: 8,
   BRIMSTONE: 9,
   DARKNESS: 10,
+  CACTUS: 11,
 } as const
 
 export type TileTypeValue = (typeof TileType)[keyof typeof TileType]

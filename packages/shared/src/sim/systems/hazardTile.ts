@@ -12,7 +12,7 @@ import { Position, Health, Dead, Downed, ZPosition } from '../components'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import {
   LAVA_DPS, MUD_SPEED_MUL, BRAMBLE_DPS, BRAMBLE_SPEED_MUL,
-  BRIMSTONE_DPS, DARKNESS_DPS, DARKNESS_SPEED_MUL,
+  BRIMSTONE_DPS, DARKNESS_DPS, DARKNESS_SPEED_MUL, CACTUS_DPS,
 } from '../content/hazards'
 import { getFloorTileTypeAt, TileType } from '../tilemap'
 import { applyDamage } from './applyDamage'
@@ -51,6 +51,8 @@ export function hazardTileSystem(world: GameWorld, dt: number): void {
     } else if (tileType === TileType.DARKNESS) {
       applyDamage(world, eid, { amount: DARKNESS_DPS * dt, ownerPlayerEid: null })
       world.floorSpeedMul.set(eid, DARKNESS_SPEED_MUL)
+    } else if (tileType === TileType.CACTUS) {
+      applyDamage(world, eid, { amount: CACTUS_DPS * dt, ownerPlayerEid: null })
     }
   }
 }

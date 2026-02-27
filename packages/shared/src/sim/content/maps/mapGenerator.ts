@@ -98,13 +98,22 @@ function placeMapObstacles(
     }
     if (tooClose) continue
 
-    const allOffsets = [
+    // Solid-layer offsets (walls + half-walls)
+    const solidOffsets = [
       ...def.walls.map(o => ({ ...o, tileType: TileType.WALL })),
       ...(def.halfWalls ?? []).map(o => ({ ...o, tileType: TileType.HALF_WALL })),
     ]
+    // Floor-layer offsets (hazard tiles like cactus)
+    const floorOffsets = (def.floorTiles ?? []).map(o => ({ dx: o.dx, dy: o.dy, tileType: o.tileType }))
+
+    // All tile positions this obstacle occupies (for fit checking)
+    const allPositions = [
+      ...solidOffsets.map(o => ({ dx: o.dx, dy: o.dy })),
+      ...floorOffsets.map(o => ({ dx: o.dx, dy: o.dy })),
+    ]
 
     let fits = true
-    for (const offset of allOffsets) {
+    for (const offset of allPositions) {
       const tx = ox + offset.dx
       const ty = oy + offset.dy
       if (tx <= 0 || tx >= width - 1 || ty <= 0 || ty >= height - 1) { fits = false; break }
@@ -113,15 +122,27 @@ function placeMapObstacles(
     }
     if (!fits) continue
 
-    for (const offset of allOffsets) {
+    // Stamp solid-layer tiles
+    for (const offset of solidOffsets) {
       setTile(map, 0, ox + offset.dx, oy + offset.dy, offset.tileType)
     }
+    // Stamp floor-layer tiles (non-solid hazards)
+    for (const offset of floorOffsets) {
+      setTile(map, 1, ox + offset.dx, oy + offset.dy, offset.tileType)
+    }
 
-    const tiles = allOffsets.map(offset => ({
-      tileX: ox + offset.dx,
-      tileY: oy + offset.dy,
-      tileType: offset.tileType,
-    }))
+    const tiles = [
+      ...solidOffsets.map(offset => ({
+        tileX: ox + offset.dx,
+        tileY: oy + offset.dy,
+        tileType: offset.tileType,
+      })),
+      ...floorOffsets.map(offset => ({
+        tileX: ox + offset.dx,
+        tileY: oy + offset.dy,
+        tileType: offset.tileType,
+      })),
+    ]
 
     const worldCenterX = (ox + def.widthTiles / 2) * tileSize
     const worldCenterY = (oy + def.heightTiles / 2) * tileSize

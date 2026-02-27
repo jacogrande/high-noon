@@ -36,6 +36,11 @@ const FENCE_RAIL_FILL = 0x9b7840
 const FENCE_RAIL_STROKE = 0x6b4c26
 const FENCE_RAIL_POST = 0x7a5c2e
 
+const CACTUS_FILL = 0x2d8a4e
+const CACTUS_STROKE = 0x1e6b38
+const CACTUS_ARM = 0x34a05a
+const CACTUS_SPINE = 0xcccc88
+
 const DAMAGE_CRACK_COLOR = 0x333333
 const DAMAGE_CRITICAL_TINT = 0xff6666
 
@@ -102,6 +107,9 @@ export class MapObstacleRenderer {
           break
         case MapObstacleType.FENCE_RAIL:
           this.drawFenceRail(left, top, w, h, dmgRatio)
+          break
+        case MapObstacleType.CACTUS:
+          this.drawCactus(obs.x, obs.y, w, h)
           break
         default: {
           const _exhaustive: never = obs.type
@@ -296,6 +304,51 @@ export class MapObstacleRenderer {
         .moveTo(x + w * 0.4, y + 2)
         .lineTo(x + w * 0.45, y + h - 2)
         .stroke({ color: DAMAGE_CRACK_COLOR, width: 1, alpha: 0.6 })
+    }
+  }
+
+  private drawCactus(cx: number, cy: number, w: number, h: number): void {
+    const trunkW = w * 0.22
+    const trunkH = h * 0.6
+    const armW = w * 0.14
+    const armH = h * 0.18
+
+    // Main trunk
+    this.graphics
+      .roundRect(cx - trunkW / 2, cy - trunkH / 2, trunkW, trunkH, 3)
+      .fill({ color: CACTUS_FILL, alpha: 0.95 })
+    this.graphics
+      .roundRect(cx - trunkW / 2, cy - trunkH / 2, trunkW, trunkH, 3)
+      .stroke({ color: CACTUS_STROKE, width: 1.5, alpha: 0.8 })
+
+    // Left arm (goes up)
+    const leftArmX = cx - trunkW / 2 - armW
+    const leftArmY = cy - trunkH * 0.1
+    this.graphics
+      .roundRect(leftArmX, leftArmY, armW, armH, 2)
+      .fill({ color: CACTUS_ARM, alpha: 0.9 })
+    this.graphics
+      .roundRect(leftArmX, leftArmY - armH * 0.6, armW, armH * 0.6, 2)
+      .fill({ color: CACTUS_ARM, alpha: 0.9 })
+
+    // Right arm (goes up)
+    const rightArmX = cx + trunkW / 2
+    const rightArmY = cy + trunkH * 0.05
+    this.graphics
+      .roundRect(rightArmX, rightArmY, armW, armH, 2)
+      .fill({ color: CACTUS_ARM, alpha: 0.9 })
+    this.graphics
+      .roundRect(rightArmX, rightArmY - armH * 0.7, armW, armH * 0.7, 2)
+      .fill({ color: CACTUS_ARM, alpha: 0.9 })
+
+    // Spine dots along trunk
+    for (let dy = -trunkH * 0.35; dy < trunkH * 0.35; dy += 6) {
+      this.graphics
+        .circle(cx - 1, cy + dy, 0.8)
+        .fill({ color: CACTUS_SPINE, alpha: 0.5 })
+      this.graphics
+        .circle(cx + 1, cy + dy, 0.8)
+        .fill({ color: CACTUS_SPINE, alpha: 0.5 })
     }
   }
 

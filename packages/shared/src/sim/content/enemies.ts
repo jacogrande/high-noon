@@ -708,3 +708,173 @@ registerEnemy({
   initialDelayMax: 0.5,
 })
 
+// ============================================================================
+// Stage 1 Rework — four focused onboarding archetypes
+// ============================================================================
+
+// ============================================================================
+// Drifter (Pistol) — basic ranged fodder, fires a single slow bullet
+// ============================================================================
+
+registerEnemy({
+  type: EnemyType.DRIFTER,
+  name: 'Drifter',
+  tier: EnemyTier.FODDER,
+  speed: 70,
+  radius: 8,
+  hp: 10,
+  budgetCost: 1,
+  dropChance: 0.02,
+  aggroRange: 280,
+  attackRange: 200,
+  losRequired: false,
+  telegraphDuration: 0.4,
+  recoveryDuration: 0.6,
+  cooldown: 2.0,
+  damage: 3,
+  attackStyle: 'projectile',
+  projectileSpeed: 190,
+  projectileAccel: 0,
+  projectileDrag: 0,
+  projectileCount: 1,
+  spreadAngle: 0,
+  bulletSpriteId: BulletSpriteId.SLUG,
+  preferredRange: 0,
+  separationRadius: 18,
+  initialDelayMin: 0.3,
+  initialDelayMax: 0.8,
+})
+
+// ============================================================================
+// Knife Drifter — melee variant, slightly faster and tougher
+// ============================================================================
+
+registerEnemy({
+  type: EnemyType.KNIFE_DRIFTER,
+  name: 'Knife Drifter',
+  tier: EnemyTier.FODDER,
+  speed: 85,
+  radius: 8,
+  hp: 12,
+  budgetCost: 1,
+  dropChance: 0.02,
+  aggroRange: 250,
+  attackRange: 30,
+  losRequired: false,
+  telegraphDuration: 0.35,
+  recoveryDuration: 0.5,
+  cooldown: 1.8,
+  damage: 4,
+  attackStyle: 'melee',
+  meleeReach: 10,
+  attackDuration: 0.25,
+  knockbackSpeed: 150,
+  knockbackDuration: 0.1,
+  preferredRange: 0,
+  separationRadius: 16,
+  initialDelayMin: 0.2,
+  initialDelayMax: 0.6,
+})
+
+// ============================================================================
+// Deadeye — sniper threat, long telegraph + very fast bullet
+// ============================================================================
+
+export const DEADEYE_TELEGRAPH_DURATION = 1.1
+
+registerEnemy({
+  type: EnemyType.DEADEYE,
+  name: 'Deadeye',
+  tier: EnemyTier.THREAT,
+  speed: 40,
+  radius: 10,
+  hp: 15,
+  budgetCost: 3,
+  dropChance: 0.05,
+  aggroRange: 400,
+  attackRange: 300,
+  losRequired: false,
+  telegraphDuration: DEADEYE_TELEGRAPH_DURATION,
+  recoveryDuration: 1.0,
+  cooldown: 3.8,
+  damage: 9,
+  attackStyle: 'projectile',
+  projectileSpeed: 650,
+  projectileAccel: 0,
+  projectileDrag: 0,
+  projectileCount: 1,
+  spreadAngle: 0,
+  bulletSpriteId: BulletSpriteId.SLUG,
+  preferredRange: 260,
+  separationRadius: 24,
+  initialDelayMin: 0.5,
+  initialDelayMax: 1.0,
+})
+
+// ============================================================================
+// Spitter — slow bullet wall with readable gaps
+// ============================================================================
+
+registerEnemy({
+  type: EnemyType.SPITTER,
+  name: 'Spitter',
+  tier: EnemyTier.THREAT,
+  speed: 48,
+  radius: 12,
+  hp: 22,
+  budgetCost: 3,
+  dropChance: 0.05,
+  aggroRange: 300,
+  attackRange: 180,
+  losRequired: false,
+  telegraphDuration: 0.5,
+  recoveryDuration: 0.8,
+  cooldown: 3.0,
+  damage: 3,
+  attackStyle: 'projectile',
+  projectileSpeed: 130,
+  projectileAccel: 0,
+  projectileDrag: 0.3,
+  projectileCount: 6,
+  spreadAngle: 1.8,
+  bulletSpriteId: BulletSpriteId.SLUG_ANIM,
+  preferredRange: 130,
+  separationRadius: 26,
+  initialDelayMin: 0.5,
+  initialDelayMax: 1.0,
+})
+
+// ============================================================================
+// Dustdevil — area denial fodder, creates lingering damage zones
+// ============================================================================
+
+/** Radius of the dust zone left by a Dustdevil (px) */
+export const DUSTDEVIL_ZONE_RADIUS = 55
+/** Duration of the dust zone (seconds) */
+export const DUSTDEVIL_ZONE_DURATION = 2.8
+/** Damage per second of the dust zone */
+export const DUSTDEVIL_ZONE_DPS = 8
+
+registerEnemy({
+  type: EnemyType.DUSTDEVIL,
+  name: 'Dustdevil',
+  tier: EnemyTier.FODDER,
+  speed: 68,
+  radius: 8,
+  hp: 13,
+  budgetCost: 2,
+  dropChance: 0.02,
+  aggroRange: 300,
+  attackRange: 100,
+  losRequired: false,
+  telegraphDuration: 0.4,
+  recoveryDuration: 1.0,
+  cooldown: 4.5,
+  damage: 0,
+  attackStyle: 'custom',
+  preferredRange: 0,
+  separationRadius: 18,
+  initialDelayMin: 0.3,
+  initialDelayMax: 0.7,
+})
+

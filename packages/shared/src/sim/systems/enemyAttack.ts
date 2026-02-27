@@ -20,7 +20,7 @@ import {
 import { spawnBullet, CollisionLayer, NO_TARGET } from '../prefabs'
 import { transition } from './enemyAI'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT, ENEMY_BULLET_SIZE_FODDER } from '../content/weapons'
-import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION, VULTURE_DIVE_SPEED, VULTURE_DIVE_AOE_RADIUS, VULTURE_DIVE_DURATION } from '../content/enemies'
+import { LASSO_ROOT_DURATION, DYNAMITE_TOSSER_FUSE_TIME, DYNAMITE_TOSSER_BLAST_RADIUS, RATTLESNAKE_POISON_DPS, RATTLESNAKE_POISON_DURATION, VULTURE_DIVE_SPEED, VULTURE_DIVE_AOE_RADIUS, VULTURE_DIVE_DURATION, DUSTDEVIL_ZONE_RADIUS, DUSTDEVIL_ZONE_DURATION, DUSTDEVIL_ZONE_DPS } from '../content/enemies'
 import { applyDamage } from './applyDamage'
 import { applyPoison } from './poison'
 import { isBoss, getBoss } from '../content/bosses'
@@ -104,6 +104,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   world.healEvents.length = 0
   world.rattlesnakeBites.length = 0
   world.vultureDiveImpacts.length = 0
+  world.laserTelegraphs.length = 0
 
   // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
   let activeBulletCount = bulletQuery(world).length
@@ -116,11 +117,11 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
     const type = Enemy.type[eid]!
     const def = getEnemyDef(type)
 
-    // Lock aim direction on first tick of TELEGRAPH (rush + Vulture dive)
+    // Lock aim direction on first tick of TELEGRAPH (rush + Vulture dive + Deadeye snipe)
     if (
       state === AIState.TELEGRAPH &&
       EnemyAI.stateTimer[eid]! === 0 &&
-      (def?.attackStyle === 'rush' || type === EnemyType.VULTURE) &&
+      (def?.attackStyle === 'rush' || type === EnemyType.VULTURE || type === EnemyType.DEADEYE) &&
       hasTarget
     ) {
       const dx = Position.x[targetEid]! - Position.x[eid]!
@@ -130,6 +131,21 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         AttackConfig.aimX[eid] = dx / len
         AttackConfig.aimY[eid] = dy / len
       }
+    }
+
+    // Deadeye laser telegraph: populate per-tick data for client rendering
+    if (state === AIState.TELEGRAPH && type === EnemyType.DEADEYE) {
+      const progress = AttackConfig.telegraphDuration[eid]! > 0
+        ? EnemyAI.stateTimer[eid]! / AttackConfig.telegraphDuration[eid]!
+        : 1
+      world.laserTelegraphs.push({
+        eid,
+        x: Position.x[eid]!,
+        y: Position.y[eid]!,
+        aimX: AttackConfig.aimX[eid]!,
+        aimY: AttackConfig.aimY[eid]!,
+        progress: Math.min(progress, 1),
+      })
     }
 
     // Only process entities in ATTACK state
@@ -278,6 +294,39 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
         }
       })
       world.healerPulses.push({ x: ex, y: ey, radius: healRadius })
+      transition(eid, AIState.RECOVERY)
+    } else if (type === EnemyType.DUSTDEVIL && attackStyle === 'custom') {
+      // Dustdevil: create a lingering damage zone at current position
+      world.dustZones.push({
+        x: ex,
+        y: ey,
+        radius: DUSTDEVIL_ZONE_RADIUS,
+        remaining: DUSTDEVIL_ZONE_DURATION,
+        dps: DUSTDEVIL_ZONE_DPS,
+      })
+      world.dustZonesSpawnedThisTick.push({ x: ex, y: ey, radius: DUSTDEVIL_ZONE_RADIUS })
+      transition(eid, AIState.RECOVERY)
+    } else if (type === EnemyType.DEADEYE) {
+      // Deadeye: fire a fast bullet in the locked aim direction (set at TELEGRAPH entry)
+      const aimDirX = AttackConfig.aimX[eid]!
+      const aimDirY = AttackConfig.aimY[eid]!
+      const speed = AttackConfig.projectileSpeed[eid]!
+      const damage = AttackConfig.damage[eid]!
+      const bulletSprite = def?.bulletSpriteId ?? BulletSpriteId.SLUG
+
+      spawnBullet(world, {
+        x: ex,
+        y: ey,
+        vx: aimDirX * speed,
+        vy: aimDirY * speed,
+        damage,
+        range: ENEMY_BULLET_RANGE,
+        ownerId: eid,
+        layer: CollisionLayer.ENEMY_BULLET,
+        spriteId: bulletSprite,
+        size: ENEMY_BULLET_SIZE_THREAT,
+      })
+      activeBulletCount += 1
       transition(eid, AIState.RECOVERY)
     } else if (type === EnemyType.VULTURE && attackStyle === 'custom') {
       // Vulture dive-bomb: AoE damage at landing position after dive duration

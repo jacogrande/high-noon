@@ -655,6 +655,15 @@ export interface GameWorld extends IWorld {
   obstacleHits: ObstacleHit[]
   /** Per-tick boss phase change events for client VFX */
   bossPhaseChanges: Array<{ eid: number; newPhase: number; x: number; y: number }>
+
+  // -- Stage 1 rework --
+
+  /** Active Deadeye laser telegraphs (populated each tick during TELEGRAPH state) */
+  laserTelegraphs: Array<{ eid: number; x: number; y: number; aimX: number; aimY: number; progress: number }>
+  /** Active Dustdevil damage zones on the ground */
+  dustZones: Array<{ x: number; y: number; radius: number; remaining: number; dps: number }>
+  /** Dust zones spawned this tick (for client VFX) */
+  dustZonesSpawnedThisTick: Array<{ x: number; y: number; radius: number }>
 }
 
 /**
@@ -779,6 +788,9 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     obstacleDestructions: [],
     obstacleHits: [],
     bossPhaseChanges: [],
+    laserTelegraphs: [],
+    dustZones: [],
+    dustZonesSpawnedThisTick: [],
   }
 }
 
@@ -907,6 +919,9 @@ export function resetWorld(world: GameWorld): void {
   world.nextMapObstacleId = 1
   world.obstacleDestructions = []
   world.obstacleHits = []
+  world.laserTelegraphs = []
+  world.dustZones = []
+  world.dustZonesSpawnedThisTick = []
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

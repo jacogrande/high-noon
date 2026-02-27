@@ -47,6 +47,7 @@ import { hazardTileSystem } from './hazardTile'
 import { groundCrackSystem } from './groundCrackSystem'
 import { bossShockwaveSystem } from './bossShockwaveSystem'
 import { trapZoneSystem } from './trapZoneSystem'
+import { dustdevilZoneSystem } from './dustdevilZone'
 import { mapObstacleSystem } from './mapObstacle'
 import { interactionSystem } from './interaction'
 import { stashRewardSystem } from './stashReward'
@@ -108,6 +109,7 @@ export {
   tryVisitorPurchase,
   tryTinkererModSelect,
   trapZoneSystem,
+  dustdevilZoneSystem,
   mapObstacleSystem,
   hellfirePillarSystem,
   lifespanSystem,
@@ -223,6 +225,7 @@ export function registerAllSystems(systems: SystemRegistry, _characterId: Charac
   systems.register(groundCrackSystem)
   systems.register(bossShockwaveSystem)
   systems.register(trapZoneSystem)
+  systems.register(dustdevilZoneSystem)
   // -- Post-movement --
   systems.register(healthSystem)
   systems.register(lifespanSystem)

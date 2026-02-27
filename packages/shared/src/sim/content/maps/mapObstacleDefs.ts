@@ -5,6 +5,8 @@
  * Obstacles stamp WALL or HALF_WALL tiles and track HP in world.mapObstacles[].
  */
 
+import { TileType } from '../../tilemap'
+
 /** Obstacle type enum */
 export const MapObstacleType = {
   CRATE: 0,
@@ -13,6 +15,7 @@ export const MapObstacleType = {
   FALLEN_TREE: 3,
   LOW_WALL: 4,
   FENCE_RAIL: 5,
+  CACTUS: 6,
 } as const
 
 export type MapObstacleTypeValue = (typeof MapObstacleType)[keyof typeof MapObstacleType]
@@ -65,6 +68,9 @@ export interface MapObstacleDef {
   walls: Array<{ dx: number; dy: number }>
   /** Tile offsets that become HALF_WALL */
   halfWalls?: Array<{ dx: number; dy: number }>
+  /** Tile offsets stamped on the floor (non-solid) layer as a hazard tile type.
+   *  Used by cactus — walkable but damages on contact. */
+  floorTiles?: Array<{ dx: number; dy: number; tileType: number }>
   /** Whether players can jump over */
   jumpable: boolean
   widthTiles: number
@@ -134,18 +140,30 @@ export const FENCE_RAIL_DEF: MapObstacleDef = {
   heightTiles: 1,
 }
 
+export const CACTUS_DEF: MapObstacleDef = {
+  type: MapObstacleType.CACTUS,
+  name: 'Cactus',
+  // No hp = indestructible (it's a cactus)
+  walls: [],
+  floorTiles: [{ dx: 0, dy: 0, tileType: TileType.CACTUS }],
+  jumpable: true,
+  widthTiles: 1,
+  heightTiles: 1,
+}
+
 /** Per-stage weighted obstacle pools */
 export interface WeightedObstacleDef {
   def: MapObstacleDef
   weight: number
 }
 
-/** Stage 1 (Town): crates (common), barrels, low walls, fence rails */
+/** Stage 1 (Town): crates, barrels, low walls, fence rails, cactuses */
 export const STAGE_1_OBSTACLE_POOL: WeightedObstacleDef[] = [
   { def: CRATE_DEF, weight: 3 },
   { def: BARREL_DEF, weight: 2 },
   { def: LOW_WALL_DEF, weight: 1 },
   { def: FENCE_RAIL_DEF, weight: 2 },
+  { def: CACTUS_DEF, weight: 2 },
 ]
 
 /** Stage 2 (Badlands): fallen trees (common), barrels, crates, fence rails */
@@ -173,6 +191,7 @@ export function isWoodObstacle(type: MapObstacleTypeValue): boolean {
     case MapObstacleType.FENCE_RAIL:
       return true
     case MapObstacleType.BOULDER:
+    case MapObstacleType.CACTUS:
       return false
     default: {
       const _exhaustive: never = type

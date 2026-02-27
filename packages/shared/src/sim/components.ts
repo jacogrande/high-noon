@@ -372,6 +372,11 @@ export const EnemyType = {
   OLD_SCRATCH: 21,
   GHOST_RIDER: 22,
   HELLFIRE_PILLAR: 23,
+  DRIFTER: 24,
+  KNIFE_DRIFTER: 25,
+  DEADEYE: 26,
+  SPITTER: 27,
+  DUSTDEVIL: 28,
 } as const
 
 /** Enemy tier (determines budget cost and threat level) */

@@ -528,6 +528,35 @@ export function spawnHellfirePillar(
 }
 
 // ============================================================================
+// Stage 1 Rework Enemies
+// ============================================================================
+
+/** Spawn a Drifter (pistol) enemy */
+export function spawnDrifter(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.DRIFTER, x, y)
+}
+
+/** Spawn a Knife Drifter (melee) enemy */
+export function spawnKnifeDrifter(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.KNIFE_DRIFTER, x, y)
+}
+
+/** Spawn a Deadeye (sniper) enemy */
+export function spawnDeadeye(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.DEADEYE, x, y)
+}
+
+/** Spawn a Spitter (pattern sprayer) enemy */
+export function spawnSpitter(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.SPITTER, x, y)
+}
+
+/** Spawn a Dustdevil (area denial) enemy */
+export function spawnDustdevil(world: GameWorld, x: number, y: number): number {
+  return spawnFromRegistry(world, EnemyType.DUSTDEVIL, x, y)
+}
+
+// ============================================================================
 // Objective Prefabs
 // ============================================================================
 
