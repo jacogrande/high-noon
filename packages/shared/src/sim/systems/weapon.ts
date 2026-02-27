@@ -41,8 +41,6 @@ const playerTargetQuery = defineQuery([Player, Position, Collider, Health])
 
 const MAX_HISTORICAL_HITSCAN_SAMPLES = 16
 
-let nextVirtualBulletId = -1
-
 interface RewoundFireContext {
   originX: number
   originY: number
@@ -378,7 +376,7 @@ function resolveHitscanPellet(
   const showdownTarget = ownerHasShowdown ? Showdown.targetEid[ownerEid]! : NO_TARGET
 
   const hasBulletHooks = authoritative && world.hooks.hasHandlers('onBulletHit')
-  const virtualBulletId = nextVirtualBulletId--
+  const virtualBulletId = world.nextVirtualBulletId--
   world.hitscanVirtualBulletOwners.set(virtualBulletId, ownerEid)
 
   let totalDamageApplied = 0

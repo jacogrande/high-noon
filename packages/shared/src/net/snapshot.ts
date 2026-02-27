@@ -311,7 +311,10 @@ export function encodeSnapshot(
     offset += 2
   }
 
-  return new Uint8Array(sharedBuffer, 0, offset)
+  // Return an owned copy — the shared buffer is reused across calls, so
+  // returning a view would silently corrupt if the caller holds the reference
+  // past the next encodeSnapshot() invocation.
+  return new Uint8Array(sharedBuffer.slice(0, offset))
 }
 
 // ============================================================================
