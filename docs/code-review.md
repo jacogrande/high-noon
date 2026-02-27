@@ -79,7 +79,7 @@ const virtualBulletId = world.nextVirtualBulletId--
 
 ## High
 
-### 4. `GameWorld` is a god object (~90 properties, 1025 lines)
+### ~~4. `GameWorld` is a god object (~90 properties, 1025 lines)~~ PARTIAL FIX
 
 **File**: `packages/shared/src/sim/world.ts:420-647`
 
@@ -213,7 +213,7 @@ this.onMessage('select-node', (client, data: SelectNodeRequest) => {
 
 ---
 
-### 10. Rendering metadata coupled into shared `EnemyDefinition`
+### ~~10. Rendering metadata coupled into shared `EnemyDefinition`~~ FIXED
 
 **File**: `packages/shared/src/sim/content/enemyRegistry.ts`
 
