@@ -16,21 +16,27 @@ import {
 } from './content/items'
 import { getWeaponModDef } from './content/weaponMods'
 
+function requireItemId(key: string): number {
+  const def = getItemDefByKey(key)
+  if (!def) throw new Error(`Item key '${key}' not found in registry`)
+  return def.id
+}
+
 // Resolve item IDs once at module load to avoid hardcoding
-const TIN_STAR_BADGE_ID = getItemDefByKey('tin_star_badge')!.id
-const FOOLS_GOLD_NUGGET_ID = getItemDefByKey('fools_gold_nugget')!.id
-const PROSPECTORS_MAP_ID = getItemDefByKey('prospectors_map')!.id
-const WORN_SADDLEBAG_ID = getItemDefByKey('worn_saddlebag')!.id
-const DEVILS_BARGAIN_ID = getItemDefByKey('devils_bargain')!.id
+const TIN_STAR_BADGE_ID = requireItemId('tin_star_badge')
+const FOOLS_GOLD_NUGGET_ID = requireItemId('fools_gold_nugget')
+const PROSPECTORS_MAP_ID = requireItemId('prospectors_map')
+const WORN_SADDLEBAG_ID = requireItemId('worn_saddlebag')
+const DEVILS_BARGAIN_ID = requireItemId('devils_bargain')
 /** Loaded Dice: damage multiplier applied to all damage types. */
 const LOADED_DICE_DAMAGE_MULTIPLIER = 0.7
 /** Loaded Dice: proc chance multiplier applied to all proc-based items. */
 const LOADED_DICE_PROC_MULTIPLIER = 2
 
-export const HANGMANS_NOOSE_ID = getItemDefByKey('hangmans_noose')!.id
-export const FOOLS_ERRAND_ID = getItemDefByKey('fools_errand')!.id
-export const LOADED_DICE_ID = getItemDefByKey('loaded_dice')!.id
-export const UNMARKED_GRAVE_ID = getItemDefByKey('unmarked_grave')!.id
+export const HANGMANS_NOOSE_ID = requireItemId('hangmans_noose')
+export const FOOLS_ERRAND_ID = requireItemId('fools_errand')
+export const LOADED_DICE_ID = requireItemId('loaded_dice')
+export const UNMARKED_GRAVE_ID = requireItemId('unmarked_grave')
 
 export interface UpgradeState {
   characterDef: CharacterDef
