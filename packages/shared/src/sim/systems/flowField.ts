@@ -146,59 +146,63 @@ export function flowFieldSystem(world: GameWorld, _dt: number): void {
 
   const halfTile = tilemap.tileSize / 2
 
-  while (heapSize > 0) {
-    const { idx: curIdx, priority: curDist } = heapPop()
-    if (curDist > ff.dist[curIdx]!) continue
+  try {
+    while (heapSize > 0) {
+      const { idx: curIdx, priority: curDist } = heapPop()
+      if (curDist > ff.dist[curIdx]!) continue
 
-    const cx = curIdx % width
-    const cy = (curIdx - cx) / width
+      const cx = curIdx % width
+      const cy = (curIdx - cx) / width
 
-    for (let n = 0; n < 8; n++) {
-      const nx = cx + NEIGHBOR_DX[n]!
-      const ny = cy + NEIGHBOR_DY[n]!
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
+      for (let n = 0; n < 8; n++) {
+        const nx = cx + NEIGHBOR_DX[n]!
+        const ny = cy + NEIGHBOR_DY[n]!
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
 
-      const nIdx = ny * width + nx
-      const nWorldX = nx * tilemap.tileSize + halfTile
-      const nWorldY = ny * tilemap.tileSize + halfTile
-      if (isSolidAt(tilemap, nWorldX, nWorldY)) continue
+        const nIdx = ny * width + nx
+        const nWorldX = nx * tilemap.tileSize + halfTile
+        const nWorldY = ny * tilemap.tileSize + halfTile
+        if (isSolidAt(tilemap, nWorldX, nWorldY)) continue
 
-      if (NEIGHBOR_DIAG[n]) {
-        const cardAIdx = DIAG_CARD_A[n]!
-        const cardBIdx = DIAG_CARD_B[n]!
-        const cardAx = cx + NEIGHBOR_DX[cardAIdx]!
-        const cardAy = cy + NEIGHBOR_DY[cardAIdx]!
-        const cardBx = cx + NEIGHBOR_DX[cardBIdx]!
-        const cardBy = cy + NEIGHBOR_DY[cardBIdx]!
-
-        const cardASolid = cardAx < 0 || cardAx >= width || cardAy < 0 || cardAy >= height ||
-          isSolidAt(tilemap, cardAx * tilemap.tileSize + halfTile, cardAy * tilemap.tileSize + halfTile)
-        const cardBSolid = cardBx < 0 || cardBx >= width || cardBy < 0 || cardBy >= height ||
-          isSolidAt(tilemap, cardBx * tilemap.tileSize + halfTile, cardBy * tilemap.tileSize + halfTile)
-
-        if (cardASolid && cardBSolid) continue
-      }
-
-      const floorType = getFloorTileTypeAt(tilemap, nWorldX, nWorldY)
-      const edgeCost = getFloorPathfindCost(floorType)
-      const newDist = curDist + edgeCost
-
-      if (newDist < ff.dist[nIdx]!) {
-        ff.dist[nIdx] = newDist
-
-        const dirX = cx - nx
-        const dirY = cy - ny
         if (NEIGHBOR_DIAG[n]) {
-          ff.dirX[nIdx] = dirX * INV_SQRT2
-          ff.dirY[nIdx] = dirY * INV_SQRT2
-        } else {
-          ff.dirX[nIdx] = dirX
-          ff.dirY[nIdx] = dirY
+          const cardAIdx = DIAG_CARD_A[n]!
+          const cardBIdx = DIAG_CARD_B[n]!
+          const cardAx = cx + NEIGHBOR_DX[cardAIdx]!
+          const cardAy = cy + NEIGHBOR_DY[cardAIdx]!
+          const cardBx = cx + NEIGHBOR_DX[cardBIdx]!
+          const cardBy = cy + NEIGHBOR_DY[cardBIdx]!
+
+          const cardASolid = cardAx < 0 || cardAx >= width || cardAy < 0 || cardAy >= height ||
+            isSolidAt(tilemap, cardAx * tilemap.tileSize + halfTile, cardAy * tilemap.tileSize + halfTile)
+          const cardBSolid = cardBx < 0 || cardBx >= width || cardBy < 0 || cardBy >= height ||
+            isSolidAt(tilemap, cardBx * tilemap.tileSize + halfTile, cardBy * tilemap.tileSize + halfTile)
+
+          if (cardASolid && cardBSolid) continue
         }
 
-        heapPush(nIdx, newDist)
+        const floorType = getFloorTileTypeAt(tilemap, nWorldX, nWorldY)
+        const edgeCost = getFloorPathfindCost(floorType)
+        const newDist = curDist + edgeCost
+
+        if (newDist < ff.dist[nIdx]!) {
+          ff.dist[nIdx] = newDist
+
+          const dirX = cx - nx
+          const dirY = cy - ny
+          if (NEIGHBOR_DIAG[n]) {
+            ff.dirX[nIdx] = dirX * INV_SQRT2
+            ff.dirY[nIdx] = dirY * INV_SQRT2
+          } else {
+            ff.dirX[nIdx] = dirX
+            ff.dirY[nIdx] = dirY
+          }
+
+          heapPush(nIdx, newDist)
+        }
       }
     }
+  } finally {
+    heapSize = 0
   }
 
   ff.seedKey = seedKey
