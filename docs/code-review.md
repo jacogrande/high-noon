@@ -284,7 +284,7 @@ destroy(): void {
 
 ## Medium
 
-### 14. `mapGenerator.ts` is 1077 lines
+### ~~14. `mapGenerator.ts` is 1077 lines~~ FIXED
 
 **File**: `packages/shared/src/sim/content/maps/mapGenerator.ts`
 
@@ -294,7 +294,7 @@ Mixes street profile generation, alley generation, building placement, floor til
 
 ---
 
-### 15. Side-effect registration on import for enemies and bosses
+### ~~15. Side-effect registration on import for enemies and bosses~~ FIXED
 
 **Files**: `packages/shared/src/sim/content/enemyRegistry.ts:80`, `packages/shared/src/sim/content/bosses/registry.ts:34`
 
@@ -311,7 +311,7 @@ export function registerAllEnemies(): void {
 
 ---
 
-### 16. Bare side-effect import for boss registration
+### ~~16. Bare side-effect import for boss registration~~ FIXED
 
 **File**: `packages/shared/src/sim/systems/index.ts:29`
 
@@ -326,7 +326,7 @@ A comment-explained implicit side effect. The content barrel also handles this v
 
 ---
 
-### 17. Non-null assertions on item lookups at module load time
+### ~~17. Non-null assertions on item lookups at module load time~~ FIXED
 
 **File**: `packages/shared/src/sim/content/upgrade.ts:19-33`
 
@@ -348,7 +348,7 @@ function requireItemId(key: string): number {
 
 ---
 
-### 18. `clearEnemiesCore` is a partial `resetWorld` that diverges
+### ~~18. `clearEnemiesCore` is a partial `resetWorld` that diverges~~ FIXED
 
 **File**: `packages/shared/src/sim/systems/stageProgression.ts:42-100`
 
@@ -358,7 +358,7 @@ Clears `world.bossState`, `world.flowField`, `world.spatialHash`, `world.dustClo
 
 ---
 
-### 19. Underscore-prefixed parameter that is actually used
+### ~~19. Underscore-prefixed parameter that is actually used~~ FIXED
 
 **File**: `packages/shared/src/sim/content/nodeEffects.ts:429-438`
 
@@ -371,7 +371,7 @@ Clears `world.bossState`, `world.flowField`, `world.spatialHash`, `world.dustClo
 
 ---
 
-### 20. Flow field heap buffers are module-level mutable state
+### ~~20. Flow field heap buffers are module-level mutable state~~ FIXED
 
 **File**: `packages/shared/src/sim/systems/flowField.ts:29-34`
 
@@ -381,7 +381,7 @@ Clears `world.bossState`, `world.flowField`, `world.spatialHash`, `world.dustClo
 
 ---
 
-### 21. Mode controllers are 1400-1800 line god classes
+### ~~21. Mode controllers are 1400-1800 line god classes~~ PARTIAL FIX
 
 **Files**: `packages/client/src/scenes/core/SingleplayerModeController.ts` (1397 lines), `MultiplayerModeController.ts` (1790 lines)
 
@@ -391,7 +391,7 @@ Both own 15+ renderer instances, particle/FX pools, audio, camera, hit-stop, tim
 
 ---
 
-### 22. `getHUDState()` allocates on every poll, defeating `memo()`
+### ~~22. `getHUDState()` allocates on every poll, defeating `memo()`~~ FIXED
 
 **Files**: `packages/client/src/scenes/core/SingleplayerModeController.ts:376-556`, `MultiplayerModeController.ts`
 
@@ -401,7 +401,7 @@ Called at 10Hz from the game loop. Runs ECS queries (`bossQuery`), allocates new
 
 ---
 
-### 23. `GameRoom.ts` is 2092 lines
+### ~~23. `GameRoom.ts` is 2092 lines~~ PARTIAL FIX
 
 **File**: `packages/server/src/rooms/GameRoom.ts`
 
@@ -411,7 +411,7 @@ Mixes tick loop, 20+ message handlers, snapshot encoding, telemetry accumulation
 
 ---
 
-### 24. Duplicated interactables payload building
+### ~~24. Duplicated interactables payload building~~ FIXED
 
 **File**: `packages/server/src/rooms/GameRoom.ts:1959-2073`
 
@@ -421,7 +421,7 @@ Mixes tick loop, 20+ message handlers, snapshot encoding, telemetry accumulation
 
 ---
 
-### 25. `MutableShotResultState` monkey-patches server fields onto `GameWorld`
+### ~~25. `MutableShotResultState` monkey-patches server fields onto `GameWorld`~~ FIXED
 
 **File**: `packages/server/src/rooms/GameRoom.ts:954-967`
 
@@ -431,7 +431,7 @@ Mixes tick loop, 20+ message handlers, snapshot encoding, telemetry accumulation
 
 ---
 
-### 26. `RewindHistory` uses `Array.shift()` instead of a ring buffer
+### ~~26. `RewindHistory` uses `Array.shift()` instead of a ring buffer~~ FIXED
 
 **File**: `packages/server/src/net/RewindHistory.ts:59-61`
 
@@ -441,7 +441,7 @@ JSDoc says "ring buffer" but uses `Array.shift()` (O(n) per eviction, running 60
 
 ---
 
-### 27. Graceful shutdown has no re-entrancy guard
+### ~~27. Graceful shutdown has no re-entrancy guard~~ FIXED
 
 **File**: `packages/server/src/index.ts:29-31`
 
