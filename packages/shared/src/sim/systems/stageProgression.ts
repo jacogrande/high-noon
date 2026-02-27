@@ -76,6 +76,13 @@ function clearEnemiesCore(world: GameWorld, keepLoot: boolean): void {
   world.oldScratchStorm = null
   world.trapZones = []
   world.trapDetonations = []
+  // Clear per-encounter VFX/event buffers to prevent stale data between stages
+  world.healerPulses = []
+  world.healEvents = []
+  world.rattlesnakeBites = []
+  world.vultureDiveImpacts = []
+  world.obstacleDestructions = []
+  world.obstacleHits = []
   if (!keepLoot) {
     world.goldNuggets = []
     world.itemPickups = []
