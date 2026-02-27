@@ -65,5 +65,9 @@ export class SoundManager {
       howl.unload()
     }
     this.howls.clear()
+    // Reset global Howler state so the next SoundManager instance
+    // does not inherit a leaked mute/volume from this one.
+    Howler.mute(false)
+    Howler.volume(1)
   }
 }
