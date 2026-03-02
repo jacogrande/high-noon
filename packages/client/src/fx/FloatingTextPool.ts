@@ -64,13 +64,16 @@ export class FloatingTextPool {
   }
 
   spawn(x: number, y: number, amount: number, color: number, scale: number = 1): void {
+    // Round to integer and drop zeros — prevents DoT spam
+    const rounded = Math.round(amount)
+    if (rounded <= 0) return
     if (this.freeList.length === 0) return
 
     const idx = this.freeList.pop()!
     this.activeList.push(idx)
 
     const text = this.texts[idx]!
-    text.text = String(amount)
+    text.text = String(rounded)
     text.tint = color
     text.alpha = 1
     text.scale.set(scale)

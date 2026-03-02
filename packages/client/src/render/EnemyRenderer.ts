@@ -295,13 +295,20 @@ export class EnemyRenderer {
           let watermark = this.hpWatermark.get(eid) ?? currentHP
 
           if (currentHP < watermark) {
-            // New all-time low — genuine damage
-            this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
-            const cachedType = this.enemyTypes.get(eid)
-            const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
-            const dmgAttr = world.lastDamageByEntity.get(eid)
-            result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: watermark - currentHP, dirX: dmgAttr?.dirX ?? 0, dirY: dmgAttr?.dirY ?? 0 })
-            this.hpWatermark.set(eid, currentHP)
+            // New all-time low — genuine damage.
+            // Only emit a damage number when accumulated drop >= 1 HP.
+            // This prevents DoT effects (dustdevil zones) from flooding
+            // the floating text pool with sub-pixel damage every frame.
+            const accumulated = watermark - currentHP
+            if (accumulated >= 1) {
+              this.damageFlashTimer.set(eid, DAMAGE_FLASH_DURATION)
+              const cachedType = this.enemyTypes.get(eid)
+              const color = cachedType !== undefined ? (ENEMY_COLORS[cachedType] ?? 0xff0000) : 0xff0000
+              const dmgAttr = world.lastDamageByEntity.get(eid)
+              result.hits.push({ x: Position.x[eid]!, y: Position.y[eid]!, color, amount: Math.round(accumulated), dirX: dmgAttr?.dirX ?? 0, dirY: dmgAttr?.dirY ?? 0 })
+              this.hpWatermark.set(eid, currentHP)
+            }
+            // Keep watermark at previous level until threshold reached
           } else if (currentHP > watermark && prevHP > watermark) {
             // Two consecutive HP changes both above watermark — the server
             // has sustained its correction, so accept it.

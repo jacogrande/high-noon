@@ -73,41 +73,41 @@ export const STAGE_1_ENCOUNTER: StageEncounter = {
   waves: [
     // Wave 1: Drifters only — learn to shoot and kite
     {
-      fodderBudget: 6,
+      fodderBudget: 20,
       fodderPool: [
         { type: EnemyType.DRIFTER, weight: 3 },
         { type: EnemyType.KNIFE_DRIFTER, weight: 2 },
       ],
-      maxFodderAlive: 4,
+      maxFodderAlive: 12,
       threats: [],
       spawnDelay: 0,
       threatClearRatio: 1.0,
     },
     // Wave 2: Introduce Deadeyes + Spitters — learn to keep moving and dodge spreads
     {
-      fodderBudget: 8,
+      fodderBudget: 30,
       fodderPool: [
         { type: EnemyType.DRIFTER, weight: 3 },
         { type: EnemyType.KNIFE_DRIFTER, weight: 1 },
         { type: EnemyType.SPITTER, weight: 2 },
       ],
-      maxFodderAlive: 5,
+      maxFodderAlive: 14,
       threats: [
-        { type: EnemyType.DEADEYE, count: 2 },
+        { type: EnemyType.DEADEYE, count: 3 },
       ],
       spawnDelay: 2,
       threatClearRatio: 1.0,
     },
     // Wave 3: Full roster + Dustdevils — spatial awareness, then boss
     {
-      fodderBudget: 10,
+      fodderBudget: 40,
       fodderPool: [
         { type: EnemyType.DRIFTER, weight: 2 },
         { type: EnemyType.KNIFE_DRIFTER, weight: 1 },
         { type: EnemyType.SPITTER, weight: 2 },
         { type: EnemyType.DUSTDEVIL, weight: 2 },
       ],
-      maxFodderAlive: 5,
+      maxFodderAlive: 15,
       threats: [
         { type: EnemyType.DEADEYE, count: 1 },
         { type: EnemyType.BOOMSTICK, count: 1 },

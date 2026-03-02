@@ -662,19 +662,19 @@ describe('waveSpawnerSystem', () => {
       // Wave 1 has 0 threats → threatClearRatio * 0 = 0 kills needed → auto-clears
       expect(world.encounter!.currentWave).toBe(1)
 
-      // --- Wave 2 (2 Deadeyes as threats, spawnDelay 2s) ---
+      // --- Wave 2 (3 Deadeyes as threats, spawnDelay 2s) ---
       waveSpawnerSystem(world, 2.1) // pass spawn delay
       expect(world.encounter!.waveActive).toBe(true)
       expect(world.encounter!.currentWave).toBe(1)
 
       const wave2Threats = getThreatEids(world)
-      expect(wave2Threats.length).toBe(2)
+      expect(wave2Threats.length).toBe(3)
       // Threats should be Deadeyes
       for (const eid of wave2Threats) {
         expect(Enemy.type[eid]).toBe(EnemyType.DEADEYE)
       }
 
-      // Kill both Deadeyes (threatClearRatio=1.0)
+      // Kill all Deadeyes (threatClearRatio=1.0)
       for (const eid of wave2Threats) {
         killEnemy(world, eid)
       }
