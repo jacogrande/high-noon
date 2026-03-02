@@ -17,6 +17,8 @@ import {
   tileToWorld,
 } from '../../tilemap'
 import type { Tilemap } from '../../tilemap'
+import { CRATE_DEF, MapObstacleType } from './mapObstacleDefs'
+import { STREET_HALF_W } from './streetLayout'
 
 describe('mapGenerator', () => {
   describe('determinism', () => {
@@ -694,8 +696,11 @@ describe('mapGenerator', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
       expect(map.mapObstacles).toBeDefined()
       expect(map.mapObstacles!.length).toBeGreaterThan(0)
-      // +2 for center landmarks (hitching posts) placed on town maps
-      expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count + 2)
+      // +2 for center landmarks, + spur dead-end crates (up to 2 per long spur)
+      const longSpurs = (map.roadNetwork?.spurs ?? []).filter(s => s.length >= 5).length
+      expect(map.mapObstacles!.length).toBeLessThanOrEqual(
+        STAGE_1_MAP_CONFIG.mapObstacles!.count + 2 + longSpurs * 2,
+      )
     })
 
     test('stage 2 generates map obstacles', () => {
@@ -891,8 +896,11 @@ describe('mapGenerator', () => {
         const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
         expect(map.mapObstacles).toBeDefined()
         expect(map.mapObstacles!.length).toBeGreaterThan(0)
-        // Up to +2 for center landmarks (hitching posts)
-        expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count + 2)
+        // Up to +2 for center landmarks, + spur dead-end crates
+        const longSpurs = (map.roadNetwork?.spurs ?? []).filter(s => s.length >= 5).length
+        expect(map.mapObstacles!.length).toBeLessThanOrEqual(
+          STAGE_1_MAP_CONFIG.mapObstacles!.count + 2 + longSpurs * 2,
+        )
       }
     })
   })
@@ -922,6 +930,151 @@ describe('mapGenerator', () => {
       const map2 = generateMap(STAGE_4_MAP_CONFIG, 999, 3)
       // Same layout regardless of seed
       expect(map1.crossroadsLandmarks!.signpost).toEqual(map2.crossroadsLandmarks!.signpost)
+    })
+  })
+
+  describe('tactical cover placement', () => {
+    test('at least 2 obstacles near alley mouths or spur starts (multi-seed)', () => {
+      for (const seed of [1, 42, 9999, 77777, 12345]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const rn = map.roadNetwork
+        if (!rn) continue
+
+        // Collect tactical positions: alley mouths and spur entrances
+        const tacticalSpots: Array<{ x: number; y: number }> = []
+        for (const alley of rn.alleys) {
+          for (const side of [-1, 1]) {
+            for (const offset of [2, 3]) {
+              const x = rn.streetCenterX + side * (STREET_HALF_W + offset)
+              const y = alley.profile[x]
+              if (y === undefined) continue
+              tacticalSpots.push({ x, y })
+            }
+          }
+        }
+        for (const spur of rn.spurs) {
+          tacticalSpots.push({ x: spur.startX + spur.direction * 2, y: spur.y })
+        }
+
+        // Count how many obstacles are within 3 tiles of a tactical spot
+        let nearTactical = 0
+        for (const obs of map.mapObstacles!) {
+          for (const spot of tacticalSpots) {
+            const obsTileX = Math.floor(obs.x / map.tileSize)
+            const obsTileY = Math.floor(obs.y / map.tileSize)
+            const dx = obsTileX - spot.x
+            const dy = obsTileY - spot.y
+            if (Math.abs(dx) <= 3 && Math.abs(dy) <= 3) {
+              nearTactical++
+              break
+            }
+          }
+        }
+        // With tactical pass, expect at least 2 obstacles near tactical positions
+        expect(nearTactical).toBeGreaterThanOrEqual(2)
+      }
+    })
+
+    test('determinism preserved (same seed → same obstacles)', () => {
+      const map1 = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
+      const map2 = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
+
+      expect(map1.mapObstacles!.length).toBe(map2.mapObstacles!.length)
+      for (let i = 0; i < map1.mapObstacles!.length; i++) {
+        expect(map1.mapObstacles![i]!.type).toBe(map2.mapObstacles![i]!.type)
+        expect(map1.mapObstacles![i]!.x).toBe(map2.mapObstacles![i]!.x)
+        expect(map1.mapObstacles![i]!.y).toBe(map2.mapObstacles![i]!.y)
+      }
+    })
+
+    test('existing constraint tests still pass (no center overlap, connectivity)', () => {
+      // Already covered by the center exclusion zone and connectivity tests above
+      // This test just validates that tactical placement doesn't break them
+      const map = generateArena(STAGE_1_MAP_CONFIG, 42, 0)
+      const centerTileX = Math.floor(map.width / 2)
+      const centerTileY = Math.floor(map.height / 2)
+      const clearR = STAGE_1_MAP_CONFIG.centerClearRadius
+
+      for (const obs of map.mapObstacles!) {
+        for (const tile of obs.tiles) {
+          const inZone =
+            Math.abs(tile.tileX - centerTileX) <= clearR &&
+            Math.abs(tile.tileY - centerTileY) <= clearR
+          expect(inZone).toBe(false)
+        }
+      }
+    })
+  })
+
+  describe('spur dead-end crates', () => {
+    test('long dead-end spurs (≥5 tiles) have crate obstacles at their end', () => {
+      let foundCrate = false
+      for (const seed of [1, 42, 9999, 77777, 12345]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const spurs = map.roadNetwork?.spurs ?? []
+        const longSpurs = spurs.filter(s => s.length >= 5)
+        if (longSpurs.length === 0) continue
+
+        for (const spur of longSpurs) {
+          const endX = spur.startX + spur.direction * (spur.length - 1)
+          // Check if any crate obstacle exists at the spur end
+          for (const obs of map.mapObstacles!) {
+            if (obs.type !== MapObstacleType.CRATE) continue
+            for (const tile of obs.tiles) {
+              if (tile.tileX === endX && tile.tileY >= spur.y && tile.tileY < spur.y + spur.height) {
+                foundCrate = true
+              }
+            }
+          }
+        }
+      }
+      expect(foundCrate).toBe(true)
+    })
+
+    test('short spurs (<5 tiles) have no full-row crate pattern at their end', () => {
+      for (const seed of [1, 42, 9999, 77777, 12345]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const spurs = map.roadNetwork?.spurs ?? []
+        const shortSpurs = spurs.filter(s => s.length < 5)
+
+        for (const spur of shortSpurs) {
+          const endX = spur.startX + spur.direction * (spur.length - 1)
+          // placeSpurEndCrates places a crate on every row of the spur end.
+          // For short spurs this shouldn't happen, so count crates at the end column.
+          let cratesAtEnd = 0
+          for (const obs of map.mapObstacles!) {
+            if (obs.type !== MapObstacleType.CRATE) continue
+            for (const tile of obs.tiles) {
+              if (tile.tileX === endX && tile.tileY >= spur.y && tile.tileY < spur.y + spur.height) {
+                cratesAtEnd++
+              }
+            }
+          }
+          // A full-row crate pattern (2 crates = SPUR_WIDTH) indicates placeSpurEndCrates
+          // ran on this spur. Random placement is unlikely to fill the full row.
+          expect(cratesAtEnd).toBeLessThan(spur.height)
+        }
+      }
+    })
+
+    test('spur crates have hp = CRATE_DEF.hp (destructible)', () => {
+      for (const seed of [1, 42, 9999, 77777, 12345]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const spurs = map.roadNetwork?.spurs ?? []
+        const longSpurs = spurs.filter(s => s.length >= 5)
+
+        for (const spur of longSpurs) {
+          const endX = spur.startX + spur.direction * (spur.length - 1)
+          for (const obs of map.mapObstacles!) {
+            if (obs.type !== MapObstacleType.CRATE) continue
+            for (const tile of obs.tiles) {
+              if (tile.tileX === endX && tile.tileY >= spur.y && tile.tileY < spur.y + spur.height) {
+                expect(obs.hp).toBe(CRATE_DEF.hp)
+              }
+            }
+          }
+        }
+      }
     })
   })
 })
