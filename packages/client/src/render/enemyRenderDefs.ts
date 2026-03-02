@@ -26,12 +26,12 @@ export const ENEMY_COLORS: Record<number, number> = {
   [EnemyType.DYNAMITE_TOSSER]: 0xff6600,
   [EnemyType.RATTLESNAKE]: 0x889944,
 
-  // Stage 1 introductory enemies
-  [EnemyType.DRIFTER]: 0xc4956a,
-  [EnemyType.KNIFE_DRIFTER]: 0xb07850,
-  [EnemyType.DEADEYE]: 0x774444,
-  [EnemyType.SPITTER]: 0x66aa55,
-  [EnemyType.DUSTDEVIL]: 0xaa8844,
+  // Stage 1 introductory enemies (saturated to contrast with red_dirt background)
+  [EnemyType.DRIFTER]: 0xd4a574,
+  [EnemyType.KNIFE_DRIFTER]: 0xdd6633,
+  [EnemyType.DEADEYE]: 0xcc2222,
+  [EnemyType.SPITTER]: 0x44dd55,
+  [EnemyType.DUSTDEVIL]: 0xddaa22,
 
   // Threats
   [EnemyType.SHOOTER]: 0xaa44dd,

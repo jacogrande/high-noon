@@ -8,7 +8,10 @@
 import { Container, Graphics, Sprite, Texture } from 'pixi.js'
 
 /** Shape types for proper redrawing */
-type ShapeType = 'circle' | 'rect' | 'sprite'
+type ShapeType = 'circle' | 'rect' | 'sprite' | 'custom'
+
+/** Callback to redraw a custom Graphics shape with a new color */
+export type CustomDrawFn = (g: Graphics, color: number) => void
 
 /** Metadata stored with each sprite */
 interface SpriteData {
@@ -17,6 +20,7 @@ interface SpriteData {
   radius?: number
   width?: number
   height?: number
+  customDraw?: CustomDrawFn
 }
 
 /** Display object types we support */
@@ -99,6 +103,23 @@ export class SpriteRegistry {
   }
 
   /**
+   * Create a custom Graphics shape for an entity using a draw callback.
+   * The callback is re-invoked by setColor() when the color changes.
+   */
+  createCustom(eid: number, color: number, draw: CustomDrawFn): Graphics {
+    this.remove(eid)
+    const graphics = new Graphics()
+    draw(graphics, color)
+    this.sprites.set(eid, {
+      displayObject: graphics,
+      shapeType: 'custom',
+      customDraw: draw,
+    })
+    this.container.addChild(graphics)
+    return graphics
+  }
+
+  /**
    * Create a sprite for an entity from a texture
    */
   createSprite(eid: number, texture: Texture): Sprite {
@@ -171,6 +192,11 @@ export class SpriteRegistry {
     if (!(sprite instanceof Graphics)) return
 
     sprite.clear()
+
+    if (data.shapeType === 'custom' && data.customDraw) {
+      data.customDraw(sprite, color)
+      return
+    }
 
     if (data.shapeType === 'circle' && data.radius !== undefined) {
       sprite.circle(0, 0, data.radius)

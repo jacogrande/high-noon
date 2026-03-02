@@ -50,6 +50,7 @@ const BOSS_BAR_Y_OFFSET = 30
 import {
   ENEMY_COLORS, isSpriteEnemy, resolveSpriteId, getSpriteScale,
 } from './enemyRenderDefs'
+import { isStage1ShapeEnemy, getStage1DrawFn } from './stage1Shapes'
 
 /** Aux tags for enemy health-bar graphics in SpriteRegistry */
 const BAR_BG_TAG = 'barBg'
@@ -231,8 +232,13 @@ export class EnemyRenderer {
           this.registry.setScale(eid, initScale, initScale)
           this.lastDirection.set(eid, 'S')
         } else {
-          const radius = Collider.radius[eid]!
-          this.registry.createCircle(eid, radius, color)
+          const drawFn = getStage1DrawFn(type)
+          if (drawFn) {
+            this.registry.createCustom(eid, color, drawFn)
+          } else {
+            const radius = Collider.radius[eid]!
+            this.registry.createCircle(eid, radius, color)
+          }
         }
 
         // Show world-space health bar: always for non-bosses, also for multi-entity bosses with showIndividualBars
@@ -569,7 +575,9 @@ export class EnemyRenderer {
         continue // skip circle rendering path
       }
 
-      // Circle-based enemy rendering (swarmer, grunt, shooter, charger)
+      // Circle / custom shape enemy rendering
+
+      const isStage1 = isStage1ShapeEnemy(type)
 
       // Charger telegraph vibration
       if (type === EnemyType.CHARGER && state === AIState.TELEGRAPH) {
@@ -584,8 +592,37 @@ export class EnemyRenderer {
         renderY += Math.cos(world.tick * 2.1) * 1.5
       }
 
-      // Charger attack stretch
-      if (type === EnemyType.CHARGER && state === AIState.ATTACK) {
+      // Facing rotation for Stage 1 compound shapes
+      if (isStage1) {
+        let facingAngle = Math.PI / 2 // default: south
+        if (state === AIState.TELEGRAPH || state === AIState.ATTACK) {
+          const targetEid = EnemyAI.targetEid[eid]!
+          if (targetEid !== NO_TARGET) {
+            const dx = Position.x[targetEid]! - currX
+            const dy = Position.y[targetEid]! - currY
+            facingAngle = Math.atan2(dy, dx) - Math.PI / 2
+          }
+        } else {
+          const vx = Velocity.x[eid]!
+          const vy = Velocity.y[eid]!
+          if (vx * vx + vy * vy > 1) {
+            facingAngle = Math.atan2(vy, vx) - Math.PI / 2
+          }
+        }
+        this.registry.setRotation(eid, facingAngle)
+
+        // Knife Drifter attack animation: blade stretch during attack
+        if (type === EnemyType.KNIFE_DRIFTER && state === AIState.ATTACK) {
+          this.registry.setScale(eid, 1.0, 1.3)
+        } else if (type === EnemyType.KNIFE_DRIFTER && state === AIState.TELEGRAPH) {
+          // Pulse during telegraph
+          const pulse = 1.0 + 0.1 * Math.sin(world.tick * 0.8)
+          this.registry.setScale(eid, pulse, pulse)
+        } else {
+          this.registry.setScale(eid, 1, 1)
+        }
+      } else if (type === EnemyType.CHARGER && state === AIState.ATTACK) {
+        // Charger attack stretch
         const aimX = AttackConfig.aimX[eid]!
         const aimY = AttackConfig.aimY[eid]!
         const angle = Math.atan2(aimY, aimX)
