@@ -24,13 +24,13 @@ This is textbook "teach one thing at a time" design.
 
 Each Stage 1 enemy has a distinct compound silhouette with 1-2 identifying features:
 
-| Enemy | Base Shape | Feature | Shape Language |
-|-------|-----------|---------|----------------|
-| Drifter | Circle (r=8) | Hat brim | Neutral, baseline bandit |
-| Knife Drifter | Circle (r=8) | Blade wedge | Aggressive, melee-forward |
-| Deadeye | Diamond (half=10) | Scope line | Angular, precise, dangerous |
-| Spitter | Ellipse (12×10) | 3 nubs | Fat, multi-source, area |
-| Dustdevil | Circle (r=8) | Spiral | Spinning, environmental |
+| Enemy         | Base Shape        | Feature     | Shape Language              |
+| ------------- | ----------------- | ----------- | --------------------------- |
+| Drifter       | Circle (r=8)      | Hat brim    | Neutral, baseline bandit    |
+| Knife Drifter | Circle (r=8)      | Blade wedge | Aggressive, melee-forward   |
+| Deadeye       | Diamond (half=10) | Scope line  | Angular, precise, dangerous |
+| Spitter       | Ellipse (12×10)   | 3 nubs      | Fat, multi-source, area     |
+| Dustdevil     | Circle (r=8)      | Spiral      | Spinning, environmental     |
 
 The Deadeye diamond is the standout — the only non-circular Stage 1 enemy, using
 angular shape language to signal "threat tier" at a glance. The Spitter's ellipse
@@ -51,6 +51,7 @@ the transition between "safe behind building" and "exposed on Main Street."
 ### 4. Destructible Cover as Teaching Tool (Matches Gungeon Philosophy)
 
 14 obstacles with mixed heights teach cover mechanics:
+
 - Full walls: Crate (HP 3), Barrel (HP 2), Boulder (HP 5) — solid protection, breakable
 - Half walls: Low Wall (HP 4), Fence Rail (HP 3) — peek cover, jumpable
 - Indestructible: Hitching Posts — permanent landmarks, light cover in boss arena
@@ -68,6 +69,7 @@ Cross-alley skip zones preserve flanking routes.
 ### 6. Multiplayer Parity
 
 The shared simulation is fully multiplayer-safe:
+
 - Co-op HP scaling (1.5x at 2 players) via `applyCoopHpScale()`
 - Wave budget scales at ~60% of HP rate (1.3x at 2 players)
 - Downed/revive state activates only with >1 player
@@ -129,6 +131,8 @@ could support either — a "loot the fallen" moment between waves would be thema
 
 **Effort**: Medium-large (new UI system, upgrade selection flow).
 
+**NOTE**: We want nuclear throne style constant battle. More like risk of rain, really.
+
 ---
 
 ### Priority 2: Design Depth
@@ -147,6 +151,8 @@ straightforward pattern) for the first 1-2 completions, then unlocking the pool.
 Requires a persistence/progress system.
 
 **Effort**: Medium (needs run-count tracking + conditional pool filtering).
+
+**NOTE**: This is okay. We'll keep our boss pool at three for now.
 
 ---
 
@@ -201,6 +207,8 @@ completions. Low priority — this is a "depth" feature, not a "launch" feature.
 
 **Effort**: Medium.
 
+**NOTE**: This is fine. We'll add knobs and dials for difficulty later.
+
 ---
 
 ### Priority 3: Polish
@@ -231,6 +239,8 @@ Could also be a separate "tutorial" encounter that runs once per account.
 
 **Effort**: Small (spawn delay + UI hint) to Large (full tutorial system).
 
+**NOTE**: This is fine. We don't need this. We'll just throw the player in the real game for now.
+
 ---
 
 #### Gap 10: Spur Roads Create Dead Ends
@@ -252,16 +262,16 @@ escape.
 
 ## Summary Scorecard
 
-| Category | Grade | Notes |
-|----------|:-----:|-------|
-| Wave structure / pacing | A | Textbook progressive introduction |
-| Enemy visual identity | B+ | Strong shapes, but Drifter/Dustdevil collision |
-| Town layout authenticity | A | Porches, alleys, landmarks, density gradient |
-| Cover design | B | Good variety, but position-agnostic placement |
-| Multiplayer parity | A | Full co-op scaling, no divergence |
-| Test coverage | A | Integration tests for all attack types, waves, map gen |
-| First-time player experience | B | No tutorial, no inter-wave rewards |
-| Replayability | C+ | Static encounter, no NG+ scaling |
+| Category                     | Grade | Notes                                                  |
+| ---------------------------- | :---: | ------------------------------------------------------ |
+| Wave structure / pacing      |   A   | Textbook progressive introduction                      |
+| Enemy visual identity        |  B+   | Strong shapes, but Drifter/Dustdevil collision         |
+| Town layout authenticity     |   A   | Porches, alleys, landmarks, density gradient           |
+| Cover design                 |   B   | Good variety, but position-agnostic placement          |
+| Multiplayer parity           |   A   | Full co-op scaling, no divergence                      |
+| Test coverage                |   A   | Integration tests for all attack types, waves, map gen |
+| First-time player experience |   B   | No tutorial, no inter-wave rewards                     |
+| Replayability                |  C+   | Static encounter, no NG+ scaling                       |
 
 **Overall**: Stage 1 is a solid, well-tested first stage that follows most roguelite
 best practices for progressive mechanic introduction and environmental design. The
