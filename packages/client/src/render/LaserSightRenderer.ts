@@ -5,7 +5,8 @@
  * to a point far along the locked aim direction. The line intensifies
  * (faint → bright red) as the telegraph progress approaches 1.0.
  *
- * Redraws every frame since telegraph data is rebuilt each tick.
+ * Uses a cache key (positions + quantized progress) to skip redundant
+ * GPU batch rebuilds when nothing has visibly changed.
  */
 
 import { Graphics, Container } from 'pixi.js'
@@ -17,6 +18,7 @@ const LASER_MAX_LENGTH = 600
 
 export class LaserSightRenderer {
   private readonly graphics: Graphics
+  private cachedKey = ''
 
   constructor(entityLayer: Container) {
     this.graphics = new Graphics()
@@ -27,12 +29,21 @@ export class LaserSightRenderer {
   render(world: GameWorld): void {
     const telegraphs = world.laserTelegraphs
     if (telegraphs.length === 0) {
-      if (this.graphics.visible) {
+      if (this.cachedKey !== '') {
         this.graphics.clear()
         this.graphics.visible = false
+        this.cachedKey = ''
       }
       return
     }
+
+    // Build cache key — quantize progress to 2 decimal places
+    let key = `${telegraphs.length}`
+    for (const t of telegraphs) {
+      key += `|${t.x | 0},${t.y | 0},${(t.progress * 100) | 0}`
+    }
+    if (key === this.cachedKey) return
+    this.cachedKey = key
 
     this.graphics.clear()
 
@@ -40,16 +51,9 @@ export class LaserSightRenderer {
       const alpha = 0.15 + t.progress * 0.7
       const width = 1 + t.progress * 1.5
 
-      // Normalize aim direction
-      const adx = t.aimX
-      const ady = t.aimY
-      const len = Math.sqrt(adx * adx + ady * ady)
-      if (len < 0.001) continue
-      const nx = adx / len
-      const ny = ady / len
-
-      const endX = t.x + nx * LASER_MAX_LENGTH
-      const endY = t.y + ny * LASER_MAX_LENGTH
+      // aimX/aimY is already a unit vector (normalized at TELEGRAPH entry)
+      const endX = t.x + t.aimX * LASER_MAX_LENGTH
+      const endY = t.y + t.aimY * LASER_MAX_LENGTH
 
       // Main laser line
       this.graphics

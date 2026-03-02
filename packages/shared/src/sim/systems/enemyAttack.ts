@@ -105,6 +105,7 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
   world.rattlesnakeBites.length = 0
   world.vultureDiveImpacts.length = 0
   world.laserTelegraphs.length = 0
+  world.dustZonesSpawnedThisTick.length = 0
 
   // Fodder projectile cap: track active + spawned-this-tick to prevent overshoot
   let activeBulletCount = bulletQuery(world).length

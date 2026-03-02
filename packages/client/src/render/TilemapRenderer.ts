@@ -10,6 +10,7 @@ import { TileType, TOWN_BUILDINGS, type BuildingProfile } from '@high-noon/share
 import { AssetLoader } from '../assets'
 import { BUILDING_RENDER_SCALE, BUILDING_SPRITE_REGIONS } from '../assets/buildingSpritesheet'
 import { RoofDitherFilter } from './RoofDitherFilter'
+import { CACTUS_FILL } from './MapObstacleRenderer'
 
 /** Lookup building profile by ID */
 const BUILDING_PROFILE_MAP = new Map<string, BuildingProfile>(
@@ -170,7 +171,7 @@ export class TilemapRenderer {
             sprite.tint = 0x110022
             this.animatedTileSprites.push({ sprite, tileType: tile })
           } else if (tile === TileType.CACTUS) {
-            sprite.tint = 0x2d8a4e
+            sprite.tint = CACTUS_FILL
           }
 
           this.container.addChild(sprite)

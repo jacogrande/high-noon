@@ -13,6 +13,7 @@ import { STAGE_1_ENCOUNTER } from './waves'
 import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import { spawnPlayer } from '../prefabs'
 import { dustdevilZoneSystem } from '../systems/dustdevilZone'
+import { enemyAttackSystem } from '../systems/enemyAttack'
 import { hazardTileSystem } from '../systems/hazardTile'
 import { createTilemap, addLayer, setTile, TileType } from '../tilemap'
 import { CACTUS_DPS } from './hazards'
@@ -249,12 +250,12 @@ describe('dustdevilZoneSystem', () => {
     expect(world.dustZones[0]!.remaining).toBeCloseTo(2.0 - TICK_S, 5)
   })
 
-  test('dustZonesSpawnedThisTick is cleared each tick', () => {
+  test('dustZonesSpawnedThisTick is cleared by enemyAttackSystem', () => {
     // Pre-populate with a stale entry from a previous tick
     world.dustZonesSpawnedThisTick.push({ x: 0, y: 0, radius: 10 })
     expect(world.dustZonesSpawnedThisTick).toHaveLength(1)
 
-    dustdevilZoneSystem(world, TICK_S)
+    enemyAttackSystem(world, TICK_S)
 
     expect(world.dustZonesSpawnedThisTick).toHaveLength(0)
   })

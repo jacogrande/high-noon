@@ -15,9 +15,6 @@ import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 const playerQuery = defineQuery([Player, Position, Health])
 
 export function dustdevilZoneSystem(world: GameWorld, dt: number): void {
-  // Clear per-tick spawn events from previous tick
-  world.dustZonesSpawnedThisTick.length = 0
-
   const players = playerQuery(world)
 
   // Tick down each zone and apply damage
