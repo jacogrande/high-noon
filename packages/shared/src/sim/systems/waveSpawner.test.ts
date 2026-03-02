@@ -642,6 +642,107 @@ describe('waveSpawnerSystem', () => {
     })
   })
 
+  describe('Stage 1 full wave progression', () => {
+    test('wave 1 fodder pool contains only Drifters and Knife Drifters', () => {
+      // Verify wave 1 definition (wave 1 auto-clears since it has 0 threats,
+      // so we test the config directly rather than trying to inspect mid-wave)
+      const wave1 = STAGE_1_ENCOUNTER.waves[0]!
+      const types = wave1.fodderPool.map(fp => fp.type)
+      expect(types).toContain(EnemyType.DRIFTER)
+      expect(types).toContain(EnemyType.KNIFE_DRIFTER)
+      expect(types).toHaveLength(2)
+      expect(wave1.threats).toHaveLength(0)
+    })
+
+    test('wave 1 → wave 2 → wave 3 full progression', () => {
+      setEncounter(world, STAGE_1_ENCOUNTER)
+
+      // --- Wave 1 (no threats, auto-clears immediately) ---
+      waveSpawnerSystem(world, 1 / 60)
+      // Wave 1 has 0 threats → threatClearRatio * 0 = 0 kills needed → auto-clears
+      expect(world.encounter!.currentWave).toBe(1)
+
+      // --- Wave 2 (2 Deadeyes as threats, spawnDelay 2s) ---
+      waveSpawnerSystem(world, 2.1) // pass spawn delay
+      expect(world.encounter!.waveActive).toBe(true)
+      expect(world.encounter!.currentWave).toBe(1)
+
+      const wave2Threats = getThreatEids(world)
+      expect(wave2Threats.length).toBe(2)
+      // Threats should be Deadeyes
+      for (const eid of wave2Threats) {
+        expect(Enemy.type[eid]).toBe(EnemyType.DEADEYE)
+      }
+
+      // Kill both Deadeyes (threatClearRatio=1.0)
+      for (const eid of wave2Threats) {
+        killEnemy(world, eid)
+      }
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.currentWave).toBe(2)
+
+      // --- Wave 3 (Deadeye + boss from pool, spawnDelay 3s) ---
+      waveSpawnerSystem(world, 3.1) // pass spawn delay
+      expect(world.encounter!.waveActive).toBe(true)
+      expect(world.encounter!.currentWave).toBe(2)
+
+      const wave3Types = countByType(world)
+      // Should have a boss from the pool [BOOMSTICK, MAD_DOG, DALTON]
+      const bossCount = (wave3Types[EnemyType.BOOMSTICK] ?? 0)
+        + (wave3Types[EnemyType.MAD_DOG] ?? 0)
+        + (wave3Types[EnemyType.DALTON] ?? 0)
+      expect(bossCount).toBeGreaterThanOrEqual(1)
+
+      // Kill all wave 3 threats (Deadeye + boss) to complete encounter
+      const wave3Threats = getThreatEids(world)
+      for (const eid of wave3Threats) {
+        killEnemy(world, eid)
+      }
+      waveSpawnerSystem(world, 1 / 60)
+      expect(world.encounter!.completed).toBe(true)
+    })
+
+    test('wave 2 fodder pool includes Spitter', () => {
+      setEncounter(world, STAGE_1_ENCOUNTER)
+
+      // Clear wave 1
+      waveSpawnerSystem(world, 1 / 60)
+      // Activate wave 2
+      waveSpawnerSystem(world, 2.1)
+      // Let fodder reinforcements run long enough to sample the pool
+      for (let i = 0; i < 30; i++) {
+        waveSpawnerSystem(world, 0.5)
+      }
+
+      const types = countByType(world)
+      // Wave 2 pool has Spitter with weight 2 — should appear with high probability
+      const spitterCount = types[EnemyType.SPITTER] ?? 0
+      expect(spitterCount).toBeGreaterThan(0)
+    })
+
+    test('wave 3 fodder pool includes Dustdevil', () => {
+      setEncounter(world, STAGE_1_ENCOUNTER)
+
+      // Clear wave 1
+      waveSpawnerSystem(world, 1 / 60)
+      // Activate wave 2 and kill threats
+      waveSpawnerSystem(world, 2.1)
+      for (const eid of getThreatEids(world)) killEnemy(world, eid)
+      waveSpawnerSystem(world, 1 / 60)
+
+      // Activate wave 3
+      waveSpawnerSystem(world, 3.1)
+      // Let fodder reinforcements run
+      for (let i = 0; i < 30; i++) {
+        waveSpawnerSystem(world, 0.5)
+      }
+
+      const types = countByType(world)
+      const dustdevilCount = types[EnemyType.DUSTDEVIL] ?? 0
+      expect(dustdevilCount).toBeGreaterThan(0)
+    })
+  })
+
   describe('Stage 4 encounter', () => {
     test('STAGE_4_ENCOUNTER has 1 wave with Old Scratch threat', () => {
       expect(STAGE_4_ENCOUNTER.waves).toHaveLength(1)

@@ -798,6 +798,104 @@ describe('mapGenerator', () => {
     })
   })
 
+  describe('town map validation', () => {
+    test('cactus tiles are present in floor layer', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const floorLayer = map.layers[1]!
+
+      let cactusCount = 0
+      for (const tile of floorLayer.data) {
+        if (tile === TileType.CACTUS) cactusCount++
+      }
+      expect(cactusCount).toBeGreaterThan(0)
+    })
+
+    test('map obstacles do not overlap with buildings', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      if (!map.mapObstacles || !map.placedBuildings) return
+
+      const buildingTiles = new Set<string>()
+      for (const b of map.placedBuildings) {
+        const profile = TOWN_BUILDINGS.find(p => p.id === b.profileId)!
+        for (let dy = 0; dy < profile.heightTiles; dy++) {
+          for (let dx = 0; dx < profile.widthTiles; dx++) {
+            buildingTiles.add(`${b.tileX + dx},${b.tileY + dy}`)
+          }
+        }
+      }
+
+      for (const obs of map.mapObstacles) {
+        for (const tile of obs.tiles) {
+          expect(buildingTiles.has(`${tile.tileX},${tile.tileY}`)).toBe(false)
+        }
+      }
+    })
+
+    test('road tiles connect from top to bottom (main street contiguous)', () => {
+      for (const seed of [1, 42, 9999, 77777, 123456]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        const floorLayer = map.layers[1]!
+
+        // Check that each non-border row has at least one road tile
+        let rowsWithRoad = 0
+        for (let y = 1; y < map.height - 1; y++) {
+          let hasRoad = false
+          for (let x = 1; x < map.width - 1; x++) {
+            if (floorLayer.data[y * map.width + x] === TileType.ROAD) {
+              hasRoad = true
+              break
+            }
+          }
+          if (hasRoad) rowsWithRoad++
+        }
+
+        // Main street runs full height — every interior row should have road tiles
+        const interiorRows = map.height - 2
+        expect(rowsWithRoad).toBe(interiorRows)
+      }
+    })
+
+    test('no walkable tile is completely isolated (0 walkable neighbors)', () => {
+      const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
+      const solidLayer = map.layers[0]!
+
+      // Tiles with 0 walkable neighbors are unreachable pockets
+      // (tiles with 1 neighbor are valid dead-ends near building corners)
+      for (let y = 2; y < map.height - 2; y++) {
+        for (let x = 2; x < map.width - 2; x++) {
+          const idx = y * map.width + x
+          if (solidLayer.data[idx] !== TileType.EMPTY) continue
+
+          let walkableNeighbors = 0
+          const neighbors = [
+            { nx: x - 1, ny: y },
+            { nx: x + 1, ny: y },
+            { nx: x, ny: y - 1 },
+            { nx: x, ny: y + 1 },
+          ]
+          for (const { nx, ny } of neighbors) {
+            if (solidLayer.data[ny * map.width + nx] === TileType.EMPTY) {
+              walkableNeighbors++
+            }
+          }
+
+          // Every walkable tile must have at least 1 walkable neighbor
+          expect(walkableNeighbors).toBeGreaterThanOrEqual(1)
+        }
+      }
+    })
+
+    test('map obstacle count is consistent across seeds', () => {
+      for (const seed of [1, 42, 9999, 9901, 77777]) {
+        const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
+        expect(map.mapObstacles).toBeDefined()
+        expect(map.mapObstacles!.length).toBeGreaterThan(0)
+        // Up to +2 for center landmarks (hitching posts)
+        expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count + 2)
+      }
+    })
+  })
+
   describe('generateMap dispatcher', () => {
     test('routes STAGE_1_MAP_CONFIG to procedural arena', () => {
       const map = generateMap(STAGE_1_MAP_CONFIG, 12345, 0)

@@ -4,12 +4,13 @@ import { createGameWorld, setWorldTilemap, type GameWorld } from '../world'
 import {
   spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
   spawnGoblinBarbarian, spawnGoblinRogue,
+  spawnDustdevil, spawnSpitter, spawnDeadeye,
 } from '../prefabs'
 import { getBoss } from '../content/bosses'
 import { createTestArena } from '../content/maps/testArena'
 import { enemyAttackSystem } from './enemyAttack'
 import {
-  EnemyAI, AIState, AttackConfig, Position, Velocity, Collider,
+  EnemyAI, AIState, AttackConfig, Position, Velocity, Collider, Detection,
   Health, Dead, Bullet, Enemy, EnemyType, EnemyTier, Invincible, Knockback, BossPhase,
 } from '../components'
 import {
@@ -18,6 +19,8 @@ import {
   GOBLIN_ROGUE_ATTACK_DURATION, GOBLIN_ROGUE_MELEE_REACH, GOBLIN_ROGUE_DAMAGE,
   GOBLIN_MELEE_KB_SPEED, GOBLIN_MELEE_KB_DURATION,
   GOBLIN_BARBARIAN_RADIUS, GOBLIN_ROGUE_RADIUS,
+  DUSTDEVIL_ZONE_RADIUS, DUSTDEVIL_ZONE_DURATION, DUSTDEVIL_ZONE_DPS,
+  DEADEYE_TELEGRAPH_DURATION,
 } from '../content/enemies'
 import {
   BOOMSTICK_BULLET_COUNT, BOOMSTICK_RING_BULLET_COUNT,
@@ -26,6 +29,9 @@ import {
 } from '../content/bosses/boomstick'
 import { PLAYER_RADIUS } from '../content/player'
 import { transition } from './enemyAI'
+
+// Side-effect import: registers Stage 1 enemy definitions
+import '../content/enemies'
 
 describe('enemyAttackSystem', () => {
   let world: GameWorld
@@ -521,6 +527,286 @@ describe('enemyAttackSystem', () => {
 
       expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
       expect(countBullets()).toBe(0)
+    })
+  })
+
+  // ── Stage 1 enemy integration tests ────────────────────────────────
+
+  describe('dustdevil attack → zone creation', () => {
+    test('attack spawns exactly one zone at enemy position', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(world.dustZones).toHaveLength(1)
+      expect(world.dustZones[0]!.x).toBe(300)
+      expect(world.dustZones[0]!.y).toBe(400)
+    })
+
+    test('zone has correct radius, duration, and dps', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const zone = world.dustZones[0]!
+      expect(zone.radius).toBe(DUSTDEVIL_ZONE_RADIUS)
+      expect(zone.remaining).toBe(DUSTDEVIL_ZONE_DURATION)
+      expect(zone.dps).toBe(DUSTDEVIL_ZONE_DPS)
+    })
+
+    test('populates dustZonesSpawnedThisTick on attack tick', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(world.dustZonesSpawnedThisTick).toHaveLength(1)
+      expect(world.dustZonesSpawnedThisTick[0]!.x).toBe(300)
+      expect(world.dustZonesSpawnedThisTick[0]!.y).toBe(400)
+      expect(world.dustZonesSpawnedThisTick[0]!.radius).toBe(DUSTDEVIL_ZONE_RADIUS)
+    })
+
+    test('dustZonesSpawnedThisTick is cleared on next tick', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+      expect(world.dustZonesSpawnedThisTick).toHaveLength(1)
+
+      // Next tick clears the per-tick array
+      enemyAttackSystem(world, 1 / 60)
+      expect(world.dustZonesSpawnedThisTick).toHaveLength(0)
+    })
+
+    test('transitions to RECOVERY after attack', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('does not spawn any bullets', () => {
+      const eid = spawnDustdevil(world, 300, 400)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(0)
+    })
+  })
+
+  describe('spitter multi-projectile spread', () => {
+    test('attack spawns exactly 6 bullets', () => {
+      const eid = spawnSpitter(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(6)
+    })
+
+    test('bullets have correct speed and damage', () => {
+      const eid = spawnSpitter(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const bullets = bulletQuery(world)
+      for (const bid of bullets) {
+        const vx = Velocity.x[bid]!
+        const vy = Velocity.y[bid]!
+        const speed = Math.sqrt(vx * vx + vy * vy)
+        expect(speed).toBeCloseTo(130, 0)
+        expect(Bullet.damage[bid]!).toBe(3)
+      }
+    })
+
+    test('bullets fan out across ~1.8 radian spread', () => {
+      // Place spitter east of player for clean angle calculation
+      const eid = spawnSpitter(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const bullets = bulletQuery(world)
+      const angles = bullets.map(bid => Math.atan2(Velocity.y[bid]!, Velocity.x[bid]!))
+      angles.sort((a, b) => a - b)
+
+      // Total spread should be approximately 1.8 radians
+      const totalSpread = angles[angles.length - 1]! - angles[0]!
+      expect(totalSpread).toBeCloseTo(1.8, 1)
+
+      // Bullets should be evenly spaced
+      for (let i = 1; i < angles.length; i++) {
+        const gap = angles[i]! - angles[i - 1]!
+        expect(gap).toBeCloseTo(1.8 / 5, 1) // spread / (count - 1)
+      }
+    })
+
+    test('fodder projectile cap gates spitter firing', () => {
+      const eid = spawnSpitter(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      world.maxProjectiles = 0
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(0)
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('transitions to RECOVERY after attack', () => {
+      const eid = spawnSpitter(world, 100, 100)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+  })
+
+  describe('deadeye snipe attack', () => {
+    test('fires a single fast bullet in locked aim direction', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+
+      // Simulate aim lock during TELEGRAPH
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+
+      transition(eid, AIState.ATTACK)
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(countBullets()).toBe(1)
+      const bid = bulletQuery(world)[0]!
+      const speed = Math.sqrt(Velocity.x[bid]! ** 2 + Velocity.y[bid]! ** 2)
+      expect(speed).toBeCloseTo(650, 0)
+    })
+
+    test('bullet fires at locked aim direction, not current player position', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+
+      // Lock aim east (1, 0) — even though player is northeast
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+
+      transition(eid, AIState.ATTACK)
+      enemyAttackSystem(world, 1 / 60)
+
+      const bid = bulletQuery(world)[0]!
+      // Bullet should go east, not toward the player
+      expect(Velocity.x[bid]!).toBeCloseTo(650, 0)
+      expect(Velocity.y[bid]!).toBeCloseTo(0, 0)
+    })
+
+    test('bullet has correct damage', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      const bid = bulletQuery(world)[0]!
+      expect(Bullet.damage[bid]!).toBe(9)
+    })
+
+    test('aim locks on first tick of TELEGRAPH', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+
+      // Enter TELEGRAPH — stateTimer is 0 on first tick
+      transition(eid, AIState.TELEGRAPH)
+      EnemyAI.stateTimer[eid] = 0
+
+      enemyAttackSystem(world, 1 / 60)
+
+      // Aim should be locked toward the player
+      const dx = Position.x[playerEid]! - Position.x[eid]!
+      const dy = Position.y[playerEid]! - Position.y[eid]!
+      const len = Math.sqrt(dx * dx + dy * dy)
+      expect(AttackConfig.aimX[eid]!).toBeCloseTo(dx / len, 5)
+      expect(AttackConfig.aimY[eid]!).toBeCloseTo(dy / len, 5)
+    })
+
+    test('laser telegraph data populated during TELEGRAPH', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+      AttackConfig.telegraphDuration[eid] = DEADEYE_TELEGRAPH_DURATION
+      transition(eid, AIState.TELEGRAPH)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(world.laserTelegraphs).toHaveLength(1)
+      const laser = world.laserTelegraphs[0]!
+      expect(laser.eid).toBe(eid)
+      expect(laser.x).toBe(Position.x[eid]!)
+      expect(laser.y).toBe(Position.y[eid]!)
+      expect(laser.aimX).toBe(1)
+      expect(laser.aimY).toBe(0)
+      expect(laser.progress).toBeGreaterThanOrEqual(0)
+      expect(laser.progress).toBeLessThanOrEqual(1)
+    })
+
+    test('telegraph duration matches constant', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      // Float32Array truncates 1.1 — use toBeCloseTo for float comparison
+      expect(AttackConfig.telegraphDuration[eid]!).toBeCloseTo(DEADEYE_TELEGRAPH_DURATION, 2)
+      expect(DEADEYE_TELEGRAPH_DURATION).toBe(1.1)
+    })
+
+    test('transitions to RECOVERY after attack', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      EnemyAI.initialDelay[eid] = 0
+      EnemyAI.targetEid[eid] = playerEid
+      AttackConfig.aimX[eid] = 1
+      AttackConfig.aimY[eid] = 0
+      transition(eid, AIState.ATTACK)
+
+      enemyAttackSystem(world, 1 / 60)
+
+      expect(EnemyAI.state[eid]!).toBe(AIState.RECOVERY)
+    })
+
+    test('deadeye has losRequired set', () => {
+      const eid = spawnDeadeye(world, 100, 200)
+      // Detection.losRequired is set to 1 for Deadeye (from enemies.ts definition)
+      expect(Detection.losRequired[eid]).toBe(1)
     })
   })
 })
