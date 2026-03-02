@@ -55,16 +55,18 @@ function drawKnifeDrifter(g: Graphics, color: number): void {
   // Body
   g.circle(0, 0, KNIFE_DRIFTER_RADIUS).fill({ color })
 
-  // Blade wedge extending forward (south by default, rotated by renderer)
+  // Blade wedge extending forward (south by default, rotated by renderer).
+  // Uses lighten(color) so the blade participates in telegraph/damage flashes.
   g.moveTo(-3, KNIFE_DRIFTER_RADIUS - 2)
   g.lineTo(0, KNIFE_DRIFTER_RADIUS + 8)
   g.lineTo(3, KNIFE_DRIFTER_RADIUS - 2)
-  g.fill({ color: 0xcccccc })
+  g.closePath()
+  g.fill({ color: lighten(color, 1.8) })
 
   // Blade edge highlight
   g.moveTo(0, KNIFE_DRIFTER_RADIUS - 1)
   g.lineTo(0, KNIFE_DRIFTER_RADIUS + 7)
-  g.stroke({ color: 0xeeeeee, width: 0.5 })
+  g.stroke({ color: lighten(color, 2.2), width: 0.5 })
 }
 
 // ── Deadeye: diamond + scope line ──────────────────────────────────────
@@ -96,9 +98,11 @@ const SPITTER_RX = 12
 const SPITTER_RY = 10
 
 function drawSpitter(g: Graphics, color: number): void {
-  // Fat oval body (largest silhouette)
-  g.ellipse(0, 0, SPITTER_RX, SPITTER_RY).fill({ color })
-  g.ellipse(0, 0, SPITTER_RX, SPITTER_RY).stroke({ color: darken(color, 0.6), width: 1 })
+  // Fat oval body (largest silhouette). Spitter does NOT rotate — its wide
+  // horizontal shape is its identity. Combine fill+stroke on a single path.
+  g.ellipse(0, 0, SPITTER_RX, SPITTER_RY)
+    .fill({ color })
+    .stroke({ color: darken(color, 0.6), width: 1 })
 
   // Three nubs around the rim (suggest multiple projectile sources)
   const nubColor = lighten(color, 1.3)

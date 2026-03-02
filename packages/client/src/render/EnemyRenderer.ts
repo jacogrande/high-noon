@@ -592,8 +592,12 @@ export class EnemyRenderer {
         renderY += Math.cos(world.tick * 2.1) * 1.5
       }
 
-      // Facing rotation for Stage 1 compound shapes
-      if (isStage1) {
+      // Facing rotation and animation for Stage 1 compound shapes.
+      // Spitter is excluded — its wide horizontal oval IS its identity.
+      let scaleX = 1
+      let scaleY = 1
+
+      if (isStage1 && type !== EnemyType.SPITTER) {
         let facingAngle = Math.PI / 2 // default: south
         if (state === AIState.TELEGRAPH || state === AIState.ATTACK) {
           const targetEid = EnemyAI.targetEid[eid]!
@@ -609,17 +613,21 @@ export class EnemyRenderer {
             facingAngle = Math.atan2(vy, vx) - Math.PI / 2
           }
         }
+
+        // Dustdevil: add continuous spiral spin on top of facing
+        if (type === EnemyType.DUSTDEVIL) {
+          facingAngle += world.tick * 0.1
+        }
+
         this.registry.setRotation(eid, facingAngle)
 
         // Knife Drifter attack animation: blade stretch during attack
         if (type === EnemyType.KNIFE_DRIFTER && state === AIState.ATTACK) {
-          this.registry.setScale(eid, 1.0, 1.3)
+          scaleY = 1.3
         } else if (type === EnemyType.KNIFE_DRIFTER && state === AIState.TELEGRAPH) {
-          // Pulse during telegraph
           const pulse = 1.0 + 0.1 * Math.sin(world.tick * 0.8)
-          this.registry.setScale(eid, pulse, pulse)
-        } else {
-          this.registry.setScale(eid, 1, 1)
+          scaleX = pulse
+          scaleY = pulse
         }
       } else if (type === EnemyType.CHARGER && state === AIState.ATTACK) {
         // Charger attack stretch
@@ -627,21 +635,24 @@ export class EnemyRenderer {
         const aimY = AttackConfig.aimY[eid]!
         const angle = Math.atan2(aimY, aimX)
         this.registry.setRotation(eid, angle)
-        this.registry.setScale(eid, 1.4, 0.7)
-      } else {
+        scaleX = 1.4
+        scaleY = 0.7
+      } else if (!isStage1) {
         this.registry.setRotation(eid, 0)
-        this.registry.setScale(eid, 1, 1)
       }
 
-      // Spawn effect: scale up + white flash over 0.5s
+      // Spawn effect: compose scale on top of animation scale
       const spawnRemaining = this.spawnTimer.get(eid) ?? 0
       if (spawnRemaining > 0) {
         const t = 1 - spawnRemaining / SPAWN_EFFECT_DURATION // 0→1
-        const scale = t * t // ease-in quadratic
-        this.registry.setScale(eid, scale, scale)
+        const ease = t * t // ease-in quadratic
+        scaleX *= ease
+        scaleY *= ease
         color = t < 0.5 ? 0xffffff : color
         this.spawnTimer.set(eid, spawnRemaining - realDt)
       }
+
+      this.registry.setScale(eid, scaleX, scaleY)
 
       this.registry.setPosition(eid, renderX, renderY)
 
