@@ -9,7 +9,7 @@
 import { SeededRng } from '../../../math/rng'
 import { createTilemap, addLayer, setTile, getTile, TileType, type Tilemap } from '../../tilemap'
 import type { MapConfig } from './mapConfig'
-import type { MapObstacle, MapObstacleDef, WeightedObstacleDef } from './mapObstacleDefs'
+import { HITCHING_POST_DEF, type MapObstacle, type MapObstacleDef, type WeightedObstacleDef } from './mapObstacleDefs'
 import { generateCrossroads } from './crossroadsGenerator'
 import { placeTownBuildings, stampObstacle } from './buildingPlacer'
 import { placeHazards, ensureConnectivity } from './hazardPlacer'
@@ -157,6 +157,68 @@ function placeMapObstacles(
   return obstacles
 }
 
+// ── Center landmarks ──────────────────────────────────────────────────
+
+/**
+ * Place hitching posts at the north and south edges of the center clear zone.
+ * These indestructible half-wall landmarks orient the player during the boss
+ * fight and provide light cover without obstructing the arena.
+ */
+function placeCenterLandmarks(
+  map: Tilemap,
+  centerX: number,
+  centerY: number,
+  clearR: number,
+  tileSize: number,
+): void {
+  const obstacles = map.mapObstacles!
+  let nextId = obstacles.length > 0 ? Math.max(...obstacles.map(o => o.id)) + 1 : 1
+  const def = HITCHING_POST_DEF
+  const halfW = Math.floor(def.widthTiles / 2)
+
+  // Place just outside the north and south edges of the clear zone
+  const positions = [
+    { ox: centerX - halfW, oy: centerY - clearR - 2 },  // north
+    { ox: centerX - halfW, oy: centerY + clearR + 1 },  // south
+  ]
+
+  for (const { ox, oy } of positions) {
+    // Verify tiles are clear
+    let fits = true
+    const offsets = def.halfWalls ?? []
+    for (const offset of offsets) {
+      const tx = ox + offset.dx
+      const ty = oy + offset.dy
+      if (tx <= 0 || tx >= map.width - 1 || ty <= 0 || ty >= map.height - 1) { fits = false; break }
+      if (getTile(map, 0, tx, ty) !== TileType.EMPTY) { fits = false; break }
+    }
+    if (!fits) continue
+
+    // Stamp half-wall tiles
+    for (const offset of offsets) {
+      setTile(map, 0, ox + offset.dx, oy + offset.dy, TileType.HALF_WALL)
+    }
+
+    const worldCenterX = (ox + def.widthTiles / 2) * tileSize
+    const worldCenterY = (oy + def.heightTiles / 2) * tileSize
+
+    obstacles.push({
+      id: nextId++,
+      type: def.type,
+      x: worldCenterX,
+      y: worldCenterY,
+      tiles: offsets.map(offset => ({
+        tileX: ox + offset.dx,
+        tileY: oy + offset.dy,
+        tileType: TileType.HALF_WALL,
+      })),
+      jumpable: def.jumpable,
+      widthTiles: def.widthTiles,
+      heightTiles: def.heightTiles,
+    })
+  }
+}
+
 // ── Main orchestrator ─────────────────────────────────────────────────
 
 export function generateArena(config: MapConfig, baseSeed: number, stageIndex: number): Tilemap {
@@ -270,6 +332,13 @@ export function generateArena(config: MapConfig, baseSeed: number, stageIndex: n
       map, rng, config.mapObstacles, centerX, centerY, clearR, crossAlleys, placed,
     )
     map.mapObstacles = mapObstacles
+  }
+
+  // Place center landmarks (hitching posts) for town maps.
+  // Two posts on opposite edges of the center clear zone provide orientation
+  // and light cover for the boss arena.
+  if (buildings && map.mapObstacles) {
+    placeCenterLandmarks(map, centerX, centerY, clearR, tileSize)
   }
 
   for (const hazard of config.hazards) {

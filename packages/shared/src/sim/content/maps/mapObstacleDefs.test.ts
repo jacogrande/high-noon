@@ -13,6 +13,7 @@ import {
   LOW_WALL_DEF,
   FENCE_RAIL_DEF,
   CACTUS_DEF,
+  HITCHING_POST_DEF,
   STAGE_1_OBSTACLE_POOL,
   STAGE_2_OBSTACLE_POOL,
   STAGE_3_OBSTACLE_POOL,
@@ -28,6 +29,7 @@ const ALL_DEFS: MapObstacleDef[] = [
   LOW_WALL_DEF,
   FENCE_RAIL_DEF,
   CACTUS_DEF,
+  HITCHING_POST_DEF,
 ]
 
 describe('mapObstacleDefs', () => {

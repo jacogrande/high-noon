@@ -34,25 +34,59 @@ function filledRect(w: number, h: number): Array<{ dx: number; dy: number }> {
   return walls;
 }
 
+/** Generate a rectangle with the bottom row separated as halfWalls (porch).
+ *  Returns { walls, halfWalls } for a building with a 1-tile porch on the
+ *  south edge — provides half-wall cover at building gaps. */
+function filledRectWithPorch(w: number, h: number): {
+  walls: Array<{ dx: number; dy: number }>;
+  halfWalls: Array<{ dx: number; dy: number }>;
+} {
+  const walls: Array<{ dx: number; dy: number }> = [];
+  const halfWalls: Array<{ dx: number; dy: number }> = [];
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (dy === h - 1) {
+        halfWalls.push({ dx, dy });
+      } else {
+        walls.push({ dx, dy });
+      }
+    }
+  }
+  return { walls, halfWalls };
+}
+
+const _generalStore = filledRectWithPorch(7, 8)
 const GENERAL_STORE: BuildingProfile = {
   id: "general_store",
-  walls: filledRect(7, 8),
+  walls: _generalStore.walls,
+  halfWalls: _generalStore.halfWalls,
   widthTiles: 7,
   heightTiles: 8,
 };
 
+const _sheriff = filledRectWithPorch(5, 5)
 const SHERIFF: BuildingProfile = {
   id: "sheriff",
-  walls: filledRect(5, 5),
+  walls: _sheriff.walls,
+  halfWalls: _sheriff.halfWalls,
   widthTiles: 5,
   heightTiles: 5,
 };
 
+const _saloon = filledRectWithPorch(5, 8)
 const SALOON: BuildingProfile = {
   id: "saloon",
-  walls: filledRect(5, 8),
+  walls: _saloon.walls,
+  halfWalls: _saloon.halfWalls,
   widthTiles: 5,
   heightTiles: 8,
+};
+
+const BANK: BuildingProfile = {
+  id: "bank",
+  ...filledRectWithPorch(5, 5),
+  widthTiles: 5,
+  heightTiles: 5,
 };
 
 const BARBER: BuildingProfile = {
@@ -126,13 +160,6 @@ const WATER_TOWER: BuildingProfile = {
   heightTiles: 2,
   // No interiorFloor — noDither means the interior is never revealed to the player
   noDither: true,
-};
-
-const BANK: BuildingProfile = {
-  id: "bank",
-  walls: filledRect(5, 5),
-  widthTiles: 5,
-  heightTiles: 5,
 };
 
 /** Building profiles for Stage 1 (Town) */

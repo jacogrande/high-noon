@@ -18,7 +18,7 @@ const ALLEY_GAP = 1
 const BORDER_INSET = 1
 const MAX_FRONTAGE_WIDTH = 7
 const MAX_FILLER_WIDTH = 3
-const FRONTAGE_GAP = 1
+const FRONTAGE_GAP = 2
 const BACK_ROW_GAP = 1
 const FAR_LOT_GAP = 1
 
@@ -189,21 +189,38 @@ export function placeTownBuildings(
 
   const unique = regularProfiles.filter(p => UNIQUE_BUILDING_IDS.has(p.id))
   const filler = regularProfiles.filter(p => !UNIQUE_BUILDING_IDS.has(p.id))
-  shuffleInPlace(unique, rng)
 
-  const tallUnique: BuildingProfile[] = []
-  const shortUnique: BuildingProfile[] = []
-  for (const p of unique) {
-    if (p.heightTiles >= 7) tallUnique.push(p)
-    else shortUnique.push(p)
-  }
-
+  // strips: [0]=west frontage, [1]=east frontage, [2]=west back, [3]=east back
   const innerStrips: BuildingProfile[][] = [[], [], [], []]
-  for (let i = 0; i < tallUnique.length; i++) {
-    innerStrips[2 + (i % 2)]!.push(tallUnique[i]!)
-  }
-  for (let i = 0; i < shortUnique.length; i++) {
-    innerStrips[i % 4]!.push(shortUnique[i]!)
+
+  // Enforce building-type-to-position rules:
+  // - Saloon + General Store are the town's "face" → frontage (one per side
+  //   since both are 8 tiles tall and won't both fit on one strip)
+  // - Sheriff + Bank are adjacent (law protects wealth) → same strip
+  // - Barber → wherever there's room
+  const findById = (id: string) => unique.find(p => p.id === id)
+  const saloon = findById('saloon')
+  const generalStore = findById('general_store')
+  const sheriff = findById('sheriff')
+  const bank = findById('bank')
+  const barber = findById('barber')
+
+  // Split the two tall commercial buildings across frontage strips
+  const westFirst = rng.nextInt(2) === 0
+  if (saloon) innerStrips[westFirst ? 0 : 1]!.push(saloon)
+  if (generalStore) innerStrips[westFirst ? 1 : 0]!.push(generalStore)
+
+  // Sheriff + Bank adjacent on the same strip (back row, since frontage
+  // is occupied by the tall commercial buildings)
+  const lawSide = rng.nextInt(2) // 0 = west back row (strip 2), 1 = east (strip 3)
+  if (sheriff) innerStrips[2 + lawSide]!.push(sheriff)
+  if (bank) innerStrips[2 + lawSide]!.push(bank)
+
+  // Barber goes to whichever back row has fewer buildings (frontage strips
+  // are occupied by tall commercial buildings and may not have room)
+  if (barber) {
+    const side = innerStrips[2]!.length <= innerStrips[3]!.length ? 2 : 3
+    innerStrips[side]!.push(barber)
   }
 
   const INNER_FILLER_COUNT = 28

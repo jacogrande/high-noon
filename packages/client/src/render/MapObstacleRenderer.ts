@@ -36,6 +36,10 @@ const FENCE_RAIL_FILL = 0x9b7840
 const FENCE_RAIL_STROKE = 0x6b4c26
 const FENCE_RAIL_POST = 0x7a5c2e
 
+const HITCHING_POST_FILL = 0x8b6833
+const HITCHING_POST_STROKE = 0x5c3d22
+const HITCHING_POST_POST = 0x6b4c26
+
 export const CACTUS_FILL = 0x2d8a4e
 const CACTUS_STROKE = 0x1e6b38
 const CACTUS_ARM = 0x34a05a
@@ -110,6 +114,9 @@ export class MapObstacleRenderer {
           break
         case MapObstacleType.CACTUS:
           this.drawCactus(obs.x, obs.y, w, h)
+          break
+        case MapObstacleType.HITCHING_POST:
+          this.drawHitchingPost(left, top, w, h)
           break
         default: {
           const _exhaustive: never = obs.type
@@ -351,6 +358,28 @@ export class MapObstacleRenderer {
         .circle(cx + 1, cy + dy, 0.8)
         .fill({ color: CACTUS_SPINE, alpha: 0.5 })
     }
+  }
+
+  private drawHitchingPost(x: number, y: number, w: number, h: number): void {
+    const postW = 4
+    const postH = h - 2
+    const beamH = 3
+
+    // Vertical posts at each end
+    this.graphics
+      .roundRect(x + 2, y + 1, postW, postH, 1)
+      .fill({ color: HITCHING_POST_POST })
+      .stroke({ color: HITCHING_POST_STROKE, width: 1 })
+    this.graphics
+      .roundRect(x + w - postW - 2, y + 1, postW, postH, 1)
+      .fill({ color: HITCHING_POST_POST })
+      .stroke({ color: HITCHING_POST_STROKE, width: 1 })
+
+    // Horizontal beam connecting them
+    this.graphics
+      .roundRect(x + 2, y + (h - beamH) / 2, w - 4, beamH, 1)
+      .fill({ color: HITCHING_POST_FILL })
+      .stroke({ color: HITCHING_POST_STROKE, width: 1 })
   }
 
   destroy(): void {

@@ -77,8 +77,8 @@ export const STAGE_1_MAP_CONFIG: MapConfig = {
   },
   hazards: [],
   mapObstacles: {
-    count: 8,
-    minSpacing: 5,
+    count: 14,
+    minSpacing: 4,
     pool: STAGE_1_OBSTACLE_POOL,
   },
 }

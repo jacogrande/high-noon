@@ -694,7 +694,8 @@ describe('mapGenerator', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
       expect(map.mapObstacles).toBeDefined()
       expect(map.mapObstacles!.length).toBeGreaterThan(0)
-      expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count)
+      // +2 for center landmarks (hitching posts) placed on town maps
+      expect(map.mapObstacles!.length).toBeLessThanOrEqual(STAGE_1_MAP_CONFIG.mapObstacles!.count + 2)
     })
 
     test('stage 2 generates map obstacles', () => {

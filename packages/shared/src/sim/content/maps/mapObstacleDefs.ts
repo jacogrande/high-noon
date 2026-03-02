@@ -16,6 +16,7 @@ export const MapObstacleType = {
   LOW_WALL: 4,
   FENCE_RAIL: 5,
   CACTUS: 6,
+  HITCHING_POST: 7,
 } as const
 
 export type MapObstacleTypeValue = (typeof MapObstacleType)[keyof typeof MapObstacleType]
@@ -151,17 +152,30 @@ export const CACTUS_DEF: MapObstacleDef = {
   heightTiles: 1,
 }
 
+export const HITCHING_POST_DEF: MapObstacleDef = {
+  type: MapObstacleType.HITCHING_POST,
+  name: 'Hitching Post',
+  // Indestructible — serves as a persistent center landmark
+  halfWalls: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }],
+  walls: [],
+  jumpable: true,
+  widthTiles: 3,
+  heightTiles: 1,
+}
+
 /** Per-stage weighted obstacle pools */
 export interface WeightedObstacleDef {
   def: MapObstacleDef
   weight: number
 }
 
-/** Stage 1 (Town): crates, barrels, low walls, fence rails, cactuses */
+/** Stage 1 (Town): crates, barrels, low walls, fence rails, cactuses.
+ *  Weights favor destructible cover (crates/barrels) to teach new players
+ *  that the environment is interactive and cover is useful. */
 export const STAGE_1_OBSTACLE_POOL: WeightedObstacleDef[] = [
-  { def: CRATE_DEF, weight: 3 },
-  { def: BARREL_DEF, weight: 2 },
-  { def: LOW_WALL_DEF, weight: 1 },
+  { def: CRATE_DEF, weight: 4 },
+  { def: BARREL_DEF, weight: 3 },
+  { def: LOW_WALL_DEF, weight: 2 },
   { def: FENCE_RAIL_DEF, weight: 2 },
   { def: CACTUS_DEF, weight: 2 },
 ]
@@ -192,6 +206,7 @@ export function isWoodObstacle(type: MapObstacleTypeValue): boolean {
       return true
     case MapObstacleType.BOULDER:
     case MapObstacleType.CACTUS:
+    case MapObstacleType.HITCHING_POST:
       return false
     default: {
       const _exhaustive: never = type
