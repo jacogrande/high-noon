@@ -10,7 +10,11 @@ import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../world'
 import { Player, Position, Collider, Health, Dead, Downed, Invincible, ZPosition } from '../components'
 import { applyDamage } from './applyDamage'
+import { forEachAliveEnemyInRadius } from './damageHelpers'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
+
+/** Enemies take this fraction of the zone's DPS. */
+export const ZONE_ENEMY_DPS_MUL = 0.5
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -50,5 +54,17 @@ export function dustdevilZoneSystem(world: GameWorld, dt: number): void {
         })
       }
     }
+
+    // Damage enemies inside the zone (friendly fire — including the caster).
+    // Uses zone.radius without adding enemy collider radius (unlike the player
+    // path above which uses zone.radius + pr). This is intentional: enemies
+    // need to be center-within the zone to take damage, making zones slightly
+    // less punishing to large enemies as an implicit tier advantage.
+    const enemyDmg = zone.dps * ZONE_ENEMY_DPS_MUL * dt
+    forEachAliveEnemyInRadius(world, zone.x, zone.y, zone.radius, (enemyEid) => {
+      // Airborne enemies are safe
+      if (hasComponent(world, ZPosition, enemyEid) && ZPosition.z[enemyEid]! >= JUMP_AIRBORNE_THRESHOLD) return
+      applyDamage(world, enemyEid, { amount: enemyDmg, setIframes: false, ownerPlayerEid: null })
+    })
   }
 }

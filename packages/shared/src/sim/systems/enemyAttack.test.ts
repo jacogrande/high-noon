@@ -5,6 +5,7 @@ import {
   spawnPlayer, spawnSwarmer, spawnShooter, spawnCharger,
   spawnGoblinBarbarian, spawnGoblinRogue,
   spawnDustdevil, spawnSpitter, spawnDeadeye,
+  spawnDrifter,
 } from '../prefabs'
 import { getBoss } from '../content/bosses'
 import { createTestArena } from '../content/maps/testArena'
@@ -12,6 +13,7 @@ import { enemyAttackSystem } from './enemyAttack'
 import {
   EnemyAI, AIState, AttackConfig, Position, Velocity, Collider, Detection,
   Health, Dead, Bullet, Enemy, EnemyType, EnemyTier, Invincible, Knockback, BossPhase,
+  ZPosition,
 } from '../components'
 import {
   CHARGER_CHARGE_DURATION, CHARGER_CHARGE_SPEED,
@@ -22,6 +24,8 @@ import {
   DUSTDEVIL_ZONE_RADIUS, DUSTDEVIL_ZONE_DURATION, DUSTDEVIL_ZONE_DPS,
   DEADEYE_TELEGRAPH_DURATION,
 } from '../content/enemies'
+import { dustdevilZoneSystem, ZONE_ENEMY_DPS_MUL } from './dustdevilZone'
+import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import {
   BOOMSTICK_BULLET_COUNT, BOOMSTICK_RING_BULLET_COUNT,
   BOOMSTICK_PHASE_3_FAN_BULLETS, BOOMSTICK_PHASE_3_RING_BULLETS,
@@ -806,6 +810,86 @@ describe('enemyAttackSystem', () => {
       const eid = spawnDeadeye(world, 100, 200)
       // Detection.losRequired is set to 1 for Deadeye (from enemies.ts definition)
       expect(Detection.losRequired[eid]).toBe(1)
+    })
+  })
+
+  // ── Dustdevil zone enemy damage ───────────────────────────────────
+
+  describe('dustdevil zone damages enemies', () => {
+    test('enemy inside zone takes 50% DPS damage', () => {
+      // Place a drifter inside a dust zone
+      const enemyEid = spawnDrifter(world, 300, 400)
+      const startHp = Health.current[enemyEid]!
+
+      // Manually create a dust zone at the enemy position
+      world.dustZones.push({
+        x: 300,
+        y: 400,
+        radius: DUSTDEVIL_ZONE_RADIUS,
+        remaining: DUSTDEVIL_ZONE_DURATION,
+        dps: DUSTDEVIL_ZONE_DPS,
+      })
+
+      const dt = 1 / 60
+      dustdevilZoneSystem(world, dt)
+
+      const expectedDmg = DUSTDEVIL_ZONE_DPS * ZONE_ENEMY_DPS_MUL * dt
+      expect(Health.current[enemyEid]!).toBeCloseTo(startHp - expectedDmg, 5)
+    })
+
+    test('enemy outside zone takes no damage', () => {
+      // Place a drifter far from the zone
+      const enemyEid = spawnDrifter(world, 1000, 1000)
+      const startHp = Health.current[enemyEid]!
+
+      world.dustZones.push({
+        x: 300,
+        y: 400,
+        radius: DUSTDEVIL_ZONE_RADIUS,
+        remaining: DUSTDEVIL_ZONE_DURATION,
+        dps: DUSTDEVIL_ZONE_DPS,
+      })
+
+      dustdevilZoneSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]!).toBe(startHp)
+    })
+
+    test('dead enemy is skipped', () => {
+      const enemyEid = spawnDrifter(world, 300, 400)
+      const startHp = Health.current[enemyEid]!
+      addComponent(world, Dead, enemyEid)
+
+      world.dustZones.push({
+        x: 300,
+        y: 400,
+        radius: DUSTDEVIL_ZONE_RADIUS,
+        remaining: DUSTDEVIL_ZONE_DURATION,
+        dps: DUSTDEVIL_ZONE_DPS,
+      })
+
+      dustdevilZoneSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]!).toBe(startHp)
+    })
+
+    test('airborne enemy is skipped', () => {
+      const enemyEid = spawnDrifter(world, 300, 400)
+      addComponent(world, ZPosition, enemyEid)
+      ZPosition.z[enemyEid] = JUMP_AIRBORNE_THRESHOLD + 1
+      const startHp = Health.current[enemyEid]!
+
+      world.dustZones.push({
+        x: 300,
+        y: 400,
+        radius: DUSTDEVIL_ZONE_RADIUS,
+        remaining: DUSTDEVIL_ZONE_DURATION,
+        dps: DUSTDEVIL_ZONE_DPS,
+      })
+
+      dustdevilZoneSystem(world, 1 / 60)
+
+      expect(Health.current[enemyEid]!).toBe(startHp)
     })
   })
 })
