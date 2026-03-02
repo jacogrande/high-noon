@@ -642,7 +642,7 @@ describe('enemyAttackSystem', () => {
     })
 
     test('bullets fan out across ~1.8 radian spread', () => {
-      // Place spitter east of player for clean angle calculation
+      // Spitter northwest of player — bullets point southeast with 1.8-radian spread
       const eid = spawnSpitter(world, 100, 200)
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
@@ -747,9 +747,8 @@ describe('enemyAttackSystem', () => {
       EnemyAI.initialDelay[eid] = 0
       EnemyAI.targetEid[eid] = playerEid
 
-      // Enter TELEGRAPH — stateTimer is 0 on first tick
+      // transition() sets stateTimer=0, which triggers aim lock on first tick
       transition(eid, AIState.TELEGRAPH)
-      EnemyAI.stateTimer[eid] = 0
 
       enemyAttackSystem(world, 1 / 60)
 
@@ -767,7 +766,7 @@ describe('enemyAttackSystem', () => {
       EnemyAI.targetEid[eid] = playerEid
       AttackConfig.aimX[eid] = 1
       AttackConfig.aimY[eid] = 0
-      AttackConfig.telegraphDuration[eid] = DEADEYE_TELEGRAPH_DURATION
+      // telegraphDuration is already set by spawnDeadeye → spawnFromRegistry
       transition(eid, AIState.TELEGRAPH)
 
       enemyAttackSystem(world, 1 / 60)

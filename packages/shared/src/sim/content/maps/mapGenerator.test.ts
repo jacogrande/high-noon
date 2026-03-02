@@ -812,7 +812,8 @@ describe('mapGenerator', () => {
 
     test('map obstacles do not overlap with buildings', () => {
       const map = generateArena(STAGE_1_MAP_CONFIG, 12345, 0)
-      if (!map.mapObstacles || !map.placedBuildings) return
+      expect(map.mapObstacles).toBeDefined()
+      expect(map.placedBuildings).toBeDefined()
 
       const buildingTiles = new Set<string>()
       for (const b of map.placedBuildings) {

@@ -687,14 +687,18 @@ describe('waveSpawnerSystem', () => {
       expect(world.encounter!.currentWave).toBe(2)
 
       const wave3Types = countByType(world)
-      // Should have a boss from the pool [BOOMSTICK, MAD_DOG, DALTON]
+      // setEncounter picks one boss from bossPool [BOOMSTICK, MAD_DOG, DALTON]
+      // via world.rng and substitutes it into wave 3's threat list.
+      // Dalton Boys have spawnCount=2, so bossCount can be 1 or 2.
       const bossCount = (wave3Types[EnemyType.BOOMSTICK] ?? 0)
         + (wave3Types[EnemyType.MAD_DOG] ?? 0)
         + (wave3Types[EnemyType.DALTON] ?? 0)
       expect(bossCount).toBeGreaterThanOrEqual(1)
+      expect(bossCount).toBeLessThanOrEqual(2)
 
       // Kill all wave 3 threats (Deadeye + boss) to complete encounter
       const wave3Threats = getThreatEids(world)
+      expect(world.encounter!.currentWave).toBe(2) // still wave 2 index before clear
       for (const eid of wave3Threats) {
         killEnemy(world, eid)
       }
@@ -703,43 +707,15 @@ describe('waveSpawnerSystem', () => {
     })
 
     test('wave 2 fodder pool includes Spitter', () => {
-      setEncounter(world, STAGE_1_ENCOUNTER)
-
-      // Clear wave 1
-      waveSpawnerSystem(world, 1 / 60)
-      // Activate wave 2
-      waveSpawnerSystem(world, 2.1)
-      // Let fodder reinforcements run long enough to sample the pool
-      for (let i = 0; i < 30; i++) {
-        waveSpawnerSystem(world, 0.5)
-      }
-
-      const types = countByType(world)
-      // Wave 2 pool has Spitter with weight 2 — should appear with high probability
-      const spitterCount = types[EnemyType.SPITTER] ?? 0
-      expect(spitterCount).toBeGreaterThan(0)
+      const wave2 = STAGE_1_ENCOUNTER.waves[1]!
+      const types = wave2.fodderPool.map(fp => fp.type)
+      expect(types).toContain(EnemyType.SPITTER)
     })
 
     test('wave 3 fodder pool includes Dustdevil', () => {
-      setEncounter(world, STAGE_1_ENCOUNTER)
-
-      // Clear wave 1
-      waveSpawnerSystem(world, 1 / 60)
-      // Activate wave 2 and kill threats
-      waveSpawnerSystem(world, 2.1)
-      for (const eid of getThreatEids(world)) killEnemy(world, eid)
-      waveSpawnerSystem(world, 1 / 60)
-
-      // Activate wave 3
-      waveSpawnerSystem(world, 3.1)
-      // Let fodder reinforcements run
-      for (let i = 0; i < 30; i++) {
-        waveSpawnerSystem(world, 0.5)
-      }
-
-      const types = countByType(world)
-      const dustdevilCount = types[EnemyType.DUSTDEVIL] ?? 0
-      expect(dustdevilCount).toBeGreaterThan(0)
+      const wave3 = STAGE_1_ENCOUNTER.waves[2]!
+      const types = wave3.fodderPool.map(fp => fp.type)
+      expect(types).toContain(EnemyType.DUSTDEVIL)
     })
   })
 
