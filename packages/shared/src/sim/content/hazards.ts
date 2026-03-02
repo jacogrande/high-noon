@@ -28,6 +28,9 @@ export const DARKNESS_SPEED_MUL = 0.2
 /** Cactus contact damage per second for grounded entities. */
 export const CACTUS_DPS = 5
 
+/** Road speed multiplier (1.15x = 15% faster). */
+export const ROAD_SPEED_MUL = 1.15
+
 /**
  * Traversal cost for lava in flow-field pathing.
  * Normal walkable tiles cost 1.
@@ -40,6 +43,7 @@ const TILE_PATHFIND_COST: Record<number, number> = {
   [TileType.LAVA]: 10,
   [TileType.MUD]: 3,
   [TileType.BRAMBLE]: 5,
+  [TileType.ROAD]: 0.85,
   [TileType.BRIMSTONE]: 8,
   [TileType.DARKNESS]: 100,
   [TileType.CACTUS]: 3,

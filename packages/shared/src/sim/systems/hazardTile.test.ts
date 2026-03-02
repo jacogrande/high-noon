@@ -5,7 +5,8 @@ import { spawnPlayer } from '../prefabs'
 import { hazardTileSystem } from './hazardTile'
 import { Health, Dead, ZPosition } from '../components'
 import { createTilemap, addLayer, setTile, TileType } from '../tilemap'
-import { LAVA_DPS, BRIMSTONE_DPS, DARKNESS_DPS, DARKNESS_SPEED_MUL } from '../content/hazards'
+import { LAVA_DPS, BRIMSTONE_DPS, DARKNESS_DPS, DARKNESS_SPEED_MUL, ROAD_SPEED_MUL } from '../content/hazards'
+import { getFloorPathfindCost } from '../content/hazards'
 import { JUMP_AIRBORNE_THRESHOLD } from '../content/jump'
 import { TICK_S } from '../step'
 
@@ -201,5 +202,65 @@ describe('hazardTileSystem — darkness', () => {
     hazardTileSystem(world, TICK_S)
 
     expect(Health.current[eid]).toBe(startHp)
+  })
+})
+
+// ── Road speed bonus tests ──────────────────────────────────────────
+
+function createRoadMap() {
+  const map = createTilemap(4, 4, 32)
+  addLayer(map, true)
+  addLayer(map, false)
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      setTile(map, 1, x, y, TileType.FLOOR)
+    }
+  }
+  setTile(map, 1, 1, 1, TileType.ROAD)
+  return map
+}
+
+describe('hazardTileSystem — road', () => {
+  let world: GameWorld
+
+  const roadX = 1 * 32 + 16
+  const roadY = 1 * 32 + 16
+  const floorX = 2 * 32 + 16
+  const floorY = 2 * 32 + 16
+
+  beforeEach(() => {
+    world = createGameWorld(42)
+    setWorldTilemap(world, createRoadMap())
+  })
+
+  test('entity on road gets ROAD_SPEED_MUL', () => {
+    const eid = spawnPlayer(world, roadX, roadY)
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(world.floorSpeedMul.get(eid)).toBe(ROAD_SPEED_MUL)
+  })
+
+  test('entity on road takes no damage', () => {
+    const eid = spawnPlayer(world, roadX, roadY)
+    const startHp = Health.current[eid]!
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(Health.current[eid]).toBe(startHp)
+  })
+
+  test('entity off road has no speed multiplier', () => {
+    const eid = spawnPlayer(world, floorX, floorY)
+
+    hazardTileSystem(world, TICK_S)
+
+    expect(world.floorSpeedMul.has(eid)).toBe(false)
+  })
+
+  test('road pathfind cost is less than floor cost', () => {
+    const roadCost = getFloorPathfindCost(TileType.ROAD)
+    const floorCost = getFloorPathfindCost(TileType.FLOOR)
+    expect(roadCost).toBeLessThan(floorCost)
   })
 })
