@@ -109,6 +109,7 @@ describe('mapObstacleDefs', () => {
     test('fallen tree is wood', () => expect(isWoodObstacle(MapObstacleType.FALLEN_TREE)).toBe(true))
     test('fence rail is wood', () => expect(isWoodObstacle(MapObstacleType.FENCE_RAIL)).toBe(true))
     test('boulder is not wood', () => expect(isWoodObstacle(MapObstacleType.BOULDER)).toBe(false))
+    test('hitching post is not wood', () => expect(isWoodObstacle(MapObstacleType.HITCHING_POST)).toBe(false))
   })
 
   describe('destructibility', () => {

@@ -194,10 +194,12 @@ export function placeTownBuildings(
   const innerStrips: BuildingProfile[][] = [[], [], [], []]
 
   // Enforce building-type-to-position rules:
-  // - Saloon + General Store are the town's "face" → frontage (one per side
-  //   since both are 8 tiles tall and won't both fit on one strip)
-  // - Sheriff + Bank are adjacent (law protects wealth) → same strip
-  // - Barber → wherever there's room
+  // All unique buildings go on back row strips (2/3) which use outerSkipZones
+  // (no center clear zone), providing much more contiguous vertical space
+  // and avoiding cross-alley fragmentation that plagues frontage strips.
+  // - Saloon + General Store → opposite back row strips (visual variety)
+  // - Sheriff + Bank → adjacent on the same back row strip (law protects wealth)
+  // - Barber → whichever back row has fewer buildings
   const findById = (id: string) => unique.find(p => p.id === id)
   const saloon = findById('saloon')
   const generalStore = findById('general_store')
@@ -205,19 +207,19 @@ export function placeTownBuildings(
   const bank = findById('bank')
   const barber = findById('barber')
 
-  // Split the two tall commercial buildings across frontage strips
+  // Tall commercial buildings on opposite back row strips
   const westFirst = rng.nextInt(2) === 0
-  if (saloon) innerStrips[westFirst ? 0 : 1]!.push(saloon)
-  if (generalStore) innerStrips[westFirst ? 1 : 0]!.push(generalStore)
+  if (saloon) innerStrips[westFirst ? 2 : 3]!.push(saloon)
+  if (generalStore) innerStrips[westFirst ? 3 : 2]!.push(generalStore)
 
-  // Sheriff + Bank adjacent on the same strip (back row, since frontage
-  // is occupied by the tall commercial buildings)
-  const lawSide = rng.nextInt(2) // 0 = west back row (strip 2), 1 = east (strip 3)
-  if (sheriff) innerStrips[2 + lawSide]!.push(sheriff)
-  if (bank) innerStrips[2 + lawSide]!.push(bank)
+  // Sheriff + Bank adjacent on same back row strip as one of the commercial
+  // buildings. With BACK_ROW_GAP=1: saloon(8)+sheriff(5)+bank(5)+gaps(2) = 20
+  // tiles, well within the ~28+ usable tiles on a back row strip.
+  const lawSide = westFirst ? 2 : 3  // same side as saloon (shorter width = more room)
+  if (sheriff) innerStrips[lawSide]!.push(sheriff)
+  if (bank) innerStrips[lawSide]!.push(bank)
 
-  // Barber goes to whichever back row has fewer buildings (frontage strips
-  // are occupied by tall commercial buildings and may not have room)
+  // Barber goes to whichever back row has fewer buildings.
   if (barber) {
     const side = innerStrips[2]!.length <= innerStrips[3]!.length ? 2 : 3
     innerStrips[side]!.push(barber)

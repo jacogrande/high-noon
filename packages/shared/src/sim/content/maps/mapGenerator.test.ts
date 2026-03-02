@@ -420,7 +420,7 @@ describe('mapGenerator', () => {
 
     test('all 5 unique buildings placed across multiple seeds', () => {
       const uniqueIds = ['general_store', 'saloon', 'barber', 'sheriff', 'bank']
-      for (const seed of [1, 42, 9999, 77777, 123456]) {
+      for (const seed of [1, 42, 9999, 9901, 77777, 123456]) {
         const map = generateArena(STAGE_1_MAP_CONFIG, seed, 0)
         const ids = new Set(map.placedBuildings!.map(b => b.profileId))
         for (const id of uniqueIds) {

@@ -172,7 +172,8 @@ function placeCenterLandmarks(
   tileSize: number,
 ): void {
   const obstacles = map.mapObstacles!
-  let nextId = obstacles.length > 0 ? Math.max(...obstacles.map(o => o.id)) + 1 : 1
+  // IDs are assigned sequentially from 1 by placeMapObstacles, so length + 1 is correct
+  let nextId = obstacles.length + 1
   const def = HITCHING_POST_DEF
   const halfW = Math.floor(def.widthTiles / 2)
 
