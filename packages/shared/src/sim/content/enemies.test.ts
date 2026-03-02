@@ -15,8 +15,25 @@ import {
   GOBLIN_BARBARIAN_DAMAGE,
   CHARGER_DAMAGE,
 } from './enemies'
+import { EnemyType } from '../components'
+import { getEnemyDef } from './enemyRegistry'
 import { BOOMSTICK_HP, BOOMSTICK_DAMAGE } from './bosses/boomstick'
 import { MAD_DOG_HP, MAD_DOG_SWEEP_DAMAGE } from './bosses/madDog'
+
+// Side-effect import: registers Stage 1 enemy definitions
+import './enemies'
+
+describe('dustdevil silhouette', () => {
+  test('dustdevil has radius 10 (larger than drifter)', () => {
+    const def = getEnemyDef(EnemyType.DUSTDEVIL)!
+    expect(def.radius).toBe(10)
+  })
+
+  test('dustdevil separationRadius is 22', () => {
+    const def = getEnemyDef(EnemyType.DUSTDEVIL)!
+    expect(def.separationRadius).toBe(22)
+  })
+})
 
 describe('combat balance baselines', () => {
   test('player starts at 40 HP', () => {

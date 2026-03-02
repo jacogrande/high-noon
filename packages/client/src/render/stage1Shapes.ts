@@ -55,6 +55,10 @@ function drawKnifeDrifter(g: Graphics, color: number): void {
   // Body
   g.circle(0, 0, KNIFE_DRIFTER_RADIUS).fill({ color })
 
+  // Belt ring — rotation-invariant silhouette cue, always visible
+  g.circle(0, 0, KNIFE_DRIFTER_RADIUS * 0.6)
+    .stroke({ color: darken(color, 0.5), width: 1.5 })
+
   // Blade wedge extending forward (south by default, rotated by renderer).
   // Uses lighten(color) so the blade participates in telegraph/damage flashes.
   g.moveTo(-3, KNIFE_DRIFTER_RADIUS - 2)
@@ -116,7 +120,7 @@ function drawSpitter(g: Graphics, color: number): void {
 
 // ── Dustdevil: circle + spiral ─────────────────────────────────────────
 
-const DUSTDEVIL_RADIUS = 8
+const DUSTDEVIL_RADIUS = 10
 
 function drawDustdevil(g: Graphics, color: number): void {
   // Body

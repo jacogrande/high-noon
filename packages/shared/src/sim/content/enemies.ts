@@ -860,7 +860,7 @@ registerEnemy({
   name: 'Dustdevil',
   tier: EnemyTier.FODDER,
   speed: 68,
-  radius: 8,
+  radius: 10,
   hp: 13,
   budgetCost: 2,
   dropChance: 0.02,
@@ -873,7 +873,7 @@ registerEnemy({
   damage: 0,
   attackStyle: 'custom',
   preferredRange: 0,
-  separationRadius: 18,
+  separationRadius: 22,
   initialDelayMin: 0.3,
   initialDelayMax: 0.7,
 })
