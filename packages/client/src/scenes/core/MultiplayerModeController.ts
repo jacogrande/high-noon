@@ -285,7 +285,13 @@ export class MultiplayerModeController implements SceneModeController {
     this.camera = new Camera()
     this.camera.setViewport(INTERNAL_WIDTH / WORLD_SCALE, INTERNAL_HEIGHT / WORLD_SCALE)
     const bounds = getPlayableBoundsFromTilemap(tilemap)
-    this.camera.setBounds(bounds)
+    const pad = tilemap.tileSize
+    this.camera.setBounds({
+      minX: bounds.minX - pad,
+      minY: bounds.minY - pad,
+      maxX: bounds.maxX + pad,
+      maxY: bounds.maxY + pad,
+    })
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(tilemap)
     this.camera.snapTo(centerX, centerY)
     this.renderPause = new HitStop()

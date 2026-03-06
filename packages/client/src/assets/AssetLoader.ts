@@ -59,7 +59,7 @@ const WEAPON_SPRITES: Record<string, string> = {
   pickaxe: "/assets/sprites/weapons/pickaxe.png",
 };
 
-import { ENEMY_SPRITES } from '../render/enemyRenderDefs';
+import { ENEMY_SPRITES, CUSTOM_SHEET_ENEMIES } from '../render/enemyRenderDefs';
 
 /** Item icon manifest: itemKey → path */
 const ITEM_SPRITES: Record<string, string> = {
@@ -314,6 +314,10 @@ export class AssetLoader {
       }
       baseTexture.source.scaleMode = "nearest";
 
+      // Custom sheet layouts (e.g., sprite-test) don't match the standard
+      // anim-state × direction grid — handle them separately below.
+      if (CUSTOM_SHEET_ENEMIES.has(enemyId)) continue;
+
       for (const animState of ENEMY_ANIM_STATES) {
         const info = ENEMY_SPRITE_INFO[animState];
         for (const dir of ENEMY_SPRITE_DIRS) {
@@ -334,6 +338,33 @@ export class AssetLoader {
           }
         }
       }
+    }
+
+    // Slice custom-layout sprite sheets.
+    // These are simple grids of 16×16 idle-only frames.
+    // Register frames as idle/walk for all directions so getEnemyTexture works.
+    for (const enemyId of CUSTOM_SHEET_ENEMIES) {
+      const baseTexture = loaded[`enemy_${enemyId}`] as Texture;
+      if (!baseTexture) continue;
+      baseTexture.source.scaleMode = "nearest";
+
+      const CELL = 16;
+      const cols = Math.round(baseTexture.width / CELL);
+      const rows = Math.round(baseTexture.height / CELL);
+
+      let frameIdx = 0;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const rect = new Rectangle(col * CELL, row * CELL, CELL, CELL);
+          const subTexture = new Texture({ source: baseTexture.source, frame: rect });
+          for (const dir of ENEMY_SPRITE_DIRS) {
+            this.enemyTextures.set(`${enemyId}_idle_${dir}_${frameIdx}`, subTexture);
+            this.enemyTextures.set(`${enemyId}_walk_${dir}_${frameIdx}`, subTexture);
+          }
+          frameIdx++;
+        }
+      }
+      console.log(`[AssetLoader] Custom sheet '${enemyId}' sliced: ${frameIdx} frames (${CELL}×${CELL}px cells)`);
     }
 
     console.log(

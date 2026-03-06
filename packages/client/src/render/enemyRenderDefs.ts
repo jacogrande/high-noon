@@ -57,8 +57,14 @@ export const ENEMY_COLORS: Record<number, number> = {
 // Sprite IDs
 // ---------------------------------------------------------------------------
 
+/** Sprite IDs that use a non-standard sheet layout and need custom slicing. */
+export const CUSTOM_SHEET_ENEMIES = new Set(['bandit-test'])
+
 /** Sprite sheet ID per enemy type (undefined = circle fallback) */
 export const ENEMY_SPRITE_ID: Partial<Record<number, string>> = {
+  // Stage 1 — bandit sprite experiment (override vector shape)
+  [EnemyType.DRIFTER]: 'bandit-test',
+
   // Regular enemies
   [EnemyType.SWARMER]: 'swarmer',
   [EnemyType.GRUNT]: 'grunt',
@@ -108,7 +114,7 @@ export const ENEMY_SPRITE_SCALE: Partial<Record<number, number>> = {
   [EnemyType.COYOTE]: 1.5,
 
   // Stage 1
-  [EnemyType.DRIFTER]: 1.5,
+  [EnemyType.DRIFTER]: 2, // bandit-test: 16px cells × scale 2 = 32 world px = 16 rendered px
   [EnemyType.KNIFE_DRIFTER]: 1.5,
   [EnemyType.DEADEYE]: 2,
   [EnemyType.SPITTER]: 2,

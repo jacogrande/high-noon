@@ -21,7 +21,15 @@ export function refreshTilemap(
 ): void {
   tilemapRenderer.render(tilemap)
   const bounds = getPlayableBoundsFromTilemap(tilemap)
-  camera.setBounds(bounds)
+  // Expand camera bounds by one tile so border walls are always visible
+  // and the player has screen-space margin at map edges.
+  const pad = tilemap.tileSize
+  camera.setBounds({
+    minX: bounds.minX - pad,
+    minY: bounds.minY - pad,
+    maxX: bounds.maxX + pad,
+    maxY: bounds.maxY + pad,
+  })
   const center = getArenaCenterFromTilemap(tilemap)
   camera.snapTo(center.x, center.y)
   lightingSystem.clearStaticLights()
