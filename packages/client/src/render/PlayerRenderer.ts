@@ -88,6 +88,13 @@ interface PlayerVisuals {
   reviveRing: Graphics | null
 }
 
+interface RemotePlayerRenderState {
+  x: number
+  y: number
+  z: number
+  aimAngle: number
+}
+
 // Define query for player entities with rendering components
 const playerRenderQuery = defineQuery([Player, Position, Collider])
 const playerPositionQuery = defineQuery([Player, Position])
@@ -101,6 +108,8 @@ export class PlayerRenderer {
   private readonly activeEntities = new Set<number>()
   private readonly renderPositionOverrides = new Map<number, { x: number; y: number }>()
   private playerEntity: number | null = null
+  private remoteRenderTick: number | null = null
+  private remoteRenderStates: ReadonlyMap<number, RemotePlayerRenderState> | null = null
 
   /** Set to identify the local player for visual differentiation. */
   localPlayerEid: number | null = null
@@ -262,6 +271,11 @@ export class PlayerRenderer {
     this.renderPositionOverrides.delete(eid)
   }
 
+  setRemoteRenderState(states: ReadonlyMap<number, RemotePlayerRenderState> | null, tick: number | null): void {
+    this.remoteRenderStates = states
+    this.remoteRenderTick = tick
+  }
+
   /**
    * Update player sprite positions with interpolation.
    * Also updates visual appearance based on player state.
@@ -272,6 +286,7 @@ export class PlayerRenderer {
     for (const eid of entities) {
       const visuals = this.players.get(eid)
       if (!visuals) continue
+      const remoteState = this.remoteRenderStates?.get(eid)
 
       const weapon = this.syncWeaponVisual(world, eid, visuals)
       const weaponScale = getWeaponScale(weapon)
@@ -281,13 +296,17 @@ export class PlayerRenderer {
       const override = this.renderPositionOverrides.get(eid)
       const renderX = override
         ? override.x
-        : Position.prevX[eid]! + (Position.x[eid]! - Position.prevX[eid]!) * alpha
+        : remoteState
+          ? remoteState.x
+          : Position.prevX[eid]! + (Position.x[eid]! - Position.prevX[eid]!) * alpha
       const renderY = override
         ? override.y
-        : Position.prevY[eid]! + (Position.y[eid]! - Position.prevY[eid]!) * alpha
+        : remoteState
+          ? remoteState.y
+          : Position.prevY[eid]! + (Position.y[eid]! - Position.prevY[eid]!) * alpha
 
       container.position.set(renderX, renderY)
-      const z = hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0
+      const z = remoteState?.z ?? (hasComponent(world, ZPosition, eid) ? ZPosition.z[eid]! : 0)
       const jumpRatio = Math.min(1, Math.max(0, z / JUMP_HEIGHT))
       shadow.scale.set(
         SHADOW_MIN_SCALE + (1 - SHADOW_MIN_SCALE) * (1 - jumpRatio),
@@ -299,7 +318,7 @@ export class PlayerRenderer {
 
       // Determine animation state and direction
       const playerState = PlayerState.state[eid]!
-      const aimAngle = Player.aimAngle[eid]!
+      const aimAngle = remoteState?.aimAngle ?? Player.aimAngle[eid]!
       const isRolling = hasComponent(world, Roll, eid) || playerState === PlayerStateType.ROLLING
       const isInvincible = hasComponent(world, Invincible, eid)
       const isDead = hasComponent(world, Dead, eid)
@@ -346,7 +365,7 @@ export class PlayerRenderer {
       } else {
         const tick = this.localPlayerEid !== null && eid === this.localPlayerEid
           ? this.localPlayerTick
-          : world.tick
+          : (remoteState ? (this.remoteRenderTick ?? world.tick) : world.tick)
         frame = getAnimationFrame(animState, tick)
       }
 
@@ -416,7 +435,7 @@ export class PlayerRenderer {
       } else if (!isDead && hasComponent(world, Health, eid) && Health.iframes[eid]! > 0) {
         const flashTick = this.localPlayerEid !== null && eid === this.localPlayerEid
           ? this.localPlayerTick
-          : world.tick
+          : (remoteState ? (this.remoteRenderTick ?? world.tick) : world.tick)
         const flash = Math.floor(flashTick / 3) % 2 === 0
         bodySprite.tint = flash ? 0xFF4444 : baseTint
         weaponSprite.tint = flash ? 0xFF4444 : baseTint
@@ -589,6 +608,8 @@ export class PlayerRenderer {
     this.players.clear()
     this.activeEntities.clear()
     this.renderPositionOverrides.clear()
+    this.remoteRenderStates = null
+    this.remoteRenderTick = null
     this.playerEntity = null
   }
 }

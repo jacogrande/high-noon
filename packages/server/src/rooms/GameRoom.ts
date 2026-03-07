@@ -310,6 +310,29 @@ function generateRoomCode(): string {
   return code
 }
 
+interface SharedHudState {
+  goldCollected: number
+  killCount: number
+  shovelCount: number
+  waveNumber: number
+  totalWaves: number
+  waveStatus: HudData['waveStatus']
+  stageNumber: number
+  totalStages: number
+  stageStatus: HudData['stageStatus']
+  narrativeThreadId: string | null
+  narrativeThreadName: string | null
+  campNarrativeLine: string | null
+  resolutionText: string | null
+  runIntroTitle: string | null
+  runIntroText: string | null
+  runIntroSequence: number
+  objective: HudData['objective']
+  campVisitorBase: Omit<NonNullable<HudData['campVisitor']>, 'modOffers'> | null
+  draft: HudData['draft']
+  boss: HudData['boss']
+}
+
 export class GameRoom extends Room<GameRoomState> {
   override maxClients = MAX_PLAYERS
 
@@ -351,6 +374,8 @@ export class GameRoom extends Room<GameRoomState> {
   private isQuickPlay = false
   /** Session ID of the room creator (host). Used to gate lobby config changes. */
   private ownerSessionId = ''
+  private readonly lastHudPayloadBySession = new Map<string, string>()
+  private lastInteractablesPayloadJson: string | null = null
   private activeVote: {
     voteId: string
     targetSessionId: string
@@ -398,7 +423,7 @@ export class GameRoom extends Room<GameRoomState> {
         throw new Error('Invalid room code')
       }
     }
-    // Reject new joins once the room is locked (Quick Play game started)
+    // Reject new joins once the match has locked the room.
     if (this.locked) {
       throw new Error('Game already in progress')
     }
@@ -892,6 +917,11 @@ export class GameRoom extends Room<GameRoomState> {
     this.state.players.delete(client.sessionId)
     this.slots.delete(client.sessionId)
     this.campReadySessions.delete(client.sessionId)
+    this.lastHudPayloadBySession.delete(client.sessionId)
+
+    if (this.ownerSessionId === client.sessionId) {
+      this.ownerSessionId = this.slots.keys().next().value ?? ''
+    }
 
     // Cancel active vote if the target leaves
     if (this.activeVote && this.activeVote.targetSessionId === client.sessionId) {
@@ -935,6 +965,8 @@ export class GameRoom extends Room<GameRoomState> {
     this.bulletNetIdByEid.clear()
     this.nextBulletNetId = 1
     this.campReadySessions.clear()
+    this.lastHudPayloadBySession.clear()
+    this.lastInteractablesPayloadJson = null
     if (this.activeVote) {
       clearTimeout(this.activeVote.timer)
       this.activeVote = null
@@ -1123,8 +1155,8 @@ export class GameRoom extends Room<GameRoomState> {
 
     if (!someoneReady) return
 
-    // Lock Quick Play rooms BEFORE phase transition so the matcher sees it immediately
-    if (this.isQuickPlay) {
+    // Lock the room before phase transition so late joins are blocked consistently.
+    if (!this.locked) {
       this.lock()
     }
     this.state.phase = 'playing'
@@ -1135,6 +1167,8 @@ export class GameRoom extends Room<GameRoomState> {
     this.wasCampTransition = false
     this.runCompleteSent = false
     this.runStartedAtMs = Date.now()
+    this.lastHudPayloadBySession.clear()
+    this.lastInteractablesPayloadJson = null
     this.broadcastPlayerRoster()
     this.broadcastGameConfig()
     console.log('[GameRoom] Phase → playing')
@@ -1730,13 +1764,140 @@ export class GameRoom extends Room<GameRoomState> {
     this.tickTimingSamples.length = 0
   }
 
-  /** Build the full HUD payload for a single player slot. */
-  private buildHudForSlot(slot: PlayerSlot): HudData {
-    const eid = slot.eid
-    const state = getUpgradeStateForPlayer(this.world, eid)
+  private buildSharedHudState(): SharedHudState {
     const enc = this.world.encounter
     const run = this.world.run
+    const stageNumber = run ? run.currentStage + 1 : 0
+    const stageStatus: HudData['stageStatus'] = run
+      ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition === 'looting' ? 'looting' : run.transition !== 'none' ? 'clearing' : 'active')
+      : 'none'
+    const narrativeThreadId = this.world.narrative?.threadId ?? null
 
+    let objective: HudData['objective'] = null
+    const obj = this.world.objective
+    if (obj) {
+      const baseObjective = {
+        type: obj.type,
+        description: obj.description,
+        status: obj.status,
+        progress: obj.type === 'protect'
+          ? (obj.targetEids.length > 0
+              ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
+              : 1)
+          : obj.type === 'duel'
+            ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
+                ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
+                : 0)
+            : obj.escapedCount / (obj.escapeThreshold || 1),
+      }
+      objective = obj.type === 'duel'
+        ? { ...baseObjective, forfeitTimer: obj.forfeitTimer }
+        : baseObjective
+    }
+
+    let boss: HudData['boss'] = null
+    const bosses = bossQuery(this.world)
+    if (bosses.length > 0) {
+      let totalHP = 0
+      let totalMaxHP = 0
+      let bossName = 'BOSS'
+      let anyAlive = false
+      for (const beid of bosses) {
+        totalMaxHP += Health.max[beid]!
+        const hp = Health.current[beid]!
+        if (hp > 0) {
+          anyAlive = true
+          totalHP += hp
+        }
+        bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
+      }
+      if (anyAlive) {
+        boss = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
+      }
+    }
+
+    const cv = this.world.campVisitor
+    const campVisitorBase: SharedHudState['campVisitorBase'] = cv
+      ? (() => {
+          const vDef = getVisitorDef(cv.visitorId)
+          return {
+            visitorId: cv.visitorId,
+            visitorName: vDef?.name ?? 'Visitor',
+            greeting: cv.greeting,
+            offers: cv.offers.map((offer) => {
+              const itemDef = getItemDef(offer.itemId)
+              return {
+                itemId: offer.itemId,
+                itemName: itemDef?.name ?? '???',
+                itemDescription: itemDef?.description ?? '',
+                rarity: itemDef?.rarity ?? 'brass',
+                price: offer.price,
+                sold: offer.sold,
+                downside: itemDef?.downside,
+              }
+            }),
+          }
+        })()
+      : null
+
+    const ds = this.world.draftState
+    let draft: HudData['draft'] = null
+    if (ds) {
+      const playerNames: Record<number, string> = {}
+      for (const [sid, slot] of this.slots) {
+        const meta = this.state.players.get(sid)
+        playerNames[slot.eid] = meta?.name ?? sid.slice(0, 8)
+      }
+      draft = {
+        phase: ds.phase,
+        offers: ds.offers.map((offer) => ({
+          itemId: offer.itemId,
+          name: offer.name,
+          description: offer.description,
+          rarity: offer.rarity,
+          poolIndex: offer.poolIndex,
+          pickedBy: offer.pickedBy,
+          downside: offer.downside,
+        })),
+        currentPickerEid: ds.pickOrder[ds.currentPickIndex] ?? -1,
+        pickTimer: ds.pickTimer,
+        picksCompleted: ds.picksCompleted,
+        totalPicks: ds.totalPicks,
+        pickOrder: ds.pickOrder,
+        playerNames,
+      }
+    }
+
+    return {
+      goldCollected: this.world.goldCollected,
+      killCount: this.world.killCount,
+      shovelCount: this.world.shovelCount,
+      waveNumber: enc ? enc.currentWave + 1 : 0,
+      totalWaves: enc ? enc.definition.waves.length : 0,
+      waveStatus: enc
+        ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
+        : 'none',
+      stageNumber,
+      totalStages: run ? run.totalStages : 0,
+      stageStatus,
+      narrativeThreadId,
+      narrativeThreadName: narrativeThreadId ? (getThread(narrativeThreadId)?.name ?? null) : null,
+      campNarrativeLine: this.world.campNarrativeLine,
+      resolutionText: this.world.resolutionText,
+      runIntroTitle: this.world.runIntroTitle,
+      runIntroText: this.world.runIntroText,
+      runIntroSequence: this.world.runIntroSequence,
+      objective,
+      campVisitorBase,
+      draft,
+      boss,
+    }
+  }
+
+  /** Build the full HUD payload for a single player slot. */
+  private buildHudForSlot(slot: PlayerSlot, shared: SharedHudState): HudData {
+    const eid = slot.eid
+    const state = getUpgradeStateForPlayer(this.world, eid)
     const hasShowdown = hasComponent(this.world, Showdown, eid)
     const hasCylinder = hasComponent(this.world, Cylinder, eid)
     const abilityHud = deriveAbilityHudState(
@@ -1761,125 +1922,37 @@ export class GameRoom extends Room<GameRoomState> {
     const xpForCurrent = LEVEL_THRESHOLDS[state.level] ?? 0
     const xpForNext = state.level < MAX_LEVEL ? LEVEL_THRESHOLDS[state.level + 1]! : xpForCurrent
 
-    // Build items array from player's inventory
     const items: HudData['items'] = []
     for (const [itemId, stacks] of state.items) {
       const def = getItemDef(itemId)
       if (def) {
-        items.push({ itemId, key: def.key, name: def.name, description: def.description, rarity: def.rarity, stacks, downside: def.downside })
+        items.push({
+          itemId,
+          key: def.key,
+          name: def.name,
+          description: def.description,
+          rarity: def.rarity,
+          stacks,
+          downside: def.downside,
+        })
       }
     }
 
-    const feedbackDesc = this.world.interactionFeedbackByPlayer.get(eid)?.description ?? ''
-
-    // Camp visitor data (per-player mod offers)
-    const cv = this.world.campVisitor
-    const campVisitorHud: HudData['campVisitor'] = cv
-      ? (() => {
-          const vDef = getVisitorDef(cv.visitorId)
-          return {
-            visitorId: cv.visitorId,
-            visitorName: vDef?.name ?? 'Visitor',
-            greeting: cv.greeting,
-            offers: cv.offers.map(o => {
-              const oDef = getItemDef(o.itemId)
-              return {
-                itemId: o.itemId,
-                itemName: oDef?.name ?? '???',
-                itemDescription: oDef?.description ?? '',
-                rarity: oDef?.rarity ?? 'brass',
-                price: o.price,
-                sold: o.sold,
-                downside: oDef?.downside,
-              }
-            }),
-            modOffers: (cv.modOffersByPlayer.get(eid) ?? cv.modOffers).map(mo => {
-              const mDef = getWeaponModDef(mo.modId)
-              return {
-                modId: mo.modId,
-                modName: mDef?.name ?? '???',
-                modDescription: mDef?.description ?? '',
-                taken: mo.taken,
-                flavor: mDef?.flavor,
-              }
-            }),
-          }
-        })()
+    const campVisitor: HudData['campVisitor'] = shared.campVisitorBase
+      ? {
+          ...shared.campVisitorBase,
+          modOffers: (this.world.campVisitor?.modOffersByPlayer.get(eid) ?? this.world.campVisitor?.modOffers ?? []).map((offer) => {
+            const modDef = getWeaponModDef(offer.modId)
+            return {
+              modId: offer.modId,
+              modName: modDef?.name ?? '???',
+              modDescription: modDef?.description ?? '',
+              taken: offer.taken,
+              flavor: modDef?.flavor,
+            }
+          }),
+        }
       : null
-
-    // Objective data
-    const obj = this.world.objective
-    let objectiveHud: HudData['objective'] = null
-    if (obj) {
-      const baseObj = {
-        type: obj.type,
-        description: obj.description,
-        status: obj.status,
-        progress: obj.type === 'protect'
-          ? (obj.targetEids.length > 0
-              ? Health.current[obj.targetEids[0]!]! / (Health.max[obj.targetEids[0]!]! || 1)
-              : 1)
-          : obj.type === 'duel'
-            ? (obj.duelistEid && Health.max[obj.duelistEid]! > 0
-                ? Health.current[obj.duelistEid]! / Health.max[obj.duelistEid]!
-                : 0)
-            : obj.escapedCount / (obj.escapeThreshold || 1),
-      }
-      objectiveHud = obj.type === 'duel'
-        ? { ...baseObj, forfeitTimer: obj.forfeitTimer }
-        : baseObj
-    }
-
-    // Boss HP bar — aggregate across all boss entities
-    let bossHud: HudData['boss'] = null
-    const bosses = bossQuery(this.world)
-    if (bosses.length > 0) {
-      let totalHP = 0, totalMaxHP = 0, bossName = 'BOSS', anyAlive = false
-      for (const beid of bosses) {
-        totalMaxHP += Health.max[beid]!
-        const hp = Health.current[beid]!
-        if (hp > 0) { anyAlive = true; totalHP += hp }
-        bossName = getBoss(Enemy.type[beid]!)?.displayName ?? bossName
-      }
-      if (anyAlive) {
-        bossHud = { name: bossName, hp: totalHP, maxHP: totalMaxHP }
-      }
-    }
-
-    // Draft-pick state
-    const ds = this.world.draftState
-    let draftHud: HudData['draft'] = null
-    if (ds) {
-      const draftPlayerNames: Record<number, string> = {}
-      for (const [sid, s] of this.slots) {
-        const meta = this.state.players.get(sid)
-        draftPlayerNames[s.eid] = meta?.name ?? sid.slice(0, 8)
-      }
-      draftHud = {
-        phase: ds.phase,
-        offers: ds.offers.map(o => ({
-          itemId: o.itemId,
-          name: o.name,
-          description: o.description,
-          rarity: o.rarity,
-          poolIndex: o.poolIndex,
-          pickedBy: o.pickedBy,
-          downside: o.downside,
-        })),
-        currentPickerEid: ds.pickOrder[ds.currentPickIndex] ?? -1,
-        pickTimer: ds.pickTimer,
-        picksCompleted: ds.picksCompleted,
-        totalPicks: ds.totalPicks,
-        pickOrder: ds.pickOrder,
-        playerNames: draftPlayerNames,
-      }
-    }
-
-    const stageNumber = run ? run.currentStage + 1 : 0
-    const stageStatus: HudData['stageStatus'] = run
-      ? (run.completed ? 'completed' : run.transition === 'camp' ? 'camp' : run.transition === 'looting' ? 'looting' : run.transition !== 'none' ? 'clearing' : 'active')
-      : 'none'
-    const narrativeThreadId = this.world.narrative?.threadId ?? null
 
     return {
       characterId: slot.characterId,
@@ -1897,41 +1970,50 @@ export class GameRoom extends Room<GameRoomState> {
       ...abilityHud,
       xp: state.xp,
       level: state.level,
-      goldCollected: this.world.goldCollected,
-      killCount: this.world.killCount,
-      shovelCount: this.world.shovelCount,
+      goldCollected: shared.goldCollected,
+      killCount: shared.killCount,
+      shovelCount: shared.shovelCount,
       interactionPrompt: this.world.interactionPromptByPlayer.get(eid) ?? null,
-      interactionFeedbackDescription: feedbackDesc,
+      interactionFeedbackDescription: this.world.interactionFeedbackByPlayer.get(eid)?.description ?? '',
       pendingPoints: state.pendingPoints,
       xpForCurrentLevel: xpForCurrent,
       xpForNextLevel: xpForNext,
-      waveNumber: enc ? enc.currentWave + 1 : 0,
-      totalWaves: enc ? enc.definition.waves.length : 0,
-      waveStatus: enc
-        ? (enc.completed ? 'completed' : enc.waveActive ? 'active' : 'delay')
-        : 'none',
-      stageNumber,
-      totalStages: run ? run.totalStages : 0,
-      stageStatus,
-      narrativeThreadId,
-      narrativeThreadName: narrativeThreadId ? (getThread(narrativeThreadId)?.name ?? null) : null,
-      campNarrativeLine: this.world.campNarrativeLine,
-      resolutionText: this.world.resolutionText,
-      runIntroTitle: this.world.runIntroTitle,
-      runIntroText: this.world.runIntroText,
-      runIntroSequence: this.world.runIntroSequence,
+      waveNumber: shared.waveNumber,
+      totalWaves: shared.totalWaves,
+      waveStatus: shared.waveStatus,
+      stageNumber: shared.stageNumber,
+      totalStages: shared.totalStages,
+      stageStatus: shared.stageStatus,
+      narrativeThreadId: shared.narrativeThreadId,
+      narrativeThreadName: shared.narrativeThreadName,
+      campNarrativeLine: shared.campNarrativeLine,
+      resolutionText: shared.resolutionText,
+      runIntroTitle: shared.runIntroTitle,
+      runIntroText: shared.runIntroText,
+      runIntroSequence: shared.runIntroSequence,
       items,
       hasFoolsErrand: (state.items.get(FOOLS_ERRAND_ID) ?? 0) > 0,
-      objective: objectiveHud,
-      campVisitor: campVisitorHud,
-      draft: draftHud,
-      boss: bossHud,
+      objective: shared.objective,
+      campVisitor,
+      draft: shared.draft,
+      boss: shared.boss,
     }
   }
 
+  private sendHudPayload(slot: PlayerSlot, payload: HudData, force = false): void {
+    const sessionId = slot.client.sessionId
+    const serialized = JSON.stringify(payload)
+    if (!force && this.lastHudPayloadBySession.get(sessionId) === serialized) {
+      return
+    }
+    slot.client.send('hud', payload)
+    this.lastHudPayloadBySession.set(sessionId, serialized)
+  }
+
   private sendHudUpdates() {
+    const shared = this.buildSharedHudState()
     for (const [, slot] of this.slots) {
-      slot.client.send('hud', this.buildHudForSlot(slot))
+      this.sendHudPayload(slot, this.buildHudForSlot(slot, shared))
     }
   }
 
@@ -1980,6 +2062,11 @@ export class GameRoom extends Room<GameRoomState> {
 
   private sendInteractablesUpdates() {
     const payload = this.buildInteractablesPayload()
+    const serialized = JSON.stringify(payload)
+    if (serialized === this.lastInteractablesPayloadJson) {
+      return
+    }
+    this.lastInteractablesPayloadJson = serialized
     for (const [, slot] of this.slots) {
       slot.client.send('interactables', payload)
     }
@@ -2007,12 +2094,14 @@ export class GameRoom extends Room<GameRoomState> {
 
   /** Send HUD to a single client (used on reconnect). */
   private sendHudToClient(slot: PlayerSlot): void {
-    slot.client.send('hud', this.buildHudForSlot(slot))
+    const shared = this.buildSharedHudState()
+    this.sendHudPayload(slot, this.buildHudForSlot(slot, shared), true)
   }
 
   /** Send interactables to a single client (used on reconnect). */
   private sendInteractablesToClient(client: Client): void {
-    client.send('interactables', this.buildInteractablesPayload())
+    const payload = this.buildInteractablesPayload()
+    client.send('interactables', payload)
   }
 
   private broadcastSnapshot() {
@@ -2022,10 +2111,8 @@ export class GameRoom extends Room<GameRoomState> {
       this.playerSeqs.set(slot.eid, slot.lastProcessedSeq)
     }
 
-    // encodeSnapshot returns a Uint8Array view into a shared buffer.
-    // sendBytes copies data into the WebSocket send queue synchronously,
-    // so broadcasting the same view to multiple clients is safe. The next
-    // encodeSnapshot call only happens on the next serverTick.
+    // encodeSnapshot returns an owned Uint8Array, so it is safe to reuse for
+    // each client send within this broadcast.
     const snapshot = encodeSnapshot(this.world, performance.now(), this.playerSeqs)
     for (const [, slot] of this.slots) {
       slot.client.sendBytes('snapshot', snapshot)

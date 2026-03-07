@@ -35,6 +35,7 @@ import {
   canTakeNode,
   deriveAbilityHudState,
   computeQuickHash,
+  decodeSnapshot,
   type UpgradeState,
   type SelectNodeResponse,
   type TinkererModResponse,
@@ -77,7 +78,10 @@ import { GameplayEventProcessor } from './GameplayEventProcessor'
 import { LocalPlayerSimulationDriver } from './SimulationDriver'
 import { SnapshotIngestor } from './SnapshotIngestor'
 import { PredictedEntityTracker } from './PredictedEntityTracker'
-import { RemoteInterpolationApplier } from './RemoteInterpolationApplier'
+import {
+  RemoteInterpolationApplier,
+  type RemoteInterpolationSample,
+} from './RemoteInterpolationApplier'
 import { MultiplayerReconciler } from './MultiplayerReconciler'
 import { MultiplayerTelemetry, type OverlayMode } from './MultiplayerTelemetry'
 import { syncRenderersAndQueueEvents } from './syncRenderersAndQueueEvents'
@@ -206,8 +210,8 @@ export class MultiplayerModeController implements SceneModeController {
   /** Last known stage number for detecting stage transitions */
   private lastStageNumber = 1
 
-  /** Authoritative snapshots waiting to be applied on fixed ticks */
-  private readonly pendingSnapshots: WorldSnapshot[] = []
+  /** Raw authoritative snapshots waiting to be decoded/applied on fixed ticks */
+  private readonly pendingSnapshotBytes: Uint8Array[] = []
   private readonly pendingBulletSpawns: BulletSpawnMessage[] = []
   private readonly pendingBulletDespawns: BulletDespawnMessage[] = []
   private readonly pendingShotResults: ShotResultMessage[] = []
@@ -404,7 +408,7 @@ export class MultiplayerModeController implements SceneModeController {
       this.disconnected = true
       this.latestHud = null
       this.latestInteractables = null
-      this.pendingSnapshots.length = 0
+      this.pendingSnapshotBytes.length = 0
       this.pendingBulletSpawns.length = 0
       this.pendingBulletDespawns.length = 0
       this.pendingShotResults.length = 0
@@ -492,18 +496,18 @@ export class MultiplayerModeController implements SceneModeController {
       this.syncPlayerCharacterMapToWorld()
     })
 
-    this.net.on('snapshot', (snapshot: WorldSnapshot) => {
-      // Defer heavy decode/apply/reconcile work to fixed update, so socket
-      // callbacks stay lightweight and don't preempt rendering.
+    this.net.on('snapshot', (snapshotBytes: Uint8Array) => {
+      // Keep socket callbacks lightweight. Decode/apply/reconcile happens in
+      // the fixed update loop so bursty network traffic does not preempt render/input.
       this.lastSnapshotTime = performance.now()
       this.snapshotTimedOut = false
-      this.telemetry.onSnapshotReceived(this.pendingSnapshots.length > 0)
+      this.telemetry.onSnapshotReceived(this.pendingSnapshotBytes.length > 0)
       this.telemetry.onSnapshotReceivedTimed()
-      if (this.pendingSnapshots.length >= MAX_PENDING_SNAPSHOTS) {
-        this.pendingSnapshots.shift()
+      if (this.pendingSnapshotBytes.length >= MAX_PENDING_SNAPSHOTS) {
+        this.pendingSnapshotBytes.shift()
         this.telemetry.onSnapshotDropped()
       }
-      this.pendingSnapshots.push(snapshot)
+      this.pendingSnapshotBytes.push(snapshotBytes)
     })
 
     this.net.on('bullet-spawn', (event: BulletSpawnMessage) => {
@@ -606,7 +610,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.clockSync.reset()
     this.snapshotBuffer.clear()
     this.inputBuffer.clear()
-    this.pendingSnapshots.length = 0
+    this.pendingSnapshotBytes.length = 0
     this.pendingBulletSpawns.length = 0
     this.pendingBulletDespawns.length = 0
     this.pendingShotResults.length = 0
@@ -622,8 +626,15 @@ export class MultiplayerModeController implements SceneModeController {
 
   private processPendingSnapshots(): void {
     let processed = 0
-    while (this.pendingSnapshots.length > 0 && processed < MAX_SNAPSHOT_APPLIES_PER_UPDATE) {
-      const snapshot = this.pendingSnapshots.shift()!
+    while (this.pendingSnapshotBytes.length > 0 && processed < MAX_SNAPSHOT_APPLIES_PER_UPDATE) {
+      const bytes = this.pendingSnapshotBytes.shift()!
+      let snapshot: WorldSnapshot
+      try {
+        snapshot = decodeSnapshot(bytes)
+      } catch (err) {
+        console.error('[MP] Failed to decode snapshot:', err)
+        continue
+      }
       this.world.tick = snapshot.tick
       this.applyEntityLifecycle(snapshot)
       this.telemetry.onSnapshotApplied()
@@ -851,10 +862,11 @@ export class MultiplayerModeController implements SceneModeController {
     const latest = this.snapshotBuffer.latest
     if (!latest) return
 
-    this.interpolateFromBuffer({
-      from: latest,
-      to: latest,
-      alpha: 1,
+    this.interpolationApplier.applyLatest(latest, {
+      world: this.world,
+      playerEntities: this.playerEntities,
+      enemyEntities: this.enemyEntities,
+      myClientEid: this.myClientEid,
     })
 
     // Collision simulation runs in present time. Extrapolate remote enemies
@@ -1199,11 +1211,20 @@ export class MultiplayerModeController implements SceneModeController {
     this.ambient.update(realDt)
     if (this.renderPause.update(realDt) === 0) return
 
-    // Interpolate snapshot data into ECS arrays
+    // Sample remote render state without mutating the fixed-update ECS world.
     const interpState = this.snapshotBuffer.getInterpolationState(
       this.clockSync.isConverged() ? this.clockSync.getServerTime() : undefined
     )
-    const alpha = interpState ? this.interpolateFromBuffer(interpState) : 0.5
+    const remoteInterpolation = interpState ? this.sampleRemoteInterpolation(interpState) : null
+    const alpha = remoteInterpolation?.alpha ?? 0.5
+    this.renderers.playerRenderer.setRemoteRenderState(
+      remoteInterpolation?.playerStates ?? null,
+      remoteInterpolation?.worldTick ?? null,
+    )
+    this.renderers.enemyRenderer.setRemoteRenderState(
+      remoteInterpolation?.enemyStates ?? null,
+      remoteInterpolation?.worldTick ?? null,
+    )
 
     // Feed interpolation delay telemetry
     this.telemetry.onInterpolationDelayUpdate(this.snapshotBuffer.getInterpolationDelayMs())
@@ -1448,12 +1469,9 @@ export class MultiplayerModeController implements SceneModeController {
     }
   }
 
-  /**
-   * Write interpolated snapshot data into ECS arrays.
-   * Returns the computed interpolation alpha for renderers.
-   */
-  private interpolateFromBuffer(interp: InterpolationState): number {
-    return this.interpolationApplier.apply(interp, {
+  /** Sample interpolated remote render state without mutating simulation ECS. */
+  private sampleRemoteInterpolation(interp: InterpolationState): RemoteInterpolationSample {
+    return this.interpolationApplier.sample(interp, {
       world: this.world,
       playerEntities: this.playerEntities,
       enemyEntities: this.enemyEntities,
@@ -1731,7 +1749,7 @@ export class MultiplayerModeController implements SceneModeController {
   destroy(): void {
     this.predictedEntityTracker.clear(this.world)
 
-    this.pendingSnapshots.length = 0
+    this.pendingSnapshotBytes.length = 0
     this.pendingBulletSpawns.length = 0
     this.pendingBulletDespawns.length = 0
     this.pendingShotResults.length = 0

@@ -12,8 +12,16 @@ import {
 
 interface RewindFrame {
   tick: number
-  players: Map<number, RewindPlayerState>
-  enemies: Map<number, RewindEnemyState>
+  playerCount: number
+  playerEids: Uint32Array
+  playerX: Float32Array
+  playerY: Float32Array
+  enemyCount: number
+  enemyEids: Uint32Array
+  enemyX: Float32Array
+  enemyY: Float32Array
+  enemyRadius: Float32Array
+  enemyAlive: Uint8Array
 }
 
 const playerQuery = defineQuery([Player, Position])
@@ -24,37 +32,43 @@ const enemyQuery = defineQuery([Enemy, Position, Collider])
  * lag-compensated rewind checks on the authoritative server.
  */
 export class RewindHistory {
-  private readonly buffer: (RewindFrame | null)[]
+  private readonly buffer: RewindFrame[]
   private readonly capacity: number
   private head = 0 // index of oldest entry
   private count = 0
 
   constructor(maxFrames = 32) {
     this.capacity = Math.max(1, Math.trunc(maxFrames))
-    this.buffer = new Array<RewindFrame | null>(this.capacity).fill(null)
+    this.buffer = Array.from({ length: this.capacity }, () => this.createFrame())
   }
 
   record(world: GameWorld): void {
-    const players = new Map<number, RewindPlayerState>()
-    for (const eid of playerQuery(world)) {
-      players.set(eid, {
-        x: Position.x[eid]!,
-        y: Position.y[eid]!,
-      })
-    }
-
-    const enemies = new Map<number, RewindEnemyState>()
-    for (const eid of enemyQuery(world)) {
-      enemies.set(eid, {
-        x: Position.x[eid]!,
-        y: Position.y[eid]!,
-        radius: Collider.radius[eid]!,
-        alive: !hasComponent(world, Dead, eid),
-      })
-    }
-
     const writeIdx = (this.head + this.count) % this.capacity
-    this.buffer[writeIdx] = { tick: world.tick, players, enemies }
+    const frame = this.buffer[writeIdx]!
+    const players = playerQuery(world)
+    const enemies = enemyQuery(world)
+
+    this.ensurePlayerCapacity(frame, players.length)
+    this.ensureEnemyCapacity(frame, enemies.length)
+
+    frame.tick = world.tick
+    frame.playerCount = players.length
+    for (let i = 0; i < players.length; i++) {
+      const eid = players[i]!
+      frame.playerEids[i] = eid
+      frame.playerX[i] = Position.x[eid]!
+      frame.playerY[i] = Position.y[eid]!
+    }
+
+    frame.enemyCount = enemies.length
+    for (let i = 0; i < enemies.length; i++) {
+      const eid = enemies[i]!
+      frame.enemyEids[i] = eid
+      frame.enemyX[i] = Position.x[eid]!
+      frame.enemyY[i] = Position.y[eid]!
+      frame.enemyRadius[i] = Collider.radius[eid]!
+      frame.enemyAlive[i] = hasComponent(world, Dead, eid) ? 0 : 1
+    }
 
     if (this.count < this.capacity) {
       this.count++
@@ -65,7 +79,6 @@ export class RewindHistory {
   }
 
   clear(): void {
-    this.buffer.fill(null)
     this.head = 0
     this.count = 0
   }
@@ -91,12 +104,32 @@ export class RewindHistory {
 
   getPlayerAtTick(eid: number, tick: number): RewindPlayerState | null {
     const frame = this.findFrameAtOrBefore(tick)
-    return frame?.players.get(eid) ?? null
+    if (!frame) return null
+    for (let i = 0; i < frame.playerCount; i++) {
+      if (frame.playerEids[i] === eid) {
+        return {
+          x: frame.playerX[i]!,
+          y: frame.playerY[i]!,
+        }
+      }
+    }
+    return null
   }
 
   getEnemyStateAtTick(eid: number, tick: number): RewindEnemyState | null {
     const frame = this.findFrameAtOrBefore(tick)
-    return frame?.enemies.get(eid) ?? null
+    if (!frame) return null
+    for (let i = 0; i < frame.enemyCount; i++) {
+      if (frame.enemyEids[i] === eid) {
+        return {
+          x: frame.enemyX[i]!,
+          y: frame.enemyY[i]!,
+          radius: frame.enemyRadius[i]!,
+          alive: frame.enemyAlive[i] === 1,
+        }
+      }
+    }
+    return null
   }
 
   private findFrameAtOrBefore(tick: number): RewindFrame | null {
@@ -106,5 +139,55 @@ export class RewindHistory {
       if (frame.tick <= safeTick) return frame
     }
     return null
+  }
+
+  private createFrame(playerCapacity = 8, enemyCapacity = 64): RewindFrame {
+    return {
+      tick: 0,
+      playerCount: 0,
+      playerEids: new Uint32Array(playerCapacity),
+      playerX: new Float32Array(playerCapacity),
+      playerY: new Float32Array(playerCapacity),
+      enemyCount: 0,
+      enemyEids: new Uint32Array(enemyCapacity),
+      enemyX: new Float32Array(enemyCapacity),
+      enemyY: new Float32Array(enemyCapacity),
+      enemyRadius: new Float32Array(enemyCapacity),
+      enemyAlive: new Uint8Array(enemyCapacity),
+    }
+  }
+
+  private ensurePlayerCapacity(frame: RewindFrame, needed: number): void {
+    if (frame.playerEids.length >= needed) return
+    const capacity = Math.max(needed, frame.playerEids.length * 2)
+    const playerEids = new Uint32Array(capacity)
+    playerEids.set(frame.playerEids)
+    frame.playerEids = playerEids
+    const playerX = new Float32Array(capacity)
+    playerX.set(frame.playerX)
+    frame.playerX = playerX
+    const playerY = new Float32Array(capacity)
+    playerY.set(frame.playerY)
+    frame.playerY = playerY
+  }
+
+  private ensureEnemyCapacity(frame: RewindFrame, needed: number): void {
+    if (frame.enemyEids.length >= needed) return
+    const capacity = Math.max(needed, frame.enemyEids.length * 2)
+    const enemyEids = new Uint32Array(capacity)
+    enemyEids.set(frame.enemyEids)
+    frame.enemyEids = enemyEids
+    const enemyX = new Float32Array(capacity)
+    enemyX.set(frame.enemyX)
+    frame.enemyX = enemyX
+    const enemyY = new Float32Array(capacity)
+    enemyY.set(frame.enemyY)
+    frame.enemyY = enemyY
+    const enemyRadius = new Float32Array(capacity)
+    enemyRadius.set(frame.enemyRadius)
+    frame.enemyRadius = enemyRadius
+    const enemyAlive = new Uint8Array(capacity)
+    enemyAlive.set(frame.enemyAlive)
+    frame.enemyAlive = enemyAlive
   }
 }

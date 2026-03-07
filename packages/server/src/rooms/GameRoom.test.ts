@@ -34,7 +34,16 @@ function createRoom(): GameRoom {
     setSimulationInterval: (cb: (deltaMs: number) => void, ms?: number) => void
   }).setSimulationInterval = () => undefined
   ;(room as { setMetadata: (meta: unknown) => void }).setMetadata = () => undefined
-  ;(room as { lock: () => void }).lock = () => { (room as { locked: boolean }).locked = true }
+  Object.defineProperty(room, 'lock', {
+    configurable: true,
+    value: () => {
+      Object.defineProperty(room, 'locked', {
+        configurable: true,
+        writable: true,
+        value: true,
+      })
+    },
+  })
   room.onCreate()
   return room
 }
@@ -128,6 +137,70 @@ describe('GameRoom lobby state', () => {
     onSetReady(clientA, { ready: true })
 
     expect(room.state.phase).toBe('playing')
+  })
+
+  test('starting a private room locks it against late joins', () => {
+    const room = createRoom()
+    const client = createClient('session-a')
+    room.onJoin(client, { name: 'Alice', characterId: 'sheriff' })
+
+    const onSetReady = getOnMessageHandler(room, 'set-ready')
+    onSetReady(client, { ready: true })
+
+    expect((room as unknown as { locked: boolean }).locked).toBe(true)
+    expect(() => room.onAuth(createClient('session-b'))).toThrow('Game already in progress')
+  })
+
+  test('owner transfers when the original host leaves the lobby', async () => {
+    const room = createRoom()
+    const clientA = createClient('session-a')
+    const clientB = createClient('session-b')
+    room.onJoin(clientA, { name: 'Alice', characterId: 'sheriff' })
+    room.onJoin(clientB, { name: 'Bob', characterId: 'prospector' })
+
+    const onSetFriendlyFire = getOnMessageHandler(room, 'set-friendly-fire')
+    onSetFriendlyFire(clientB, { mode: 'full' })
+    expect(room.state.friendlyFire).toBe('none')
+
+    await room.onLeave(clientA, true)
+
+    onSetFriendlyFire(clientB, { mode: 'full' })
+    expect(room.state.friendlyFire).toBe('full')
+  })
+
+  test('single-client interactables bootstrap does not suppress the next broadcast', () => {
+    const room = createRoom()
+    const clientA = createClient('session-a')
+    const clientB = createClient('session-b')
+    room.onJoin(clientA, { name: 'Alice', characterId: 'sheriff' })
+    room.onJoin(clientB, { name: 'Bob', characterId: 'prospector' })
+
+    const roomWithInternals = room as unknown as {
+      world: GameWorld
+      sendInteractablesUpdates: () => void
+      sendInteractablesToClient: (client: Client) => void
+    }
+
+    roomWithInternals.sendInteractablesUpdates()
+    expect(clientA.sent.filter(message => message.type === 'interactables')).toHaveLength(1)
+    expect(clientB.sent.filter(message => message.type === 'interactables')).toHaveLength(1)
+
+    roomWithInternals.world.itemPickups.push({
+      id: 1,
+      itemId: 1,
+      x: 200,
+      y: 180,
+      lifetime: 10,
+      collected: false,
+    })
+
+    roomWithInternals.sendInteractablesToClient(clientA)
+    expect(clientA.sent.filter(message => message.type === 'interactables')).toHaveLength(2)
+    expect(clientB.sent.filter(message => message.type === 'interactables')).toHaveLength(1)
+
+    roomWithInternals.sendInteractablesUpdates()
+    expect(clientA.sent.filter(message => message.type === 'interactables')).toHaveLength(3)
+    expect(clientB.sent.filter(message => message.type === 'interactables')).toHaveLength(2)
   })
 
   test('input without clientTick emits incompatible-protocol once', () => {

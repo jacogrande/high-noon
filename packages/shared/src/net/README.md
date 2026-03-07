@@ -47,9 +47,9 @@ For SHOOT inputs, the server computes hitscan rewind age from:
 
 ## Binary Snapshots
 
-`snapshot.ts` implements zero-allocation binary encode/decode for authoritative player/enemy + ability state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns a `Uint8Array` view into a shared buffer, so callers must consume or copy bytes before the next encode call.
+`snapshot.ts` implements zero-allocation binary decode plus low-allocation encode for authoritative player/enemy + ability state. The server broadcasts snapshots at 20Hz (every 3rd tick). `encodeSnapshot` returns an owned `Uint8Array`, so callers can safely reuse the encoded bytes for multiple sends.
 
-Current snapshot protocol (`SNAPSHOT_VERSION = 10`) includes:
+Current snapshot protocol (`SNAPSHOT_VERSION = 12`) includes:
 
 - Player: `x/y`, jump height `z`, jump vertical velocity `zVelocity`, aim/state/hp
 - Player flags: `Dead`, `Invincible`, `rollButtonWasDown`, `jumpButtonWasDown`
@@ -68,7 +68,7 @@ Server-owned projectiles are transported out-of-band via `bullet-spawn` / `bulle
 Binary encoding is used for bandwidth efficiency:
 - Quantize floats to integers where precision allows
 - Use bitfields for boolean flags
-- Shared buffer reuse to avoid per-frame allocation
+- Reuse the scratch encode buffer internally before slicing the final packet
 
 ## Dependencies
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { NetworkClient, type GameConfig } from './NetworkClient'
-import type { CharacterId, InteractablesData, LobbyState, PlayerRosterEntry } from '@high-noon/shared'
+import { SNAPSHOT_VERSION, type CharacterId, type InteractablesData, type LobbyState, type PlayerRosterEntry } from '@high-noon/shared'
 
 class MemorySessionStorage {
   private readonly store = new Map<string, string>()
@@ -335,6 +335,24 @@ describe('NetworkClient', () => {
     expect(despawns).toEqual([{ bulletId: 10, tick: 226 }])
   })
 
+  test('registerRoomHandlers forwards raw snapshot bytes without decoding', () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    let received: Uint8Array | null = null
+
+    net.on('snapshot', (bytes) => {
+      received = bytes
+    })
+
+    ;(net as any).registerRoomHandlers(room)
+
+    const bytes = new Uint8Array([SNAPSHOT_VERSION, 1, 2, 3])
+    room.emit('snapshot', bytes)
+
+    expect(received).toEqual(bytes)
+    expect(received).not.toBe(bytes)
+  })
+
   test('registerRoomHandlers forwards shot-result messages', () => {
     const net = new NetworkClient('ws://localhost:2567')
     const room = new FakeRoom()
@@ -427,6 +445,58 @@ describe('NetworkClient', () => {
       { type: 'set-camp-ready', payload: { ready: true } },
       { type: 'set-character', payload: { characterId: 'undertaker' } },
     ])
+  })
+
+  test('join registers room handlers before waiting for game-config', async () => {
+    const net = new NetworkClient('ws://localhost:2567')
+    const room = new FakeRoom()
+    const spawns: number[] = []
+    const previousSetTimeout = globalThis.setTimeout
+    const previousClearTimeout = globalThis.clearTimeout
+
+    ;(globalThis as { setTimeout: typeof setTimeout }).setTimeout =
+      (((_cb: (...args: any[]) => void) => 0 as unknown as ReturnType<typeof setTimeout>) as typeof setTimeout)
+    ;(globalThis as { clearTimeout: typeof clearTimeout }).clearTimeout =
+      (() => undefined) as typeof clearTimeout
+
+    try {
+      ;(net as any).client = {
+        joinOrCreate: async () => room,
+      }
+
+      net.on('bullet-spawn', (payload) => {
+        spawns.push(payload.bulletId)
+      })
+
+      const joinPromise = net.join({ characterId: 'sheriff' })
+      await Promise.resolve()
+
+      room.emit('bullet-spawn', {
+        bulletId: 10,
+        tick: 222,
+        serverTime: 1234,
+        ownerServerEid: 7,
+        x: 10,
+        y: 20,
+        vx: 300,
+        vy: -50,
+        layer: 3,
+        shotTick: 219,
+      })
+      room.emit('game-config', {
+        seed: 123,
+        sessionId: 'abc',
+        playerEid: 42,
+        characterId: 'undertaker',
+      } satisfies GameConfig)
+
+      await joinPromise
+
+      expect(spawns).toEqual([10])
+    } finally {
+      ;(globalThis as { setTimeout: typeof setTimeout }).setTimeout = previousSetTimeout
+      ;(globalThis as { clearTimeout: typeof clearTimeout }).clearTimeout = previousClearTimeout
+    }
   })
 
   test('protocol mismatch on snapshot emits incompatible-protocol and disconnects', () => {

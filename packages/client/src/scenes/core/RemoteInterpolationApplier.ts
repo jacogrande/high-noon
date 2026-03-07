@@ -15,6 +15,25 @@ export interface RemoteInterpolationContext {
   myClientEid: number
 }
 
+export interface RemotePlayerRenderState {
+  x: number
+  y: number
+  z: number
+  aimAngle: number
+}
+
+export interface RemoteEnemyRenderState {
+  x: number
+  y: number
+}
+
+export interface RemoteInterpolationSample {
+  alpha: number
+  worldTick: number
+  playerStates: ReadonlyMap<number, RemotePlayerRenderState>
+  enemyStates: ReadonlyMap<number, RemoteEnemyRenderState>
+}
+
 /** Lerp an angle in radians with shortest-path wrapping across the -PI/PI boundary.
  *  Input angles are assumed to be in [-PI, PI] (from atan2), so diff is in [-2PI, 2PI]
  *  and a single wrap suffices. */
@@ -28,12 +47,41 @@ function lerpAngle(from: number, to: number, t: number): number {
 export class RemoteInterpolationApplier {
   private readonly fromPlayerIndex = new Map<number, PlayerSnapshot>()
   private readonly fromEnemyIndex = new Map<number, EnemySnapshot>()
+  private readonly sampledPlayerStates = new Map<number, RemotePlayerRenderState>()
+  private readonly sampledEnemyStates = new Map<number, RemoteEnemyRenderState>()
+  private readonly activePlayerStateIds = new Set<number>()
+  private readonly activeEnemyStateIds = new Set<number>()
 
-  apply(interp: InterpolationState, ctx: RemoteInterpolationContext): number {
+  applyLatest(snapshot: WorldSnapshot, ctx: RemoteInterpolationContext): void {
+    ctx.world.tick = snapshot.tick
+
+    for (const p of snapshot.players) {
+      const clientEid = ctx.playerEntities.get(p.eid)
+      if (clientEid === undefined || clientEid === ctx.myClientEid) continue
+
+      Position.prevX[clientEid] = p.x
+      Position.prevY[clientEid] = p.y
+      Position.x[clientEid] = p.x
+      Position.y[clientEid] = p.y
+      ZPosition.z[clientEid] = p.z
+      Player.aimAngle[clientEid] = p.aimAngle
+    }
+
+    for (const e of snapshot.enemies) {
+      const clientEid = ctx.enemyEntities.get(e.eid)
+      if (clientEid === undefined) continue
+
+      Position.prevX[clientEid] = e.x
+      Position.prevY[clientEid] = e.y
+      Position.x[clientEid] = e.x
+      Position.y[clientEid] = e.y
+    }
+  }
+
+  sample(interp: InterpolationState, ctx: RemoteInterpolationContext): RemoteInterpolationSample {
     const { from, to, alpha } = interp
 
-    // Interpolate world.tick for smooth animation cycling
-    ctx.world.tick = Math.round(from.tick + (to.tick - from.tick) * alpha)
+    const worldTick = Math.round(from.tick + (to.tick - from.tick) * alpha)
 
     // Build index maps from `from` snapshot (reuse maps, clear instead of alloc)
     this.fromPlayerIndex.clear()
@@ -47,19 +95,27 @@ export class RemoteInterpolationApplier {
     }
 
     const span = to.serverTime - from.serverTime
-    this.interpolatePlayers(to, ctx, alpha, span)
-    this.interpolateEnemies(to, ctx, alpha, span)
+    this.samplePlayers(to, ctx, alpha, span)
+    this.sampleEnemies(to, ctx, alpha, span)
 
-    return alpha
+    return {
+      alpha,
+      worldTick,
+      playerStates: this.sampledPlayerStates,
+      enemyStates: this.sampledEnemyStates,
+    }
   }
 
-  private interpolatePlayers(to: WorldSnapshot, ctx: RemoteInterpolationContext, alpha: number, span: number): void {
+  private samplePlayers(to: WorldSnapshot, ctx: RemoteInterpolationContext, alpha: number, span: number): void {
+    this.activePlayerStateIds.clear()
+
     for (const p of to.players) {
       const clientEid = ctx.playerEntities.get(p.eid)
       if (clientEid === undefined) continue
 
       // Skip local player — driven by prediction, not interpolation
       if (clientEid === ctx.myClientEid) continue
+      this.activePlayerStateIds.add(clientEid)
 
       const prev = this.fromPlayerIndex.get(p.eid)
       const fromX = prev?.x ?? p.x
@@ -78,23 +134,42 @@ export class RemoteInterpolationApplier {
         finalX = p.x + velX * extrapolateTime * decay
         finalY = p.y + velY * extrapolateTime * decay
       }
+      const sampledX = alpha <= 1 ? fromX + (finalX - fromX) * alpha : finalX
+      const sampledY = alpha <= 1 ? fromY + (finalY - fromY) * alpha : finalY
 
-      Position.prevX[clientEid] = fromX
-      Position.prevY[clientEid] = fromY
-      Position.x[clientEid] = finalX
-      Position.y[clientEid] = finalY
-      ZPosition.z[clientEid] = fromZ + (p.z - fromZ) * Math.min(alpha, 1)
-
-      // Interpolate aim angle with shortest-path wrapping
+      const renderState = this.sampledPlayerStates.get(clientEid)
+      const nextZ = fromZ + (p.z - fromZ) * Math.min(alpha, 1)
       const fromAngle = prev?.aimAngle ?? p.aimAngle
-      Player.aimAngle[clientEid] = lerpAngle(fromAngle, p.aimAngle, Math.min(alpha, 1))
+      const nextAimAngle = lerpAngle(fromAngle, p.aimAngle, Math.min(alpha, 1))
+      if (renderState) {
+        renderState.x = sampledX
+        renderState.y = sampledY
+        renderState.z = nextZ
+        renderState.aimAngle = nextAimAngle
+      } else {
+        this.sampledPlayerStates.set(clientEid, {
+          x: sampledX,
+          y: sampledY,
+          z: nextZ,
+          aimAngle: nextAimAngle,
+        })
+      }
+    }
+
+    for (const clientEid of this.sampledPlayerStates.keys()) {
+      if (!this.activePlayerStateIds.has(clientEid)) {
+        this.sampledPlayerStates.delete(clientEid)
+      }
     }
   }
 
-  private interpolateEnemies(to: WorldSnapshot, ctx: RemoteInterpolationContext, alpha: number, span: number): void {
+  private sampleEnemies(to: WorldSnapshot, ctx: RemoteInterpolationContext, alpha: number, span: number): void {
+    this.activeEnemyStateIds.clear()
+
     for (const e of to.enemies) {
       const clientEid = ctx.enemyEntities.get(e.eid)
       if (clientEid === undefined) continue
+      this.activeEnemyStateIds.add(clientEid)
 
       const prev = this.fromEnemyIndex.get(e.eid)
       const fromX = prev?.x ?? e.x
@@ -113,11 +188,22 @@ export class RemoteInterpolationApplier {
         finalX = e.x + velX * extrapolateTime * decay
         finalY = e.y + velY * extrapolateTime * decay
       }
+      const sampledX = alpha <= 1 ? fromX + (finalX - fromX) * alpha : finalX
+      const sampledY = alpha <= 1 ? fromY + (finalY - fromY) * alpha : finalY
 
-      Position.prevX[clientEid] = fromX
-      Position.prevY[clientEid] = fromY
-      Position.x[clientEid] = finalX
-      Position.y[clientEid] = finalY
+      const renderState = this.sampledEnemyStates.get(clientEid)
+      if (renderState) {
+        renderState.x = sampledX
+        renderState.y = sampledY
+      } else {
+        this.sampledEnemyStates.set(clientEid, { x: sampledX, y: sampledY })
+      }
+    }
+
+    for (const clientEid of this.sampledEnemyStates.keys()) {
+      if (!this.activeEnemyStateIds.has(clientEid)) {
+        this.sampledEnemyStates.delete(clientEid)
+      }
     }
   }
 }

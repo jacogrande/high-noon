@@ -99,6 +99,11 @@ interface DiveImpactAnim {
   timer: number
 }
 
+interface RemoteEnemyRenderState {
+  x: number
+  y: number
+}
+
 /** Death effect data for ephemeral scale-down + fade */
 interface DeathEffect {
   eid: number
@@ -175,6 +180,8 @@ export class EnemyRenderer {
   private time = 0
   /** Cached interpolated positions for post-loop rendering (armor arc, etc.) */
   private readonly posCache = new Map<number, { x: number; y: number }>()
+  private remoteRenderTick: number | null = null
+  private remoteRenderStates: ReadonlyMap<number, RemoteEnemyRenderState> | null = null
 
   constructor(registry: SpriteRegistry, debug?: DebugRenderer, entityLayer?: Container) {
     this.registry = registry
@@ -196,6 +203,11 @@ export class EnemyRenderer {
       this.pillarZoneGraphics.visible = false
       entityLayer.addChild(this.pillarZoneGraphics)
     }
+  }
+
+  setRemoteRenderState(states: ReadonlyMap<number, RemoteEnemyRenderState> | null, tick: number | null): void {
+    this.remoteRenderStates = states
+    this.remoteRenderTick = tick
   }
 
   /**
@@ -394,17 +406,19 @@ export class EnemyRenderer {
     this.time += realDt
     const posCache = this.posCache
     posCache.clear()
+    const renderTick = this.remoteRenderTick ?? world.tick
 
     for (const eid of this.enemyEntities) {
       if (!hasComponent(world, Enemy, eid)) continue
+      const remoteState = this.remoteRenderStates?.get(eid)
 
       const prevX = Position.prevX[eid]!
       const prevY = Position.prevY[eid]!
-      const currX = Position.x[eid]!
-      const currY = Position.y[eid]!
+      const currX = remoteState?.x ?? Position.x[eid]!
+      const currY = remoteState?.y ?? Position.y[eid]!
 
-      let renderX = prevX + (currX - prevX) * alpha
-      let renderY = prevY + (currY - prevY) * alpha
+      let renderX = remoteState ? remoteState.x : prevX + (currX - prevX) * alpha
+      let renderY = remoteState ? remoteState.y : prevY + (currY - prevY) * alpha
 
       // Cache interpolated position for post-loop rendering
       posCache.set(eid, { x: renderX, y: renderY })
@@ -451,7 +465,7 @@ export class EnemyRenderer {
 
       // State-based visuals (telegraph flash overrides damage flash)
       if (state === AIState.TELEGRAPH) {
-        const isWhite = Math.floor(world.tick / TELEGRAPH_FLASH_TICKS) % 2 === 0
+        const isWhite = Math.floor(renderTick / TELEGRAPH_FLASH_TICKS) % 2 === 0
         if (isSprite) {
           tint = isWhite ? 0xffffff : 0xff4444
         } else {
@@ -509,7 +523,7 @@ export class EnemyRenderer {
         if (state === AIState.TELEGRAPH) {
           frame = 0 // hold first attack frame during telegraph
         } else {
-          frame = getEnemyAnimationFrame(animState, world.tick)
+          frame = getEnemyAnimationFrame(animState, renderTick)
         }
 
         // Update texture
@@ -589,14 +603,14 @@ export class EnemyRenderer {
       // Charger telegraph vibration
       if (type === EnemyType.CHARGER && state === AIState.TELEGRAPH) {
         const jitter = 2
-        renderX += Math.sin(world.tick * 1.5) * jitter
-        renderY += Math.cos(world.tick * 2.1) * jitter
+        renderX += Math.sin(renderTick * 1.5) * jitter
+        renderY += Math.cos(renderTick * 2.1) * jitter
       }
 
       // Dynamite Tosser telegraph wind-up jitter
       if (type === EnemyType.DYNAMITE_TOSSER && state === AIState.TELEGRAPH) {
-        renderX += Math.sin(world.tick * 1.5) * 1.5
-        renderY += Math.cos(world.tick * 2.1) * 1.5
+        renderX += Math.sin(renderTick * 1.5) * 1.5
+        renderY += Math.cos(renderTick * 2.1) * 1.5
       }
 
       // Facing rotation and animation for Stage 1 compound shapes.
@@ -623,7 +637,7 @@ export class EnemyRenderer {
 
         // Dustdevil: add continuous spiral spin on top of facing
         if (type === EnemyType.DUSTDEVIL) {
-          facingAngle += world.tick * 0.1
+          facingAngle += renderTick * 0.1
         }
 
         this.registry.setRotation(eid, facingAngle)
@@ -632,7 +646,7 @@ export class EnemyRenderer {
         if (type === EnemyType.KNIFE_DRIFTER && state === AIState.ATTACK) {
           scaleY = 1.3
         } else if (type === EnemyType.KNIFE_DRIFTER && state === AIState.TELEGRAPH) {
-          const pulse = 1.0 + 0.1 * Math.sin(world.tick * 0.8)
+          const pulse = 1.0 + 0.1 * Math.sin(renderTick * 0.8)
           scaleX = pulse
           scaleY = pulse
         }

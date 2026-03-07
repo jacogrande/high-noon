@@ -18,7 +18,7 @@ const net = new NetworkClient('ws://localhost:2567')
 net.on('game-config', (config) => { /* { seed, sessionId, playerEid, characterId, roster? } */ })
 net.on('lobby-state', (state) => { /* { phase, serverTick, players[] } */ })
 net.on('player-roster', (roster) => { /* [{ eid, characterId }] */ })
-net.on('snapshot', (snapshot) => { /* decoded WorldSnapshot */ })
+net.on('snapshot', (bytes) => { /* raw binary snapshot bytes */ })
 net.on('bullet-spawn', (event) => { /* authoritative enemy/boss projectile create */ })
 net.on('bullet-despawn', (event) => { /* authoritative enemy/boss projectile remove */ })
 net.on('shot-result', (event) => { /* authoritative shooter hit/miss confirmation */ })
@@ -32,9 +32,9 @@ net.sendCampReady(true)
 net.disconnect()              // Intentional leave, clears listeners
 ```
 
-- Snapshot messages arrive as binary (`sendBytes` on server) and are decoded via `decodeSnapshot` from shared
-- Current snapshot protocol (`v10`) includes player/enemy + ability state (server projectiles are sent as lifecycle events)
-- Snapshot decode errors are caught and logged (don't crash the game loop)
+- Snapshot messages arrive as binary (`sendBytes` on server); `NetworkClient` forwards raw bytes and the scene decodes them inside the fixed update loop
+- Current snapshot protocol (`v12`) includes player/enemy + ability state (server projectiles are sent as lifecycle events)
+- `NetworkClient` validates the snapshot version byte before forwarding; scene-level decode failures are logged and dropped
 - Protocol mismatches (snapshot or input shape/version) trigger `incompatible-protocol`, force room leave, disable reconnect, and then emit `disconnect`
 - Join options include optional `characterId` (server-authoritative; echoed in `game-config`)
 - `lobby-state` is derived from Colyseus schema sync (`phase`, `serverTick`, `players` with `sessionId/name/characterId/ready`)

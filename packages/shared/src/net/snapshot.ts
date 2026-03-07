@@ -1,5 +1,5 @@
 /**
- * Binary Snapshot Serialization (v11)
+ * Binary snapshot serialization.
  *
  * Encodes/decodes authoritative world state into a compact binary format for
  * server→client broadcast at room-configured cadence.
@@ -32,8 +32,8 @@ export const SNAPSHOT_VERSION = 12
 
 /** Header: version(1) + tick(4) + serverTime(4) + playerCount(1) + enemyCount(2) */
 export const HEADER_SIZE = 12
-export const PLAYER_SIZE = 39 // v12: +reviveProgress(1)
-export const ENEMY_SIZE = 16 // v11: enemy HP widened from Uint8 to Uint16 (+1 byte)
+export const PLAYER_SIZE = 39
+export const ENEMY_SIZE = 16
 
 // ============================================================================
 // Snapshot Types

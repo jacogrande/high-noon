@@ -2,14 +2,13 @@
  * Colyseus connection wrapper for multiplayer.
  *
  * Handles joining a game room, sending input, receiving snapshots,
- * and dispatching decoded events to callbacks. Automatically attempts
+ * and dispatching typed events to callbacks. Automatically attempts
  * reconnection on unexpected disconnects.
  */
 
 import { Client, type Room } from 'colyseus.js'
 import {
-  decodeSnapshot,
-  type WorldSnapshot,
+  SNAPSHOT_VERSION,
   type BulletSpawnMessage,
   type BulletDespawnMessage,
   type ShotResultMessage,
@@ -63,7 +62,7 @@ export type NetworkEventMap = {
   'game-config': (config: GameConfig) => void
   'lobby-state': (state: LobbyState) => void
   'player-roster': (roster: PlayerRosterEntry[]) => void
-  snapshot: (snapshot: WorldSnapshot) => void
+  snapshot: (snapshotBytes: Uint8Array) => void
   'bullet-spawn': (event: BulletSpawnMessage) => void
   'bullet-despawn': (event: BulletDespawnMessage) => void
   'shot-result': (event: ShotResultMessage) => void
@@ -153,14 +152,13 @@ export class NetworkClient {
       }
     }
 
+    this.latestGameConfig = null
     this.reconnectionToken = this.room.reconnectionToken
     sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
     this.intentionalLeave = false
 
-    // Wait for initial game-config before gameplay starts.
-    await this.waitForGameConfig(this.room)
-
     this.registerRoomHandlers(this.room)
+    await this.waitForGameConfig(this.room)
   }
 
   /**
@@ -176,12 +174,13 @@ export class NetworkClient {
       throw new Error(`Failed to create room: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
 
+    this.latestGameConfig = null
     this.reconnectionToken = this.room.reconnectionToken
     sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
     this.intentionalLeave = false
 
-    await this.waitForGameConfig(this.room)
     this.registerRoomHandlers(this.room)
+    await this.waitForGameConfig(this.room)
 
     // Read the server-generated room code from the room's Schema state
     const roomState = (this.room as unknown as { state?: { roomCode?: string } }).state
@@ -202,12 +201,13 @@ export class NetworkClient {
       throw new Error(`Quick Play failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
 
+    this.latestGameConfig = null
     this.reconnectionToken = this.room.reconnectionToken
     sessionStorage.setItem('hn-reconnect-token', this.reconnectionToken)
     this.intentionalLeave = false
 
-    await this.waitForGameConfig(this.room)
     this.registerRoomHandlers(this.room)
+    await this.waitForGameConfig(this.room)
   }
 
   sendInput(input: NetworkInput): void {
@@ -369,16 +369,18 @@ export class NetworkClient {
     }))
 
     cleanup.push(room.onMessage('snapshot', (data: ArrayBuffer | Uint8Array) => {
-      try {
-        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
-        const snapshot = decodeSnapshot(bytes)
-        this.emit('snapshot', snapshot)
-      } catch (err) {
-        console.error('[NetworkClient] Failed to decode snapshot:', err)
-        if (this.isProtocolMismatchError(err)) {
-          this.handleProtocolMismatch(room, err)
-        }
+      const bytes = data instanceof Uint8Array
+        ? data.slice()
+        : new Uint8Array(data.slice(0))
+      const version = bytes.byteLength > 0 ? bytes[0]! : -1
+      if (version !== SNAPSHOT_VERSION) {
+        this.handleProtocolMismatch(
+          room,
+          new Error(`Snapshot version mismatch: expected ${SNAPSHOT_VERSION}, got ${version}`),
+        )
+        return
       }
+      this.emit('snapshot', bytes)
     }))
 
     cleanup.push(room.onMessage('bullet-spawn', (data: BulletSpawnMessage) => {
@@ -538,10 +540,6 @@ export class NetworkClient {
     return result
   }
 
-  private isProtocolMismatchError(err: unknown): boolean {
-    return err instanceof Error && err.message.includes('Snapshot version mismatch')
-  }
-
   private handleProtocolMismatch(room: Room, err: unknown): void {
     const reason = err instanceof Error ? err.message : 'Snapshot protocol mismatch'
     this.intentionalLeave = true
@@ -622,11 +620,11 @@ export class NetworkClient {
   private waitForGameConfig(room: Room): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false
-      let offMessage: (() => void) | null = null
+      let offGameConfig: (() => void) | null = null
 
       const cleanup = () => {
         clearTimeout(timer)
-        offMessage?.()
+        offGameConfig?.()
         this.removeLeaveHandler(room, onLeave)
       }
 
@@ -645,15 +643,14 @@ export class NetworkClient {
         finish(() => reject(new Error('Timed out waiting for game-config')))
       }, CONNECT_TIMEOUT_MS)
 
-      offMessage = room.onMessage('game-config', (data: GameConfig) => {
-        finish(() => {
-          this.latestGameConfig = data
-          this.emit('game-config', data)
-          resolve()
-        })
+      offGameConfig = this.on('game-config', () => {
+        finish(resolve)
       })
-
       room.onLeave(onLeave)
+
+      if (this.latestGameConfig !== null) {
+        finish(resolve)
+      }
     })
   }
 
