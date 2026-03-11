@@ -33,16 +33,26 @@ export class SoundManager {
     }
   }
 
-  play(name: string, opts?: { pitchVariance?: number; volume?: number }): void {
+  play(name: string, opts?: { pitchVariance?: number; volume?: number; pan?: number; volumeScale?: number }): void {
     const entry = this.howls.get(name)
     if (!entry) return
+    // Skip perceptually-silent spatial sounds to avoid exhausting the Howl pool.
+    // With squared falloff, volumeScale < 0.02 corresponds to ~86% of maxDistance.
+    if (opts?.volumeScale !== undefined && opts.volumeScale < 0.02) return
     const id = entry.howl.play()
     const variance = opts?.pitchVariance ?? entry.pitchVariance
     if (variance > 0) {
       const rate = 1 + (Math.random() * 2 - 1) * variance
       entry.howl.rate(rate, id)
     }
-    if (opts?.volume !== undefined) {
+    if (opts?.pan !== undefined) {
+      entry.howl.stereo(opts.pan, id)
+    }
+    if (opts?.volumeScale !== undefined) {
+      // howl.volume() returns the Howl-level base (e.g. 0.3), not master-adjusted
+      const base = opts.volume ?? entry.howl.volume()
+      entry.howl.volume(base * opts.volumeScale, id)
+    } else if (opts?.volume !== undefined) {
       entry.howl.volume(opts.volume, id)
     }
   }

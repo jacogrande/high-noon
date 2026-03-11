@@ -24,12 +24,16 @@ import {
   KillStreakTracker,
 } from '../../fx'
 import { SoundManager } from '../../audio/SoundManager'
+import { computeSpatial } from '../../audio/SpatialAudio'
 import { Camera } from '../../engine/Camera'
 import { HitStop } from '../../engine/HitStop'
 import { TimeScale } from '../../engine/TimeScale'
 import { PlayerRenderer } from '../../render/PlayerRenderer'
 import type { DrawFlashOverlay } from '../../render/DrawFlashOverlay'
 import type { GameplayEvent } from './GameplayEvents'
+
+// Spatial audio: minimum volume for boss sounds so they're always audible
+const BOSS_VOLUME_FLOOR = 0.3
 
 // Boss phase transition presentation
 const PHASE_TRANSITION_TRAUMA: Record<number, number> = { 2: 0.4, 3: 0.6, 4: 0.5 }
@@ -79,6 +83,8 @@ export class GameplayEventProcessor {
   private readonly timeScale: TimeScale | undefined
   private readonly drawFlashOverlay: DrawFlashOverlay | undefined
   private pendingBossIntro: { bossName: string; taunt: string } | null = null
+  private listenerX = 0
+  private listenerY = 0
 
   constructor(deps: GameplayEventProcessorDeps) {
     this.camera = deps.camera
@@ -94,13 +100,33 @@ export class GameplayEventProcessor {
     this.drawFlashOverlay = deps.drawFlashOverlay
   }
 
+  setListenerPosition(x: number, y: number): void {
+    this.listenerX = x
+    this.listenerY = y
+  }
+
+  private playSpatial(name: string, worldX: number, worldY: number, minVolume?: number): void {
+    const spatial = computeSpatial(this.listenerX, this.listenerY, worldX, worldY)
+    this.sound.play(name, {
+      pan: spatial.pan,
+      volumeScale: minVolume !== undefined ? Math.max(spatial.volume, minVolume) : spatial.volume,
+    })
+  }
+
   processAll(events: readonly GameplayEvent[]): void {
     for (const event of events) {
       switch (event.type) {
         case 'enemy-sync': {
           if (event.deathTrauma > 0) {
             this.camera.addTrauma(event.deathTrauma)
-            this.sound.play('enemy_die')
+            if (event.deaths.length > 0) {
+              // Use centroid of all deaths for spatial positioning
+              let cx = 0, cy = 0
+              for (const d of event.deaths) { cx += d.x; cy += d.y }
+              this.playSpatial('enemy_die', cx / event.deaths.length, cy / event.deaths.length)
+            } else {
+              this.sound.play('enemy_die')
+            }
           }
           for (const death of event.deaths) {
             emitDeathBurst(this.particles, death.x, death.y, death.color, death.isThreat)
@@ -164,7 +190,7 @@ export class GameplayEventProcessor {
         case 'player-fire': {
           this.camera.addTrauma(event.trauma)
           this.camera.applyKick(Math.cos(event.angle), Math.sin(event.angle), event.kickStrength)
-          this.sound.play('fire')
+          this.playSpatial('fire', event.muzzleX, event.muzzleY)
           this.playerRenderer.triggerRecoil(event.eid)
           emitMuzzleFlash(this.particles, event.muzzleX, event.muzzleY, event.angle)
           emitShotTracer(this.particles, event.muzzleX, event.muzzleY, event.angle)
@@ -179,7 +205,7 @@ export class GameplayEventProcessor {
         case 'shot-confirmed': {
           if (event.hit) {
             emitEntityImpact(this.particles, event.x, event.y, 0xffd67a)
-            this.sound.play('hit')
+            this.playSpatial('hit', event.x, event.y)
           } else {
             emitWallImpact(this.particles, event.x, event.y)
           }
@@ -189,7 +215,7 @@ export class GameplayEventProcessor {
         case 'player-melee-swing': {
           this.camera.addTrauma(event.trauma)
           this.camera.applyKick(Math.cos(event.angle), Math.sin(event.angle), event.kickStrength)
-          this.sound.play('roll') // whoosh — placeholder until melee_swing SFX added
+          this.playSpatial('roll', event.x, event.y) // placeholder until melee_swing SFX added
           this.playerRenderer.triggerRecoil(event.eid)
           emitSwingArc(
             this.particles,
@@ -232,7 +258,7 @@ export class GameplayEventProcessor {
           break
 
         case 'last-rites-pulse':
-          this.sound.play('enemy_die')
+          this.playSpatial('enemy_die', event.x, event.y)
           emitDeathPulse(this.particles, event.x, event.y, event.radius)
           break
 
@@ -242,7 +268,7 @@ export class GameplayEventProcessor {
 
         case 'dynamite-detonation':
           this.camera.addTrauma(0.3)
-          this.sound.play('explosion')
+          this.playSpatial('explosion', event.x, event.y)
           emitExplosion(this.particles, event.x, event.y, event.radius)
           break
 
@@ -251,24 +277,24 @@ export class GameplayEventProcessor {
           break
 
         case 'level-up':
-          this.sound.play('level_up')
+          this.sound.play('level_up') // non-spatial: always at the local player
           emitLevelUpSparkle(this.particles, event.x, event.y)
           break
 
         case 'boss-intro':
           this.camera.addTrauma(0.2)
-          this.sound.play('boss_intro')
+          this.playSpatial('boss_intro', event.x, event.y, BOSS_VOLUME_FLOOR)
           this.pendingBossIntro = { bossName: event.bossName, taunt: event.taunt }
           break
 
         case 'trap-detonation':
           this.camera.addTrauma(event.kind === 'tripwire' ? 0.25 : 0.15)
-          this.sound.play('explosion')
+          this.playSpatial('explosion', event.x, event.y)
           emitExplosion(this.particles, event.x, event.y, event.radius)
           break
 
         case 'boss-phase-transition':
-          this.sound.play('showdown_activate')
+          this.playSpatial('showdown_activate', event.x, event.y, BOSS_VOLUME_FLOOR)
           {
             const trauma = PHASE_TRANSITION_TRAUMA[event.newPhase] ?? DEFAULT_PHASE_TRAUMA
             const freeze = PHASE_TRANSITION_FREEZE[event.newPhase] ?? DEFAULT_PHASE_FREEZE
@@ -341,7 +367,7 @@ export class GameplayEventProcessor {
           this.timeScale?.slowMo(BOSS_DEATH_SLOWMO_SCALE, BOSS_DEATH_SLOWMO_DURATION)
           emitSmokeSpiral(this.particles, event.x, event.y)
           emitGoldenSunMotes(this.particles, event.x, event.y)
-          this.sound.play('boss_death')
+          this.playSpatial('boss_death', event.x, event.y, BOSS_VOLUME_FLOOR)
           break
 
         case 'roll':

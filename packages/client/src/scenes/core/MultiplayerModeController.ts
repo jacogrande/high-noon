@@ -969,6 +969,14 @@ export class MultiplayerModeController implements SceneModeController {
       }
     }
 
+    // Set listener position for spatial audio before any processAll calls
+    if (this.myClientEid >= 0) {
+      this.gameplayEventProcessor.setListenerPosition(
+        Position.x[this.myClientEid]!,
+        Position.y[this.myClientEid]!,
+      )
+    }
+
     // Apply pending authoritative snapshots on the fixed tick (bounded catch-up).
     this.processPendingSnapshots()
     this.processPendingBulletEvents()

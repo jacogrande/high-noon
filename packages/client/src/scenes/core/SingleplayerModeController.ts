@@ -725,9 +725,10 @@ export class SingleplayerModeController implements SceneModeController {
     // Get player entity for position lookups
     const playerEid = this.renderers.playerRenderer.getPlayerEntity()
 
-    // Set player world position as aim reference
+    // Set player world position as aim reference and audio listener
     if (playerEid !== null) {
       this.input.setReferencePosition(Position.x[playerEid]!, Position.y[playerEid]!)
+      this.gameplayEventProcessor.setListenerPosition(Position.x[playerEid]!, Position.y[playerEid]!)
     }
 
     // Set camera state for screen→world conversion (account for camera zoom)
@@ -990,6 +991,7 @@ export class SingleplayerModeController implements SceneModeController {
     }
 
     // Apply queued feedback events in one place (shared with multiplayer).
+    // Listener position was set at the top of update() before any processAll calls.
     this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
 
     // Update camera target

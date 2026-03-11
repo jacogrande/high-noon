@@ -116,7 +116,7 @@ describe('GameplayEventProcessor', () => {
       'showdown_activate',
       'enemy_die',
       'showdown_expire',
-      'enemy_die',
+      'explosion',
     ])
     expect(traumas).toEqual([0.3])
     expect(emissions.length).toBeGreaterThan(0)
@@ -161,7 +161,7 @@ describe('GameplayEventProcessor', () => {
 
     expect(traumas).toEqual([0.1])
     expect(kicks.length).toBe(1)
-    expect(sounds).toEqual(['fire'])
+    expect(sounds).toEqual(['roll'])
     expect(recoils).toEqual([7])
     expect(emissions.length).toBeGreaterThan(0)
   })
@@ -255,7 +255,7 @@ describe('GameplayEventProcessor', () => {
     expect(traumas).toEqual([0.7])
     expect(hitStop.isFrozen).toBe(true)
     expect(timeScale.current).toBeLessThan(1)
-    expect(sounds).toContain('showdown_activate')
+    expect(sounds).toContain('boss_death')
     expect(emissions.length).toBeGreaterThan(0)
   })
 
@@ -286,5 +286,67 @@ describe('GameplayEventProcessor', () => {
 
     expect(traumas).toEqual([0.3])
     expect(flashCalls.length).toBe(0) // panic = no flash
+  })
+
+  test('spatial audio: player-fire passes pan and volumeScale', () => {
+    const playArgs: Array<{ name: string; pan?: number; volumeScale?: number }> = []
+
+    const processor = new GameplayEventProcessor({
+      camera: { addTrauma: () => {}, applyKick: () => {} } as never,
+      sound: {
+        play: (id: string, opts?: { pan?: number; volumeScale?: number }) => {
+          playArgs.push({ name: id, pan: opts?.pan, volumeScale: opts?.volumeScale })
+        },
+      } as never,
+      particles: { emit: () => {} } as never,
+      floatingText: {} as never,
+      playerRenderer: { triggerRecoil: () => {} } as never,
+    })
+
+    processor.setListenerPosition(0, 0)
+    processor.processAll([{
+      type: 'player-fire',
+      eid: 1,
+      angle: 0,
+      muzzleX: 400,
+      muzzleY: 0,
+      trauma: 0,
+      kickStrength: 0,
+    }])
+
+    expect(playArgs[0]!.name).toBe('fire')
+    // listener at (0,0), muzzle at (400,0): pan = 400/360 → clamped to 1.0
+    expect(playArgs[0]!.pan).toBeCloseTo(1.0)
+    // distance 400, t = 1 - 400/800 = 0.5, volume = 0.5² = 0.25
+    expect(playArgs[0]!.volumeScale).toBeCloseTo(0.25, 2)
+  })
+
+  test('spatial audio: boss sounds have volume floor', () => {
+    const playArgs: Array<{ name: string; volumeScale?: number }> = []
+
+    const processor = new GameplayEventProcessor({
+      camera: { addTrauma: () => {}, applyKick: () => {} } as never,
+      sound: {
+        play: (id: string, opts?: { volumeScale?: number }) => {
+          playArgs.push({ name: id, volumeScale: opts?.volumeScale })
+        },
+      } as never,
+      particles: {} as never,
+      floatingText: {} as never,
+      playerRenderer: {} as never,
+    })
+
+    // Listener far from boss — would normally be silent
+    processor.setListenerPosition(0, 0)
+    processor.processAll([{
+      type: 'boss-intro',
+      bossName: 'Test Boss',
+      taunt: 'Test',
+      x: 2000,
+      y: 0,
+    }])
+
+    expect(playArgs[0]!.name).toBe('boss_intro')
+    expect(playArgs[0]!.volumeScale).toBeGreaterThanOrEqual(0.3) // volume floor
   })
 })
