@@ -11,6 +11,7 @@ import { TICK_MS, TICK_S } from '@high-noon/shared'
 
 export type UpdateCallback = (dt: number) => void
 export type RenderCallback = (alpha: number) => void
+export type CrashCallback = (error: unknown) => void
 
 /** Maximum fixed updates per RAF frame to prevent render starvation */
 const MAX_CATCHUP_STEPS = 4
@@ -33,7 +34,8 @@ export class GameLoop {
 
   constructor(
     private readonly onUpdate: UpdateCallback,
-    private readonly onRender: RenderCallback
+    private readonly onRender: RenderCallback,
+    private readonly onCrash?: CrashCallback
   ) {}
 
   /** Current tick count */
@@ -81,49 +83,60 @@ export class GameLoop {
   private loop = (currentTime: number): void => {
     if (!this.running) return
 
-    // Calculate delta time in milliseconds
-    const deltaTime = currentTime - this.lastTime
-    this.lastTime = currentTime
+    try {
+      // Calculate delta time in milliseconds
+      const deltaTime = currentTime - this.lastTime
+      this.lastTime = currentTime
 
-    // Cap delta time to prevent spiral of death
-    // If frame took > 250ms, we're probably in a background tab
-    const cappedDelta = Math.min(deltaTime, 250)
+      // Cap delta time to prevent spiral of death
+      // If frame took > 250ms, we're probably in a background tab
+      const cappedDelta = Math.min(deltaTime, 250)
 
-    this.accumulator += cappedDelta
+      this.accumulator += cappedDelta
 
-    // Run fixed timestep updates (capped to protect render cadence)
-    let catchupSteps = 0
-    while (this.accumulator >= TICK_MS && catchupSteps < MAX_CATCHUP_STEPS) {
-      this.onUpdate(TICK_S)
-      this.accumulator -= TICK_MS
-      this._tick++
-      catchupSteps++
+      // Run fixed timestep updates (capped to protect render cadence)
+      let catchupSteps = 0
+      while (this.accumulator >= TICK_MS && catchupSteps < MAX_CATCHUP_STEPS) {
+        this.onUpdate(TICK_S)
+        this.accumulator -= TICK_MS
+        this._tick++
+        catchupSteps++
+      }
+
+      // If we hit the cap, drop the excess backlog to avoid long update bursts
+      if (catchupSteps >= MAX_CATCHUP_STEPS && this.accumulator >= TICK_MS) {
+        this.accumulator %= TICK_MS
+      }
+
+      // Calculate interpolation alpha (0 to 1)
+      // This represents how far we are between ticks
+      const alpha = this.accumulator / TICK_MS
+
+      // Render with interpolation
+      this.onRender(alpha)
+      this._frameCount++
+
+      // Update FPS counter
+      this.fpsAccumulator += deltaTime
+      this.fpsFrames++
+      if (this.fpsAccumulator >= 1000) {
+        this._fps = Math.round((this.fpsFrames * 1000) / this.fpsAccumulator)
+        this.fpsAccumulator = 0
+        this.fpsFrames = 0
+      }
+
+      // Schedule next frame
+      this.rafId = requestAnimationFrame(this.loop)
+    } catch (error) {
+      this.running = false
+      this.rafId = null
+
+      if (this.onCrash) {
+        this.onCrash(error)
+      } else {
+        throw error // re-throw if no handler (preserves current behavior for tests)
+      }
     }
-
-    // If we hit the cap, drop the excess backlog to avoid long update bursts
-    if (catchupSteps >= MAX_CATCHUP_STEPS && this.accumulator >= TICK_MS) {
-      this.accumulator %= TICK_MS
-    }
-
-    // Calculate interpolation alpha (0 to 1)
-    // This represents how far we are between ticks
-    const alpha = this.accumulator / TICK_MS
-
-    // Render with interpolation
-    this.onRender(alpha)
-    this._frameCount++
-
-    // Update FPS counter
-    this.fpsAccumulator += deltaTime
-    this.fpsFrames++
-    if (this.fpsAccumulator >= 1000) {
-      this._fps = Math.round((this.fpsFrames * 1000) / this.fpsAccumulator)
-      this.fpsAccumulator = 0
-      this.fpsFrames = 0
-    }
-
-    // Schedule next frame
-    this.rafId = requestAnimationFrame(this.loop)
   }
 
   /**

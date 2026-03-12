@@ -7,6 +7,7 @@
  */
 
 import { Client, type Room } from 'colyseus.js'
+import * as Sentry from '@sentry/react'
 import {
   SNAPSHOT_VERSION,
   type BulletSpawnMessage,
@@ -148,6 +149,9 @@ export class NetworkClient {
         // rooms with matching roomCode are paired (or a new room is created).
         this.room = await this.client.joinOrCreate('game', options)
       } catch (err) {
+        Sentry.captureException(err, {
+          tags: { source: 'colyseus-connect', action: 'join' },
+        })
         throw new Error(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     }
@@ -171,6 +175,9 @@ export class NetworkClient {
     try {
       this.room = await this.client.create('game', { ...options })
     } catch (err) {
+      Sentry.captureException(err, {
+        tags: { source: 'colyseus-connect', action: 'create-private' },
+      })
       throw new Error(`Failed to create room: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
 
@@ -198,6 +205,9 @@ export class NetworkClient {
         roomCode: QUICK_PLAY_CODE,
       })
     } catch (err) {
+      Sentry.captureException(err, {
+        tags: { source: 'colyseus-connect', action: 'join-quickplay' },
+      })
       throw new Error(`Quick Play failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
 
@@ -432,6 +442,15 @@ export class NetworkClient {
       this.emit('player-ping', data)
     }))
 
+    const onErrorHandler = (code: number, message?: string) => {
+      console.error(`[NetworkClient] Room error ${code}: ${message}`)
+      Sentry.captureException(new Error(`Colyseus room error: ${code} ${message ?? ''}`), {
+        tags: { source: 'colyseus-room', errorCode: code },
+      })
+    }
+    room.onError(onErrorHandler)
+    cleanup.push(() => room.onError.remove(onErrorHandler))
+
     const onLeave = () => {
       if (this.intentionalLeave) return
       this.attemptReconnect()
@@ -610,6 +629,11 @@ export class NetworkClient {
     this.reconnectionToken = null
     sessionStorage.removeItem('hn-reconnect-token')
     this.room = null
+    Sentry.captureMessage('Colyseus reconnection failed after all attempts', {
+      level: 'warning',
+      tags: { source: 'colyseus-reconnect' },
+      extra: { maxAttempts: RECONNECT_MAX_ATTEMPTS },
+    })
     this.emit('disconnect')
   }
 

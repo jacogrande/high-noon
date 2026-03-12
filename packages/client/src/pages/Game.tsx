@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import * as Sentry from '@sentry/react'
 import type { CharacterId } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
@@ -23,6 +24,7 @@ import {
   type GameplayRunIntroState,
 } from '../ui/GameplayOverlays'
 import { RunEndPanel } from '../ui/RunEndPanel'
+import { CrashScreen } from '../ui/CrashScreen'
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -46,6 +48,7 @@ export function Game() {
   const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
+  const [crashError, setCrashError] = useState<unknown>(null)
   const [showRunEnd, setShowRunEnd] = useState<'victory' | 'defeat' | 'mutual_kill' | null>(null)
   const showRunEndRef = useRef(showRunEnd)
   showRunEndRef.current = showRunEnd
@@ -183,9 +186,21 @@ export function Game() {
             }
             wasCampRef.current = isCamp
           }
+        },
+        (error) => {
+          console.error('[GameLoop] Fatal crash:', error)
+          Sentry.captureException(error, {
+            tags: { source: 'game-loop', mode: 'singleplayer' },
+          })
+          setCrashError(error)
         }
       )
       gameLoop.start()
+
+      gameApp.onContextLost = () => {
+        gameLoop?.stop()
+        setCrashError(new Error('WebGL context lost. Please reload.'))
+      }
 
       if (!hasSeenControls()) {
         setShowControls(true)
@@ -480,6 +495,7 @@ export function Game() {
           }}
         />
       )}
+      {crashError != null && <CrashScreen error={crashError} />}
     </div>
     </GameAudioContext.Provider>
   )

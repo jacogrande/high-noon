@@ -12,8 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@colyseus/schema": "^3.0.0",
     "@high-noon/shared": "workspace:*",
-    "colyseus": "^0.16.0",
-    "@colyseus/schema": "^3.0.0"
+    "@sentry/node": "^10.43.0",
+    "colyseus": "^0.16.0"
   }
 }

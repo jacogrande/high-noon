@@ -36,8 +36,13 @@
 
 ### Infrastructure
 
-- [ ] Client-side error boundary + crash reporting (Sentry or equivalent)
-- [ ] Basic analytics: run start → stage completion funnel, death locations, session length
+- [x] Client-side error boundary + crash reporting (Sentry)
+  - TODO: Create Sentry account + add DSN to `.env.local` to enable remote crash reports
+- [x] Basic analytics: run start → stage completion funnel, death locations, session length
+  - Skipped: `trackBossEncounter` not wired in multiplayer controller
+  - Skipped: `trackItemAcquired` only wired for `'visitor'` source (stash/drop/draft sources need game feature integration)
+  - Skipped: multiplayer match mode hardcoded to `'private'` (quickplay flag needs threading from page level)
+  - Skipped: component tests for ConsentDialog and SettingsPanel (need React Testing Library setup)
 - [ ] Visual debug overlay (collision radii, AI states, detection ranges) behind a dev flag
 
 ---
@@ -331,4 +336,4 @@ These are open questions that should be resolved before or during Phase 1–2:
 7. **Art sourcing:** Current sprites sufficient for EA, or commission polished set?
 8. **Steam Next Fest:** Target a specific Next Fest date, or skip for faster launch?
 9. **EA duration estimate:** Communicate 6 months? 12 months? "When it's ready"?
-10. **Analytics provider:** Sentry + custom? Steam analytics only? Third-party like GameAnalytics?
+10. **Analytics provider:** ~~Sentry + custom? Steam analytics only? Third-party like GameAnalytics?~~ **Decided: GameAnalytics** (shipped in analytics sprint)

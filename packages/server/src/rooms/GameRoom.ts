@@ -1,4 +1,5 @@
 import { Room, type Client } from 'colyseus'
+import * as Sentry from '@sentry/node'
 import { hasComponent, addComponent, removeComponent, defineQuery, removeEntity } from 'bitecs'
 import {
   createGameWorld,
@@ -466,49 +467,55 @@ export class GameRoom extends Room<GameRoomState> {
 
     // Input message handler
     this.onMessage('input', (client, data) => {
-      if (this.state.phase !== 'playing') return
-      const slot = this.slots.get(client.sessionId)
-      if (!slot) return
-      if (!isValidInput(data)) {
-        const payload = data as Record<string, unknown> | null
-        const hasRequiredTiming =
-          !!payload &&
-          isFiniteNumber(payload.clientTick) &&
-          isFiniteNumber(payload.clientTimeMs) &&
-          isFiniteNumber(payload.estimatedServerTimeMs) &&
-          isFiniteNumber(payload.viewInterpDelayMs) &&
-          isFiniteNumber(payload.shootSeq)
-        if (!hasRequiredTiming && !slot.protocolMismatchNotified) {
-          slot.protocolMismatchNotified = true
-          client.send(
-            'incompatible-protocol',
-            'Input protocol mismatch: expected clientTick + timing metadata',
-          )
+      try {
+        if (this.state.phase !== 'playing') return
+        const slot = this.slots.get(client.sessionId)
+        if (!slot) return
+        if (!isValidInput(data)) {
+          const payload = data as Record<string, unknown> | null
+          const hasRequiredTiming =
+            !!payload &&
+            isFiniteNumber(payload.clientTick) &&
+            isFiniteNumber(payload.clientTimeMs) &&
+            isFiniteNumber(payload.estimatedServerTimeMs) &&
+            isFiniteNumber(payload.viewInterpDelayMs) &&
+            isFiniteNumber(payload.shootSeq)
+          if (!hasRequiredTiming && !slot.protocolMismatchNotified) {
+            slot.protocolMismatchNotified = true
+            client.send(
+              'incompatible-protocol',
+              'Input protocol mismatch: expected clientTick + timing metadata',
+            )
+          }
+          return
         }
-        return
-      }
-      if (!consumeInputToken(slot, performance.now())) {
-        slot.rateLimitedDrops++
-        return
-      }
-      const input = clampInput(data)
+        if (!consumeInputToken(slot, performance.now())) {
+          slot.rateLimitedDrops++
+          return
+        }
+        const input = clampInput(data)
 
-      // Drop stale or duplicate sequence numbers.
-      if (input.seq <= slot.lastProcessedSeq) return
-      const lastQueued = slot.inputQueue[slot.inputQueue.length - 1]
-      if (lastQueued && input.seq <= lastQueued.seq) return
+        // Drop stale or duplicate sequence numbers.
+        if (input.seq <= slot.lastProcessedSeq) return
+        const lastQueued = slot.inputQueue[slot.inputQueue.length - 1]
+        if (lastQueued && input.seq <= lastQueued.seq) return
 
-      // Keep the freshest input under pressure: drop oldest, keep newest.
-      if (slot.inputQueue.length >= MAX_INPUT_QUEUE) {
-        slot.inputQueue.shift()
-      }
+        // Keep the freshest input under pressure: drop oldest, keep newest.
+        if (slot.inputQueue.length >= MAX_INPUT_QUEUE) {
+          slot.inputQueue.shift()
+        }
 
-      slot.inputQueue.push(input)
+        slot.inputQueue.push(input)
 
-      // AFK tracking: any non-zero button press or movement resets the timer
-      if (input.buttons !== 0 || input.moveX !== 0 || input.moveY !== 0) {
-        slot.lastActiveInputTick = this.world.tick
-        slot.afkWarned = false
+        // AFK tracking: any non-zero button press or movement resets the timer
+        if (input.buttons !== 0 || input.moveX !== 0 || input.moveY !== 0) {
+          slot.lastActiveInputTick = this.world.tick
+          slot.afkWarned = false
+        }
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { source: 'game-room-message', messageType: 'input' },
+        })
       }
     })
 
@@ -1290,6 +1297,13 @@ export class GameRoom extends Room<GameRoomState> {
         this.consecutiveTickErrors = 0
       } catch (err) {
         this.consecutiveTickErrors++
+        // Rate-limit Sentry: report first error and fatal threshold only to avoid quota burn
+        if (this.consecutiveTickErrors === 1 || this.consecutiveTickErrors > 10) {
+          Sentry.captureException(err, {
+            tags: { source: 'game-room-tick', roomId: this.roomId },
+            extra: { tick: this.world.tick, consecutiveErrors: this.consecutiveTickErrors, playerCount: this.clients.length },
+          })
+        }
         this.logLifecycle('tick-error', { consecutiveErrors: this.consecutiveTickErrors, error: String(err) })
         console.error(`[GameRoom] ${this.roomId} tick error (${this.consecutiveTickErrors}):`, err)
         if (this.consecutiveTickErrors > 10) {

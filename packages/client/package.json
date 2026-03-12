@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@high-noon/shared": "workspace:*",
+    "@sentry/react": "^10.43.0",
     "colyseus.js": "^0.16.0",
     "gameanalytics": "^4.4.7",
     "howler": "^2.2.4",
@@ -20,6 +21,7 @@
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@sentry/vite-plugin": "^5.1.1",
     "@types/howler": "^2.2.12",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.0",

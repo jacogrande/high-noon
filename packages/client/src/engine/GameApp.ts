@@ -7,6 +7,7 @@
  */
 
 import { Application, Container, RenderTexture, Sprite, TextureStyle } from 'pixi.js'
+import * as Sentry from '@sentry/react'
 
 /**
  * Internal (low-res) render resolution.
@@ -38,6 +39,12 @@ export class GameApp {
   /** Base position of lowResSprite before sub-pixel camera offset. */
   private baseX = 0
   private baseY = 0
+
+  /** Set to true when the WebGL context is lost (non-recoverable). */
+  contextLost = false
+
+  /** Callback invoked when WebGL context is lost. */
+  onContextLost?: () => void
 
   private constructor(app: Application) {
     this.app = app
@@ -101,7 +108,22 @@ export class GameApp {
     container.appendChild(app.canvas)
     app.canvas.style.imageRendering = 'pixelated'
 
-    return new GameApp(app)
+    const gameApp = new GameApp(app)
+
+    app.canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault()
+      Sentry.captureException(new Error('WebGL context lost'), {
+        tags: { source: 'webgl' },
+        extra: {
+          renderer: (app.renderer as { type?: number }).type,
+          resolution: app.renderer.resolution,
+        },
+      })
+      gameApp.contextLost = true
+      gameApp.onContextLost?.()
+    })
+
+    return gameApp
   }
 
   /** Get screen width */

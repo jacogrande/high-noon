@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import * as Sentry from '@sentry/react'
 import type { CharacterId, LobbyState, CampStatusMessage, VotekickVoteMessage, RunCompleteMessage } from '@high-noon/shared'
 import type { HUDState, SkillTreeUIData } from '../scenes/types'
 import { GameApp } from '../engine/GameApp'
@@ -26,6 +27,7 @@ import {
   type GameplayBossIntroState,
   type GameplayRunIntroState,
 } from '../ui/GameplayOverlays'
+import { CrashScreen } from '../ui/CrashScreen'
 
 type Phase = 'loading' | 'connecting' | 'lobby' | 'starting' | 'playing' | 'error'
 
@@ -56,6 +58,7 @@ export function MultiplayerGame() {
   const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
+  const [crashError, setCrashError] = useState<unknown>(null)
   const [reconnectState, setReconnectState] = useState<ReconnectState | null>(null)
   const [shutdownCountdown, setShutdownCountdown] = useState<number | null>(null)
   const [afkWarning, setAfkWarning] = useState<number | null>(null)
@@ -385,8 +388,21 @@ export function MultiplayerGame() {
             wasCampRef.current = isCamp
           }
         },
+        (error) => {
+          console.error('[GameLoop] Fatal crash:', error)
+          Sentry.captureException(error, {
+            tags: { source: 'game-loop', mode: 'multiplayer' },
+          })
+          setCrashError(error)
+        }
       )
       gameLoop.start()
+
+      gameApp.onContextLost = () => {
+        gameLoop?.stop()
+        setCrashError(new Error('WebGL context lost. Please reload.'))
+      }
+
       gameRef.current = { gameApp, gameLoop, scene }
       setPhase('playing')
     }
@@ -766,6 +782,7 @@ export function MultiplayerGame() {
           onBackToLobby={handleBackToMenu}
         />
       )}
+      {crashError != null && <CrashScreen error={crashError} />}
     </div>
     </GameAudioContext.Provider>
   )

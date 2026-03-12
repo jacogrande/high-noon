@@ -1,3 +1,13 @@
+import * as Sentry from '@sentry/node'
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || '',
+  environment: process.env.SENTRY_ENVIRONMENT || 'development',
+  release: process.env.SENTRY_RELEASE || 'dev',
+  enabled: !!process.env.SENTRY_DSN,
+  tracesSampleRate: 0.1,
+})
+
 import { Server, matchMaker } from 'colyseus'
 import { GameRoom } from './rooms/GameRoom'
 
@@ -39,6 +49,7 @@ async function main() {
 }
 
 main().catch((err) => {
+  Sentry.captureException(err)
   console.error('[Server] Fatal error:', err)
   process.exit(1)
 })
