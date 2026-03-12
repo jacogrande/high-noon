@@ -57,6 +57,25 @@ export function applyCoopHpScale(
 }
 
 /**
+ * Bullet pattern density multiplier per player count.
+ * Sub-linear scaling — increase enemy count instead of per-enemy density.
+ * 1 player = 1.0x, 2 players ≈ 1.5x, 3 ≈ 1.79x, 4 = 2.0x
+ */
+export function getPatternDensityScale(playerCount: number): number {
+  if (playerCount <= 1) return 1.0
+  return 1.0 + Math.log2(playerCount) * 0.5
+}
+
+/**
+ * Scale arena bounds for player count.
+ * 4-player sessions get ~45% larger viewable area.
+ */
+export function getArenaScale(playerCount: number): number {
+  if (playerCount <= 1) return 1.0
+  return 1.0 + (playerCount - 1) * 0.15
+}
+
+/**
  * Get co-op scaling multipliers for the given player count.
  * Returns all 1.0 for single-player (playerCount <= 1).
  */

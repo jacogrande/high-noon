@@ -24,7 +24,7 @@ export const INTERNAL_HEIGHT = 202
 export const WORLD_SCALE = 0.5
 
 /** Render layer names in z-order (back to front) */
-export type LayerName = 'background' | 'tiles' | 'entities' | 'fx' | 'ui'
+export type LayerName = 'background' | 'tiles' | 'entities' | 'enemyBullets' | 'fx' | 'ui'
 
 /**
  * GameApp wraps PixiJS Application with game-specific setup
@@ -54,6 +54,7 @@ export class GameApp {
       background: new Container(),
       tiles: new Container(),
       entities: new Container(),
+      enemyBullets: Object.assign(new Container(), { sortableChildren: true }),
       fx: new Container(),
       ui: new Container(),
     }
@@ -64,6 +65,7 @@ export class GameApp {
     this.worldContainer.addChild(this.layers.background)
     this.worldContainer.addChild(this.layers.tiles)
     this.worldContainer.addChild(this.layers.entities)
+    this.worldContainer.addChild(this.layers.enemyBullets)
     this.worldContainer.addChild(this.layers.fx)
 
     // Root container for low-res rendering: worldContainer + screen-space overlays (e.g. lightmap)

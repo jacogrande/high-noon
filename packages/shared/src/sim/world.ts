@@ -490,6 +490,8 @@ export interface GameWorld extends IWorld {
   rng: SeededRng
   /** Per-player last hit direction (unit vector, for camera kick). Key = player entity ID */
   lastPlayerHitDir: Map<number, { x: number; y: number }>
+  /** Per-player damage fraction from last hit (for proportional camera trauma). Key = player entity ID */
+  lastPlayerDamageFraction: Map<number, number>
   /** Player upgrade/progression state */
   upgradeState: UpgradeState
   /** Pierce hit tracking: bulletEid → set of already-hit entity EIDs */
@@ -707,6 +709,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     initialSeed: resolvedSeed,
     rng: new SeededRng(resolvedSeed),
     lastPlayerHitDir: new Map(),
+    lastPlayerDamageFraction: new Map(),
     upgradeState: initUpgradeState(charDef),
     spawnsPaused: false,
     bulletPierceHits: new Map(),
@@ -841,6 +844,7 @@ export function resetWorld(world: GameWorld): void {
   world.waveClearedThisTick = false
   world.maxProjectiles = 80
   world.lastPlayerHitDir.clear()
+  world.lastPlayerDamageFraction.clear()
   world.upgradeState = initUpgradeState(charDef)
   world.spawnsPaused = false
   world.bulletPierceHits.clear()

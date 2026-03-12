@@ -57,7 +57,7 @@ export class RendererBundle {
     this.debugRenderer = new DebugRenderer(layers.ui)
     this.spriteRegistry = new SpriteRegistry(layers.entities)
     this.playerRenderer = new PlayerRenderer(layers.entities)
-    this.bulletRenderer = new BulletRenderer(this.spriteRegistry)
+    this.bulletRenderer = new BulletRenderer(this.spriteRegistry, layers.enemyBullets)
     this.enemyRenderer = new EnemyRenderer(this.spriteRegistry, this.debugRenderer, layers.entities)
     this.npcRenderer = new NpcRenderer(this.spriteRegistry)
     this.objectiveRenderer = new ObjectiveRenderer(this.spriteRegistry, layers.entities)

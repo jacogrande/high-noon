@@ -39,6 +39,11 @@ export class SpriteRegistry {
     this.container = entityLayer
   }
 
+  /** Get the parent container this registry adds sprites to. */
+  getContainer(): Container {
+    return this.container
+  }
+
   /**
    * Check if an entity has a sprite
    */

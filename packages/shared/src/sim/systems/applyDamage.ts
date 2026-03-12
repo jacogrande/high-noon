@@ -82,6 +82,9 @@ export function applyDamage(world: GameWorld, targetEid: number, options: ApplyD
   const targetIsPlayer = hasComponent(world, Player, targetEid)
   if (targetIsPlayer && applied > 0) {
     getOrCreatePlayerStats(world.playerStats, targetEid).damageReceived += applied
+    // Store damage fraction for proportional camera trauma
+    const maxHP = Health.max[targetEid]!
+    world.lastPlayerDamageFraction.set(targetEid, maxHP > 0 ? applied / maxHP : 0)
   }
   if (targetIsPlayer && options.fireHealthChanged !== false) {
     world.hooks.fireHealthChanged(world, targetEid, oldHP, newHP)

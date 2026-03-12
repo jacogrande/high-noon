@@ -3,17 +3,28 @@
  *
  * Renders bullet entities as sprites with rotation based on velocity.
  * Tracks bullet creation and removal to sync sprites with the ECS world.
+ *
+ * Enemy bullets render in a dedicated layer above entities and player bullets,
+ * with z-ordering so smaller/faster bullets draw on top of bigger/slower ones.
+ *
+ * Bullets with non-zero accel or drag get fading afterimage trails (3 positions).
  */
 
 import { defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '@high-noon/shared'
 import { Bullet, Position, Collider, Velocity, CollisionLayer, Enemy, EnemyTier } from '@high-noon/shared'
-import type { Texture } from 'pixi.js'
+import type { Container, Texture } from 'pixi.js'
+import { Sprite } from 'pixi.js'
 import { SpriteRegistry } from './SpriteRegistry'
 import { AssetLoader } from '../assets'
 
 // Define query for bullet entities with rendering components
 const bulletRenderQuery = defineQuery([Bullet, Position, Collider])
+
+/** Number of trail afterimages per bullet */
+const TRAIL_LENGTH = 3
+/** Trail alpha values from newest to oldest */
+const TRAIL_ALPHA = [0.3, 0.2, 0.1] as const
 
 interface CosmeticBullet {
   x: number
@@ -36,6 +47,20 @@ export interface VisualBulletImpact {
   kind: 'entity' | 'wall'
 }
 
+/** Trail position ring buffer for a single bullet */
+interface TrailState {
+  /** Ring buffer of past positions [x, y, x, y, ...] */
+  positions: Float32Array
+  /** Current write index into the ring buffer (0..TRAIL_LENGTH-1) */
+  head: number
+  /** Number of valid entries (grows from 0 to TRAIL_LENGTH) */
+  count: number
+  /** Trail afterimage sprites */
+  sprites: Sprite[]
+  /** Tint color inherited from the bullet */
+  tint: number
+}
+
 const VISUAL_BULLET_DEFAULT_SPEED = 2400
 const VISUAL_BULLET_DEFAULT_LIFETIME = 0.65
 const VISUAL_BULLET_TARGET_EPSILON = 2
@@ -44,18 +69,32 @@ const VISUAL_BULLET_TARGET_EPSILON = 2
  * Bullet renderer - manages bullet visual representation
  */
 export class BulletRenderer {
+  /** Registry for player bullets (entities layer) */
   private readonly registry: SpriteRegistry
+  /** Registry for enemy bullets (enemyBullets layer, above entities) */
+  private readonly enemyRegistry: SpriteRegistry
+  /** The enemy bullet container for trail sprites (has sortableChildren) */
+  private readonly enemyBulletLayer: Container
   private readonly bulletEntities = new Set<number>()
   private readonly playerBullets = new Set<number>()
+  private readonly enemyBullets = new Set<number>()
   private readonly currentEntities = new Set<number>()
   private readonly cosmeticBullets = new Map<number, CosmeticBullet>()
   private readonly animState = new Map<number, { frame: number; elapsed: number; frames: Texture[]; fps: number }>()
+  private readonly trailState = new Map<number, TrailState>()
   private readonly pendingVisualImpacts: VisualBulletImpact[] = []
   private nextCosmeticId = -1
   readonly removedPositions: Array<{ x: number; y: number }> = []
 
-  constructor(registry: SpriteRegistry) {
+  constructor(registry: SpriteRegistry, enemyBulletLayer: Container) {
     this.registry = registry
+    this.enemyBulletLayer = enemyBulletLayer
+    this.enemyRegistry = new SpriteRegistry(enemyBulletLayer)
+  }
+
+  /** Get the correct registry for an entity based on its collision layer */
+  private registryFor(eid: number): SpriteRegistry {
+    return this.enemyBullets.has(eid) ? this.enemyRegistry : this.registry
   }
 
   /**
@@ -76,36 +115,77 @@ export class BulletRenderer {
 
       // Create sprite if doesn't exist
       if (!this.bulletEntities.has(eid)) {
+        const isEnemy = Collider.layer[eid] === CollisionLayer.ENEMY_BULLET
+        const targetRegistry = isEnemy ? this.enemyRegistry : this.registry
+
         const spriteId = Bullet.spriteId[eid]!
         const texture = AssetLoader.getBulletTextureById(spriteId)
-        const sprite = this.registry.createSprite(eid, texture)
+        const sprite = targetRegistry.createSprite(eid, texture)
         this.bulletEntities.add(eid)
 
         // Set initial rotation based on velocity
         const vx = Velocity.x[eid]!
         const vy = Velocity.y[eid]!
         const rotation = Math.atan2(vy, vx)
-        this.registry.setRotation(eid, rotation)
+        targetRegistry.setRotation(eid, rotation)
 
-        // Track player bullets for removal particles
-        if (Collider.layer[eid] === CollisionLayer.PLAYER_BULLET) {
-          this.playerBullets.add(eid)
-        }
+        // Track player vs enemy bullets
+        if (isEnemy) {
+          this.enemyBullets.add(eid)
 
-        // Apply per-bullet size from ECS component (Float32Array defaults to 0; treat as 1.0)
-        const rawSize = Bullet.size[eid]!
-        const bulletSize = rawSize > 0 ? rawSize : 1.0
-
-        if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
           // Tint enemy bullets by tier
           const ownerId = Bullet.ownerId[eid]!
           const isThreat = Enemy.tier[ownerId] === EnemyTier.THREAT
           sprite.tint = isThreat ? 0xff2222 : 0xff9966
+
+          // Apply per-bullet size from ECS component (Float32Array defaults to 0; treat as 1.0)
+          const rawSize = Bullet.size[eid]!
+          const bulletSize = rawSize > 0 ? rawSize : 1.0
           sprite.scale.set(bulletSize)
+
+          // Z-ordering: smaller/faster bullets render on top (higher zIndex)
+          const speed = Math.hypot(vx, vy)
+          // Normalize: speed contributes positively, size inversely
+          sprite.zIndex = speed / 100 + (1 / Math.max(bulletSize, 0.1))
         } else {
+          this.playerBullets.add(eid)
           // Player bullets: warm tint
           sprite.tint = 0xfff5cf
+          const rawSize = Bullet.size[eid]!
+          const bulletSize = rawSize > 0 ? rawSize : 1.0
           sprite.scale.set(bulletSize)
+        }
+
+        // Init trail state for bullets with non-linear trajectories (accel or drag)
+        const accel = Bullet.accel[eid]!
+        const drag = Bullet.drag[eid]!
+        if (accel !== 0 || drag !== 0) {
+          const trailSprites: Sprite[] = []
+          const tint = isEnemy
+            ? (Enemy.tier[Bullet.ownerId[eid]!] === EnemyTier.THREAT ? 0xff2222 : 0xff9966)
+            : 0xfff5cf
+          const container = isEnemy ? this.enemyBulletLayer : this.registry.getContainer()
+          for (let i = 0; i < TRAIL_LENGTH; i++) {
+            const trailSprite = new Sprite(texture)
+            trailSprite.anchor.set(0.5, 0.5)
+            trailSprite.tint = tint
+            trailSprite.alpha = TRAIL_ALPHA[i]!
+            trailSprite.rotation = rotation
+            trailSprite.visible = false
+            const rawSize = Bullet.size[eid]!
+            const bulletSize = rawSize > 0 ? rawSize : 1.0
+            // Trail sprites slightly smaller than the main bullet
+            trailSprite.scale.set(bulletSize * (0.85 - i * 0.1))
+            container.addChild(trailSprite)
+            trailSprites.push(trailSprite)
+          }
+          this.trailState.set(eid, {
+            positions: new Float32Array(TRAIL_LENGTH * 2),
+            head: 0,
+            count: 0,
+            sprites: trailSprites,
+            tint,
+          })
         }
 
         // Init animation state for animated bullet sprites
@@ -124,15 +204,31 @@ export class BulletRenderer {
     // Remove sprites for despawned bullets
     for (const eid of this.bulletEntities) {
       if (!currentEntities.has(eid)) {
+        const reg = this.registryFor(eid)
+
         // Capture position of removed player bullets for impact particles
         if (this.playerBullets.has(eid)) {
-          const displayObj = this.registry.get(eid)
+          const displayObj = reg.get(eid)
           if (displayObj) {
             this.removedPositions.push({ x: displayObj.x, y: displayObj.y })
           }
           this.playerBullets.delete(eid)
         }
-        this.registry.remove(eid)
+
+        // Clean up enemy bullet tracking
+        this.enemyBullets.delete(eid)
+
+        // Clean up trail sprites
+        const trail = this.trailState.get(eid)
+        if (trail) {
+          for (const s of trail.sprites) {
+            s.parent?.removeChild(s)
+            s.destroy()
+          }
+          this.trailState.delete(eid)
+        }
+
+        reg.remove(eid)
         this.bulletEntities.delete(eid)
         this.animState.delete(eid)
       }
@@ -159,7 +255,11 @@ export class BulletRenderer {
       const renderX = prevX + (currX - prevX) * alpha
       const renderY = prevY + (currY - prevY) * alpha
 
-      this.registry.setPosition(eid, renderX, renderY)
+      const reg = this.registryFor(eid)
+      reg.setPosition(eid, renderX, renderY)
+
+      // Update trail afterimages
+      this.updateTrail(eid, renderX, renderY)
     }
 
     for (const [eid, bullet] of this.cosmeticBullets) {
@@ -200,7 +300,11 @@ export class BulletRenderer {
         renderY += offsetY
       }
 
-      this.registry.setPosition(eid, renderX, renderY)
+      const reg = this.registryFor(eid)
+      reg.setPosition(eid, renderX, renderY)
+
+      // Update trail afterimages
+      this.updateTrail(eid, renderX, renderY)
     }
 
     for (const [eid, bullet] of this.cosmeticBullets) {
@@ -210,6 +314,36 @@ export class BulletRenderer {
     }
 
     if (realDt > 0) this.updateAnimations(realDt)
+  }
+
+  /**
+   * Push the current render position into the trail ring buffer and
+   * update afterimage sprite positions/visibility.
+   */
+  private updateTrail(eid: number, renderX: number, renderY: number): void {
+    const trail = this.trailState.get(eid)
+    if (!trail) return
+
+    // Write current position into ring buffer
+    const idx = trail.head * 2
+    trail.positions[idx] = renderX
+    trail.positions[idx + 1] = renderY
+    trail.head = (trail.head + 1) % TRAIL_LENGTH
+    if (trail.count < TRAIL_LENGTH) trail.count++
+
+    // Update afterimage sprites (newest trail position = index 0 in sprites)
+    for (let i = 0; i < TRAIL_LENGTH; i++) {
+      const sprite = trail.sprites[i]!
+      if (i >= trail.count) {
+        sprite.visible = false
+        continue
+      }
+      // Read from ring buffer: most recent trail entry is (head - 1 - i)
+      const ringIdx = ((trail.head - 1 - i + TRAIL_LENGTH * 2) % TRAIL_LENGTH) * 2
+      sprite.x = trail.positions[ringIdx]!
+      sprite.y = trail.positions[ringIdx + 1]!
+      sprite.visible = true
+    }
   }
 
   /**
@@ -227,7 +361,8 @@ export class BulletRenderer {
       const newFrame = Math.floor(state.elapsed * state.fps) % state.frames.length
       if (newFrame !== state.frame) {
         state.frame = newFrame
-        this.registry.setTexture(eid, state.frames[newFrame]!)
+        const reg = this.registryFor(eid)
+        reg.setTexture(eid, state.frames[newFrame]!)
       }
     }
   }
@@ -362,17 +497,27 @@ export class BulletRenderer {
    */
   destroy(): void {
     for (const eid of this.bulletEntities) {
-      this.registry.remove(eid)
+      this.registryFor(eid).remove(eid)
     }
     for (const eid of this.cosmeticBullets.keys()) {
       this.registry.remove(eid)
     }
+    // Clean up trail sprites
+    for (const trail of this.trailState.values()) {
+      for (const s of trail.sprites) {
+        s.parent?.removeChild(s)
+        s.destroy()
+      }
+    }
     this.bulletEntities.clear()
     this.playerBullets.clear()
+    this.enemyBullets.clear()
     this.currentEntities.clear()
     this.cosmeticBullets.clear()
     this.animState.clear()
+    this.trailState.clear()
     this.pendingVisualImpacts.length = 0
     this.removedPositions.length = 0
+    this.enemyRegistry.destroy()
   }
 }

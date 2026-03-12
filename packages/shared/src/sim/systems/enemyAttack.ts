@@ -25,7 +25,10 @@ import { applyDamage } from './applyDamage'
 import { applyPoison } from './poison'
 import { isBoss, getBoss } from '../content/bosses'
 import { getEnemyDef } from '../content/enemyRegistry'
+import { getPattern, type PatternContext } from '../content/patterns'
+import { executePattern, processPendingBullets } from './patternExecutor'
 import { forEachAliveEnemyInRadius } from './damageHelpers'
+import '../content/patternDefs' // ensure patterns are registered
 
 /**
  * Shared rush-attack handler for charger and coyote (dart-and-bite).
@@ -97,6 +100,9 @@ const attackQuery = defineQuery([EnemyAI, AttackConfig, Position, Enemy])
 const bulletQuery = defineQuery([Bullet])
 
 export function enemyAttackSystem(world: GameWorld, _dt: number): void {
+  // Process delayed pattern bullets from previous ticks
+  processPendingBullets(world)
+
   const enemies = attackQuery(world)
 
   // Clear per-tick VFX events from previous tick
@@ -307,28 +313,6 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       })
       world.dustZonesSpawnedThisTick.push({ x: ex, y: ey, radius: DUSTDEVIL_ZONE_RADIUS })
       transition(eid, AIState.RECOVERY)
-    } else if (type === EnemyType.DEADEYE) {
-      // Deadeye: fire a fast bullet in the locked aim direction (set at TELEGRAPH entry)
-      const aimDirX = AttackConfig.aimX[eid]!
-      const aimDirY = AttackConfig.aimY[eid]!
-      const speed = AttackConfig.projectileSpeed[eid]!
-      const damage = AttackConfig.damage[eid]!
-      const bulletSprite = def?.bulletSpriteId ?? BulletSpriteId.SLUG
-
-      spawnBullet(world, {
-        x: ex,
-        y: ey,
-        vx: aimDirX * speed,
-        vy: aimDirY * speed,
-        damage,
-        range: ENEMY_BULLET_RANGE,
-        ownerId: eid,
-        layer: CollisionLayer.ENEMY_BULLET,
-        spriteId: bulletSprite,
-        size: ENEMY_BULLET_SIZE_THREAT,
-      })
-      activeBulletCount += 1
-      transition(eid, AIState.RECOVERY)
     } else if (type === EnemyType.VULTURE && attackStyle === 'custom') {
       // Vulture dive-bomb: AoE damage at landing position after dive duration
       if (EnemyAI.stateTimer[eid]! >= VULTURE_DIVE_DURATION) {
@@ -352,6 +336,35 @@ export function enemyAttackSystem(world: GameWorld, _dt: number): void {
       }
     } else {
       // Projectile attack (default for 'projectile', 'custom' with projectile config, or unknown)
+
+      // Pattern-system override: if the definition specifies a patternId, use it
+      if (def?.patternId) {
+        const patternDef = getPattern(def.patternId)
+        if (patternDef) {
+          // Fodder projectile cap — skip shot if at limit
+          if (Enemy.tier[eid] === EnemyTier.FODDER && activeBulletCount >= world.maxProjectiles) {
+            transition(eid, AIState.RECOVERY)
+            continue
+          }
+          // Use locked aim direction for Deadeye, live aim for others
+          const useLockedAim = type === EnemyType.DEADEYE
+          const aimAngle = useLockedAim
+            ? Math.atan2(AttackConfig.aimY[eid]!, AttackConfig.aimX[eid]!)
+            : Math.atan2(targetY - ey, targetX - ex)
+          const ctx: PatternContext = {
+            originX: ex, originY: ey,
+            targetX, targetY,
+            baseAngle: aimAngle,
+            rng: world.rng,
+            cycle: world.tick,
+          }
+          activeBulletCount += executePattern(world, eid, patternDef, ctx)
+          transition(eid, AIState.RECOVERY)
+          continue  // skip legacy inline code
+        }
+      }
+
+      // Legacy inline projectile code (fallback when no patternId)
 
       // Fodder projectile cap — skip shot if at limit
       if (Enemy.tier[eid] === EnemyTier.FODDER) {

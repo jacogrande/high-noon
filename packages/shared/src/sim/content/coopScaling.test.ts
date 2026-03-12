@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { getCoopScalars } from './coopScaling'
+import { getCoopScalars, getPatternDensityScale, getArenaScale } from './coopScaling'
 
 describe('getCoopScalars', () => {
   it('returns all 1.0 for single player', () => {
@@ -79,5 +79,33 @@ describe('getCoopScalars', () => {
       expect(curr).toBeLessThanOrEqual(prev)
       prev = curr
     }
+  })
+})
+
+describe('getPatternDensityScale', () => {
+  it('returns 1.0 for single player', () => {
+    expect(getPatternDensityScale(1)).toBe(1.0)
+  })
+
+  it('returns sub-linear scaling for 2-4 players', () => {
+    const scale2 = getPatternDensityScale(2)
+    const scale3 = getPatternDensityScale(3)
+    const scale4 = getPatternDensityScale(4)
+    expect(scale2).toBeCloseTo(1.5, 1)
+    expect(scale3).toBeGreaterThan(scale2)
+    expect(scale4).toBeCloseTo(1.5 + Math.log2(4) * 0.5 - Math.log2(2) * 0.5, 1)
+    // 4 players should be at most 2x (sub-linear)
+    expect(scale4).toBeLessThanOrEqual(2.0)
+  })
+})
+
+describe('getArenaScale', () => {
+  it('returns 1.0 for single player', () => {
+    expect(getArenaScale(1)).toBe(1.0)
+  })
+
+  it('scales 15% per additional player', () => {
+    expect(getArenaScale(2)).toBeCloseTo(1.15, 2)
+    expect(getArenaScale(4)).toBeCloseTo(1.45, 2)
   })
 })

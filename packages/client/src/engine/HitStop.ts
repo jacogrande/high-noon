@@ -3,7 +3,13 @@
  *
  * Pauses the simulation for a brief duration on impact events.
  * Returns a time scale (0 or 1) that gates the simulation update.
+ *
+ * Supports additive stacking: multiple freeze() calls within one frame
+ * sum their durations, capped at maxStackDuration to prevent a
+ * "slideshow" effect from rapid-fire weapons.
  */
+
+import { HIT_STOP_MAX_STACK } from '@high-noon/shared'
 
 export class HitStop {
   private remaining = 0
@@ -11,13 +17,17 @@ export class HitStop {
   /** Accessibility toggle */
   enabled = true
 
+  /** Maximum total freeze from stacked calls per frame (seconds) */
+  maxStackDuration = HIT_STOP_MAX_STACK
+
   /**
    * Freeze the simulation for the given duration.
-   * Takes the max with any current remaining freeze.
+   * Stacks additively with any current remaining freeze,
+   * capped at maxStackDuration.
    */
   freeze(durationSeconds: number): void {
     if (!this.enabled) return
-    this.remaining = Math.max(this.remaining, durationSeconds)
+    this.remaining = Math.min(this.remaining + durationSeconds, this.maxStackDuration)
   }
 
   /**
