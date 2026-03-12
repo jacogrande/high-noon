@@ -91,7 +91,7 @@ beforeAll(async () => {
 })
 
 // ---------------------------------------------------------------------------
-// Idempotency — module-level `initialized` flag is true after the beforeAll above
+// Idempotency — sdkInitialized + submissionEnabled are both true after beforeAll
 // ---------------------------------------------------------------------------
 
 describe('initAnalytics — idempotency (double-init is a no-op)', () => {
@@ -226,5 +226,47 @@ describe('setAnalyticsEnabled', () => {
 
     // Assert
     expect(localStorage.getItem('hn_analytics_consent')).toBe('granted')
+  })
+
+  test('isAnalyticsReady returns false after setAnalyticsEnabled(false)', async () => {
+    const { setAnalyticsEnabled, isAnalyticsReady } = await import('./analytics')
+
+    // Act
+    setAnalyticsEnabled(false)
+
+    // Assert — submissionEnabled is now false
+    expect(isAnalyticsReady()).toBe(false)
+
+    // Cleanup — re-enable so subsequent tests aren't affected
+    setAnalyticsEnabled(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Behavioral: disable → track is no-op → re-enable → track fires
+// ---------------------------------------------------------------------------
+
+describe('disable → track → re-enable → track lifecycle', () => {
+  test('events are suppressed while disabled and resume after re-enable', async () => {
+    const { setAnalyticsEnabled } = await import('./analytics')
+    const { trackRunStart } = await import('./analyticsEvents')
+    clearGA()
+
+    // Disable analytics
+    setAnalyticsEnabled(false)
+
+    // Track while disabled — should be a no-op
+    trackRunStart({ character: 'sheriff', seed: 1, mode: 'singleplayer' })
+    expect(mockGA.addDesignEvent).not.toHaveBeenCalled()
+    expect(mockGA.addProgressionEvent).not.toHaveBeenCalled()
+
+    // Re-enable analytics
+    clearGA()
+    setAnalyticsEnabled(true)
+
+    // Track after re-enable — should fire
+    trackRunStart({ character: 'sheriff', seed: 2, mode: 'singleplayer' })
+    expect(mockGA.addDesignEvent).toHaveBeenCalledWith('run:start:singleplayer:sheriff', 2)
+    expect(mockGA.addProgressionEvent).toHaveBeenCalled()
   })
 })

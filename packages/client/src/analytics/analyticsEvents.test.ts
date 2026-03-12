@@ -170,6 +170,33 @@ describe('no-op guard — analytics not initialized', () => {
     trackDisconnect({ reason: 'timeout', timeSinceMatchStartSec: 90 })
     expect(mockGA.addDesignEvent).not.toHaveBeenCalled()
   })
+
+  test('initAnalytics returns false when consent is denied', async () => {
+    localStorage.setItem('hn_analytics_consent', 'denied')
+    process.env.VITE_GA_GAME_KEY = 'test_game_key'
+    process.env.VITE_GA_SECRET_KEY = 'test_secret_key'
+    const { initAnalytics } = await import('./analytics')
+    expect(initAnalytics()).toBe(false)
+    expect(mockGA.initialize).not.toHaveBeenCalled()
+  })
+
+  test('initAnalytics returns false when consent is unset', async () => {
+    localStorage.clear()
+    process.env.VITE_GA_GAME_KEY = 'test_game_key'
+    process.env.VITE_GA_SECRET_KEY = 'test_secret_key'
+    const { initAnalytics } = await import('./analytics')
+    expect(initAnalytics()).toBe(false)
+    expect(mockGA.initialize).not.toHaveBeenCalled()
+  })
+
+  test('initAnalytics returns false when keys are missing but consent is granted', async () => {
+    localStorage.setItem('hn_analytics_consent', 'granted')
+    delete process.env.VITE_GA_GAME_KEY
+    delete process.env.VITE_GA_SECRET_KEY
+    const { initAnalytics } = await import('./analytics')
+    expect(initAnalytics()).toBe(false)
+    expect(mockGA.initialize).not.toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -577,6 +604,15 @@ describe('trackMatchLatency', () => {
     const { trackMatchLatency } = await import('./analyticsEvents')
     trackMatchLatency({ rttMedianMs: 50, rttP95Ms: 200, desyncCount: 2, rubberBandEvents: 7 })
     expect(mockGA.addDesignEvent).toHaveBeenCalledTimes(4)
+  })
+
+  test('RTT values are numeric', async () => {
+    const { trackMatchLatency } = await import('./analyticsEvents')
+    trackMatchLatency({ rttMedianMs: 35.5, rttP95Ms: 110.2, desyncCount: 0, rubberBandEvents: 0 })
+    for (const call of mockGA.addDesignEvent.mock.calls) {
+      const [, value] = call
+      expect(typeof value).toBe('number')
+    }
   })
 })
 
