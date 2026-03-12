@@ -9,28 +9,33 @@
 ## Phase 1: Ship-Blocking Fixes (Weeks 1–3)
 
 ### Audio
+
 - [ ] Commission or source SFX library: gunshots (per weapon), bullet impacts (flesh/wood/stone), enemy death cries, reload, roll whoosh, dynamite, ability activations, UI clicks, XP/level-up
 - [ ] Commission or source 3–4 looping Western music tracks: menu theme, combat loop, boss encounter, camp/narrative
 - [ ] Integrate Howler.js playback with game events (existing infrastructure, needs content + wiring)
 - [x] Positional stereo panning for gunfire and impacts
 
 ### Controls & Settings
+
 - [ ] Settings menu: volume sliders (master/SFX/music), resolution/fullscreen toggle, key rebinds
 - [ ] Controller support (twin-stick mapping: left stick move, right stick aim, triggers shoot/roll)
 - [ ] Input abstraction layer so keyboard and gamepad share the same input pipeline
 
 ### Onboarding
+
 - [ ] 60–90 second first-run tutorial: move, shoot, roll, use ability
 - [ ] Contextual tooltips for first encounter with new mechanics (cover, camp, skill tree)
 - [ ] Death screen with clear "try again" call to action and run stats summary
 
 ### Critical Bugs
+
 - [ ] Entity ID recycling (current sequential IDs exhaust at 10,000 in long runs)
 - [ ] Snapshot HP encoding: Uint8 → Uint16 for co-op boss HP scaling
 - [ ] Memory leak audit: stale entity references in world Maps/Sets, add `onEntityRemoved` hook
 - [ ] Config validation assertions on world creation
 
 ### Infrastructure
+
 - [ ] Client-side error boundary + crash reporting (Sentry or equivalent)
 - [ ] Basic analytics: run start → stage completion funnel, death locations, session length
 - [ ] Visual debug overlay (collision radii, AI states, detection ranges) behind a dev flag
@@ -40,6 +45,7 @@
 ## Phase 2: Game Feel & Polish (Weeks 3–5)
 
 ### Visual Effects
+
 - [ ] Muzzle flash rendering (anchor data already exists)
 - [ ] Shell casing particle emission
 - [ ] Dust clouds on movement and roll
@@ -49,6 +55,7 @@
 - [ ] Kill streak visual escalation (screen flash, camera zoom pulse)
 
 ### Combat Clarity
+
 - [ ] Distinct player vs. enemy bullet visuals (color, shape, trail)
 - [ ] Offscreen threat indicators (edge-of-screen arrows for snipers, chargers)
 - [ ] Boss entrance standoff moment (3-second freeze + dramatic zoom)
@@ -57,6 +64,7 @@
 - [ ] Add Knife Drifter back-facing identifier
 
 ### Balance Pass
+
 - [ ] Power curve review: each level-up should feel noticeably different
 - [ ] Weapon feel tuning pass (recoil, fire rate, spread per weapon)
 - [ ] Stage 1–3 difficulty curve review with fresh-eyes playtesting
@@ -67,6 +75,7 @@
 ## Phase 3: Multiplayer Hardening (Weeks 4–6)
 
 ### Stability
+
 - [ ] Disconnect/rejoin behavior (grace period, state restore)
 - [ ] Friendly fire policy decision and implementation
 - [ ] AFK detection and handling
@@ -74,12 +83,14 @@
 - [ ] Stress test 4-player and 8-player sessions
 
 ### Social Features
+
 - [ ] Private lobby codes for friends
 - [ ] Quick play matchmaking (basic, region-aware if possible)
 - [ ] Ready check / timer cap in camp phase
 - [ ] Post-run stats screen (damage dealt, kills, items collected, MVP)
 
 ### Co-op Gameplay
+
 - [ ] Downed/revive system (bleed-out timer, proximity revive)
 - [ ] Ping system (mark target, mark danger, "over here")
 - [ ] Shared vs. individual loot decision and implementation
@@ -89,6 +100,7 @@
 ## Phase 4: Content Completion for EA (Weeks 5–8)
 
 ### Stage 4: Crossroads
+
 - [ ] Map generation: +-shaped arena with dynamic tile modification
 - [ ] Old Scratch boss: 4-phase supernatural encounter with quickdraw finale
 - [ ] Ghost Rider add spawns during boss fight
@@ -96,12 +108,14 @@
 - [ ] Stage 4 encounter waves (new enemy compositions)
 
 ### New Enemies (pick 3–4 for EA)
+
 - [ ] Lasso Bandit (rooting CC)
 - [ ] Dynamite Tosser (area denial)
 - [ ] Armored Bandit (directional armor)
 - [ ] Rattlesnake (poison DOT)
 
 ### Meta-Progression
+
 - [ ] Ascension system: stackable difficulty modifiers unlocked after first clear
 - [ ] Run history with seed display (deterministic sim supports replay)
 - [ ] Character unlock progression (start with Sheriff, unlock Prospector/Undertaker through play)
@@ -111,18 +125,21 @@
 ## Phase 5: Playtesting & QA (Weeks 7–10)
 
 ### Internal Testing
+
 - [ ] Full 3-stage run completion testing (solo + co-op) on every build
 - [ ] Controller-only playthroughs to verify gamepad experience
 - [ ] Memory and performance profiling on target min-spec hardware
 - [ ] Network condition testing (simulated packet loss, high latency)
 
 ### External Playtesting
+
 - [ ] Closed alpha: 10–20 testers, focus on first-time experience and tutorial clarity
 - [ ] Closed beta: 50–100 testers, focus on balance, multiplayer stability, and fun factor
 - [ ] Collect structured feedback: fun ratings per stage, confusion points, crash reports
 - [ ] Iterate on tutorial and difficulty curve based on playtest data
 
 ### QA Checklist
+
 - [ ] All 5 bosses completable solo and in 2/4-player co-op
 - [ ] No softlocks or progression blockers
 - [ ] Settings persist across sessions
@@ -134,6 +151,7 @@
 ## Phase 6: Art & Identity (Parallel Track, Weeks 1–10)
 
 ### Sprite Art
+
 - [ ] Audit existing sprites: identify placeholder vs. final quality
 - [ ] Player character sprite sheets: idle, walk, roll, shoot, death (all 3 characters)
 - [ ] Enemy sprite sheets: ensure each enemy has distinct silhouette and attack telegraph
@@ -143,6 +161,7 @@
 - [ ] Destructible obstacle states (intact → damaged → destroyed)
 
 ### UI Art
+
 - [ ] HUD design: health, ammo, ability cooldown, XP bar, minimap
 - [ ] Menu screens: main menu, settings, lobby, character select, pause
 - [ ] Skill tree visual design
@@ -150,6 +169,7 @@
 - [ ] Loading screens with Western flavor
 
 ### Visual Identity
+
 - [ ] Logo design (wordmark + icon)
 - [ ] Color palette guide (dusty Western tones)
 - [ ] Key art for store page (hero image, capsule art)
@@ -160,6 +180,7 @@
 ## Phase 7: Business & Platform (Weeks 6–10)
 
 ### Steam Setup
+
 - [ ] Steamworks account and app ID registration
 - [ ] Store page: description, screenshots (minimum 5), tags, system requirements
 - [ ] Steam cloud save integration
@@ -169,6 +190,7 @@
 - [ ] Set EA pricing ($12–18 range — research comparable roguelite pricing)
 
 ### Legal & Business
+
 - [ ] EULA / Terms of Service for multiplayer
 - [ ] Privacy policy (analytics, account data)
 - [ ] Music/SFX licensing verification (ensure commercial rights)
@@ -176,6 +198,7 @@
 - [ ] Decide on EA pricing strategy and any launch discount
 
 ### Build & Distribution
+
 - [ ] Production build pipeline (minified, optimized, versioned)
 - [ ] Steam build upload and branch management (default, beta, internal)
 - [ ] Auto-update flow testing
@@ -186,6 +209,7 @@
 ## Phase 8: Documentation & Community (Weeks 8–12)
 
 ### Player-Facing Documentation
+
 - [ ] Steam store page copy (short description, long description, EA disclaimer)
 - [ ] EA roadmap blurb for store page ("what's coming")
 - [ ] Patch notes template and process
@@ -193,12 +217,14 @@
 - [ ] FAQ: what is EA, when is 1.0, multiplayer details, platform plans
 
 ### Community Setup
+
 - [ ] Discord server with channels: announcements, feedback, bug-reports, builds, general
 - [ ] Discord bot for patch notes and build notifications
 - [ ] Bug report template (reproduction steps, system info, logs)
 - [ ] Feedback collection system (Discord threads, Google Forms, or in-game)
 
 ### Developer Documentation
+
 - [ ] Content authoring guide: how to add enemies, bosses, items, narrative
 - [ ] Architecture overview for future contributors
 - [ ] Deployment runbook: how to push builds, manage servers, handle incidents
@@ -208,12 +234,14 @@
 ## Phase 9: Marketing & Launch (Weeks 10–14)
 
 ### Marketing Assets
+
 - [ ] Gameplay trailer (60–90 seconds, show combat + co-op + bosses + narrative choice)
 - [ ] Store page screenshots (5+ high-quality, annotated if needed)
 - [ ] Animated key art or short loop for social media
 - [ ] Press kit: logo files, screenshots, description, developer bio, contact
 
 ### Pre-Launch
+
 - [ ] Steam "Coming Soon" page live (as early as possible for wishlists)
 - [ ] Announce EA launch date 2–4 weeks in advance
 - [ ] Send press kit to roguelite/indie game press and YouTubers/streamers
@@ -221,12 +249,14 @@
 - [ ] Consider Steam Next Fest demo build (high-impact for wishlists)
 
 ### Launch Week
+
 - [ ] Launch day: monitor crash reports, server load, matchmaking
 - [ ] Day-1 hotfix budget (have a patch ready to go if critical issues surface)
 - [ ] Community engagement: respond to feedback, acknowledge bugs, share roadmap
 - [ ] Post-launch announcement in Discord and social media
 
 ### Ongoing
+
 - [ ] Bi-weekly or monthly update cadence (set expectations in EA description)
 - [ ] Patch notes for every update
 - [ ] Community feedback triage process (what goes into next update vs. backlog)
@@ -236,6 +266,7 @@
 ## Phase 10: Post-EA Content Roadmap (Months 2–6)
 
 ### Month 2: First Major Update
+
 - Powder Keg Nell boss + miniboss system
 - 8–10 new items (cursed items, consumables, build-defining uniques)
 - 2 additional narrative threads (4 total)
@@ -243,6 +274,7 @@
 - Daily challenge mode (fixed seed, leaderboard)
 
 ### Month 3–4: Second Major Update
+
 - New character: The Outlaw (dual-wield pistols, berserk ability)
 - Stage map variants (2–3 layouts per stage to prevent memorization)
 - Weapon evolution system (Tinkerer NPC visitor)
@@ -251,6 +283,7 @@
 - Adaptive music system (intensity layers based on combat state)
 
 ### Month 5–6: Third Major Update
+
 - New character: The Native Scout (bow/tomahawk, Spirit Walk)
 - The Preacher's Congregation boss (horde-phase encounter)
 - Set bonus items (3-piece collections)
@@ -259,6 +292,7 @@
 - Community challenges (weekly global goals)
 
 ### Long-Term (6+ Months)
+
 - Story mode / accessibility difficulty options
 - Seed sharing + ghost runs + spectator mode
 - Seasonal themed events
@@ -274,6 +308,7 @@
 Items identified during implementation that were intentionally deferred:
 
 ### Positional Audio Sprint
+
 - Remote player gunfire events lack spatial data from server — needs server-side event enrichment
 - Bullet-removed wall impact sounds have no spatial audio (no sound wired yet)
 - `player-hit` and `roll` events lack x/y for multiplayer spatial positioning
