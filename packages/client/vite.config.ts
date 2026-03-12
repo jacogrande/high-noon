@@ -21,6 +21,9 @@ export default defineConfig({
     port: 3000,
     open: true,
   },
+  define: {
+    __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
+  },
   build: {
     outDir: 'dist',
     sourcemap: 'hidden',
