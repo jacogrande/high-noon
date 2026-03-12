@@ -23,6 +23,11 @@ import { transition } from '../../systems/enemyAI'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { isSolidAt, getPlayableBoundsFromTilemap } from '../../tilemap'
+import {
+  type SafespotDetector, type EnrageState,
+  createSafespotDetector, updateSafespotDetector,
+  createEnrageState,
+} from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
 const enemyQuery = defineQuery([Enemy])
@@ -162,6 +167,10 @@ interface CoyoteJaneState {
   tripwirePlacementCounter: number
   /** Coyote whistle cooldown */
   whistleCooldown: number
+  /** Anti-safespot detection */
+  safespot: SafespotDetector
+  /** Soft enrage timer */
+  enrage: EnrageState
 }
 
 function createState(): CoyoteJaneState {
@@ -179,6 +188,8 @@ function createState(): CoyoteJaneState {
     repositionCooldown: P1_REPOSITION_COOLDOWN,
     tripwirePlacementCounter: 0,
     whistleCooldown: WHISTLE_INITIAL_COOLDOWN,
+    safespot: createSafespotDetector(),
+    enrage: createEnrageState(120),
   }
 }
 
@@ -408,6 +419,19 @@ function spawn(world: GameWorld, x: number, y: number): number {
 
 function tick(world: GameWorld, eid: number, dt: number): void {
   const state = getState(world, eid)
+
+  // Track first alive player position for safespot detection
+  const players = playerQuery(world)
+  for (const peid of players) {
+    if (!hasComponent(world, Dead, peid)) {
+      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
+      break
+    }
+  }
+
+  // Increment enrage fight duration
+  state.enrage.fightDuration += dt
+
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
   const desired = getDesiredPhase(hpRatio)
