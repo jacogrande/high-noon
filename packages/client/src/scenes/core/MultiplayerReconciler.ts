@@ -88,9 +88,13 @@ export class MultiplayerReconciler {
     // Detect damage for camera shake + sound.
     if (this.prevHP > 0 && serverPlayer.hp < this.prevHP) {
       const hitDir = ctx.world.lastPlayerHitDir.get(ctx.myClientEid)
+      const damageFraction = ctx.world.lastPlayerDamageFraction.get(ctx.myClientEid)
+      const trauma = damageFraction !== undefined
+        ? Math.min(damageFraction * 0.8, 0.5)
+        : ctx.hitPolicy.trauma
       ctx.gameplayEventSink.pushGameplayEvent({
         type: 'player-hit',
-        trauma: ctx.hitPolicy.trauma,
+        trauma,
         simHitStopSeconds: ctx.hitPolicy.simHitStopSeconds,
         renderPauseSeconds: ctx.hitPolicy.renderPauseSeconds,
         kickX: hitDir?.x ?? 0,

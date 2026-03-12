@@ -52,11 +52,15 @@ export function emitPlayerHitEvent(
   policy: PlayerHitPresentationPolicy,
   kickX: number,
   kickY: number,
+  damageFraction?: number,
 ): void {
   const hasKick = kickX !== 0 || kickY !== 0
+  const trauma = damageFraction !== undefined
+    ? Math.min(damageFraction * 0.8, 0.5)
+    : policy.trauma
   events.push({
     type: 'player-hit',
-    trauma: policy.trauma,
+    trauma,
     simHitStopSeconds: policy.simHitStopSeconds,
     renderPauseSeconds: policy.renderPauseSeconds,
     kickX,

@@ -31,21 +31,22 @@ import { TimeScale } from '../../engine/TimeScale'
 import { PlayerRenderer } from '../../render/PlayerRenderer'
 import type { DrawFlashOverlay } from '../../render/DrawFlashOverlay'
 import type { GameplayEvent } from './GameplayEvents'
+import { HIT_STOP_DURATION } from '@high-noon/shared'
 
 // Spatial audio: minimum volume for boss sounds so they're always audible
 const BOSS_VOLUME_FLOOR = 0.3
 
 // Boss phase transition presentation
 const PHASE_TRANSITION_TRAUMA: Record<number, number> = { 2: 0.4, 3: 0.6, 4: 0.5 }
-const PHASE_TRANSITION_FREEZE: Record<number, number> = { 2: 0.12, 3: 0.15, 4: 0.3 }
+const PHASE_TRANSITION_FREEZE: Record<number, number> = { 2: HIT_STOP_DURATION.heavy, 3: HIT_STOP_DURATION.heavy, 4: 0.3 }
 const DEFAULT_PHASE_TRAUMA = 0.4
-const DEFAULT_PHASE_FREEZE = 0.12
+const DEFAULT_PHASE_FREEZE = HIT_STOP_DURATION.heavy
 const PHASE_4_SLOWMO_SCALE = 0.2
 const PHASE_4_SLOWMO_DURATION = 0.5
 
 // Boss death presentation
 const BOSS_DEATH_TRAUMA = 0.7
-const BOSS_DEATH_FREEZE = 0.5
+const BOSS_DEATH_FREEZE = HIT_STOP_DURATION.boss_kill
 const BOSS_DEATH_SLOWMO_SCALE = 0.15
 const BOSS_DEATH_SLOWMO_DURATION = 1.0
 
@@ -143,17 +144,17 @@ export class GameplayEventProcessor {
 
             // Threat deaths get longer hit-stop
             if (death.isThreat) {
-              this.hitStop?.freeze(0.06)
+              this.hitStop?.freeze(HIT_STOP_DURATION.medium)
             }
           }
 
-          // Impact freeze scaling: base 30ms + 2ms per damage, capped at 100ms
+          // Impact freeze scaling: base light hit stop + 2ms per damage, capped at 100ms
           if (event.hits.length > 0) {
             let totalDamage = 0
             for (const hit of event.hits) {
               totalDamage += hit.amount
             }
-            const freezeDuration = Math.min(0.1, 0.03 + totalDamage * 0.002)
+            const freezeDuration = Math.min(0.1, HIT_STOP_DURATION.light + totalDamage * 0.002)
             this.hitStop?.freeze(freezeDuration)
           }
 

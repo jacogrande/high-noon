@@ -856,7 +856,8 @@ export class SingleplayerModeController implements SceneModeController {
         const hitDir = this.world.lastPlayerHitDir.get(playerEid)
         const kickX = hitDir?.x ?? 0
         const kickY = hitDir?.y ?? 0
-        emitPlayerHitEvent(this.gameplayEvents, SINGLEPLAYER_PRESENTATION_POLICY.playerHit, kickX, kickY)
+        const damageFraction = this.world.lastPlayerDamageFraction.get(playerEid)
+        emitPlayerHitEvent(this.gameplayEvents, SINGLEPLAYER_PRESENTATION_POLICY.playerHit, kickX, kickY, damageFraction)
       }
     }
 

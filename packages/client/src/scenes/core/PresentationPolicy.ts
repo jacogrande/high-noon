@@ -1,3 +1,5 @@
+import { HIT_STOP_DURATION } from '@high-noon/shared'
+
 export interface PlayerHitPresentationPolicy {
   trauma: number
   simHitStopSeconds: number
@@ -26,7 +28,7 @@ export interface ScenePresentationPolicy {
 export const SINGLEPLAYER_PRESENTATION_POLICY: ScenePresentationPolicy = {
   playerHit: {
     trauma: 0.15,
-    simHitStopSeconds: 0.05,
+    simHitStopSeconds: HIT_STOP_DURATION.light,
     renderPauseSeconds: 0,
     directionalKickStrength: 4,
   },
