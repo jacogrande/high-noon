@@ -253,8 +253,8 @@ export class DebugOverlayRenderer {
       .rect(minX, minY, w, h)
       .stroke({ color: 0x00ff00, width: 1.5, alpha: 0.5 })
 
-    // Spawn margin inset
-    const SPAWN_MARGIN = 80
+    // Spawn margin inset — matches waveSpawner.ts getSpawnBounds() (1.5 tiles)
+    const SPAWN_MARGIN = 48
     this.graphics
       .rect(
         minX + SPAWN_MARGIN,

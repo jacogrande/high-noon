@@ -183,7 +183,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly pendingVisualShots: number[] = []
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
-  private readonly debugOverlayRenderer: DebugOverlayRenderer | null = null
+  private readonly debugOverlayRenderer: DebugOverlayRenderer | null
   private readonly timeScale: TimeScale
   private readonly killStreakTracker: KillStreakTracker
   private lastProcessedLevel = 0
@@ -267,10 +267,9 @@ export class SingleplayerModeController implements SceneModeController {
     this.gameApp.layers.entities.addChild(this.renderers.debugRenderer.getContainer())
 
     // Debug overlay renderer (world-space colliders, AI ranges, spawn zones)
-    if (__DEV__) {
-      ;(this as unknown as { debugOverlayRenderer: DebugOverlayRenderer }).debugOverlayRenderer =
-        new DebugOverlayRenderer(this.gameApp.layers.entities)
-    }
+    this.debugOverlayRenderer = __DEV__
+      ? new DebugOverlayRenderer(this.gameApp.layers.entities)
+      : null
 
     // Spawn player at arena center
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(this.tilemap)
