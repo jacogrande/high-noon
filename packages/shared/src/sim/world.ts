@@ -21,6 +21,7 @@ import type { CampVisitorState } from './systems/campVisitor'
 import type { DraftState } from './content/lootDistribution'
 import type { PlayerRunStats } from './stats'
 import type { MapObstacle, ObstacleDestruction, ObstacleHit } from './content/maps/mapObstacleDefs'
+import type { PendingBullet } from './systems/patternExecutor'
 import {
   cloneRunStages,
   createRunNarrativeSetup,
@@ -664,6 +665,13 @@ export interface GameWorld extends IWorld {
   dustZones: Array<{ x: number; y: number; radius: number; remaining: number; dps: number }>
   /** Dust zones spawned this tick (for client VFX) */
   dustZonesSpawnedThisTick: Array<{ x: number; y: number; radius: number }>
+
+  // -- Pattern system --
+
+  /** Queued delayed bullets from burst/sequence patterns */
+  pendingBullets: PendingBullet[]
+  /** Per-tick flag: true when a boss phase transition cancels bullets */
+  bulletCancelEvent: boolean
 }
 
 /**
@@ -791,6 +799,8 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     laserTelegraphs: [],
     dustZones: [],
     dustZonesSpawnedThisTick: [],
+    pendingBullets: [],
+    bulletCancelEvent: false,
   }
 }
 
@@ -922,6 +932,8 @@ export function resetWorld(world: GameWorld): void {
   world.laserTelegraphs = []
   world.dustZones = []
   world.dustZonesSpawnedThisTick = []
+  world.pendingBullets = []
+  world.bulletCancelEvent = false
   // Note: bitECS entities persist - call removeEntity for each if needed
 }
 

@@ -67,6 +67,9 @@ export interface EnemyDefinition {
   readonly initialDelayMin: number   // Min initial delay on spawn (seconds)
   readonly initialDelayMax: number   // Max initial delay on spawn (seconds)
 
+  // Pattern system (replaces inline projectile config when set)
+  readonly patternId?: string        // Pattern registry ID for projectile attacks
+
 }
 
 // ---------------------------------------------------------------------------
