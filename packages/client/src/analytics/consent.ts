@@ -3,12 +3,20 @@ const CONSENT_KEY = 'hn_analytics_consent'
 export type ConsentState = 'granted' | 'denied' | 'unset'
 
 export function getConsent(): ConsentState {
-  const value = localStorage.getItem(CONSENT_KEY)
-  if (value === 'granted') return 'granted'
-  if (value === 'denied') return 'denied'
+  try {
+    const value = localStorage.getItem(CONSENT_KEY)
+    if (value === 'granted') return 'granted'
+    if (value === 'denied') return 'denied'
+  } catch {
+    // localStorage unavailable (iframe sandbox, Safari private mode)
+  }
   return 'unset'
 }
 
 export function setConsent(state: 'granted' | 'denied'): void {
-  localStorage.setItem(CONSENT_KEY, state)
+  try {
+    localStorage.setItem(CONSENT_KEY, state)
+  } catch {
+    // localStorage unavailable — consent won't persist but the session still works
+  }
 }

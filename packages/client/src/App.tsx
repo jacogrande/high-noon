@@ -4,7 +4,7 @@ import { Home } from './pages/Home'
 import { Game } from './pages/Game'
 import { MultiplayerGame } from './pages/MultiplayerGame'
 import { ConsentDialog } from './ui/ConsentDialog'
-import { getConsent, setConsent, initAnalytics } from './analytics'
+import { getConsent, setConsent, initAnalytics, registerGlobalErrorHandlers } from './analytics'
 
 export function App() {
   const [consentState, setConsentState] = useState(() => getConsent())
@@ -12,6 +12,7 @@ export function App() {
   useEffect(() => {
     if (consentState === 'granted') {
       initAnalytics()
+      registerGlobalErrorHandlers()
     }
   }, [consentState])
 

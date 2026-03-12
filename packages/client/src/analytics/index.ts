@@ -12,4 +12,5 @@ export {
   trackMultiplayerMatch,
   trackMatchLatency,
   trackDisconnect,
+  registerGlobalErrorHandlers,
 } from './analyticsEvents'

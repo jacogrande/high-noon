@@ -206,6 +206,7 @@ export class SingleplayerModeController implements SceneModeController {
   private wasDead = false
   // Analytics timing fields
   private runStartTime = 0
+  private analyticsRunStarted = false
   private bossEncounterStartTime = 0
   private currentBossName = ''
   // HUD sub-object caches to reduce allocation in getHUDState()
@@ -333,12 +334,15 @@ export class SingleplayerModeController implements SceneModeController {
   }
 
   async initialize(_options?: Record<string, unknown>): Promise<void> {
-    this.runStartTime = performance.now()
-    trackRunStart({
-      character: this.world.characterId,
-      seed: this.world.initialSeed,
-      mode: 'singleplayer',
-    })
+    if (!this.analyticsRunStarted) {
+      this.runStartTime = performance.now()
+      this.analyticsRunStarted = true
+      trackRunStart({
+        character: this.world.characterId,
+        seed: this.world.initialSeed,
+        mode: 'singleplayer',
+      })
+    }
   }
 
   private toggleSpawnPause(): void {
