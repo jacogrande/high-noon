@@ -25,6 +25,11 @@ import { applySlow } from '../../systems/slowDebuff'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { getPlayableBoundsFromTilemap } from '../../tilemap'
+import {
+  type SafespotDetector, type EnrageState,
+  createSafespotDetector, updateSafespotDetector,
+  createEnrageState,
+} from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -149,6 +154,10 @@ interface HollowManState {
   convergenceCopyStartHP: number // boss HP at convergence start, for damage propagation
   convergenceShotsFired: number
   dustVeilCounter: number
+  /** Anti-safespot detection */
+  safespot: SafespotDetector
+  /** Soft enrage timer */
+  enrage: EnrageState
 }
 
 function createState(): HollowManState {
@@ -175,6 +184,8 @@ function createState(): HollowManState {
     convergenceCopyStartHP: 0,
     convergenceShotsFired: 0,
     dustVeilCounter: 0,
+    safespot: createSafespotDetector(),
+    enrage: createEnrageState(120),
   }
 }
 
@@ -461,6 +472,18 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     cleanupAll(world, state)
     return
   }
+
+  // Track first alive player position for safespot detection
+  const alivePlayers = playerQuery(world)
+  for (const peid of alivePlayers) {
+    if (!hasComponent(world, Dead, peid)) {
+      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
+      break
+    }
+  }
+
+  // Increment enrage fight duration
+  state.enrage.fightDuration += dt
 
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)

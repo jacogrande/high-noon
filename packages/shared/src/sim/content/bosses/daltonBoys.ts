@@ -23,6 +23,11 @@ import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
+import {
+  type SafespotDetector, type EnrageState,
+  createSafespotDetector, updateSafespotDetector,
+  createEnrageState,
+} from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -111,6 +116,10 @@ interface DaltonGroupState {
   bobDead: boolean
   enraged: boolean
   phaseTransitionDone: Set<number>
+  /** Anti-safespot detection */
+  safespot: SafespotDetector
+  /** Soft enrage timer */
+  enrageTimer: EnrageState
 }
 
 interface DaltonBrotherState {
@@ -203,6 +212,8 @@ function spawn(world: GameWorld, x: number, y: number): number {
       bobDead: false,
       enraged: false,
       phaseTransitionDone: new Set(),
+      safespot: createSafespotDetector(),
+      enrageTimer: createEnrageState(120),
     }
 
     const brotherState: DaltonBrotherState = {
@@ -260,7 +271,7 @@ function spawn(world: GameWorld, x: number, y: number): number {
 // Phase transitions (tick)
 // ============================================================================
 
-function tick(world: GameWorld, eid: number, _dt: number): void {
+function tick(world: GameWorld, eid: number, dt: number): void {
   const state = getState(world, eid)
   if (!state) return
   const group = state.group
@@ -283,6 +294,19 @@ function tick(world: GameWorld, eid: number, _dt: number): void {
 
   // Dead brothers don't tick further
   if (Health.current[eid]! <= 0) return
+
+  // Track first alive player position for safespot detection (once per group per tick)
+  // Only Emmett tracks to avoid double-updates
+  if (state.role === 'emmett') {
+    const players = playerQuery(world)
+    for (const peid of players) {
+      if (!hasComponent(world, Dead, peid)) {
+        updateSafespotDetector(group.safespot, Position.x[peid]!, Position.y[peid]!, dt)
+        break
+      }
+    }
+    group.enrageTimer.fightDuration += dt
+  }
 
   // --- Phase check ---
   const currentPhase = BossPhase.phase[eid]!

@@ -62,7 +62,7 @@ describe('bossPhaseSystem (Boomstick)', () => {
     expect(AttackConfig.recoveryDuration[boomstickEid]!).toBeCloseTo(BOOMSTICK_PHASE_2_RECOVERY)
     expect(AttackConfig.cooldown[boomstickEid]!).toBeCloseTo(BOOMSTICK_PHASE_2_COOLDOWN)
     expect(AttackConfig.projectileCount[boomstickEid]!).toBe(BOOMSTICK_PHASE_2_FAN_BULLETS)
-    expect(AttackConfig.cooldownRemaining[boomstickEid]!).toBe(0)
+    expect(AttackConfig.cooldownRemaining[boomstickEid]!).toBeCloseTo(0.5)
     expect(Health.iframes[boomstickEid]!).toBeCloseTo(BOOMSTICK_TRANSITION_IFRAMES)
     expect(EnemyAI.state[boomstickEid]!).toBe(AIState.TELEGRAPH)
 
