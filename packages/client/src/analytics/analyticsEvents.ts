@@ -162,6 +162,7 @@ export function trackError(severity: 'warning' | 'error' | 'critical', message: 
 export function trackMultiplayerMatch(params: {
   playerCount: number
   mode: 'quickplay' | 'private'
+  roomCode?: string
 }): void {
   if (!isAnalyticsReady()) return
   GameAnalytics.addDesignEvent(
@@ -187,7 +188,7 @@ export function trackMatchLatency(params: {
 }
 
 export function trackDisconnect(params: {
-  reason: string
+  reason: 'connection_lost' | 'host_left' | 'kicked' | 'server_shutdown'
   timeSinceMatchStartSec: number
 }): void {
   if (!isAnalyticsReady()) return

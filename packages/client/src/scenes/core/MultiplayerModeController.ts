@@ -678,8 +678,8 @@ export class MultiplayerModeController implements SceneModeController {
       })
 
       trackMultiplayerMatch({
-        playerCount: this.serverCharacterIds.size,
-        mode: 'private', // quickplay vs. private is determined at the page level
+        playerCount: config.roster?.length ?? this.serverCharacterIds.size,
+        mode: 'private', // TODO: thread quickplay vs. private from page level
       })
     }
     this.clockSync.reset()

@@ -18,9 +18,14 @@ export function initAnalytics(): boolean {
   }
 
   if (!sdkInitialized) {
-    GameAnalytics.configureBuild('0.1.0')
-    GameAnalytics.initialize(gameKey, secretKey)
-    sdkInitialized = true
+    try {
+      GameAnalytics.configureBuild('0.1.0')
+      GameAnalytics.initialize(gameKey, secretKey)
+      sdkInitialized = true
+    } catch (err) {
+      console.warn('[Analytics] SDK initialization failed:', err)
+      return false
+    }
   }
   GameAnalytics.setEnabledEventSubmission(true)
   submissionEnabled = true

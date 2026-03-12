@@ -167,7 +167,7 @@ describe('no-op guard — analytics not initialized', () => {
 
   test('trackDisconnect does not call any GA methods', async () => {
     const { trackDisconnect } = await import('./analyticsEvents')
-    trackDisconnect({ reason: 'timeout', timeSinceMatchStartSec: 90 })
+    trackDisconnect({ reason: 'connection_lost', timeSinceMatchStartSec: 90 })
     expect(mockGA.addDesignEvent).not.toHaveBeenCalled()
   })
 
@@ -621,8 +621,8 @@ describe('trackDisconnect', () => {
 
   test('fires design event with reason in hierarchy and numeric time as value', async () => {
     const { trackDisconnect } = await import('./analyticsEvents')
-    trackDisconnect({ reason: 'timeout', timeSinceMatchStartSec: 90 })
-    expect(mockGA.addDesignEvent).toHaveBeenCalledWith('multiplayer:disconnect:timeout', 90)
+    trackDisconnect({ reason: 'connection_lost', timeSinceMatchStartSec: 90 })
+    expect(mockGA.addDesignEvent).toHaveBeenCalledWith('multiplayer:disconnect:connection_lost', 90)
   })
 
   test('design event value is numeric', async () => {
