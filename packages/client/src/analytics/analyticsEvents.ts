@@ -199,7 +199,7 @@ export function registerGlobalErrorHandlers(): void {
     if (trackingError) return
     trackingError = true
     try {
-      trackError('error', `Unhandled rejection: ${String(e.reason).slice(0, 256)}`)
+      trackError('error', `Unhandled rejection: ${String(e.reason)}`)
     } catch {
       // never let analytics errors suppress subsequent error events
     } finally {
