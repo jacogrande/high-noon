@@ -1024,12 +1024,12 @@ export class SingleplayerModeController implements SceneModeController {
         killCount: this.world.killCount,
         goldCollected: this.world.goldCollected,
       })
-      // Track victory run_complete when the entire run is finished
-      if (this.world.run?.completed) {
+      // Track victory run_complete when the entire run is finished (skip if mutual kill — handled below)
+      if (this.world.run?.completed && !this.isPlayerDead()) {
         trackRunComplete({
           character: this.world.characterId,
           totalTimeSec: (performance.now() - this.runStartTime) / 1000,
-          stagesCleared: this.world.run?.currentStage ?? 0,
+          stagesCleared: (this.world.run?.currentStage ?? 0) + 1,
           killCount: this.world.killCount,
           goldCollected: this.world.goldCollected,
           outcome: 'victory',
@@ -1065,13 +1065,14 @@ export class SingleplayerModeController implements SceneModeController {
           })
           this.currentBossName = ''
         }
+        const isMutualKill = this.world.stageCleared
         trackRunComplete({
           character: this.world.characterId,
           totalTimeSec: (performance.now() - this.runStartTime) / 1000,
-          stagesCleared: this.world.run?.currentStage ?? 0,
+          stagesCleared: (this.world.run?.currentStage ?? 0) + (isMutualKill ? 1 : 0),
           killCount: this.world.killCount,
           goldCollected: this.world.goldCollected,
-          outcome: 'defeat',
+          outcome: isMutualKill ? 'mutual_kill' : 'defeat',
         })
       }
       this.wasDead = dead

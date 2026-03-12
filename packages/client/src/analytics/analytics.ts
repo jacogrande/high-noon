@@ -1,10 +1,11 @@
 import GameAnalytics from 'gameanalytics'
 import { getConsent, setConsent } from './consent'
 
-let initialized = false
+let sdkInitialized = false
+let submissionEnabled = false
 
 export function initAnalytics(): boolean {
-  if (initialized) return true
+  if (sdkInitialized && submissionEnabled) return true
 
   const consent = getConsent()
   if (consent !== 'granted') return false
@@ -16,20 +17,25 @@ export function initAnalytics(): boolean {
     return false
   }
 
-  GameAnalytics.configureBuild('0.1.0')
-  GameAnalytics.initialize(gameKey, secretKey)
-  initialized = true
+  if (!sdkInitialized) {
+    GameAnalytics.configureBuild('0.1.0')
+    GameAnalytics.initialize(gameKey, secretKey)
+    sdkInitialized = true
+  }
+  GameAnalytics.setEnabledEventSubmission(true)
+  submissionEnabled = true
   return true
 }
 
 export function isAnalyticsReady(): boolean {
-  return initialized
+  return sdkInitialized && submissionEnabled
 }
 
 export function setAnalyticsEnabled(enabled: boolean): void {
   setConsent(enabled ? 'granted' : 'denied')
-  if (initialized) {
+  if (sdkInitialized) {
     GameAnalytics.setEnabledEventSubmission(enabled)
+    submissionEnabled = enabled
   } else if (enabled) {
     initAnalytics()
   }

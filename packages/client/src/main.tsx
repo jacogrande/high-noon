@@ -5,12 +5,19 @@ import './index.css'
 import { trackError } from './analytics/analyticsEvents'
 
 // Global error handlers for analytics (Ticket 4.4)
+let trackingError = false
 window.addEventListener('error', (e) => {
+  if (trackingError) return
+  trackingError = true
   trackError('error', `${e.message} at ${e.filename}:${e.lineno}`)
+  trackingError = false
 })
 
 window.addEventListener('unhandledrejection', (e) => {
-  trackError('error', `Unhandled rejection: ${String(e.reason).slice(0, 200)}`)
+  if (trackingError) return
+  trackingError = true
+  trackError('error', `Unhandled rejection: ${String(e.reason).slice(0, 256)}`)
+  trackingError = false
 })
 
 const rootElement = document.getElementById('root')
