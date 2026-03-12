@@ -5,7 +5,7 @@
  * and dynamite throws. Three-phase escalation with add spawns on transitions.
  */
 
-import { addEntity, addComponent, hasComponent } from 'bitecs'
+import { addEntity, addComponent, hasComponent, defineQuery } from 'bitecs'
 import type { GameWorld } from '../../world'
 import type { BossModule } from './registry'
 import { registerBoss } from './registry'
@@ -13,13 +13,21 @@ import {
   Position, Velocity, Speed, Collider, Health,
   Enemy, EnemyType, EnemyTier, BossPhase,
   EnemyAI, AIState, Detection, AttackConfig, Steering,
-  Bullet,
+  Bullet, Player, Dead,
 } from '../../components'
 import { CollisionLayer, spawnBullet, spawnSwarmer, spawnGoblinRogue } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { isSolidAt } from '../../tilemap'
 import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
-import { addEnemyComponents, setEnemyDefaults } from './helpers'
+import { addEnemyComponents, setEnemyDefaults, cancelEnemyBullets } from './helpers'
+import {
+  type SafespotDetector, type EnrageState, type VulnerabilityState,
+  createSafespotDetector, updateSafespotDetector,
+  createEnrageState, createVulnerabilityState,
+  VULNERABILITY_DURATION,
+} from '../bossPatterns'
+
+const playerQuery = defineQuery([Player, Position, Health])
 
 // ============================================================================
 // Constants
@@ -110,6 +118,12 @@ interface BoomstickState {
   ringDelay: number
   /** Attacks until next boom throw (phase 2+) */
   boomDelay: number
+  /** Anti-safespot detection */
+  safespot: SafespotDetector
+  /** Soft enrage timer */
+  enrage: EnrageState
+  /** Vulnerability window after ring attacks */
+  vulnerability: VulnerabilityState
 }
 
 // ============================================================================
@@ -182,7 +196,8 @@ function enterPhase(world: GameWorld, eid: number, phase: number): void {
   BossPhase.phase[eid] = phase
   applyPhaseTuning(eid, phase)
   Health.iframes[eid] = Math.max(Health.iframes[eid]!, TRANSITION_IFRAMES)
-  AttackConfig.cooldownRemaining[eid] = 0
+  cancelEnemyBullets(world)
+  AttackConfig.cooldownRemaining[eid] = 0.5
 
   if (EnemyAI.state[eid] !== AIState.TELEGRAPH) {
     transition(eid, AIState.TELEGRAPH)
@@ -261,14 +276,42 @@ const boomstickModule: BossModule = {
     const state: BoomstickState = {
       ringDelay: world.rng.nextInt(2) + 1,
       boomDelay: 0,
+      safespot: createSafespotDetector(),
+      enrage: createEnrageState(120),
+      vulnerability: createVulnerabilityState(),
     }
     world.bossState.set(eid, state)
 
     return eid
   },
 
-  tick(world: GameWorld, eid: number, _dt: number): void {
+  tick(world: GameWorld, eid: number, dt: number): void {
     if (Health.current[eid]! <= 0 || Health.max[eid]! <= 0) return
+
+    const st = world.bossState.get(eid) as BoomstickState | undefined
+
+    // Track first alive player position for safespot detection
+    if (st) {
+      const players = playerQuery(world)
+      for (const peid of players) {
+        if (!hasComponent(world, Dead, peid)) {
+          updateSafespotDetector(st.safespot, Position.x[peid]!, Position.y[peid]!, dt)
+          break
+        }
+      }
+
+      // Increment enrage fight duration
+      st.enrage.fightDuration += dt
+
+      // Tick vulnerability timer
+      if (st.vulnerability.vulnerable) {
+        st.vulnerability.timer -= dt
+        if (st.vulnerability.timer <= 0) {
+          st.vulnerability.vulnerable = false
+          st.vulnerability.timer = 0
+        }
+      }
+    }
 
     // Ranged boss: stand still during telegraph
     if (EnemyAI.state[eid] === AIState.TELEGRAPH) {
@@ -354,6 +397,12 @@ const boomstickModule: BossModule = {
         })
       }
       ringDelay = rollRingDelay(world, phase)
+
+      // Open a vulnerability window after ring attacks
+      if (st) {
+        st.vulnerability.vulnerable = true
+        st.vulnerability.timer = VULNERABILITY_DURATION
+      }
     } else {
       ringDelay -= 1
     }

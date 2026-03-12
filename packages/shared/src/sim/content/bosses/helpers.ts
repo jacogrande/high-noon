@@ -4,13 +4,16 @@
  * Common component setup and default initialization used by all boss modules.
  */
 
-import { addComponent } from 'bitecs'
+import { addComponent, defineQuery } from 'bitecs'
 import type { GameWorld } from '../../world'
 import {
   Position, Velocity, Speed, Collider, Health,
   Enemy, EnemyAI, AIState, Detection, AttackConfig, Steering,
+  Bullet,
 } from '../../components'
-import { CollisionLayer, NO_TARGET } from '../../prefabs'
+import { CollisionLayer, NO_TARGET, removeBullet } from '../../prefabs'
+
+const enemyBulletQuery = defineQuery([Bullet, Collider])
 
 /** Add all standard enemy components to an entity. */
 export function addEnemyComponents(world: GameWorld, eid: number): void {
@@ -49,4 +52,13 @@ export function setEnemyDefaults(world: GameWorld, eid: number, x: number, y: nu
   AttackConfig.aimY[eid] = 0
   Steering.seekWeight[eid] = 1.0
   Steering.separationWeight[eid] = 1.0
+}
+
+/** Remove all enemy bullets currently in the world. Called on boss phase transitions for breathing room. */
+export function cancelEnemyBullets(world: GameWorld): void {
+  for (const eid of enemyBulletQuery(world)) {
+    if (Collider.layer[eid] === CollisionLayer.ENEMY_BULLET) {
+      removeBullet(world, eid)
+    }
+  }
 }

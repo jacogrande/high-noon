@@ -21,6 +21,11 @@ import { applyDamage } from '../../systems/applyDamage'
 import { isInArc } from '../../systems/melee'
 import { isSolidAt } from '../../tilemap'
 import { addEnemyComponents, setEnemyDefaults } from './helpers'
+import {
+  type SafespotDetector, type EnrageState,
+  createSafespotDetector, updateSafespotDetector,
+  createEnrageState,
+} from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
 
@@ -146,6 +151,10 @@ interface MadDogState {
   phaseTransitionDone: Set<number>
   /** Whether attack has executed its single-tick damage */
   attackExecuted: boolean
+  /** Anti-safespot detection */
+  safespot: SafespotDetector
+  /** Soft enrage timer */
+  enrage: EnrageState
 }
 
 function createMadDogState(): MadDogState {
@@ -159,6 +168,8 @@ function createMadDogState(): MadDogState {
     attackCounter: 0,
     phaseTransitionDone: new Set(),
     attackExecuted: false,
+    safespot: createSafespotDetector(),
+    enrage: createEnrageState(120),
   }
 }
 
@@ -319,11 +330,23 @@ function spawn(world: GameWorld, x: number, y: number): number {
 // Phase transitions (tick)
 // ============================================================================
 
-function tick(world: GameWorld, eid: number, _dt: number): void {
+function tick(world: GameWorld, eid: number, dt: number): void {
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
   const desired = getDesiredPhase(hpRatio)
   const state = getState(world, eid)
+
+  // Track first alive player position for safespot detection
+  const players = playerQuery(world)
+  for (const peid of players) {
+    if (!hasComponent(world, Dead, peid)) {
+      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
+      break
+    }
+  }
+
+  // Increment enrage fight duration
+  state.enrage.fightDuration += dt
 
   // Process each skipped phase (handles large HP drops)
   for (let p = currentPhase + 1; p <= desired; p++) {
