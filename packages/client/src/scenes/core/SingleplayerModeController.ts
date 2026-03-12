@@ -107,6 +107,15 @@ import type { HUDState, SkillNodeState, SkillTreeUIData } from '../types'
 import { seedHazardLights } from './SceneLighting'
 import { refreshTilemap } from './refreshTilemap'
 import { buildSingleplayerMinimapState } from './minimap'
+import {
+  trackRunStart,
+  trackStageComplete,
+  trackPlayerDeath,
+  trackRunComplete,
+  trackUpgradeChosen,
+  trackBossEncounter,
+  trackItemAcquired,
+} from '../../analytics/analyticsEvents'
 
 const MAX_PENDING_VISUAL_SHOTS = 256
 
@@ -195,6 +204,11 @@ export class SingleplayerModeController implements SceneModeController {
   private lastWaveActive = false
   private lastGold = 0
   private wasDead = false
+  // Analytics timing fields
+  private runStartTime = 0
+  private analyticsRunStarted = false
+  private bossEncounterStartTime = 0
+  private currentBossName = ''
   // HUD sub-object caches to reduce allocation in getHUDState()
   private cachedItems: HUDState['items'] = []
   private lastItemsHash = 0
@@ -319,7 +333,17 @@ export class SingleplayerModeController implements SceneModeController {
     window.addEventListener('keydown', this.handleKeyDown)
   }
 
-  async initialize(_options?: Record<string, unknown>): Promise<void> {}
+  async initialize(_options?: Record<string, unknown>): Promise<void> {
+    if (!this.analyticsRunStarted) {
+      this.runStartTime = performance.now()
+      this.analyticsRunStarted = true
+      trackRunStart({
+        character: this.world.characterId,
+        seed: this.world.initialSeed,
+        mode: 'singleplayer',
+      })
+    }
+  }
 
   private toggleSpawnPause(): void {
     this.world.spawnsPaused = !this.world.spawnsPaused
@@ -634,6 +658,12 @@ export class SingleplayerModeController implements SceneModeController {
     if (success) {
       writeStatsToECS(this.world, playerEid)
       this.sound.play('upgrade_select')
+      trackUpgradeChosen({
+        nodeId,
+        character: this.world.characterId,
+        stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+        level: this.world.upgradeState.level,
+      })
     }
     return success
   }
@@ -641,7 +671,19 @@ export class SingleplayerModeController implements SceneModeController {
   handleVisitorPurchase(offerIndex: number): boolean {
     const playerEid = this.renderers.playerRenderer.getPlayerEntity()
     if (playerEid === null) return false
-    return tryVisitorPurchase(this.world, playerEid, offerIndex)
+    const visitor = this.world.campVisitor
+    const offer = visitor?.offers[offerIndex]
+    const success = tryVisitorPurchase(this.world, playerEid, offerIndex)
+    if (success && offer) {
+      const def = getItemDef(offer.itemId)
+      trackItemAcquired({
+        itemId: offer.itemId,
+        itemName: def?.name ?? 'unknown',
+        source: 'visitor',
+        stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+      })
+    }
+    return success
   }
 
   handleTinkererModSelect(offerIndex: number): boolean {
@@ -940,6 +982,15 @@ export class SingleplayerModeController implements SceneModeController {
       }
       if (this.lastBossAlive && !bossAlive && bosses.length > 0) {
         this.gameplayEvents.push({ type: 'boss-death', x: this.lastBossX, y: this.lastBossY })
+        if (this.currentBossName) {
+          trackBossEncounter({
+            bossName: this.currentBossName,
+            stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+            result: 'victory',
+            timeSec: (performance.now() - this.bossEncounterStartTime) / 1000,
+          })
+          this.currentBossName = ''
+        }
       }
       this.lastBossAlive = bossAlive
     }
@@ -968,6 +1019,26 @@ export class SingleplayerModeController implements SceneModeController {
       const tmBounds = getPlayableBoundsFromTilemap(this.tilemap)
       this.renderers.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
       this.gameplayEvents.push({ type: 'stage-complete' })
+      trackStageComplete({
+        character: this.world.characterId,
+        stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+        waveReached: this.world.encounter?.currentWave ?? 0,
+        timeSec: (performance.now() - this.runStartTime) / 1000,
+        upgradesTaken: this.world.upgradeState.nodesTaken.size,
+        killCount: this.world.killCount,
+        goldCollected: this.world.goldCollected,
+      })
+      // Track victory run_complete when the entire run is finished (skip if mutual kill — handled below)
+      if (this.world.run?.completed && !this.isPlayerDead()) {
+        trackRunComplete({
+          character: this.world.characterId,
+          totalTimeSec: (performance.now() - this.runStartTime) / 1000,
+          stagesCleared: (this.world.run?.currentStage ?? 0) + 1,
+          killCount: this.world.killCount,
+          goldCollected: this.world.goldCollected,
+          outcome: 'victory',
+        })
+      }
     }
 
     // Gold pickup detection
@@ -981,6 +1052,32 @@ export class SingleplayerModeController implements SceneModeController {
       const dead = this.isPlayerDead()
       if (dead && !this.wasDead) {
         this.gameplayEvents.push({ type: 'player-death' })
+        trackPlayerDeath({
+          character: this.world.characterId,
+          stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+          waveNumber: (this.world.encounter?.currentWave ?? 0) + 1,
+          timeSurvivedSec: (performance.now() - this.runStartTime) / 1000,
+          killCount: this.world.killCount,
+        })
+        // Boss defeat analytics — if boss was alive when player died
+        if (this.currentBossName) {
+          trackBossEncounter({
+            bossName: this.currentBossName,
+            stageNumber: (this.world.run?.currentStage ?? 0) + 1,
+            result: 'defeat',
+            timeSec: (performance.now() - this.bossEncounterStartTime) / 1000,
+          })
+          this.currentBossName = ''
+        }
+        const isMutualKill = this.world.stageCleared
+        trackRunComplete({
+          character: this.world.characterId,
+          totalTimeSec: (performance.now() - this.runStartTime) / 1000,
+          stagesCleared: (this.world.run?.currentStage ?? 0) + (isMutualKill ? 1 : 0),
+          killCount: this.world.killCount,
+          goldCollected: this.world.goldCollected,
+          outcome: isMutualKill ? 'mutual_kill' : 'defeat',
+        })
       }
       this.wasDead = dead
     }
@@ -992,7 +1089,17 @@ export class SingleplayerModeController implements SceneModeController {
 
     // Apply queued feedback events in one place (shared with multiplayer).
     // Listener position was set at the top of update() before any processAll calls.
-    this.gameplayEventProcessor.processAll(this.gameplayEvents.drain())
+    const drainedEvents = this.gameplayEvents.drain()
+
+    // Track boss-intro for analytics (Ticket 4.2)
+    for (const ev of drainedEvents) {
+      if (ev.type === 'boss-intro') {
+        this.currentBossName = ev.bossName
+        this.bossEncounterStartTime = performance.now()
+      }
+    }
+
+    this.gameplayEventProcessor.processAll(drainedEvents)
 
     // Update camera target
     if (playerEid !== null) {

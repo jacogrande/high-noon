@@ -8,6 +8,7 @@ import { CoreGameScene } from '../scenes/CoreGameScene'
 import { getMultiplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { getConsent, setAnalyticsEnabled } from '../analytics'
 import { GameAudioContext } from '../audio/GameAudioContext'
 import { GameHUD } from '../ui/GameHUD'
 import { MultiplayerLobby } from '../ui/MultiplayerLobby'
@@ -51,6 +52,7 @@ export function MultiplayerGame() {
   const [showControls, setShowControls] = useState(false)
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => getConsent() === 'granted')
   const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
@@ -499,6 +501,11 @@ export function MultiplayerGame() {
     })
   }, [])
 
+  const handleAnalyticsChange = useCallback((enabled: boolean) => {
+    setAnalyticsEnabled(enabled)
+    setAnalyticsEnabledState(enabled)
+  }, [])
+
   const handleRunIntroComplete = useCallback(() => setRunIntro(null), [])
 
   const handleBossIntroComplete = useCallback(() => setBossIntro(null), [])
@@ -707,6 +714,8 @@ export function MultiplayerGame() {
             setShowPauseMenu(false)
             setShowControls(true)
           }}
+          analyticsEnabled={analyticsEnabled}
+          onAnalyticsChange={handleAnalyticsChange}
         />
       )}
       {showControls && (

@@ -8,6 +8,7 @@ import { CoreGameScene } from '../scenes/CoreGameScene'
 import { getSingleplayerRunIntroUpdate } from '../scenes/core/runIntroPresentation'
 import { AssetLoader } from '../assets'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { getConsent, setAnalyticsEnabled } from '../analytics'
 import { GameAudioContext } from '../audio/GameAudioContext'
 import { GameHUD } from '../ui/GameHUD'
 import { SkillTreePanel } from '../ui/SkillTreePanel'
@@ -41,6 +42,7 @@ export function Game() {
   showControlsRef.current = showControls
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => getConsent() === 'granted')
   const [soundManager, setSoundManager] = useState<import('../audio/SoundManager').SoundManager | null>(null)
   const [bossIntro, setBossIntro] = useState<GameplayBossIntroState | null>(null)
   const [runIntro, setRunIntro] = useState<GameplayRunIntroState | null>(null)
@@ -280,6 +282,11 @@ export function Game() {
     })
   }, [])
 
+  const handleAnalyticsChange = useCallback((enabled: boolean) => {
+    setAnalyticsEnabled(enabled)
+    setAnalyticsEnabledState(enabled)
+  }, [])
+
   const handleRunIntroComplete = useCallback(() => {
     sceneRef.current?.setPaused(false)
     setRunIntro(null)
@@ -459,6 +466,8 @@ export function Game() {
             setShowPauseMenu(false)
             setShowControls(true)
           }}
+          analyticsEnabled={analyticsEnabled}
+          onAnalyticsChange={handleAnalyticsChange}
         />
       )}
       {showControls && (

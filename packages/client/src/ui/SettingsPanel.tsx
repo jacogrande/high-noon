@@ -5,6 +5,8 @@ interface SettingsPanelProps {
   muted: boolean
   onVolumeChange: (v: number) => void
   onMutedChange: (m: boolean) => void
+  analyticsEnabled: boolean
+  onAnalyticsChange: (enabled: boolean) => void
 }
 
 export function SettingsPanel({
@@ -12,8 +14,11 @@ export function SettingsPanel({
   muted,
   onVolumeChange,
   onMutedChange,
+  analyticsEnabled,
+  onAnalyticsChange,
 }: SettingsPanelProps) {
   const [muteHover, setMuteHover] = useState(false)
+  const [analyticsHover, setAnalyticsHover] = useState(false)
 
   return (
     <div style={styles.section}>
@@ -48,6 +53,24 @@ export function SettingsPanel({
       >
         {muted ? 'UNMUTE' : 'MUTE'}
       </button>
+
+      <div style={styles.toggleRow}>
+        <span style={styles.sliderLabel}>ANALYTICS</span>
+        <button
+          style={{
+            ...styles.toggleButton,
+            backgroundColor: analyticsHover
+              ? 'rgba(255, 255, 255, 0.15)'
+              : 'rgba(255, 255, 255, 0.06)',
+            color: analyticsEnabled ? '#88cc66' : '#888',
+          }}
+          onMouseEnter={() => setAnalyticsHover(true)}
+          onMouseLeave={() => setAnalyticsHover(false)}
+          onClick={() => onAnalyticsChange(!analyticsEnabled)}
+        >
+          {analyticsEnabled ? 'ON' : 'OFF'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -85,6 +108,23 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     minWidth: '38px',
     textAlign: 'right',
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    width: '100%',
+  },
+  toggleButton: {
+    fontFamily: 'monospace',
+    fontSize: '0.7rem',
+    letterSpacing: '0.1em',
+    padding: '0.35rem 1rem',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '3px',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s',
+    flex: 1,
   },
   muteButton: {
     fontFamily: 'monospace',

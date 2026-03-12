@@ -107,6 +107,17 @@ import { ShotTraceBuffer } from '../../net/ShotTrace'
 import { HitAgreementTracker } from '../../net/HitAgreementTracker'
 import { SessionReplayRecorder, type LagReport } from '../../net/SessionReplay'
 import { NetGraph } from '../../render/NetGraph'
+import {
+  trackRunStart,
+  trackStageComplete,
+  trackPlayerDeath,
+  trackRunComplete,
+  trackUpgradeChosen,
+  trackItemAcquired,
+  trackMultiplayerMatch,
+  trackMatchLatency,
+  trackDisconnect,
+} from '../../analytics/analyticsEvents'
 
 /** Misprediction smoothing constants */
 const EPSILON = 0.5           // pixels — ignore sub-pixel mispredictions
@@ -253,6 +264,13 @@ export class MultiplayerModeController implements SceneModeController {
   private lastWaveActive = false
   private lastGold = 0
   private wasDead = false
+
+  /** Analytics: run start timestamp for computing elapsed time */
+  private runStartTime = 0
+  /** Analytics: last seen stageStatus for detecting stage-complete transitions */
+  private lastStageStatus: string = 'none'
+  /** Analytics: flag to avoid double-firing run start */
+  private analyticsRunStarted = false
 
   private lastRenderTime: number
 
@@ -404,6 +422,14 @@ export class MultiplayerModeController implements SceneModeController {
     })
 
     this.net.on('disconnect', () => {
+      // Analytics: track disconnect event (Ticket 5.3)
+      if (this.analyticsRunStarted) {
+        trackDisconnect({
+          reason: 'connection_lost',
+          timeSinceMatchStartSec: (performance.now() - this.runStartTime) / 1000,
+        })
+      }
+
       this.connected = false
       this.disconnected = true
       this.latestHud = null
@@ -462,6 +488,14 @@ export class MultiplayerModeController implements SceneModeController {
         if (result.success) {
           // Confirmed — ensure cache reflects server (optimistic update already applied)
           this.upgradeStateCache.nodesTaken.add(result.nodeId)
+
+          // Analytics: track upgrade chosen (Ticket 4.1)
+          trackUpgradeChosen({
+            nodeId: result.nodeId,
+            character: this.authoritativeCharacterId,
+            stageNumber: this.latestHud?.stageNumber ?? 0,
+            level: this.latestHud?.level ?? 0,
+          })
         } else {
           // Server rejected — rollback optimistic update
           this.upgradeStateCache.nodesTaken.delete(result.nodeId)
@@ -538,6 +572,30 @@ export class MultiplayerModeController implements SceneModeController {
       this.pingRenderer.addPing(event)
     })
 
+    // Analytics: track run completion and latency summary (Tickets 3.6, 5.2)
+    this.net.on('run-complete', (data) => {
+      if (!this.analyticsRunStarted) return
+      const character = this.authoritativeCharacterId
+      const totalTimeSec = (performance.now() - this.runStartTime) / 1000
+
+      trackRunComplete({
+        character,
+        totalTimeSec,
+        stagesCleared: data.stagesCleared,
+        killCount: this.latestHud?.killCount ?? 0,
+        goldCollected: this.latestHud?.goldCollected ?? 0,
+        outcome: data.victory ? 'victory' : 'defeat',
+      })
+
+      // Ticket 5.2: latency summary at match end
+      trackMatchLatency({
+        rttMedianMs: this.telemetry.rttHistory.percentile(0.5),
+        rttP95Ms: this.telemetry.rttHistory.percentile(0.95),
+        desyncCount: this.telemetry.desyncCount,
+        rubberBandEvents: this.telemetry.rubberBandEvents,
+      })
+    })
+
     if (initOptions.preconnected) {
       const config = this.net.getLatestGameConfig()
       if (!config) {
@@ -607,6 +665,23 @@ export class MultiplayerModeController implements SceneModeController {
     this.awaitingReconnectSnapshot = true
     this.replayRecorder.start(config.seed, config.characterId)
     console.log(`[MP] Connected — server playerEid=${config.playerEid}, character=${config.characterId}`)
+
+    // Analytics: track run start and multiplayer match (Tickets 3.6, 5.1)
+    if (!this.analyticsRunStarted) {
+      this.runStartTime = performance.now()
+      this.analyticsRunStarted = true
+
+      trackRunStart({
+        character: config.characterId,
+        seed: config.seed,
+        mode: 'multiplayer',
+      })
+
+      trackMultiplayerMatch({
+        playerCount: config.roster?.length ?? this.serverCharacterIds.size,
+        mode: 'private', // TODO: thread quickplay vs. private from page level
+      })
+    }
     this.clockSync.reset()
     this.snapshotBuffer.clear()
     this.inputBuffer.clear()
@@ -1007,7 +1082,23 @@ export class MultiplayerModeController implements SceneModeController {
       this.lastWaveActive = waveActive
     }
 
-    // Stage-complete detection — trigger cosmetic tumbleweeds
+    // Stage-complete detection — trigger cosmetic tumbleweeds + analytics
+    {
+      const stageStatus = this.latestHud?.stageStatus ?? 'none'
+      if (stageStatus === 'completed' && this.lastStageStatus !== 'completed') {
+        // Analytics: track stage completion (Ticket 3.6)
+        trackStageComplete({
+          character: this.authoritativeCharacterId,
+          stageNumber: this.latestHud?.stageNumber ?? 0,
+          waveReached: this.latestHud?.waveNumber ?? 0,
+          timeSec: (performance.now() - this.runStartTime) / 1000,
+          upgradesTaken: this.upgradeStateCache?.nodesTaken.size ?? 0,
+          killCount: this.latestHud?.killCount ?? 0,
+          goldCollected: this.latestHud?.goldCollected ?? 0,
+        })
+      }
+      this.lastStageStatus = stageStatus
+    }
     if (this.latestHud?.stageStatus === 'completed' && this.currentTilemap) {
       const tmBounds = getPlayableBoundsFromTilemap(this.currentTilemap)
       this.renderers.tumbleweedRenderer.trigger(tmBounds.minX, tmBounds.maxX, tmBounds.minY, tmBounds.maxY)
@@ -1027,6 +1118,15 @@ export class MultiplayerModeController implements SceneModeController {
       const dead = this.myClientEid >= 0 && hasComponent(this.world, Dead, this.myClientEid)
       if (dead && !this.wasDead) {
         this.gameplayEvents.push({ type: 'player-death' })
+
+        // Analytics: track player death (Ticket 3.6)
+        trackPlayerDeath({
+          character: this.authoritativeCharacterId,
+          stageNumber: this.latestHud?.stageNumber ?? 0,
+          waveNumber: this.latestHud?.waveNumber ?? 0,
+          timeSurvivedSec: (performance.now() - this.runStartTime) / 1000,
+          killCount: this.latestHud?.killCount ?? 0,
+        })
       }
       this.wasDead = dead
     }
@@ -1653,6 +1753,17 @@ export class MultiplayerModeController implements SceneModeController {
   }
 
   handleVisitorPurchase(offerIndex: number): boolean {
+    // Analytics: track item acquired from visitor (Ticket 4.3)
+    const offer = this.latestHud?.campVisitor?.offers[offerIndex]
+    if (offer) {
+      trackItemAcquired({
+        itemId: offer.itemId,
+        itemName: offer.itemName,
+        source: 'visitor',
+        stageNumber: this.latestHud?.stageNumber ?? 0,
+      })
+    }
+
     this.net.sendCampPurchase(offerIndex)
     return true // optimistic; server will confirm via HUD update
   }

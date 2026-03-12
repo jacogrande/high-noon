@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { VERSION, ROOM_CODE_LENGTH, ROOM_CODE_CHARS } from '@high-noon/shared'
 import { loadAudioPrefs, saveAudioPrefs } from '../audio/audioPrefs'
+import { getConsent, setAnalyticsEnabled } from '../analytics'
 import { SettingsPanel } from '../ui/SettingsPanel'
 
 export function Home() {
@@ -11,6 +12,7 @@ export function Home() {
   const [joinCode, setJoinCode] = useState('')
   const [volume, setVolume] = useState(() => loadAudioPrefs().volume)
   const [muted, setMuted] = useState(() => loadAudioPrefs().muted)
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => getConsent() === 'granted')
 
   const handleVolumeChange = (v: number) => {
     setVolume(v)
@@ -21,6 +23,11 @@ export function Home() {
   const handleMutedChange = (m: boolean) => {
     setMuted(m)
     saveAudioPrefs(volume, m)
+  }
+
+  const handleAnalyticsChange = (enabled: boolean) => {
+    setAnalyticsEnabled(enabled)
+    setAnalyticsEnabledState(enabled)
   }
 
   return (
@@ -133,6 +140,8 @@ export function Home() {
               muted={muted}
               onVolumeChange={handleVolumeChange}
               onMutedChange={handleMutedChange}
+              analyticsEnabled={analyticsEnabled}
+              onAnalyticsChange={handleAnalyticsChange}
             />
             <div style={styles.divider} />
             <button

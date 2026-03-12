@@ -11,6 +11,8 @@ interface PauseMenuProps {
   onMutedChange: (m: boolean) => void
   onQuitToMenu: () => void
   onShowControls: () => void
+  analyticsEnabled: boolean
+  onAnalyticsChange: (enabled: boolean) => void
 }
 
 export function PauseMenu({
@@ -22,6 +24,8 @@ export function PauseMenu({
   onMutedChange,
   onQuitToMenu,
   onShowControls,
+  analyticsEnabled,
+  onAnalyticsChange,
 }: PauseMenuProps) {
   const { playClick, playHover: playHoverSound } = useGameAudio()
   const [resumeHover, setResumeHover] = useState(false)
@@ -43,6 +47,8 @@ export function PauseMenu({
           muted={muted}
           onVolumeChange={onVolumeChange}
           onMutedChange={onMutedChange}
+          analyticsEnabled={analyticsEnabled}
+          onAnalyticsChange={onAnalyticsChange}
         />
 
         <div style={styles.divider} />
