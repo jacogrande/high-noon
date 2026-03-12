@@ -89,6 +89,7 @@ import type { SceneModeController } from './SceneModeController'
 import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { MULTIPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
+import { DebugOverlayRenderer } from '../../render/DebugOverlayRenderer'
 import {
   emitBossIntroEvents,
   emitBossPhaseTransitionEvents,
@@ -182,6 +183,7 @@ export class MultiplayerModeController implements SceneModeController {
   private readonly gameplayEventProcessor: GameplayEventProcessor
   private readonly deathPresentation: DeathSequencePresentation
   private readonly handleKeyDown: (e: KeyboardEvent) => void
+  private readonly debugOverlayRenderer: DebugOverlayRenderer | null = null
   private readonly snapshotIngestor: SnapshotIngestor
   private readonly predictedEntityTracker: PredictedEntityTracker
   private readonly interpolationApplier: RemoteInterpolationApplier
@@ -303,6 +305,12 @@ export class MultiplayerModeController implements SceneModeController {
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.renderers.debugRenderer.getContainer())
 
+    // Debug overlay renderer (world-space colliders, AI ranges, spawn zones)
+    if (__DEV__) {
+      ;(this as unknown as { debugOverlayRenderer: DebugOverlayRenderer }).debugOverlayRenderer =
+        new DebugOverlayRenderer(this.gameApp.layers.entities)
+    }
+
     // Camera — viewport in world units (RT size / world scale)
     this.camera = new Camera()
     this.camera.setViewport(INTERNAL_WIDTH / WORLD_SCALE, INTERNAL_HEIGHT / WORLD_SCALE)
@@ -314,6 +322,9 @@ export class MultiplayerModeController implements SceneModeController {
       maxX: bounds.maxX + pad,
       maxY: bounds.maxY + pad,
     })
+    if (__DEV__) {
+      this.debugOverlayRenderer?.setPlayableBounds(bounds)
+    }
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(tilemap)
     this.camera.snapTo(centerX, centerY)
     this.renderPause = new HitStop()
@@ -385,6 +396,9 @@ export class MultiplayerModeController implements SceneModeController {
         cycleNetOverlay: () => this.cycleNetOverlay(),
         recordLagReport: () => this.recordLagReport(),
         exportReplay: () => this.exportReplay(),
+        toggleColliderOverlay: () => this.debugOverlayRenderer?.toggleColliders(),
+        toggleAIRangeOverlay: () => this.debugOverlayRenderer?.toggleAIRanges(),
+        toggleSpawnZoneOverlay: () => this.debugOverlayRenderer?.toggleSpawnZones(),
       },
     )
     window.addEventListener('keydown', this.handleKeyDown)
@@ -1403,6 +1417,11 @@ export class MultiplayerModeController implements SceneModeController {
     // Clear debug
     this.renderers.debugRenderer.clear()
     this.renderers.collisionDebugRenderer.clear()
+
+    // Debug overlay (world-space colliders, AI ranges, spawn zones)
+    if (__DEV__) {
+      this.debugOverlayRenderer?.render(this.world, alpha)
+    }
     this.renderers.interactableRenderer.render(this.latestInteractables, realDt)
 
     // Local player presentation is decoupled from simulation ECS state:
@@ -1884,6 +1903,7 @@ export class MultiplayerModeController implements SceneModeController {
     this.particles.destroy()
     this.floatingText.destroy()
     this.deathPresentation.destroy()
+    this.debugOverlayRenderer?.destroy()
     this.lightingSystem.destroy()
     this.input.destroy()
     window.removeEventListener('keydown', this.handleKeyDown)

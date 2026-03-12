@@ -7,6 +7,10 @@ export interface SceneDebugHotkeyActions {
   cycleNetOverlay?: () => void
   recordLagReport?: () => void
   exportReplay?: () => void
+  // Individual debug overlay layers (Digit1-3)
+  toggleColliderOverlay?: () => void
+  toggleAIRangeOverlay?: () => void
+  toggleSpawnZoneOverlay?: () => void
 }
 
 export function createSceneDebugHotkeyHandler(
@@ -33,6 +37,16 @@ export function createSceneDebugHotkeyHandler(
 
     if (policy.enableNetOverlay && e.code === 'KeyR' && e.shiftKey) {
       actions.exportReplay?.()
+    }
+
+    if (policy.enableOverlayToggle && e.code === 'Digit1') {
+      actions.toggleColliderOverlay?.()
+    }
+    if (policy.enableOverlayToggle && e.code === 'Digit2') {
+      actions.toggleAIRangeOverlay?.()
+    }
+    if (policy.enableOverlayToggle && e.code === 'Digit3') {
+      actions.toggleSpawnZoneOverlay?.()
     }
   }
 }

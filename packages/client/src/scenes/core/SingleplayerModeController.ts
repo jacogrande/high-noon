@@ -92,6 +92,7 @@ import type { SceneModeController } from './SceneModeController'
 import { DeathSequencePresentation } from './DeathSequencePresentation'
 import { SINGLEPLAYER_PRESENTATION_POLICY } from './PresentationPolicy'
 import { createSceneDebugHotkeyHandler } from './SceneDebugHotkeys'
+import { DebugOverlayRenderer } from '../../render/DebugOverlayRenderer'
 import {
   emitBossIntroEvents,
   emitBossPhaseTransitionEvents,
@@ -182,6 +183,7 @@ export class SingleplayerModeController implements SceneModeController {
   private readonly pendingVisualShots: number[] = []
   private lastRenderTime: number
   private readonly handleKeyDown: (e: KeyboardEvent) => void
+  private readonly debugOverlayRenderer: DebugOverlayRenderer | null = null
   private readonly timeScale: TimeScale
   private readonly killStreakTracker: KillStreakTracker
   private lastProcessedLevel = 0
@@ -264,6 +266,12 @@ export class SingleplayerModeController implements SceneModeController {
     // Debug graphics in entity layer (world space)
     this.gameApp.layers.entities.addChild(this.renderers.debugRenderer.getContainer())
 
+    // Debug overlay renderer (world-space colliders, AI ranges, spawn zones)
+    if (__DEV__) {
+      ;(this as unknown as { debugOverlayRenderer: DebugOverlayRenderer }).debugOverlayRenderer =
+        new DebugOverlayRenderer(this.gameApp.layers.entities)
+    }
+
     // Spawn player at arena center
     const { x: centerX, y: centerY } = getArenaCenterFromTilemap(this.tilemap)
     spawnPlayer(this.world, centerX, centerY)
@@ -284,6 +292,9 @@ export class SingleplayerModeController implements SceneModeController {
       maxX: bounds.maxX + pad,
       maxY: bounds.maxY + pad,
     })
+    if (__DEV__) {
+      this.debugOverlayRenderer?.setPlayableBounds(bounds)
+    }
     this.camera.snapTo(centerX, centerY)
 
     // Hit stop
@@ -328,6 +339,9 @@ export class SingleplayerModeController implements SceneModeController {
         toggleDebugOverlay: () => this.renderers.debugRenderer.toggle(),
         toggleCollisionDebugOverlay: () => this.renderers.collisionDebugRenderer.toggle(),
         toggleSpawnPause: () => this.toggleSpawnPause(),
+        toggleColliderOverlay: () => this.debugOverlayRenderer?.toggleColliders(),
+        toggleAIRangeOverlay: () => this.debugOverlayRenderer?.toggleAIRanges(),
+        toggleSpawnZoneOverlay: () => this.debugOverlayRenderer?.toggleSpawnZones(),
       },
     )
     window.addEventListener('keydown', this.handleKeyDown)
@@ -1218,6 +1232,11 @@ export class SingleplayerModeController implements SceneModeController {
     this.renderers.debugRenderer.clear()
     this.renderers.collisionDebugRenderer.clear()
 
+    // Debug overlay (world-space colliders, AI ranges, spawn zones)
+    if (__DEV__) {
+      this.debugOverlayRenderer?.render(this.world, alpha)
+    }
+
     const interactables: InteractablesData = {
       salesman: this.world.salesman
         ? {
@@ -1502,6 +1521,7 @@ export class SingleplayerModeController implements SceneModeController {
     window.removeEventListener('keydown', this.handleKeyDown)
     this.input.destroy()
     this.deathPresentation.destroy()
+    this.debugOverlayRenderer?.destroy()
     this.lightingSystem.destroy()
     this.chatBubblePool.destroy()
     this.drawFlashOverlay.destroy()
