@@ -21,7 +21,7 @@ describe('lifespanSystem', () => {
     setWorldTilemap(world, createTestArena())
   })
 
-  test('entity with Lifespan gets Dead after remaining ticks to 0', () => {
+  test('non-player entity with Lifespan is removed after remaining ticks to 0', () => {
     const eid = addEntity(world)
     addComponent(world, Lifespan, eid)
     Lifespan.remaining[eid] = 0.5
@@ -31,7 +31,8 @@ describe('lifespanSystem', () => {
       lifespanSystem(world, 1 / 60)
     }
 
-    expect(hasComponent(world, Dead, eid)).toBe(true)
+    // Non-player entities are removed directly (not tagged Dead)
+    expect(hasComponent(world, Lifespan, eid)).toBe(false)
   })
 
   test('entity without Lifespan is unaffected', () => {
@@ -82,7 +83,7 @@ describe('Ghost Rider lifespan', () => {
     expect(Enemy.tier[eid]!).toBe(1) // THREAT
   })
 
-  test('Ghost Rider despawns (gets Dead) after 8s of lifespanSystem ticks', () => {
+  test('Ghost Rider is removed after 8s of lifespanSystem ticks', () => {
     const eid = spawnGhostRider(world, 500, 500)
 
     // Tick 480 frames = 8s at 60Hz
@@ -90,7 +91,9 @@ describe('Ghost Rider lifespan', () => {
       lifespanSystem(world, 1 / 60)
     }
 
-    expect(hasComponent(world, Dead, eid)).toBe(true)
+    // Non-player entities are removed directly (not tagged Dead)
+    expect(hasComponent(world, Lifespan, eid)).toBe(false)
+    expect(hasComponent(world, Enemy, eid)).toBe(false)
   })
 
   test('Ghost Rider alive before lifespan expires', () => {

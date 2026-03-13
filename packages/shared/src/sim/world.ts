@@ -810,7 +810,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
   const result = validateWorld(world)
   for (const w of result.warnings) console.warn(`[World] ${w}`)
   if (!result.valid) {
-    console.error(`[World] Validation errors: ${result.errors.join(', ')}`)
+    throw new Error(`[World] Validation failed: ${result.errors.join(', ')}`)
   }
 
   return world
@@ -855,6 +855,7 @@ export function resetWorld(world: GameWorld): void {
   world.lastPlayerHitDir.clear()
   world.lastPlayerDamageFraction.clear()
   world.upgradeState = initUpgradeState(charDef)
+  world.characterId = charDef.id
   world.spawnsPaused = false
   world.bulletPierceHits.clear()
   world.rollDodgedBullets.clear()
@@ -951,8 +952,9 @@ export function resetWorld(world: GameWorld): void {
 
   // Post-reset invariant checks
   const result = validateWorld(world)
+  for (const w of result.warnings) console.warn(`[World] Post-reset: ${w}`)
   if (!result.valid) {
-    console.error(`[World] Post-reset validation errors: ${result.errors.join(', ')}`)
+    throw new Error(`[World] Post-reset validation failed: ${result.errors.join(', ')}`)
   }
 }
 

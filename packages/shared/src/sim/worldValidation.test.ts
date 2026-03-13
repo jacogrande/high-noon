@@ -30,12 +30,12 @@ describe('validateWorld', () => {
     expect(result.errors.some(e => e.includes('maxProjectiles'))).toBe(true)
   })
 
-  it('warns on unknown characterId', () => {
+  it('errors on unknown characterId', () => {
     const world = createGameWorld(42)
     ;(world as any).characterId = 'bandit'
     const result = validateWorld(world)
-    expect(result.valid).toBe(true) // warning, not error
-    expect(result.warnings.some(w => w.includes('bandit'))).toBe(true)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some(e => e.includes('bandit'))).toBe(true)
   })
 
   it('errors on invalid friendlyFireMode', () => {

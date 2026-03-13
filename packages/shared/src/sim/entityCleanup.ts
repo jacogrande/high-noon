@@ -41,6 +41,14 @@ export function cleanupEntity(world: GameWorld, eid: number): void {
   world.bossState.delete(eid)
   world.overkillProcessed.delete(eid)
 
+  // Note: encounter.activeWaveThreatEids is NOT cleaned here — the wave spawner
+  // needs to detect dead threats itself to count kills. It self-heals each tick.
+
+  // Clean stale enemy EIDs from active Last Rites consecrated accumulators
+  for (const zone of world.lastRitesZones.values()) {
+    zone.consecratedAccum.delete(eid)
+  }
+
   // Sets
   world.npcEntities.delete(eid)
 }

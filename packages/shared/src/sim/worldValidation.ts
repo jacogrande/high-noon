@@ -1,4 +1,5 @@
 import type { GameWorld } from './world'
+import { getCharacterDef } from './content/characters'
 
 export interface ValidationResult {
   valid: boolean
@@ -6,7 +7,6 @@ export interface ValidationResult {
   warnings: string[]
 }
 
-const VALID_CHARACTERS = ['sheriff', 'undertaker', 'prospector']
 const VALID_FF_MODES = ['none', 'reduced', 'full']
 
 /**
@@ -29,8 +29,8 @@ export function validateWorld(world: GameWorld): ValidationResult {
     errors.push(`maxProjectiles must be > 0, got ${world.maxProjectiles}`)
   }
 
-  if (!VALID_CHARACTERS.includes(world.characterId)) {
-    warnings.push(`Unknown characterId '${world.characterId}'`)
+  if (!getCharacterDef(world.characterId as any)) {
+    errors.push(`Unknown characterId '${world.characterId}'`)
   }
 
   if (!VALID_FF_MODES.includes(world.friendlyFireMode)) {

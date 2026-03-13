@@ -990,6 +990,7 @@ export class EnemyRenderer {
     this.spawnTimer.clear()
     this.lastDirection.clear()
     this.currentEntities.clear()
+    this.posCache.clear()
 
     for (const eid of this.healthBars) {
       this.registry.removeAux(eid, BAR_BG_TAG)
