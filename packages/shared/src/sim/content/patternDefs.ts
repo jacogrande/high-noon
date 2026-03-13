@@ -9,8 +9,7 @@
  * exactly — migrating to the pattern system must produce zero gameplay change.
  */
 
-import { registerPattern } from './patterns'
-import { aimed, ring, scatter, spiral, wall, layered, burst } from './patterns'
+import { registerPattern, aimed, ring, scatter, spiral, wall, layered, burst } from './patterns'
 import { BulletSpriteId } from './weapons'
 
 // ============================================================================

@@ -37,8 +37,9 @@ import { ENEMY_BULLET_RANGE, ENEMY_BULLET_SIZE_THREAT, BulletSpriteId } from '..
 import { PLAYER_RADIUS } from '../player'
 import {
   type SafespotDetector, type EnrageState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState,
+  tickSafespotAndEnrage,
 } from '../bossPatterns'
 import { ROAD_WIDTH, CENTER_SIZE } from '../maps/crossroadsGenerator'
 
@@ -1362,17 +1363,7 @@ function tick(world: GameWorld, eid: number, dt: number): void {
   const state = getState(world, eid)
   state.panicShotThisTick = false
 
-  // Track first alive player position for safespot detection
-  const players = playerQuery(world)
-  for (const peid of players) {
-    if (!hasComponent(world, Dead, peid)) {
-      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-      break
-    }
-  }
-
-  // Increment enrage fight duration
-  state.enrage.fightDuration += dt
+  tickSafespotAndEnrage(world, state.safespot, state.enrage, dt)
 
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)

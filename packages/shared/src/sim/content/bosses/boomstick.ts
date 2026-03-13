@@ -5,7 +5,7 @@
  * and dynamite throws. Three-phase escalation with add spawns on transitions.
  */
 
-import { addEntity, addComponent, hasComponent, defineQuery } from 'bitecs'
+import { addEntity, addComponent } from 'bitecs'
 import type { GameWorld } from '../../world'
 import type { BossModule } from './registry'
 import { registerBoss } from './registry'
@@ -13,21 +13,18 @@ import {
   Position, Velocity, Speed, Collider, Health,
   Enemy, EnemyType, EnemyTier, BossPhase,
   EnemyAI, AIState, Detection, AttackConfig, Steering,
-  Bullet, Player, Dead,
 } from '../../components'
 import { CollisionLayer, spawnBullet, spawnSwarmer, spawnGoblinRogue } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
-import { isSolidAt } from '../../tilemap'
 import { ENEMY_BULLET_RANGE, DYNAMITE_KNOCKBACK, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
-import { addEnemyComponents, setEnemyDefaults, cancelEnemyBullets } from './helpers'
+import { addEnemyComponents, setEnemyDefaults, cancelEnemyBullets, pickSummonPosition } from './helpers'
 import {
   type SafespotDetector, type EnrageState, type VulnerabilityState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState, createVulnerabilityState,
+  getStandardDesiredPhase, tickSafespotAndEnrage, tickVulnerability,
   VULNERABILITY_DURATION,
 } from '../bossPatterns'
-
-const playerQuery = defineQuery([Player, Position, Health])
 
 // ============================================================================
 // Constants
@@ -49,7 +46,6 @@ const P1_FAN_BULLETS = 5
 const P1_RING_BULLETS = 8
 
 // Phase 2 tuning
-const P2_THRESHOLD = 0.70
 const P2_TELEGRAPH = 0.55
 const P2_RECOVERY = 0.70
 const P2_COOLDOWN = 1.35
@@ -59,7 +55,6 @@ const P2_SUMMON_SWARMERS = 3
 const P2_SUMMON_ROGUES = 1
 
 // Phase 3 tuning
-const P3_THRESHOLD = 0.35
 const P3_TELEGRAPH = 0.45
 const P3_RECOVERY = 0.55
 const P3_COOLDOWN = 1.00
@@ -130,12 +125,6 @@ interface BoomstickState {
 // Helpers
 // ============================================================================
 
-function getDesiredPhase(hpRatio: number): number {
-  if (hpRatio <= P3_THRESHOLD) return 3
-  if (hpRatio <= P2_THRESHOLD) return 2
-  return 1
-}
-
 function applyPhaseTuning(eid: number, phase: number): void {
   if (phase === 2) {
     AttackConfig.telegraphDuration[eid] = P2_TELEGRAPH
@@ -150,30 +139,6 @@ function applyPhaseTuning(eid: number, phase: number): void {
   }
 }
 
-function pickSummonPosition(
-  world: GameWorld,
-  centerX: number,
-  centerY: number,
-  baseAngle: number,
-): { x: number; y: number } {
-  const tilemap = world.tilemap
-  for (let attempt = 0; attempt < SUMMON_MAX_ATTEMPTS; attempt++) {
-    const angleJitter = world.rng.nextRange(-0.6, 0.6)
-    const angle = baseAngle + angleJitter
-    const dist = world.rng.nextRange(SUMMON_MIN_RADIUS, SUMMON_MAX_RADIUS)
-    const x = centerX + Math.cos(angle) * dist
-    const y = centerY + Math.sin(angle) * dist
-    if (tilemap && isSolidAt(tilemap, x, y)) continue
-    return { x, y }
-  }
-  const fallbackX = centerX + Math.cos(baseAngle) * SUMMON_FALLBACK_RADIUS
-  const fallbackY = centerY + Math.sin(baseAngle) * SUMMON_FALLBACK_RADIUS
-  if (tilemap && isSolidAt(tilemap, fallbackX, fallbackY)) {
-    return { x: centerX, y: centerY }
-  }
-  return { x: fallbackX, y: fallbackY }
-}
-
 function spawnBurst(world: GameWorld, bossEid: number, swarmers: number, rogues: number): void {
   const centerX = Position.x[bossEid]!
   const centerY = Position.y[bossEid]!
@@ -184,7 +149,13 @@ function spawnBurst(world: GameWorld, bossEid: number, swarmers: number, rogues:
   const spawnAtSlot = (fn: (w: GameWorld, x: number, y: number) => number) => {
     const angle = (slot / total) * Math.PI * 2
     slot++
-    const pos = pickSummonPosition(world, centerX, centerY, angle)
+    const pos = pickSummonPosition(world, centerX, centerY, {
+      baseAngle: angle,
+      minRadius: SUMMON_MIN_RADIUS,
+      maxRadius: SUMMON_MAX_RADIUS,
+      maxAttempts: SUMMON_MAX_ATTEMPTS,
+      fallbackRadius: SUMMON_FALLBACK_RADIUS,
+    })
     fn(world, pos.x, pos.y)
   }
 
@@ -290,27 +261,9 @@ const boomstickModule: BossModule = {
 
     const st = world.bossState.get(eid) as BoomstickState | undefined
 
-    // Track first alive player position for safespot detection
     if (st) {
-      const players = playerQuery(world)
-      for (const peid of players) {
-        if (!hasComponent(world, Dead, peid)) {
-          updateSafespotDetector(st.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-          break
-        }
-      }
-
-      // Increment enrage fight duration
-      st.enrage.fightDuration += dt
-
-      // Tick vulnerability timer
-      if (st.vulnerability.vulnerable) {
-        st.vulnerability.timer -= dt
-        if (st.vulnerability.timer <= 0) {
-          st.vulnerability.vulnerable = false
-          st.vulnerability.timer = 0
-        }
-      }
+      tickSafespotAndEnrage(world, st.safespot, st.enrage, dt)
+      tickVulnerability(st.vulnerability, dt)
     }
 
     // Ranged boss: stand still during telegraph
@@ -321,7 +274,7 @@ const boomstickModule: BossModule = {
 
     const currentPhase = Math.max(1, BossPhase.phase[eid]!)
     const hpRatio = Health.current[eid]! / Health.max[eid]!
-    const desiredPhase = getDesiredPhase(hpRatio)
+    const desiredPhase = getStandardDesiredPhase(hpRatio)
 
     if (desiredPhase <= currentPhase) return
 

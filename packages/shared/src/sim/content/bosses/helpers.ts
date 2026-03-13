@@ -12,6 +12,7 @@ import {
   Bullet,
 } from '../../components'
 import { CollisionLayer, NO_TARGET, removeBullet } from '../../prefabs'
+import { isSolidAt } from '../../tilemap'
 
 const enemyBulletQuery = defineQuery([Bullet, Collider])
 
@@ -61,4 +62,61 @@ export function cancelEnemyBullets(world: GameWorld): void {
       removeBullet(world, eid)
     }
   }
+}
+
+/** Default summon placement constants */
+const DEFAULT_SUMMON_MIN_RADIUS = 64
+const DEFAULT_SUMMON_MAX_RADIUS = 160
+const DEFAULT_SUMMON_MAX_ATTEMPTS = 12
+
+/**
+ * Pick a non-solid spawn position near a center point.
+ * Used by multiple boss modules for add spawning.
+ *
+ * @param baseAngle - If provided, jitters around this angle. Otherwise picks fully random angle.
+ * @param minRadius / maxRadius - Override default radius range.
+ */
+export function pickSummonPosition(
+  world: GameWorld,
+  centerX: number,
+  centerY: number,
+  opts?: {
+    baseAngle?: number
+    minRadius?: number
+    maxRadius?: number
+    maxAttempts?: number
+    fallbackRadius?: number
+  },
+): { x: number; y: number } {
+  const tilemap = world.tilemap
+  const minRadius = opts?.minRadius ?? DEFAULT_SUMMON_MIN_RADIUS
+  const maxRadius = opts?.maxRadius ?? DEFAULT_SUMMON_MAX_RADIUS
+  const maxAttempts = opts?.maxAttempts ?? DEFAULT_SUMMON_MAX_ATTEMPTS
+  const hasBaseAngle = opts?.baseAngle !== undefined
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const angle = hasBaseAngle
+      ? opts!.baseAngle! + world.rng.nextRange(-0.6, 0.6)
+      : world.rng.next() * Math.PI * 2
+    const dist = hasBaseAngle
+      ? world.rng.nextRange(minRadius, maxRadius)
+      : minRadius + world.rng.next() * (maxRadius - minRadius)
+    const x = centerX + Math.cos(angle) * dist
+    const y = centerY + Math.sin(angle) * dist
+    if (tilemap && isSolidAt(tilemap, x, y)) continue
+    return { x, y }
+  }
+
+  // Fallback position
+  if (hasBaseAngle) {
+    const fallbackRadius = opts?.fallbackRadius ?? 96
+    const fallbackX = centerX + Math.cos(opts!.baseAngle!) * fallbackRadius
+    const fallbackY = centerY + Math.sin(opts!.baseAngle!) * fallbackRadius
+    if (tilemap && isSolidAt(tilemap, fallbackX, fallbackY)) {
+      return { x: centerX, y: centerY }
+    }
+    return { x: fallbackX, y: fallbackY }
+  }
+
+  return { x: centerX + minRadius, y: centerY }
 }

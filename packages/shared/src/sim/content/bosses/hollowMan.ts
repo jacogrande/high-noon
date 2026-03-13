@@ -27,8 +27,9 @@ import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { getPlayableBoundsFromTilemap } from '../../tilemap'
 import {
   type SafespotDetector, type EnrageState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState,
+  getStandardDesiredPhase, tickSafespotAndEnrage,
 } from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
@@ -43,10 +44,6 @@ const AGGRO_RANGE = 500
 const ATTACK_RANGE = 400
 const DROP_CHANCE = 0.50
 const BASE_SPEED = 0 // Hollow Man doesn't walk — he teleports
-
-// Phase thresholds (HP ratio)
-const P2_THRESHOLD = 0.70
-const P3_THRESHOLD = 0.35
 
 // Transition i-frames
 const TRANSITION_IFRAMES = 0.45
@@ -196,12 +193,6 @@ function getState(world: GameWorld, eid: number): HollowManState {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function getDesiredPhase(hpRatio: number): number {
-  if (hpRatio <= P3_THRESHOLD) return 3
-  if (hpRatio <= P2_THRESHOLD) return 2
-  return 1
-}
 
 function getTeleportInterval(phase: number): number {
   if (phase >= 3) return P3_TELEPORT_INTERVAL
@@ -473,21 +464,11 @@ function tick(world: GameWorld, eid: number, dt: number): void {
     return
   }
 
-  // Track first alive player position for safespot detection
-  const alivePlayers = playerQuery(world)
-  for (const peid of alivePlayers) {
-    if (!hasComponent(world, Dead, peid)) {
-      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-      break
-    }
-  }
-
-  // Increment enrage fight duration
-  state.enrage.fightDuration += dt
+  tickSafespotAndEnrage(world, state.safespot, state.enrage, dt)
 
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
-  const desired = getDesiredPhase(hpRatio)
+  const desired = getStandardDesiredPhase(hpRatio)
 
   // Process phase transitions
   for (let p = currentPhase + 1; p <= desired; p++) {

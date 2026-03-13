@@ -11,6 +11,8 @@
 
 import type { BulletSpriteIdValue } from './weapons'
 
+const TWO_PI = Math.PI * 2
+
 // ============================================================================
 // Core Types
 // ============================================================================
@@ -146,14 +148,14 @@ export function ring(config: RingConfig): PatternGenerator {
     const result: BulletSpawnDescriptor[] = []
     let seed: number
     if (randomSeed) {
-      seed = ctx.rng.nextRange(0, Math.PI * 2)
+      seed = ctx.rng.nextRange(0, TWO_PI)
     } else if (seedAngle !== undefined) {
       seed = seedAngle
     } else {
       seed = ctx.baseAngle
     }
     seed += offset * ctx.cycle
-    const step = (Math.PI * 2) / count
+    const step = TWO_PI / count
     for (let i = 0; i < count; i++) {
       const angle = seed + i * step
       result.push({ angle, speed, accel, drag, damage, delay: 0 })
@@ -172,7 +174,7 @@ export interface WallConfig {
   perpendicular?: boolean // true = wall perpendicular to aim (default true)
 }
 
-/** Linear wall of bullets perpendicular (or parallel) to aim direction */
+/** Linear wall of bullets spread along a line perpendicular (or parallel) to aim direction */
 export function wall(config: WallConfig): PatternGenerator {
   const { count, spacing, speed, accel = 0, drag = 0, damage, perpendicular = true } = config
   return (ctx: PatternContext): BulletSpawnDescriptor[] => {
@@ -181,14 +183,9 @@ export function wall(config: WallConfig): PatternGenerator {
     const totalSpread = spacing * (count - 1)
     const startAngle = wallDir - totalSpread / 2
     for (let i = 0; i < count; i++) {
-      // All bullets travel in the aim direction, but start offset along the wall line
-      // For a wall pattern, angle = aim direction (all bullets go toward player)
-      const angle = ctx.baseAngle
-      // The "wall" effect is achieved by offsetting spawn positions, but since
-      // BulletSpawnDescriptor only has angle/speed, we approximate with angular offset
-      const wallAngle = startAngle + spacing * i
-      // Use the wall angle as the actual bullet direction to create a spread wall
-      result.push({ angle: wallAngle, speed, accel, drag, damage, delay: 0 })
+      // Each bullet gets a direction offset along the wall line, creating a spread
+      const angle = startAngle + spacing * i
+      result.push({ angle, speed, accel, drag, damage, delay: 0 })
     }
     return result
   }
@@ -211,7 +208,7 @@ export function spiral(config: SpiralConfig): PatternGenerator {
     const result: BulletSpawnDescriptor[] = []
     const seed = ctx.baseAngle + rotationRate * ctx.cycle
     const bulletsPerArm = Math.max(1, Math.floor(count / arms))
-    const armStep = (Math.PI * 2) / arms
+    const armStep = TWO_PI / arms
     for (let arm = 0; arm < arms; arm++) {
       for (let i = 0; i < bulletsPerArm; i++) {
         const angle = seed + arm * armStep + i * (armStep / bulletsPerArm)
@@ -247,7 +244,7 @@ export function scatter(config: ScatterConfig): PatternGenerator {
       do {
         angle = ctx.baseAngle + ctx.rng.nextRange(-halfCone, halfCone)
         attempts++
-      } while (attempts < 20 && angles.some(a => Math.abs(normalizeAngle(angle - a)) < minSeparation))
+      } while (attempts < 20 && angles.some(a => angularDistance(angle, a) < minSeparation))
       angles.push(angle)
       const bulletSpeed = ctx.rng.nextRange(speedMin, speedMax)
       result.push({ angle, speed: bulletSpeed, accel, drag, damage, delay: 0 })
@@ -332,9 +329,8 @@ export function validateMinGap(
   sampleCount = 100,
   referenceDistance = 150,
 ): { valid: boolean; narrowestGap: number; context?: PatternContext } {
-  const minGapWidth = playerColliderRadius * 2
-  // Convert linear gap at reference distance to angular gap
-  const minAngularGap = 2 * Math.atan2(minGapWidth / 2, referenceDistance)
+  // Convert player collider diameter to angular gap at reference distance
+  const minAngularGap = 2 * Math.atan2(playerColliderRadius, referenceDistance)
 
   let narrowestGap = Infinity
   let worstCtx: PatternContext | null = null
@@ -353,7 +349,7 @@ export function validateMinGap(
   }
 
   for (let s = 0; s < sampleCount; s++) {
-    const baseAngle = testRng.nextRange(0, Math.PI * 2)
+    const baseAngle = testRng.nextRange(0, TWO_PI)
     const ctx: PatternContext = {
       originX: 0,
       originY: 0,
@@ -374,7 +370,7 @@ export function validateMinGap(
       let gap: number
       if (next === 0) {
         // Wraparound gap
-        gap = (Math.PI * 2) - angles[angles.length - 1]! + angles[0]!
+        gap = TWO_PI - angles[angles.length - 1]! + angles[0]!
       } else {
         gap = angles[next]! - angles[i]!
       }
@@ -385,11 +381,14 @@ export function validateMinGap(
     }
   }
 
-  return {
+  const result: { valid: boolean; narrowestGap: number; context?: PatternContext } = {
     valid: narrowestGap >= minAngularGap,
     narrowestGap,
-    ...(worstCtx != null ? { context: worstCtx } : {}),
   }
+  if (worstCtx !== null) {
+    result.context = worstCtx
+  }
+  return result
 }
 
 // ============================================================================
@@ -398,8 +397,14 @@ export function validateMinGap(
 
 /** Normalize angle to [0, 2π) */
 function normalizeAngle(a: number): number {
-  const TWO_PI = Math.PI * 2
   let result = a % TWO_PI
   if (result < 0) result += TWO_PI
   return result
+}
+
+/** Shortest angular distance between two angles (always positive, range [0, π]) */
+function angularDistance(a: number, b: number): number {
+  let d = Math.abs(a - b) % TWO_PI
+  if (d > Math.PI) d = TWO_PI - d
+  return d
 }

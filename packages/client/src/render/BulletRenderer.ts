@@ -26,6 +26,13 @@ const TRAIL_LENGTH = 3
 /** Trail alpha values from newest to oldest */
 const TRAIL_ALPHA = [0.3, 0.2, 0.1] as const
 
+/** Player bullet tint */
+const PLAYER_BULLET_TINT = 0xfff5cf
+/** Enemy fodder bullet tint */
+const ENEMY_FODDER_TINT = 0xff9966
+/** Enemy threat bullet tint */
+const ENEMY_THREAT_TINT = 0xff2222
+
 interface CosmeticBullet {
   x: number
   y: number
@@ -64,6 +71,19 @@ interface TrailState {
 const VISUAL_BULLET_DEFAULT_SPEED = 2400
 const VISUAL_BULLET_DEFAULT_LIFETIME = 0.65
 const VISUAL_BULLET_TARGET_EPSILON = 2
+
+/** Read per-bullet size from ECS (Float32Array defaults to 0; treat as 1.0). */
+function getBulletSize(eid: number): number {
+  const raw = Bullet.size[eid]!
+  return raw > 0 ? raw : 1.0
+}
+
+/** Get tint color for a bullet based on ownership. */
+function getBulletTint(eid: number, isEnemy: boolean): number {
+  if (!isEnemy) return PLAYER_BULLET_TINT
+  const ownerId = Bullet.ownerId[eid]!
+  return Enemy.tier[ownerId] === EnemyTier.THREAT ? ENEMY_THREAT_TINT : ENEMY_FODDER_TINT
+}
 
 /**
  * Bullet renderer - manages bullet visual representation
@@ -129,31 +149,20 @@ export class BulletRenderer {
         const rotation = Math.atan2(vy, vx)
         targetRegistry.setRotation(eid, rotation)
 
+        const bulletSize = getBulletSize(eid)
+        const tint = getBulletTint(eid, isEnemy)
+        sprite.tint = tint
+        sprite.scale.set(bulletSize)
+
         // Track player vs enemy bullets
         if (isEnemy) {
           this.enemyBullets.add(eid)
 
-          // Tint enemy bullets by tier
-          const ownerId = Bullet.ownerId[eid]!
-          const isThreat = Enemy.tier[ownerId] === EnemyTier.THREAT
-          sprite.tint = isThreat ? 0xff2222 : 0xff9966
-
-          // Apply per-bullet size from ECS component (Float32Array defaults to 0; treat as 1.0)
-          const rawSize = Bullet.size[eid]!
-          const bulletSize = rawSize > 0 ? rawSize : 1.0
-          sprite.scale.set(bulletSize)
-
           // Z-ordering: smaller/faster bullets render on top (higher zIndex)
           const speed = Math.hypot(vx, vy)
-          // Normalize: speed contributes positively, size inversely
           sprite.zIndex = speed / 100 + (1 / Math.max(bulletSize, 0.1))
         } else {
           this.playerBullets.add(eid)
-          // Player bullets: warm tint
-          sprite.tint = 0xfff5cf
-          const rawSize = Bullet.size[eid]!
-          const bulletSize = rawSize > 0 ? rawSize : 1.0
-          sprite.scale.set(bulletSize)
         }
 
         // Init trail state for bullets with non-linear trajectories (accel or drag)
@@ -161,9 +170,6 @@ export class BulletRenderer {
         const drag = Bullet.drag[eid]!
         if (accel !== 0 || drag !== 0) {
           const trailSprites: Sprite[] = []
-          const tint = isEnemy
-            ? (Enemy.tier[Bullet.ownerId[eid]!] === EnemyTier.THREAT ? 0xff2222 : 0xff9966)
-            : 0xfff5cf
           const container = isEnemy ? this.enemyBulletLayer : this.registry.getContainer()
           for (let i = 0; i < TRAIL_LENGTH; i++) {
             const trailSprite = new Sprite(texture)
@@ -172,8 +178,6 @@ export class BulletRenderer {
             trailSprite.alpha = TRAIL_ALPHA[i]!
             trailSprite.rotation = rotation
             trailSprite.visible = false
-            const rawSize = Bullet.size[eid]!
-            const bulletSize = rawSize > 0 ? rawSize : 1.0
             // Trail sprites slightly smaller than the main bullet
             trailSprite.scale.set(bulletSize * (0.85 - i * 0.1))
             container.addChild(trailSprite)
@@ -242,33 +246,7 @@ export class BulletRenderer {
    * @param alpha - Interpolation factor (0-1) between previous and current state
    */
   render(world: GameWorld, alpha: number, realDt = 0): void {
-    for (const eid of this.bulletEntities) {
-      // Skip if entity no longer has Bullet component (despawned this frame)
-      if (!hasComponent(world, Bullet, eid)) continue
-
-      // Interpolate between previous and current position
-      const prevX = Position.prevX[eid]!
-      const prevY = Position.prevY[eid]!
-      const currX = Position.x[eid]!
-      const currY = Position.y[eid]!
-
-      const renderX = prevX + (currX - prevX) * alpha
-      const renderY = prevY + (currY - prevY) * alpha
-
-      const reg = this.registryFor(eid)
-      reg.setPosition(eid, renderX, renderY)
-
-      // Update trail afterimages
-      this.updateTrail(eid, renderX, renderY)
-    }
-
-    for (const [eid, bullet] of this.cosmeticBullets) {
-      const renderX = bullet.prevX + (bullet.x - bullet.prevX) * alpha
-      const renderY = bullet.prevY + (bullet.y - bullet.prevY) * alpha
-      this.registry.setPosition(eid, renderX, renderY)
-    }
-
-    if (realDt > 0) this.updateAnimations(realDt)
+    this.renderBullets(world, alpha, null, 0, 0, realDt)
   }
 
   /**
@@ -284,9 +262,25 @@ export class BulletRenderer {
     offsetY: number,
     realDt = 0,
   ): void {
+    this.renderBullets(world, alpha, localTimelineBullets, offsetX, offsetY, realDt)
+  }
+
+  /**
+   * Shared render implementation for both standard and offset-corrected paths.
+   */
+  private renderBullets(
+    world: GameWorld,
+    alpha: number,
+    localTimelineBullets: ReadonlySet<number> | null,
+    offsetX: number,
+    offsetY: number,
+    realDt: number,
+  ): void {
     for (const eid of this.bulletEntities) {
+      // Skip if entity no longer has Bullet component (despawned this frame)
       if (!hasComponent(world, Bullet, eid)) continue
 
+      // Interpolate between previous and current position
       const prevX = Position.prevX[eid]!
       const prevY = Position.prevY[eid]!
       const currX = Position.x[eid]!
@@ -295,7 +289,7 @@ export class BulletRenderer {
       let renderX = prevX + (currX - prevX) * alpha
       let renderY = prevY + (currY - prevY) * alpha
 
-      if (localTimelineBullets.has(eid)) {
+      if (localTimelineBullets?.has(eid)) {
         renderX += offsetX
         renderY += offsetY
       }
@@ -339,7 +333,7 @@ export class BulletRenderer {
         continue
       }
       // Read from ring buffer: most recent trail entry is (head - 1 - i)
-      const ringIdx = ((trail.head - 1 - i + TRAIL_LENGTH * 2) % TRAIL_LENGTH) * 2
+      const ringIdx = ((trail.head - 1 - i + TRAIL_LENGTH) % TRAIL_LENGTH) * 2
       sprite.x = trail.positions[ringIdx]!
       sprite.y = trail.positions[ringIdx + 1]!
       sprite.visible = true
@@ -382,7 +376,7 @@ export class BulletRenderer {
     const eid = this.nextCosmeticId--
     const texture = AssetLoader.getBulletTextureById(spriteId)
     const sprite = this.registry.createSprite(eid, texture)
-    sprite.tint = 0xfff5cf
+    sprite.tint = PLAYER_BULLET_TINT
     sprite.scale.set(size, size)
     this.registry.setRotation(eid, angle)
     this.registry.setPosition(eid, x, y)

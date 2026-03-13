@@ -26,13 +26,10 @@ describe('pattern fairness', () => {
       const desc = pattern.generator(testCtx)
       if (desc.length < 2) continue
 
-      const result = validateMinGap(pattern.generator, PLAYER_RADIUS)
-      if (!result.valid) {
-        console.warn(`Pattern "${pattern.id}" has gap ${result.narrowestGap.toFixed(4)} rad, need >= ${(2 * Math.atan2(PLAYER_RADIUS, 150)).toFixed(4)} rad`)
-      }
-      // Regular patterns must have gaps >= player radius at reference distance
-      const minAngularGap = 2 * Math.atan2(PLAYER_RADIUS / 2, 150)
-      expect(result.narrowestGap).toBeGreaterThanOrEqual(minAngularGap)
+      // Use half the collider radius as the threshold — player only needs to
+      // fit their radius (not diameter) through gaps between bullets
+      const result = validateMinGap(pattern.generator, PLAYER_RADIUS / 2)
+      expect(result.valid).toBe(true)
     }
   })
 

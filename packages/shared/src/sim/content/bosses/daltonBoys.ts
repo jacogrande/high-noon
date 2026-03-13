@@ -25,8 +25,9 @@ import { addEnemyComponents, setEnemyDefaults } from './helpers'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
 import {
   type SafespotDetector, type EnrageState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState,
+  tickSafespotAndEnrage,
 } from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
@@ -119,7 +120,7 @@ interface DaltonGroupState {
   /** Anti-safespot detection */
   safespot: SafespotDetector
   /** Soft enrage timer */
-  enrageTimer: EnrageState
+  enrage: EnrageState
 }
 
 interface DaltonBrotherState {
@@ -213,7 +214,7 @@ function spawn(world: GameWorld, x: number, y: number): number {
       enraged: false,
       phaseTransitionDone: new Set(),
       safespot: createSafespotDetector(),
-      enrageTimer: createEnrageState(120),
+      enrage: createEnrageState(120),
     }
 
     const brotherState: DaltonBrotherState = {
@@ -295,17 +296,9 @@ function tick(world: GameWorld, eid: number, dt: number): void {
   // Dead brothers don't tick further
   if (Health.current[eid]! <= 0) return
 
-  // Track first alive player position for safespot detection (once per group per tick)
-  // Only Emmett tracks to avoid double-updates
+  // Safespot + enrage tracking (once per group per tick — only Emmett updates)
   if (state.role === 'emmett') {
-    const players = playerQuery(world)
-    for (const peid of players) {
-      if (!hasComponent(world, Dead, peid)) {
-        updateSafespotDetector(group.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-        break
-      }
-    }
-    group.enrageTimer.fightDuration += dt
+    tickSafespotAndEnrage(world, group.safespot, group.enrage, dt)
   }
 
   // --- Phase check ---

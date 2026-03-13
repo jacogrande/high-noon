@@ -21,12 +21,13 @@ import {
 import { CollisionLayer, spawnBullet, spawnCoyote } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { ENEMY_BULLET_RANGE, BulletSpriteId, ENEMY_BULLET_SIZE_THREAT } from '../weapons'
-import { addEnemyComponents, setEnemyDefaults } from './helpers'
+import { addEnemyComponents, setEnemyDefaults, pickSummonPosition } from './helpers'
 import { isSolidAt, getPlayableBoundsFromTilemap } from '../../tilemap'
 import {
   type SafespotDetector, type EnrageState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState,
+  getStandardDesiredPhase, tickSafespotAndEnrage,
 } from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
@@ -43,10 +44,6 @@ const ATTACK_RANGE = 380
 const PREFERRED_RANGE = 280
 const SEPARATION_RADIUS = 32
 const DROP_CHANCE = 0.50
-
-// Phase thresholds (HP ratio)
-const P2_THRESHOLD = 0.70
-const P3_THRESHOLD = 0.35
 
 // Phase 1 tuning
 const P1_SPEED = 100
@@ -123,11 +120,6 @@ const RIFLE_TELEGRAPH_LENGTH = 400
 // P3 spawns (coyotes, not swarmers)
 const P3_SUMMON_COYOTES = 2
 
-// Summon placement
-const SUMMON_MIN_RADIUS = 64
-const SUMMON_MAX_RADIUS = 160
-const SUMMON_MAX_ATTEMPTS = 12
-
 // ============================================================================
 // Attack type enum
 // ============================================================================
@@ -200,29 +192,6 @@ function getState(world: GameWorld, eid: number): CoyoteJaneState {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function getDesiredPhase(hpRatio: number): number {
-  if (hpRatio <= P3_THRESHOLD) return 3
-  if (hpRatio <= P2_THRESHOLD) return 2
-  return 1
-}
-
-function pickSummonPosition(
-  world: GameWorld,
-  centerX: number,
-  centerY: number,
-): { x: number; y: number } {
-  const tilemap = world.tilemap
-  for (let i = 0; i < SUMMON_MAX_ATTEMPTS; i++) {
-    const angle = world.rng.next() * Math.PI * 2
-    const dist = SUMMON_MIN_RADIUS + world.rng.next() * (SUMMON_MAX_RADIUS - SUMMON_MIN_RADIUS)
-    const x = centerX + Math.cos(angle) * dist
-    const y = centerY + Math.sin(angle) * dist
-    if (tilemap && isSolidAt(tilemap, x, y)) continue
-    return { x, y }
-  }
-  return { x: centerX + SUMMON_MIN_RADIUS, y: centerY }
-}
 
 /**
  * Pick a point on the arena perimeter far from the player.
@@ -420,21 +389,11 @@ function spawn(world: GameWorld, x: number, y: number): number {
 function tick(world: GameWorld, eid: number, dt: number): void {
   const state = getState(world, eid)
 
-  // Track first alive player position for safespot detection
-  const players = playerQuery(world)
-  for (const peid of players) {
-    if (!hasComponent(world, Dead, peid)) {
-      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-      break
-    }
-  }
-
-  // Increment enrage fight duration
-  state.enrage.fightDuration += dt
+  tickSafespotAndEnrage(world, state.safespot, state.enrage, dt)
 
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
-  const desired = getDesiredPhase(hpRatio)
+  const desired = getStandardDesiredPhase(hpRatio)
 
   // Process phase transitions
   for (let p = currentPhase + 1; p <= desired; p++) {

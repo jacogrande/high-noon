@@ -5,6 +5,12 @@
  * for boss encounters. These are shared utilities used by all boss modules.
  */
 
+import { hasComponent, defineQuery } from 'bitecs'
+import type { GameWorld } from '../world'
+import { Player, Position, Health, Dead } from '../components'
+
+const playerQuery = defineQuery([Player, Position, Health])
+
 /** Detect if a player is camping in one spot */
 export interface SafespotDetector {
   lastPlayerX: number
@@ -85,3 +91,43 @@ export function createVulnerabilityState(): VulnerabilityState {
 export const VULNERABILITY_DAMAGE_MUL = 1.5
 /** Default vulnerability window duration */
 export const VULNERABILITY_DURATION = 1.0
+
+/** Tick vulnerability timer. Clears the vulnerable flag when the window expires. */
+export function tickVulnerability(vuln: VulnerabilityState, dt: number): void {
+  if (!vuln.vulnerable) return
+  vuln.timer -= dt
+  if (vuln.timer <= 0) {
+    vuln.vulnerable = false
+    vuln.timer = 0
+  }
+}
+
+/**
+ * Common per-tick boss bookkeeping: update safespot detector from first alive player
+ * and increment enrage fight duration. Call once per boss per tick.
+ */
+export function tickSafespotAndEnrage(
+  world: GameWorld,
+  safespot: SafespotDetector,
+  enrage: EnrageState,
+  dt: number,
+): void {
+  const players = playerQuery(world)
+  for (const peid of players) {
+    if (!hasComponent(world, Dead, peid)) {
+      updateSafespotDetector(safespot, Position.x[peid]!, Position.y[peid]!, dt)
+      break
+    }
+  }
+  enrage.fightDuration += dt
+}
+
+/**
+ * Get desired phase for standard 3-phase bosses (70% / 35% HP thresholds).
+ * Bosses with different thresholds (Dalton Boys, Old Scratch) use their own function.
+ */
+export function getStandardDesiredPhase(hpRatio: number): number {
+  if (hpRatio <= 0.35) return 3
+  if (hpRatio <= 0.70) return 2
+  return 1
+}

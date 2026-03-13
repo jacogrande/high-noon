@@ -19,12 +19,12 @@ import { NO_TARGET, spawnSwarmer } from '../../prefabs'
 import { transition } from '../../systems/enemyAI'
 import { applyDamage } from '../../systems/applyDamage'
 import { isInArc } from '../../systems/melee'
-import { isSolidAt } from '../../tilemap'
-import { addEnemyComponents, setEnemyDefaults } from './helpers'
+import { addEnemyComponents, setEnemyDefaults, pickSummonPosition } from './helpers'
 import {
   type SafespotDetector, type EnrageState,
-  createSafespotDetector, updateSafespotDetector,
+  createSafespotDetector,
   createEnrageState,
+  getStandardDesiredPhase, tickSafespotAndEnrage,
 } from '../bossPatterns'
 
 const playerQuery = defineQuery([Player, Position, Health])
@@ -38,10 +38,6 @@ const RADIUS = 20
 const AGGRO_RANGE = 450
 const ATTACK_RANGE = 150
 const DROP_CHANCE = 0.50
-
-// Phase thresholds (HP ratio)
-const P2_THRESHOLD = 0.70
-const P3_THRESHOLD = 0.35
 
 // Phase 1 tuning
 const P1_SPEED = 140
@@ -181,29 +177,6 @@ function getState(world: GameWorld, eid: number): MadDogState {
 // Helpers
 // ============================================================================
 
-function getDesiredPhase(hpRatio: number): number {
-  if (hpRatio <= P3_THRESHOLD) return 3
-  if (hpRatio <= P2_THRESHOLD) return 2
-  return 1
-}
-
-function pickSummonPosition(
-  world: GameWorld,
-  centerX: number,
-  centerY: number,
-): { x: number; y: number } {
-  const tilemap = world.tilemap
-  for (let i = 0; i < SUMMON_MAX_ATTEMPTS; i++) {
-    const angle = world.rng.next() * Math.PI * 2
-    const dist = SUMMON_MIN_RADIUS + world.rng.next() * (SUMMON_MAX_RADIUS - SUMMON_MIN_RADIUS)
-    const x = centerX + Math.cos(angle) * dist
-    const y = centerY + Math.sin(angle) * dist
-    if (tilemap && isSolidAt(tilemap, x, y)) continue
-    return { x, y }
-  }
-  // Fallback: spawn adjacent to boss
-  return { x: centerX + SUMMON_MIN_RADIUS, y: centerY }
-}
 
 // ============================================================================
 // Attack selection
@@ -333,20 +306,10 @@ function spawn(world: GameWorld, x: number, y: number): number {
 function tick(world: GameWorld, eid: number, dt: number): void {
   const currentPhase = BossPhase.phase[eid]!
   const hpRatio = Health.current[eid]! / Math.max(1, Health.max[eid]!)
-  const desired = getDesiredPhase(hpRatio)
+  const desired = getStandardDesiredPhase(hpRatio)
   const state = getState(world, eid)
 
-  // Track first alive player position for safespot detection
-  const players = playerQuery(world)
-  for (const peid of players) {
-    if (!hasComponent(world, Dead, peid)) {
-      updateSafespotDetector(state.safespot, Position.x[peid]!, Position.y[peid]!, dt)
-      break
-    }
-  }
-
-  // Increment enrage fight duration
-  state.enrage.fightDuration += dt
+  tickSafespotAndEnrage(world, state.safespot, state.enrage, dt)
 
   // Process each skipped phase (handles large HP drops)
   for (let p = currentPhase + 1; p <= desired; p++) {
@@ -378,7 +341,11 @@ function tick(world: GameWorld, eid: number, dt: number): void {
       const cx = Position.x[eid]!
       const cy = Position.y[eid]!
       for (let i = 0; i < P3_SUMMON_SWARMERS; i++) {
-        const pos = pickSummonPosition(world, cx, cy)
+        const pos = pickSummonPosition(world, cx, cy, {
+          minRadius: SUMMON_MIN_RADIUS,
+          maxRadius: SUMMON_MAX_RADIUS,
+          maxAttempts: SUMMON_MAX_ATTEMPTS,
+        })
         spawnSwarmer(world, pos.x, pos.y)
       }
     }

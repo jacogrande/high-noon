@@ -21,6 +21,7 @@ import type { LocalPlayerSimulationDriver } from './SimulationDriver'
 import type { PlayerHitPresentationPolicy } from './PresentationPolicy'
 import type { IGameplayEventSink, ILocalIdentityState, ISimStateSource } from './SceneRuntimeContracts'
 import { captureReplayExcludedState, restoreReplayExcludedState } from './ReplayExcludedState'
+import { computeHitTrauma } from './PlayerPresentationEvents'
 
 /** Maximum accumulated error offset in pixels before clamping. */
 const MAX_ERROR_OFFSET = 48
@@ -90,7 +91,7 @@ export class MultiplayerReconciler {
       const hitDir = ctx.world.lastPlayerHitDir.get(ctx.myClientEid)
       const damageFraction = ctx.world.lastPlayerDamageFraction.get(ctx.myClientEid)
       const trauma = damageFraction !== undefined
-        ? Math.min(damageFraction * 0.8, 0.5)
+        ? computeHitTrauma(damageFraction)
         : ctx.hitPolicy.trauma
       ctx.gameplayEventSink.pushGameplayEvent({
         type: 'player-hit',

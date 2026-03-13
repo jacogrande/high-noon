@@ -47,6 +47,14 @@ export interface EmitBossIntroEventsArgs {
   narrativeThreadId: string | null
 }
 
+/**
+ * Compute camera trauma from a proportional damage fraction.
+ * Scales linearly (0.8×) and caps at 0.5 to prevent full-screen shakes.
+ */
+export function computeHitTrauma(damageFraction: number): number {
+  return Math.min(damageFraction * 0.8, 0.5)
+}
+
 export function emitPlayerHitEvent(
   events: GameplayEventBuffer,
   policy: PlayerHitPresentationPolicy,
@@ -56,7 +64,7 @@ export function emitPlayerHitEvent(
 ): void {
   const hasKick = kickX !== 0 || kickY !== 0
   const trauma = damageFraction !== undefined
-    ? Math.min(damageFraction * 0.8, 0.5)
+    ? computeHitTrauma(damageFraction)
     : policy.trauma
   events.push({
     type: 'player-hit',

@@ -11,6 +11,7 @@ import type { GameWorld } from '../world'
 import type { PatternDefinition, PatternContext, BulletSpawnDescriptor } from '../content/patterns'
 import { spawnBullet, CollisionLayer } from '../prefabs'
 import { ENEMY_BULLET_RANGE } from '../content/weapons'
+import { TICK_RATE } from '../step'
 
 /** Pending delayed bullet for deterministic future spawning */
 export interface PendingBullet {
@@ -46,7 +47,7 @@ export function executePattern(
     const desc = descriptors[i]!
     if (desc.delay > 0) {
       // Queue for future tick
-      const delayTicks = Math.round(desc.delay * 60) // 60 Hz sim
+      const delayTicks = Math.round(desc.delay * TICK_RATE)
       world.pendingBullets.push({
         spawnTick: world.tick + delayTicks,
         desc,
