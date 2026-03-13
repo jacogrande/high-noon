@@ -34,11 +34,14 @@
 
 ### Critical Bugs
 
-- [ ] Entity ID recycling (current sequential IDs exhaust at 10,000 in long runs)
+- [x] Entity ID recycling (current sequential IDs exhaust at 10,000 in long runs)
+  - Centralized `cleanupEntity()` removes entity from all 28 Maps/Sets before `removeEntity()`. Wired into all 5 removal paths (removeBullet, removePlayer, handleEnemyDeath, clearEnemiesCore, objectiveSystem, hollowMan). Prevents stale state inheritance when bitECS recycles IDs after ~1000 removals.
 - [x] Snapshot HP encoding: Uint8 → Uint16 for co-op boss HP scaling
   - Enemy HP widened to Uint16 in snapshot v11; player HP remains Uint8
-- [ ] Memory leak audit: stale entity references in world Maps/Sets, add `onEntityRemoved` hook
-- [ ] Config validation assertions on world creation
+- [x] Memory leak audit: stale entity references in world Maps/Sets, add `onEntityRemoved` hook
+  - Fixed: playerKillCounts, playerStats, lastPlayerDamageFraction not cleaned on player removal. Fixed: consecratedAccum not cleared on Last Rites zone expiry. Audited all 28 entity-keyed Maps/Sets — all now have proper cleanup paths.
+- [x] Config validation assertions on world creation
+  - `validateWorld()` checks initialSeed, activePlayerCount, maxProjectiles, characterId, friendlyFireMode. Runs on createGameWorld() and resetWorld().
 
 ### Infrastructure
 
