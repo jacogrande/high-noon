@@ -17,6 +17,7 @@ import { SeededRng } from '../math/rng'
 import { type UpgradeState, initUpgradeState } from './upgrade'
 import { SHERIFF, type CharacterDef, type CharacterId } from './content/characters'
 import { HookRegistry } from './hooks'
+import { validateWorld } from './worldValidation'
 import type { CampVisitorState } from './systems/campVisitor'
 import type { DraftState } from './content/lootDistribution'
 import type { PlayerRunStats } from './stats'
@@ -684,7 +685,7 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
   const resolvedSeed = seed ?? Date.now()
   const charDef = characterDef ?? SHERIFF
 
-  return {
+  const world: GameWorld = {
     ...baseWorld,
     tick: 0,
     time: 0,
@@ -805,6 +806,14 @@ export function createGameWorld(seed?: number, characterDef?: CharacterDef): Gam
     pendingBullets: [],
     bulletCancelEvent: false,
   }
+
+  const result = validateWorld(world)
+  for (const w of result.warnings) console.warn(`[World] ${w}`)
+  if (!result.valid) {
+    console.error(`[World] Validation errors: ${result.errors.join(', ')}`)
+  }
+
+  return world
 }
 
 /**
@@ -939,6 +948,12 @@ export function resetWorld(world: GameWorld): void {
   world.pendingBullets = []
   world.bulletCancelEvent = false
   // Note: bitECS entities persist - call removeEntity for each if needed
+
+  // Post-reset invariant checks
+  const result = validateWorld(world)
+  if (!result.valid) {
+    console.error(`[World] Post-reset validation errors: ${result.errors.join(', ')}`)
+  }
 }
 
 /**
