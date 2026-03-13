@@ -8,6 +8,7 @@
 
 import { defineQuery, hasComponent, removeEntity } from 'bitecs'
 import type { GameWorld, ObjectiveState } from '../world'
+import { cleanupEntity } from '../entityCleanup'
 import type { ObjectiveConfig } from '../content/waves'
 import {
   Enemy,
@@ -170,7 +171,7 @@ export function cleanupObjective(world: GameWorld): void {
   if (world.objective.type === 'duel' && world.objective.duelistEid) {
     const duelistEid = world.objective.duelistEid
     if (hasComponent(world, Position, duelistEid)) {
-      world.lastDamageByEntity.delete(duelistEid)
+      cleanupEntity(world, duelistEid)
       removeEntity(world, duelistEid)
     }
   }
@@ -178,14 +179,14 @@ export function cleanupObjective(world: GameWorld): void {
   // Remove objective target entities
   for (const eid of world.objective.targetEids) {
     if (hasComponent(world, Position, eid)) {
-      world.lastDamageByEntity.delete(eid)
+      cleanupEntity(world, eid)
       removeEntity(world, eid)
     }
   }
 
   // Remove any remaining objective-role enemies
   for (const eid of objectiveRoleQuery(world)) {
-    world.lastDamageByEntity.delete(eid)
+    cleanupEntity(world, eid)
     removeEntity(world, eid)
   }
 
@@ -250,7 +251,7 @@ function interceptTick(world: GameWorld, obj: ObjectiveState, dt: number): void 
 
     if (distSq <= RUNNER_ARRIVE_DIST_SQ) {
       obj.escapedCount++
-      world.lastDamageByEntity.delete(eid)
+      cleanupEntity(world, eid)
       removeEntity(world, eid)
     }
   }
@@ -333,7 +334,7 @@ function duelTick(world: GameWorld, obj: ObjectiveState, dt: number): void {
       obj.status = 'soft_failure'
       // Remove the duelist on forfeit
       if (hasComponent(world, Position, duelistEid)) {
-        world.lastDamageByEntity.delete(duelistEid)
+        cleanupEntity(world, duelistEid)
         removeEntity(world, duelistEid)
       }
     }

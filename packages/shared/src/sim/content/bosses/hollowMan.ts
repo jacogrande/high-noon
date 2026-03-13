@@ -10,6 +10,7 @@
 
 import { addEntity, addComponent, removeEntity, defineQuery, hasComponent } from 'bitecs'
 import type { GameWorld } from '../../world'
+import { cleanupEntity } from '../../entityCleanup'
 import type { BossModule } from './registry'
 import { registerBoss } from './registry'
 import {
@@ -367,6 +368,7 @@ function spawnAfterimage(world: GameWorld, x: number, y: number): number {
 /** Remove an afterimage entity */
 function removeAfterimage(world: GameWorld, eid: number): void {
   if (hasComponent(world, Enemy, eid)) {
+    cleanupEntity(world, eid)
     removeEntity(world, eid)
   }
 }
@@ -383,6 +385,7 @@ function cleanupAll(world: GameWorld, state: HollowManState): void {
   // Remove convergence copies
   for (const eid of state.convergenceCopyEids) {
     if (hasComponent(world, Enemy, eid)) {
+      cleanupEntity(world, eid)
       removeEntity(world, eid)
     }
   }
@@ -933,6 +936,7 @@ function tickConvergence(world: GameWorld, eid: number, state: HollowManState, d
       if (hasComponent(world, Enemy, copyEid)) {
         const copyDamage = state.convergenceCopyStartHP - Health.current[copyEid]!
         totalCopyDamage += Math.max(0, copyDamage)
+        cleanupEntity(world, copyEid)
         removeEntity(world, copyEid)
       } else {
         // Copy was already removed by healthSystem (killed) — all its HP was damage

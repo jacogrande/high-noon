@@ -9,6 +9,7 @@
 import { defineQuery, hasComponent, removeComponent, removeEntity } from 'bitecs'
 import type { GameWorld } from '../world'
 import { setEncounter, swapTilemap } from '../world'
+import { cleanupEntity } from '../entityCleanup'
 import { getArenaCenterFromTilemap } from '../tilemap'
 import { GOLD_NUGGET_LIFETIME } from './goldRush'
 import { Enemy, Position, Bullet, Player, Health, Dead, Downed, ObjectiveRole } from '../components'
@@ -42,10 +43,7 @@ const bulletCleanupQuery = defineQuery([Bullet])
 function clearEnemiesCore(world: GameWorld, keepLoot: boolean): void {
   // Remove all enemy entities and their associated tracking state
   for (const eid of enemyCleanupQuery(world)) {
-    world.bulletCollisionCallbacks.delete(eid)
-    world.bulletPierceHits.delete(eid)
-    world.hookPierceCount.delete(eid)
-    world.lastDamageByEntity.delete(eid)
+    cleanupEntity(world, eid)
     removeEntity(world, eid)
   }
   // Remove all bullets so none carry across stages
@@ -56,6 +54,7 @@ function clearEnemiesCore(world: GameWorld, keepLoot: boolean): void {
   cleanupObjective(world)
   // Remove all NPCs
   for (const eid of world.npcEntities) {
+    cleanupEntity(world, eid)
     removeEntity(world, eid)
   }
   world.npcEntities.clear()

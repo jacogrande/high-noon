@@ -7,6 +7,7 @@
 
 import { addEntity, addComponent, removeEntity } from 'bitecs'
 import type { GameWorld, BulletCollisionCallback } from './world'
+import { cleanupEntity } from './entityCleanup'
 import type { UpgradeState } from './upgrade'
 import {
   Position,
@@ -298,12 +299,7 @@ export function spawnBullet(world: GameWorld, options: SpawnBulletOptions): numb
  * bulletCollision.ts, and health.ts.
  */
 export function removeBullet(world: GameWorld, eid: number): void {
-  world.bulletCollisionCallbacks.delete(eid)
-  world.bulletPierceHits.delete(eid)
-  world.hookPierceCount.delete(eid)
-  world.lagComp.bulletShotTick.delete(eid)
-  world.lagComp.bulletSpawnTick.delete(eid)
-  world.lagComp.bulletSweepStart.delete(eid)
+  cleanupEntity(world, eid)
   removeEntity(world, eid)
 }
 

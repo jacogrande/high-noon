@@ -11,6 +11,7 @@
 
 import { defineQuery, removeEntity, hasComponent, addComponent } from 'bitecs'
 import type { GameWorld } from '../world'
+import { cleanupEntity } from '../entityCleanup'
 import { Health, Player, Dead, Downed, Enemy, EnemyTier, Position, BossPhase } from '../components'
 import { NO_TARGET } from '../prefabs'
 import { BLEED_TIMER } from './reviveSystem'
@@ -73,17 +74,7 @@ function handleEnemyDeath(world: GameWorld, eid: number): void {
     processEnemyXP(world, eid)
   }
 
-  // Clean up stale map entries keyed by this eid
-  world.bulletCollisionCallbacks.delete(eid)
-  world.bulletPierceHits.delete(eid)
-  world.hookPierceCount.delete(eid)
-  world.lastDamageByEntity.delete(eid)
-
-  // Clean up boss-specific state
-  if (hasComponent(world, BossPhase, eid)) {
-    world.bossState.delete(eid)
-  }
-
+  cleanupEntity(world, eid)
   removeEntity(world, eid)
 }
 

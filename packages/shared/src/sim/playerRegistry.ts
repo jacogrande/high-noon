@@ -8,6 +8,7 @@
 
 import { removeEntity } from 'bitecs'
 import type { GameWorld } from './world'
+import { cleanupEntity } from './entityCleanup'
 import type { UpgradeState } from './upgrade'
 import { spawnPlayer } from './prefabs'
 import { getArenaCenterFromTilemap } from './tilemap'
@@ -81,17 +82,7 @@ export function removePlayer(world: GameWorld, sessionId: string): void {
   const info = world.players.get(sessionId)
   if (!info) return
 
-  world.playerInputs.delete(info.eid)
-  world.rollDodgedBullets.delete(info.eid)
-  world.lastPlayerHitDir.delete(info.eid)
-  world.playerUpgradeStates.delete(info.eid)
-  world.playerCharacters.delete(info.eid)
-  world.lastRitesZones.delete(info.eid)
-  world.interactionHoldTicksByPlayer.delete(info.eid)
-  world.interactionTargetByPlayer.delete(info.eid)
-  world.interactionLastInputSeqByPlayer.delete(info.eid)
-  world.interactionPromptByPlayer.delete(info.eid)
-  world.interactionFeedbackByPlayer.delete(info.eid)
+  cleanupEntity(world, info.eid)
   removeEntity(world, info.eid)
   world.players.delete(sessionId)
 }
