@@ -86,6 +86,7 @@ export function lastRitesSystem(world: GameWorld, dt: number): void {
 
         zone.active = false
         zone.pendingPulses.length = 0
+        zone.consecratedAccum.clear()
         world.lastRitesExpiredThisTick = true
       } else {
         Showdown.duration[eid] = zone.timeRemaining
